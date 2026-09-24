@@ -1,0 +1,31 @@
+# Python / venv
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Sensitive / Credentials / Environment
+.env
+.env.*
+authorized_devices.json
+qr_tickets.json
+
+# Binaries & Large files
+cloudflared.exe
+*.exe
+
+# Databases & local persistent storage
+jarvis_memory.db
+*.db
+*.sqlite3
+
+# Logs & temp files
+tunnel_url.txt
+outbox_emails/
+test_workspace/
+.jarvis_chrome_profile/
+.browseruse/
+.antigravity_save/
+RAPPORT_TESTS_JARVIS.txt

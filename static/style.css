@@ -1,0 +1,1324 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #050811;
+  color: #38bdf8;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Écran d'authentification */
+#authScreen {
+  position: fixed;
+  inset: 0;
+  background: #050811;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 100;
+  transition: opacity 0.4s ease;
+}
+.auth-card {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  box-shadow: 0 0 35px rgba(2, 132, 199, 0.3), inset 0 0 20px rgba(2, 132, 199, 0.15);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 24px;
+  padding: 32px 24px;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.security-badge {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 2px solid #38bdf8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
+}
+.security-badge svg {
+  width: 28px;
+  height: 28px;
+  fill: #38bdf8;
+}
+.auth-title {
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: #e0f2fe;
+  margin: 0 0 8px 0;
+  text-transform: uppercase;
+}
+.auth-subtitle {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+  margin-bottom: 24px;
+  line-height: 1.4;
+}
+.auth-input {
+  width: 100%;
+  background: rgba(3, 7, 18, 0.9);
+  border: 1.5px solid #0284c7;
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: #e0f2fe;
+  font-size: 1rem;
+  text-align: center;
+  outline: none;
+  transition: all 0.3s ease;
+  letter-spacing: 1px;
+}
+.auth-input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 25px rgba(56, 189, 248, 0.5);
+}
+.auth-btn {
+  width: 100%;
+  margin-top: 16px;
+  padding: 14px;
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  border: none;
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(2, 132, 199, 0.4);
+  -webkit-tap-highlight-color: transparent;
+}
+.auth-btn:hover {
+  background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
+  box-shadow: 0 0 30px rgba(56, 189, 248, 0.7);
+}
+.auth-btn:active {
+  transform: scale(0.98);
+}
+#authFeedback {
+  margin-top: 14px;
+  font-size: 0.82rem;
+  min-height: 20px;
+}
+.feedback-error { color: #f87171; text-shadow: 0 0 8px rgba(248, 113, 113, 0.6); }
+.feedback-success { color: #4ade80; text-shadow: 0 0 8px rgba(74, 222, 128, 0.6); }
+
+/* Écran Principal (Arc Reactor & HUD) */
+#mainScreen {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  text-align: center;
+  padding: 14px 12px;
+  height: 100vh;
+  width: 100%;
+  max-width: 440px;
+  animation: fadeIn 0.6s ease;
+  position: relative;
+}
+
+/* En-tête HUD */
+.hud-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 4px;
+  font-size: 0.72rem;
+  color: #64748b;
+  letter-spacing: 1.5px;
+}
+.system-tag {
+  color: #0284c7;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.system-tag-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+
+/* Centre : Avatar Féminin Futuriste J.A.R.V.I.S. */
+.reactor-container.avatar-pod-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 3px 0;
+  min-height: 165px;
+}
+.reactor-halo {
+  position: absolute;
+  width: 175px;
+  height: 175px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.28) 0%, transparent 70%);
+  opacity: 0.3;
+  transition: transform 0.12s ease-out, opacity 0.15s ease, background 0.4s ease;
+  pointer-events: none;
+}
+.jarvis-avatar-pod {
+  position: relative;
+  width: 154px;
+  height: 154px;
+  border-radius: 50%;
+  border: 2px solid rgba(56, 189, 248, 0.4);
+  background: radial-gradient(circle at 50% 36%, rgba(14, 165, 233, 0.15) 0%, rgba(7, 10, 19, 0.96) 75%);
+  box-shadow: 0 0 35px rgba(2, 132, 199, 0.45), inset 0 0 25px rgba(2, 132, 199, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: visible;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  -webkit-tap-highlight-color: transparent;
+  z-index: 2;
+}
+.jarvis-avatar-pod::before {
+  display: none !important;
+}
+.jarvis-avatar-pod:hover {
+  transform: scale(1.03);
+  border-color: #38bdf8;
+  box-shadow: 0 0 45px rgba(56, 189, 248, 0.7), inset 0 0 30px rgba(56, 189, 248, 0.45);
+}
+.jarvis-avatar-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6));
+  pointer-events: none;
+}
+
+/* Pastille intégrée de statut et d'action */
+.avatar-status-pill {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 12px;
+  border-radius: 9999px;
+  background: rgba(10, 15, 30, 0.94);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+  font-size: 0.66rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 1.5px !important;
+  color: #e0f2fe;
+  text-transform: uppercase;
+  white-space: nowrap;
+  z-index: 10;
+  transition: all 0.3s ease;
+  pointer-events: none;
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+}
+
+/* Base de l'avatar et respiration subtile */
+.avatar-head-group {
+  animation: avatarBreathing 4s ease-in-out infinite;
+  transform-origin: 100px 145px;
+}
+.avatar-eyelid {
+  transform-origin: 100px 92px;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.jarvis-avatar-pod:not(.state-offline) .avatar-eyelid {
+  animation: naturalBlink 4.2s infinite ease-in-out;
+}
+.eye-sleep-line {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.avatar-rings-outer {
+  transform-origin: 100px 105px;
+  animation: spinClockwise 25s linear infinite;
+}
+.avatar-rings-inner {
+  transform-origin: 100px 105px;
+  animation: spinCounter 18s linear infinite;
+}
+
+/* Couches de mimiques masquées par défaut */
+.mime-coding-layer,
+.mime-browsing-layer,
+.mime-thinking-layer,
+.mime-speaking-layer,
+.mime-emailing-layer {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+/* --- ÉTATS DYNAMIQUES DE L'AVATAR --- */
+
+/* 1. PAROLE (Speaking) */
+.jarvis-avatar-pod.state-speaking {
+  border-color: #00f0ff;
+  box-shadow: 0 0 50px rgba(0, 240, 255, 0.8), inset 0 0 30px rgba(0, 240, 255, 0.45);
+}
+.jarvis-avatar-pod.state-speaking .mime-speaking-layer {
+  opacity: 1;
+}
+.jarvis-avatar-pod.state-speaking .avatar-lip-lower {
+  animation: mouthSpeakCycle 0.32s infinite ease-in-out;
+  transform-origin: 100px 125px;
+}
+.jarvis-avatar-pod.state-speaking .vocal-wave-1 {
+  transform-origin: 100px 128px;
+  animation: vocalWavePulse 1.2s infinite ease-out;
+}
+.jarvis-avatar-pod.state-speaking .vocal-wave-2 {
+  transform-origin: 100px 128px;
+  animation: vocalWavePulse 1.2s infinite ease-out 0.4s;
+}
+.jarvis-avatar-pod.state-speaking .vocal-wave-3 {
+  transform-origin: 100px 128px;
+  animation: vocalWavePulse 1.2s infinite ease-out 0.8s;
+}
+.jarvis-avatar-pod.state-speaking .avatar-status-pill {
+  border-color: #00f0ff;
+  color: #00f0ff;
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.7);
+}
+
+/* 2. PROGRAMMATION / CODING (Visière cybernétique & flux matrix) */
+.jarvis-avatar-pod.state-coding {
+  border-color: #a855f7;
+  box-shadow: 0 0 50px rgba(168, 85, 247, 0.8), inset 0 0 30px rgba(168, 85, 247, 0.45);
+}
+.jarvis-avatar-pod.state-coding .mime-coding-layer {
+  opacity: 1;
+}
+.jarvis-avatar-pod.state-coding .code-stream-1 {
+  animation: codeStreamScroll 2.2s linear infinite;
+}
+.jarvis-avatar-pod.state-coding .code-stream-2 {
+  animation: codeStreamScroll 1.7s linear infinite reverse;
+}
+.jarvis-avatar-pod.state-coding .float-bracket-l {
+  animation: floatCodeBadge 2s ease-in-out infinite;
+}
+.jarvis-avatar-pod.state-coding .float-bracket-r {
+  animation: floatCodeBadge 2s ease-in-out infinite 0.6s;
+}
+.jarvis-avatar-pod.state-coding .neural-synapse {
+  stroke: #c084fc !important;
+  filter: drop-shadow(0 0 6px #c084fc);
+}
+.jarvis-avatar-pod.state-coding .avatar-status-pill {
+  border-color: #a855f7;
+  color: #d8b4fe;
+  box-shadow: 0 0 14px rgba(168, 85, 247, 0.7);
+}
+
+/* 3. RECHERCHE / BROWSING (Réticule & Radar HUD) */
+.jarvis-avatar-pod.state-browsing {
+  border-color: #38bdf8;
+  box-shadow: 0 0 50px rgba(56, 189, 248, 0.8), inset 0 0 30px rgba(56, 189, 248, 0.45);
+}
+.jarvis-avatar-pod.state-browsing .mime-browsing-layer {
+  opacity: 1;
+}
+.jarvis-avatar-pod.state-browsing .radar-reticle {
+  transform-origin: 114px 92px;
+  animation: spinClockwise 6s linear infinite;
+}
+.jarvis-avatar-pod.state-browsing .radar-sweep-beam {
+  transform-origin: 114px 92px;
+  animation: radarSweepAngle 2s linear infinite;
+}
+.jarvis-avatar-pod.state-browsing .avatar-eye-pupils {
+  animation: eyeScanMotion 1.4s ease-in-out infinite;
+}
+.jarvis-avatar-pod.state-browsing .avatar-status-pill {
+  border-color: #38bdf8;
+  color: #38bdf8;
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.7);
+}
+
+/* 4. RÉFLEXION / THINKING (Orbites quantiques & halo neural) */
+.jarvis-avatar-pod.state-thinking {
+  border-color: #f59e0b;
+  box-shadow: 0 0 50px rgba(245, 158, 11, 0.8), inset 0 0 30px rgba(245, 158, 11, 0.45);
+}
+.jarvis-avatar-pod.state-thinking .mime-thinking-layer {
+  opacity: 1;
+}
+.jarvis-avatar-pod.state-thinking .neural-core,
+.jarvis-avatar-pod.state-thinking .neural-synapse {
+  stroke: #fbbf24 !important;
+  fill: #f59e0b !important;
+  animation: neuralSynapsePulse 1.2s infinite alternate ease-in-out;
+}
+.jarvis-avatar-pod.state-thinking .quantum-orbit-1 {
+  transform-origin: 100px 62px;
+  animation: quantumOrbitSpin 7s linear infinite;
+}
+.jarvis-avatar-pod.state-thinking .quantum-orbit-2 {
+  transform-origin: 100px 62px;
+  animation: quantumOrbitSpin 5s linear infinite reverse;
+}
+.jarvis-avatar-pod.state-thinking .avatar-eye-pupils {
+  animation: eyeLookThinkMotion 2s ease-in-out infinite;
+}
+.jarvis-avatar-pod.state-thinking .avatar-status-pill {
+  border-color: #f59e0b;
+  color: #fbbf24;
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.7);
+}
+
+/* 5. À L'ÉCOUTE (Listening) */
+.jarvis-avatar-pod.state-listening {
+  border-color: #38bdf8;
+  box-shadow: 0 0 40px rgba(56, 189, 248, 0.6), inset 0 0 25px rgba(56, 189, 248, 0.35);
+}
+.jarvis-avatar-pod.state-listening .ear-led {
+  fill: #38bdf8 !important;
+  filter: drop-shadow(0 0 6px #38bdf8);
+  animation: neuralSynapsePulse 1.5s infinite ease-in-out;
+}
+.jarvis-avatar-pod.state-listening .avatar-status-pill {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+/* 6. EXPÉDITION D'E-MAIL */
+.jarvis-avatar-pod.state-emailing {
+  border-color: #10b981;
+  box-shadow: 0 0 45px rgba(16, 185, 129, 0.75), inset 0 0 25px rgba(16, 185, 129, 0.4);
+}
+.jarvis-avatar-pod.state-emailing .mime-emailing-layer {
+  opacity: 1;
+}
+.jarvis-avatar-pod.state-emailing .email-beam {
+  animation: emailStreamAscend 1.5s infinite ease-out;
+}
+.jarvis-avatar-pod.state-emailing .avatar-status-pill {
+  border-color: #10b981;
+  color: #6ee7b7;
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.7);
+}
+
+/* 7. HORS LIGNE / VEILLE (Offline) */
+.jarvis-avatar-pod.state-offline {
+  border-color: #334155;
+  box-shadow: 0 0 22px rgba(51, 65, 85, 0.35), inset 0 0 15px rgba(51, 65, 85, 0.2);
+  opacity: 0.88;
+}
+.jarvis-avatar-pod.state-offline .avatar-eyelid {
+  transform: scaleY(0.08) translateY(90px) !important;
+  opacity: 0.92;
+}
+.jarvis-avatar-pod.state-offline .eye-sleep-line {
+  opacity: 1 !important;
+}
+.jarvis-avatar-pod.state-offline .avatar-eye-pupils {
+  opacity: 0;
+}
+.jarvis-avatar-pod.state-offline .avatar-status-pill {
+  border-color: #475569;
+  color: #94a3b8;
+}
+
+/* KEYFRAMES ANIMATIONS SPÉCIFIQUES AVATAR */
+@keyframes spinClockwise {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes spinCounter {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+@keyframes avatarBreathing {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+@keyframes naturalBlink {
+  0%, 94%, 98%, 100% { transform: scaleY(1); }
+  96% { transform: scaleY(0.1); }
+}
+@keyframes mouthSpeakCycle {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  25% { transform: translateY(3px) scaleY(2.2); }
+  50% { transform: translateY(1.5px) scaleY(1.4); }
+  75% { transform: translateY(4.5px) scaleY(3.0); }
+}
+@keyframes vocalWavePulse {
+  0% { opacity: 0; transform: scale(0.8); }
+  50% { opacity: 0.95; }
+  100% { opacity: 0; transform: scale(1.4); }
+}
+@keyframes codeStreamScroll {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-30px); }
+}
+@keyframes floatCodeBadge {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.8; }
+  50% { transform: translateY(-5px) scale(1.08); opacity: 1; }
+}
+@keyframes radarSweepAngle {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes eyeScanMotion {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(3px); }
+  50% { transform: translateX(-3px); }
+  75% { transform: translateX(2px); }
+}
+@keyframes eyeLookThinkMotion {
+  0%, 100% { transform: translate(-2px, -3px); }
+  50% { transform: translate(-3px, -4px); }
+}
+@keyframes neuralSynapsePulse {
+  0%, 100% { opacity: 0.4; filter: drop-shadow(0 0 2px #f59e0b); }
+  50% { opacity: 1; filter: drop-shadow(0 0 10px #fbbf24); }
+}
+@keyframes quantumOrbitSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes emailStreamAscend {
+  0% { transform: translateY(10px); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(-15px); opacity: 0; }
+}
+
+/* Indicateur d'état dynamique de JARVIS */
+.state-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-top: 2px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 15px rgba(0, 0, 0, 0.4);
+}
+.state-indicator-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #64748b;
+  box-shadow: 0 0 6px #64748b;
+  transition: all 0.3s ease;
+}
+.badge-offline { border-color: rgba(100, 116, 139, 0.4); color: #94a3b8; }
+.badge-offline .state-indicator-dot { background: #64748b; box-shadow: 0 0 6px #64748b; }
+
+.badge-listening { border-color: rgba(56, 189, 248, 0.6); color: #38bdf8; }
+.badge-listening .state-indicator-dot { background: #38bdf8; box-shadow: 0 0 10px #38bdf8; animation: blink 1.5s infinite; }
+
+.badge-thinking { border-color: rgba(245, 158, 11, 0.6); color: #fbbf24; }
+.badge-thinking .state-indicator-dot { background: #f59e0b; box-shadow: 0 0 12px #f59e0b; animation: blinkFast 0.6s infinite; }
+
+.badge-speaking { border-color: rgba(0, 240, 255, 0.7); color: #e0f2fe; }
+.badge-speaking .state-indicator-dot { background: #00f0ff; box-shadow: 0 0 14px #00f0ff; }
+
+.badge-coding { border-color: rgba(168, 85, 247, 0.7); color: #d8b4fe; }
+.badge-coding .state-indicator-dot { background: #a855f7; box-shadow: 0 0 14px #a855f7; animation: blinkFast 0.5s infinite; }
+
+.badge-browsing { border-color: rgba(168, 85, 247, 0.7); color: #d8b4fe; }
+.badge-browsing .state-indicator-dot { background: #a855f7; box-shadow: 0 0 14px #a855f7; animation: blinkFast 0.5s infinite; }
+
+.badge-emailing { border-color: rgba(52, 211, 153, 0.7); color: #6ee7b7; }
+.badge-emailing .state-indicator-dot { background: #10b981; box-shadow: 0 0 14px #10b981; animation: blinkFast 0.5s infinite; }
+
+.arc-reactor.state-emailing {
+  border-color: #10b981;
+  box-shadow: 0 0 35px rgba(16, 185, 129, 0.6), inset 0 0 20px rgba(16, 185, 129, 0.4);
+}
+
+
+/* Puce d'information Modèle & Moteur (Google API vs Antigravity IDE) */
+.active-engine-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 3px 8px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  transition: all 0.3s ease;
+}
+.engine-badge {
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  transition: all 0.3s ease;
+}
+.badge-google {
+  background: rgba(2, 132, 199, 0.25);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.3);
+}
+.badge-antigravity {
+  background: rgba(147, 51, 234, 0.25);
+  color: #c084fc;
+  border: 1px solid rgba(192, 132, 252, 0.5);
+  box-shadow: 0 0 10px rgba(192, 132, 252, 0.4);
+}
+.engine-model-text {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #e0f2fe;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  transition: all 0.3s ease;
+}
+
+#statusMessage {
+  margin-top: 3px;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+  min-height: 18px;
+  max-width: 340px;
+  transition: color 0.3s;
+}
+
+/* Panneau de Contrôle du Volume Stark */
+.hud-volume-panel {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 12px;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 3px;
+  box-shadow: inset 0 0 15px rgba(2, 132, 199, 0.08);
+}
+.vol-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  -webkit-tap-highlight-color: transparent;
+}
+.vol-btn svg {
+  width: 19px;
+  height: 19px;
+  fill: #38bdf8;
+  transition: fill 0.2s, transform 0.1s;
+}
+.vol-btn:active svg {
+  transform: scale(0.9);
+}
+.vol-slider-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+.hud-slider {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  border-radius: 4px;
+  background: #0f172a;
+  outline: none;
+  cursor: pointer;
+}
+.hud-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 10px #38bdf8;
+  cursor: pointer;
+  border: 2px solid #e0f2fe;
+}
+.hud-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 10px #38bdf8;
+  cursor: pointer;
+  border: 2px solid #e0f2fe;
+}
+.vol-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #38bdf8;
+  min-width: 34px;
+  text-align: right;
+  letter-spacing: 0.5px;
+}
+
+/* Indicateur de Microphone en temps réel (VU-mètre) */
+.mic-monitor {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 12px;
+  padding: 6px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: inset 0 0 15px rgba(2, 132, 199, 0.08);
+  margin-top: 3px;
+}
+.mic-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.68rem;
+  letter-spacing: 1px;
+  color: #64748b;
+  font-weight: 600;
+}
+.mic-status-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #94a3b8;
+}
+.mic-active-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #64748b;
+  transition: all 0.2s;
+}
+.mic-bars-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 16px;
+  width: 100%;
+}
+.eq-bar {
+  flex: 1;
+  height: 4px;
+  background: #0f172a;
+  border-radius: 3px;
+  transition: height 0.08s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Panneau Notification E-mail Jarvis (Stark Transmission Dock) */
+.email-dock {
+  display: none;
+  width: 100%;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.25), inset 0 0 12px rgba(16, 185, 129, 0.1);
+  border-radius: 12px;
+  padding: 8px 12px;
+  margin-top: 3px;
+  align-items: center;
+  gap: 10px;
+  animation: fadeIn 0.3s ease;
+}
+.email-dock-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.email-dock-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  overflow: hidden;
+  width: 100%;
+}
+.email-dock-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.email-dock-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+.email-dock-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #34d399;
+  text-transform: uppercase;
+}
+.email-dock-subject {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+  margin-top: 1px;
+}
+.email-dock-recipient {
+  font-size: 0.65rem;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+}
+
+/* Panneau Navigation Web Jarvis (Stark Browser Dock) */
+.browser-dock {
+  display: none;
+  width: 100%;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(168, 85, 247, 0.45);
+  box-shadow: 0 0 15px rgba(168, 85, 247, 0.2), inset 0 0 10px rgba(168, 85, 247, 0.1);
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin-top: 3px;
+  flex-direction: column;
+  gap: 6px;
+  animation: fadeIn 0.3s ease;
+}
+.browser-dock-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: #d8b4fe;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.browser-dock-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a855f7;
+  box-shadow: 0 0 8px #a855f7;
+  flex-shrink: 0;
+}
+.browser-dock-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-dock-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.browser-action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 6px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-preview {
+  background: rgba(168, 85, 247, 0.18);
+  border: 1px solid rgba(168, 85, 247, 0.6);
+  color: #e9d5ff;
+}
+.btn-preview:active {
+  background: rgba(168, 85, 247, 0.35);
+  transform: scale(0.98);
+}
+.btn-open {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(2, 132, 199, 0.3);
+}
+.btn-open:active {
+  transform: scale(0.98);
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.5);
+}
+
+/* Terminal HUD de Transcription en direct */
+.hud-transcript-box {
+  width: 100%;
+  flex: 1;
+  min-height: 105px;
+  max-height: 165px;
+  background: rgba(3, 7, 18, 0.75);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin-top: 3px;
+  overflow-y: auto;
+  text-align: left;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  scroll-behavior: smooth;
+}
+.transcript-entry {
+  animation: fadeIn 0.3s ease;
+  word-break: break-word;
+}
+.transcript-user {
+  color: #38bdf8;
+}
+.transcript-jarvis {
+  color: #f0f9ff;
+}
+.transcript-tool {
+  color: #c084fc;
+  font-family: monospace;
+  font-size: 0.72rem;
+}
+.transcript-label {
+  font-weight: 800;
+  font-size: 0.68rem;
+  letter-spacing: 1px;
+  opacity: 0.75;
+  margin-right: 4px;
+}
+.live-speech-pulse {
+  display: inline-block;
+  width: 6px;
+  height: 11px;
+  background: #38bdf8;
+  vertical-align: middle;
+  margin-left: 3px;
+  border-radius: 2px;
+  animation: blinkFast 0.5s infinite;
+}
+
+/* Modal Aperçu Navigateur */
+#browserModal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 7, 18, 0.88);
+  backdrop-filter: blur(8px);
+  z-index: 150;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+}
+.modal-card {
+  background: #0b1329;
+  border: 1px solid #a855f7;
+  border-radius: 16px;
+  padding: 14px;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 0 35px rgba(168, 85, 247, 0.4);
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #e9d5ff;
+}
+.modal-img {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #1e293b;
+  max-height: 260px;
+  object-fit: cover;
+}
+.modal-btn {
+  padding: 9px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.76rem;
+  cursor: pointer;
+  border: none;
+  letter-spacing: 0.5px;
+}
+
+/* Info appareil */
+.device-info {
+  font-size: 0.66rem;
+  color: #334155;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+}
+.device-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+}
+
+@keyframes rotateRing {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes pulseThinking {
+  0% { transform: scale(1); filter: brightness(1); }
+  100% { transform: scale(1.04); filter: brightness(1.25); }
+}
+@keyframes pulseSpeaking {
+  0% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.06); filter: brightness(1.3); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+@keyframes pulseCoding {
+  0% { transform: scale(1); filter: brightness(1); }
+  100% { transform: scale(1.05); filter: brightness(1.35); }
+}
+@keyframes pulseBrowsing {
+  0% { transform: scale(1); filter: brightness(1); }
+  100% { transform: scale(1.05); filter: brightness(1.4); }
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+@keyframes blinkFast {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Panneau Tâche Active Antigravity (Stark Task Dock) */
+.task-dock {
+  display: none;
+  width: 100%;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.2), inset 0 0 10px rgba(56, 189, 248, 0.1);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-top: 4px;
+  flex-direction: column;
+  gap: 6px;
+  animation: fadeIn 0.3s ease;
+}
+.task-dock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.task-dock-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 8px #38bdf8;
+  animation: pulseBeacon 1.2s infinite;
+}
+.task-dock-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #38bdf8;
+  text-transform: uppercase;
+  flex: 1;
+  margin-left: 6px;
+  text-align: left;
+}
+.task-dock-model {
+  font-size: 0.62rem;
+  color: #94a3b8;
+  font-family: monospace;
+}
+.task-dock-instruction {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.task-dock-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  color: #7dd3fc;
+  text-align: left;
+  background: rgba(8, 47, 73, 0.5);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  padding: 5px 8px;
+  border-radius: 6px;
+}
+.task-spin {
+  animation: spin 3s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+.task-dock-guide {
+  display: flex;
+  gap: 6px;
+  margin-top: 3px;
+  width: 100%;
+}
+.task-guide-input {
+  flex: 1;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 6px;
+  color: #f8fafc;
+  font-size: 0.7rem;
+  padding: 6px 8px;
+  outline: none;
+  font-family: inherit;
+}
+.task-guide-input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+.task-guide-btn {
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  color: #ffffff;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.task-guide-btn:hover {
+  filter: brightness(1.2);
+}
+
+/* Bouton d'interruption directe de la parole */
+.interrupt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  padding: 5px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+  animation: fadeIn 0.3s ease;
+}
+.interrupt-btn:hover {
+  background: rgba(239, 68, 68, 0.28);
+  border-color: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.45);
+  transform: scale(1.02);
+}
+
+/* Modal d'Autorisation Clé Payante Stark Industries */
+.paid-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(10, 15, 29, 0.88);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.25s ease;
+}
+.paid-modal-card {
+  width: 90%;
+  max-width: 440px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  box-shadow: 0 0 30px rgba(245, 158, 11, 0.25), inset 0 0 20px rgba(245, 158, 11, 0.05);
+  border-radius: 14px;
+  padding: 20px;
+  font-family: 'Rajdhani', sans-serif;
+  color: #e2e8f0;
+}
+.paid-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(245, 158, 11, 0.25);
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+}
+.paid-modal-pulse {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 10px #f59e0b;
+  animation: pulse 1.5s infinite;
+}
+.paid-modal-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fbbf24;
+  letter-spacing: 0.06em;
+}
+.paid-modal-chip {
+  font-size: 0.62rem;
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+.paid-modal-body {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin-bottom: 18px;
+}
+.paid-modal-reason {
+  color: #cbd5e1;
+  margin-bottom: 12px;
+}
+.paid-modal-cost-box {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px dashed rgba(245, 158, 11, 0.4);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.paid-cost-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fbbf24;
+  letter-spacing: 0.05em;
+}
+.paid-cost-value {
+  font-family: 'Orbitron', monospace;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #4ade80;
+  text-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+}
+.paid-modal-message {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  font-style: italic;
+}
+.paid-modal-actions {
+  display: flex;
+  gap: 10px;
+}
+.paid-btn-approve {
+  flex: 1.5;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border: 1px solid #fbbf24;
+  color: #0f172a;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
+  transition: all 0.2s;
+}
+.paid-btn-approve:hover {
+  filter: brightness(1.15);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
+  transform: scale(1.02);
+}
+.paid-btn-reject {
+  flex: 1;
+  background: rgba(51, 65, 85, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: #cbd5e1;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.paid-btn-reject:hover {
+  background: rgba(71, 85, 105, 1);
+  color: #ffffff;
+}
+
