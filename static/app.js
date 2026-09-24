@@ -162,6 +162,34 @@ const volIcon = document.getElementById('volIcon');
 const engineChip = document.getElementById('engineChip');
 const engineSourceBadge = document.getElementById('engineSourceBadge');
 const engineModelText = document.getElementById('engineModelText');
+const engineKeyBadge = document.getElementById('engineKeyBadge');
+const engineActionsBadge = document.getElementById('engineActionsBadge');
+const engineActionsCount = document.getElementById('engineActionsCount');
+const btnOpenOverview = document.getElementById('btnOpenOverview');
+const supervisionActionBadge = document.getElementById('supervisionActionBadge');
+
+// --- MODAL SUPERVISION GLOBALE (MODÈLES, CLÉS API, ACTIONS & FENÊTRES) ---
+const supervisionModal = document.getElementById('supervisionModal');
+const btnCloseSupervision = document.getElementById('btnCloseSupervision');
+const btnCloseSupervisionFooter = document.getElementById('btnCloseSupervisionFooter');
+const btnRefreshSupervision = document.getElementById('btnRefreshSupervision');
+const supVoiceStatusTag = document.getElementById('supVoiceStatusTag');
+const supVoiceModel = document.getElementById('supVoiceModel');
+const supVoiceDetail = document.getElementById('supVoiceDetail');
+const supVoiceKeyPill = document.getElementById('supVoiceKeyPill');
+const supVoiceCost = document.getElementById('supVoiceCost');
+const supVoiceKeyMasked = document.getElementById('supVoiceKeyMasked');
+const btnSwitchLiveStd = document.getElementById('btnSwitchLiveStd');
+const btnSwitchLiveThinking = document.getElementById('btnSwitchLiveThinking');
+const supActionsCountBadge = document.getElementById('supActionsCountBadge');
+const supActiveActionsContainer = document.getElementById('supActiveActionsContainer');
+const supNoActiveActions = document.getElementById('supNoActiveActions');
+const supToolsTable = document.getElementById('supToolsTable');
+const supWindowsCountBadge = document.getElementById('supWindowsCountBadge');
+const supWindowsList = document.getElementById('supWindowsList');
+const supSummaryFreeKey = document.getElementById('supSummaryFreeKey');
+const supSummaryPaidBadge = document.getElementById('supSummaryPaidBadge');
+const supSummaryPaidKey = document.getElementById('supSummaryPaidKey');
 
 // Panneau & Modal Navigateur
 const browserDock = document.getElementById('browserDock');
@@ -252,6 +280,7 @@ let processor = null;
 let analyser = null;
 let inputNode = null;
 let isConnected = false;
+let isConnecting = false;
 let nextPlayTime = 0;
 let micAnimFrame = null;
 let scheduledAudioSources = [];
@@ -366,9 +395,11 @@ function setJarvisState(state, customMsg, detail, engineInfo) {
     }
   }
 
-  // Mise à jour de la puce Moteur & Modèle
+  // Mise à jour de la puce Moteur, Modèle & Clé API
+  let isPaidKey = false;
   if (engineInfo && engineInfo.engine) {
     const isAntigravity = engineInfo.engine.toLowerCase().includes("antigravity");
+    isPaidKey = (engineInfo.key_type === 'paid') || isAntigravity;
     if (engineSourceBadge) {
       engineSourceBadge.className = `engine-badge ${isAntigravity ? 'badge-antigravity' : 'badge-google'}`;
       engineSourceBadge.innerText = engineInfo.engine.toUpperCase();
@@ -390,7 +421,19 @@ function setJarvisState(state, customMsg, detail, engineInfo) {
       engineSourceBadge.innerText = 'GOOGLE API';
     }
     if (engineModelText) {
-      engineModelText.innerText = 'GEMINI LIVE NATIVE';
+      engineModelText.innerText = (window._currentLiveModelName || 'GEMINI 3.8 LIVE').toUpperCase();
+    }
+  }
+
+  if (engineKeyBadge) {
+    if (isPaidKey) {
+      engineKeyBadge.className = 'engine-key-badge badge-key-paid';
+      engineKeyBadge.innerText = 'CLÉ PAYANTE';
+      engineKeyBadge.title = 'Mobilise la clé API Payante (avec accord préalable)';
+    } else {
+      engineKeyBadge.className = 'engine-key-badge badge-key-free';
+      engineKeyBadge.innerText = 'CLÉ GRATUITE';
+      engineKeyBadge.title = 'Fonctionne sur la clé API Gratuite Google (0.00$)';
     }
   }
 
@@ -904,6 +947,36 @@ function startMicMonitoring() {
 }
 
 async function startJarvis() {
+  if (isConnecting || isConnected || (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN))) {
+    console.warn("[WebSocket] Connexion déjà en cours ou active. Annulation de la double demande.");
+    return;
+  }
+  isConnecting = true;
+
+  // Nettoyage strict préalable pour garantir une seule instance WebSocket et ressources audio uniques
+  if (ws) {
+    try {
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      ws.close();
+    } catch (e) {}
+    ws = null;
+  }
+  if (processor) {
+    try { processor.disconnect(); } catch (e) {}
+    processor = null;
+  }
+  if (mediaStream) {
+    try { mediaStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    mediaStream = null;
+  }
+  if (audioCtx) {
+    try { audioCtx.close(); } catch (e) {}
+    audioCtx = null;
+  }
+
   try {
     statusMessage.innerText = "Initialisation du microphone...";
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -969,11 +1042,11 @@ async function startJarvis() {
     ws.binaryType = 'arraybuffer';
 
     ws.onopen = () => {
+      isConnecting = false;
       isConnected = true;
       btn.classList.add('active');
       btnLabel.innerText = "ONLINE";
-      setJarvisState('listening', "JARVIS à l'écoute, parlez naturellement...");
-      handleTranscript('jarvis', "Système connecté. Je vous écoute.");
+      setJarvisState('listening', "Canal vocal connecté, initialisation...");
       resetTranscriptTurn();
       startLiveSpeechRecognition();
     };
@@ -1102,6 +1175,10 @@ async function startJarvis() {
             showPaidConsentModal(msg);
           } else if (msg.type === 'hide_paid_consent') {
             hidePaidConsentModal();
+          } else if (msg.type === 'supervision_update') {
+            if (msg.overview) {
+              renderSupervisionOverview(msg.overview);
+            }
           } else if (msg.type === 'transcript') {
             handleTranscript(msg.role, msg.text, msg.mode);
           } else if (msg.type === 'turn_complete') {
@@ -1137,6 +1214,7 @@ async function startJarvis() {
     };
 
     ws.onclose = (e) => {
+      isConnecting = false;
       if (e.code === 1008) {
         disconnectJarvis("Terminal révoqué ou non autorisé");
         localStorage.removeItem('jarvis_device_token');
@@ -1149,14 +1227,17 @@ async function startJarvis() {
     };
 
     ws.onerror = (err) => {
+      isConnecting = false;
       disconnectJarvis("Erreur de connexion");
     };
   } catch (err) {
+    isConnecting = false;
     disconnectJarvis("Erreur micro: " + (err.message || err));
   }
 }
 
 function disconnectJarvis(msg) {
+  isConnecting = false;
   isConnected = false;
   stopLiveSpeechRecognition();
   interruptPlayback();
@@ -1191,12 +1272,23 @@ function disconnectJarvis(msg) {
     mediaStream = null;
   }
   if (ws) {
-    try { ws.close(); } catch (e) {}
+    try {
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      ws.close();
+    } catch (e) {}
     ws = null;
+  }
+  if (audioCtx) {
+    try { audioCtx.close(); } catch (e) {}
+    audioCtx = null;
   }
 }
 
 btn.onclick = () => {
+  if (isConnecting) return;
   if (!isConnected) {
     startJarvis();
   } else {
@@ -1274,3 +1366,428 @@ if (btnSendDirective && taskDirectiveInput) {
     }
   };
 }
+
+// ========================================================
+// MODULE DE SUPERVISION GLOBALE (MODÈLES, CLÉS API, ACTIONS & FENÊTRES)
+// ========================================================
+
+let supervisionPollTimer = null;
+
+async function fetchSupervisionOverview() {
+  const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+
+  // 1. Demande prioritaire via WebSocket si connecté pour broadcast immédiat
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify({ type: 'get_supervision_overview' }));
+    } catch (e) {
+      console.warn("Échec requête supervision par WS:", e);
+    }
+  }
+
+  // 2. Appel REST direct avec token pour garantir l'affichage même sans session vocale
+  try {
+    const url = '/api/supervision/overview' + (token ? '?token=' + encodeURIComponent(token) : '');
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      renderSupervisionOverview(data);
+    }
+  } catch (err) {
+    console.warn("Erreur fetch supervision REST:", err);
+  }
+}
+
+function openSupervisionModal() {
+  if (!supervisionModal) return;
+  supervisionModal.style.display = 'flex';
+  fetchSupervisionOverview();
+  
+  if (!supervisionPollTimer) {
+    supervisionPollTimer = setInterval(fetchSupervisionOverview, 2500);
+  }
+}
+
+function closeSupervisionModal() {
+  if (!supervisionModal) return;
+  supervisionModal.style.display = 'none';
+  if (supervisionPollTimer) {
+    clearInterval(supervisionPollTimer);
+    supervisionPollTimer = null;
+  }
+}
+
+function setLiveModel(modelKey) {
+  console.log("[Supervision] Changement de modèle vocal demandé :", modelKey);
+  const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+
+  // Via WebSocket si connecté
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify({ type: 'set_live_model', model: modelKey }));
+    } catch (e) {
+      console.warn("Erreur WS set_live_model:", e);
+    }
+  }
+  // Et via REST
+  const url = '/api/live-model' + (token ? '?token=' + encodeURIComponent(token) : '');
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: modelKey })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'ok') {
+      const newModelName = data.current_model || modelKey;
+      window._currentLiveModelName = newModelName;
+      if (engineModelText && !isToolExecuting) {
+        engineModelText.innerText = newModelName.toUpperCase();
+      }
+      fetchSupervisionOverview();
+    }
+  })
+  .catch(e => console.warn("Erreur bascule modèle REST:", e));
+}
+
+function renderSupervisionOverview(data) {
+  if (!data) return;
+
+  // 1. MODÈLE VOCAL ACTIF & CLÉ
+  if (data.voice) {
+    const vModel = data.voice.display_label || data.voice.model || "Gemini 3.8 Live";
+    window._currentLiveModelName = vModel;
+    if (supVoiceModel) supVoiceModel.innerText = vModel.toUpperCase();
+    if (supVoiceDetail) supVoiceDetail.innerText = `Voix : ${data.voice.voice_name || 'Aoede'} (Féminine, Naturelle & Distinguée)`;
+
+    if (supVoiceStatusTag) {
+      const st = (data.voice.status || data.voice.state || 'CONNECTÉ').toUpperCase();
+      supVoiceStatusTag.innerText = st;
+      if (st.includes('PAROLE') || st.includes('SPEAKING')) {
+        supVoiceStatusTag.style.background = 'rgba(0, 240, 255, 0.2)';
+        supVoiceStatusTag.style.color = '#00f0ff';
+      } else if (st.includes('RÉFLEXION') || st.includes('THINKING')) {
+        supVoiceStatusTag.style.background = 'rgba(245, 158, 11, 0.2)';
+        supVoiceStatusTag.style.color = '#fbbf24';
+      } else {
+        supVoiceStatusTag.style.background = 'rgba(56, 189, 248, 0.15)';
+        supVoiceStatusTag.style.color = '#38bdf8';
+      }
+    }
+
+    const isPaidVoice = data.voice.is_paid || (data.voice.api_type === 'paid');
+    if (supVoiceKeyPill) {
+      if (isPaidVoice) {
+        supVoiceKeyPill.className = 'badge-key-pill badge-key-paid';
+        supVoiceKeyPill.innerText = (data.voice.api_label && data.voice.api_label.toLowerCase().includes('repli')) 
+          ? 'CLÉ PAYANTE (REPLI)' 
+          : 'CLÉ PAYANTE';
+      } else {
+        supVoiceKeyPill.className = 'badge-key-pill badge-key-free';
+        supVoiceKeyPill.innerText = 'CLÉ GRATUITE';
+      }
+    }
+
+    if (supVoiceCost) supVoiceCost.innerText = isPaidVoice ? "~0.005 $" : "0.00 $ (Plan Gratuit)";
+    if (supVoiceKeyMasked) {
+      supVoiceKeyMasked.innerText = data.voice.api_key_masked ? `•••• ${data.voice.api_key_masked}` : 'NON CONFIGURÉE';
+    }
+
+    // Mise à jour de l'indicateur HUD principal
+    if (engineModelText && !isToolExecuting) {
+      engineModelText.innerText = vModel.toUpperCase();
+    }
+
+    // Boutons de bascule rapide de modèle
+    const isThinking = (data.voice.model || '').toLowerCase().includes('thinking');
+    if (btnSwitchLiveStd) btnSwitchLiveStd.classList.toggle('active', !isThinking);
+    if (btnSwitchLiveThinking) btnSwitchLiveThinking.classList.toggle('active', isThinking);
+  }
+
+  // 2. ACTIONS EN COURS
+  const activeActions = data.active_actions || (data.actions && data.actions.active_actions) || [];
+  const actionCount = (typeof data.running_count === 'number') ? data.running_count : activeActions.length;
+
+  if (supActionsCountBadge) {
+    supActionsCountBadge.innerText = `${actionCount} ACTIVE${actionCount > 1 ? 'S' : ''}`;
+  }
+
+  // Badges d'alerte sur le HUD principal
+  if (supervisionActionBadge) {
+    if (actionCount > 0) {
+      supervisionActionBadge.style.display = 'inline-flex';
+      supervisionActionBadge.innerText = actionCount;
+    } else {
+      supervisionActionBadge.style.display = 'none';
+    }
+  }
+  if (engineActionsBadge) {
+    if (actionCount > 0) {
+      engineActionsBadge.style.display = 'inline-flex';
+      if (engineActionsCount) engineActionsCount.innerText = `${actionCount} EN COURS`;
+    } else {
+      engineActionsBadge.style.display = 'none';
+    }
+  }
+
+  if (supActiveActionsContainer) {
+    if (actionCount === 0) {
+      supActiveActionsContainer.innerHTML = `
+        <div class="sup-empty-state">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          <span>Aucune tâche lourde en cours d'exécution. JARVIS est en veille active.</span>
+        </div>
+      `;
+    } else {
+      supActiveActionsContainer.innerHTML = activeActions.map(act => {
+        const isPaid = act.is_paid || (act.key_type === 'paid') || (act.api_type === 'paid');
+        const progress = Math.max(5, Math.min(100, Math.round(act.progress || 0)));
+        return `
+          <div class="sup-action-card">
+            <div class="sup-action-header">
+              <div class="sup-action-title">
+                <span class="sup-action-dot"></span>
+                <strong>${escapeHtml(act.title || act.type || 'Action')}</strong>
+              </div>
+              <span class="badge-key-pill ${isPaid ? 'badge-key-paid' : 'badge-key-free'}">
+                ${isPaid ? 'CLÉ PAYANTE' : 'CLÉ GRATUITE'}
+              </span>
+            </div>
+            <div class="sup-action-meta">
+              <span><strong>Moteur :</strong> ${escapeHtml(act.engine || 'Système')}</span>
+              <span><strong>Modèle :</strong> ${escapeHtml(act.model || 'Standard')}</span>
+              ${act.cost_estimate ? `<span><strong>Coût :</strong> ${escapeHtml(act.cost_estimate)}</span>` : ''}
+            </div>
+            ${act.instruction ? `<div class="sup-action-instruction">${escapeHtml(act.instruction)}</div>` : ''}
+            <div class="sup-action-progress-container">
+              <div class="sup-action-progress-bar" style="width: ${progress}%"></div>
+            </div>
+            <div class="sup-action-footer">
+              <span>${escapeHtml(act.status || 'En cours')}</span>
+              <span>${progress}%</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  // 3. OUTILS DU SYSTÈME & REGISTRE DES APIS
+  if (supToolsTable && data.tools) {
+    const tools = data.tools;
+    supToolsTable.innerHTML = `
+      <div class="sup-table-header">
+        <div>OUTIL</div>
+        <div>MODÈLE UTILISÉ</div>
+        <div>CLÉ / TARIFICATION</div>
+        <div style="text-align: right;">STATUT</div>
+      </div>
+      ${tools.map(tool => {
+        const isPaid = (tool.api_type === 'paid') || tool.is_paid;
+        const isHybrid = (tool.api_type === 'hybrid');
+        const isRunning = tool.active || tool.is_running || false;
+        let badgeClass = 'badge-key-free';
+        let badgeText = 'CLÉ GRATUITE';
+        if (isPaid) {
+          badgeClass = 'badge-key-paid';
+          badgeText = 'CLÉ PAYANTE';
+        } else if (isHybrid) {
+          badgeClass = 'badge-key-free';
+          badgeText = 'GRATUITE / PAYANTE';
+        } else if (tool.api_type === 'local') {
+          badgeClass = 'badge-key-free';
+          badgeText = 'LOCAL (0.00$)';
+        }
+
+        return `
+          <div class="sup-tool-row ${isRunning ? 'tool-running' : ''}">
+            <div class="sup-tool-col-name">
+              <span class="sup-tool-icon">${tool.icon || '⚙️'}</span>
+              <div>
+                <div class="sup-tool-name">${escapeHtml(tool.name)}</div>
+                <div class="sup-tool-desc">${escapeHtml(tool.description)}</div>
+              </div>
+            </div>
+            <div class="sup-tool-col-model">
+              <span class="sup-model-tag">${escapeHtml(tool.model)}</span>
+            </div>
+            <div class="sup-tool-col-key">
+              <span class="badge-key-pill ${badgeClass}">
+                ${badgeText}
+              </span>
+              <span class="sup-tool-cost">${escapeHtml(tool.cost_est || tool.cost_note || '')}</span>
+            </div>
+            <div class="sup-tool-col-status">
+              <span class="sup-status-pill ${isRunning ? 'status-active' : 'status-idle'}">
+                ${isRunning ? '● EN COURS' : 'AU REPOS'}
+              </span>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    `;
+  }
+
+  // 4. FENÊTRES OUVERTES (SYSTÈME & NAVIGATEUR)
+  const rawWindows = data.open_windows || (data.windows && data.windows.windows) || [];
+  if (supWindowsList) {
+    const totalCount = (data.windows && data.windows.total_count) ? data.windows.total_count : rawWindows.length;
+    if (supWindowsCountBadge) {
+      supWindowsCountBadge.innerText = `${totalCount} FENÊTRE${totalCount > 1 ? 'S' : ''}`;
+    }
+
+    if (rawWindows.length === 0) {
+      supWindowsList.innerHTML = `
+        <div class="sup-empty-state">
+          <span>Aucune fenêtre active détectée.</span>
+        </div>
+      `;
+    } else {
+      supWindowsList.innerHTML = rawWindows.map(win => {
+        const isJarvis = win.is_jarvis || (win.opened_by && win.opened_by.toLowerCase().includes('jarvis'));
+        const hasUrl = !!win.url;
+        let icon = '🪟';
+        const titleLower = (win.title || '').toLowerCase();
+        const procLower = (win.process || '').toLowerCase();
+        if (procLower.includes('edge') || procLower.includes('chrome') || procLower.includes('firefox') || win.type === 'browser') {
+          icon = '🌐';
+        } else if (procLower.includes('code') || titleLower.includes('visual studio') || titleLower.includes('.py')) {
+          icon = '💻';
+        } else if (procLower.includes('terminal') || procLower.includes('cmd') || procLower.includes('powershell')) {
+          icon = '⌨️';
+        } else if (procLower.includes('explorer')) {
+          icon = '📁';
+        }
+
+        return `
+          <div class="sup-window-card ${isJarvis ? 'window-jarvis' : ''}">
+            <span class="sup-window-icon">${icon}</span>
+            <div class="sup-window-info">
+              <div class="sup-window-title" title="${escapeHtml(win.title)}">${escapeHtml(win.title)}</div>
+              <div class="sup-window-sub">
+                ${win.process ? `<span class="sup-proc-tag">${escapeHtml(win.process)}</span>` : ''}
+                ${isJarvis ? '<span class="sup-jarvis-badge">OUVERTE PAR JARVIS</span>' : '<span class="sup-sys-badge">SYSTÈME WINDOWS</span>'}
+                ${hasUrl ? `<a href="${escapeHtml(win.url)}" target="_blank" class="sup-win-link">Ouvrir le lien ↗</a>` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  // 5. SYNTHÈSE DES CLÉS API
+  if (data.api_keys) {
+    const freeMasked = (data.api_keys.free_key && data.api_keys.free_key.masked) || data.api_keys.free_key_masked;
+    const paidMasked = (data.api_keys.paid_key && data.api_keys.paid_key.masked) || data.api_keys.paid_key_masked;
+    const isFreeExhausted = data.api_keys.free_key && data.api_keys.free_key.exhausted;
+
+    if (supSummaryFreeKey) {
+      supSummaryFreeKey.innerText = freeMasked ? `•••• ${freeMasked}` : 'NON DÉFINIE';
+    }
+    if (supSummaryPaidKey) {
+      supSummaryPaidKey.innerText = paidMasked ? `•••• ${paidMasked}` : 'NON DÉFINIE';
+    }
+    const supSummaryFreeBadge = document.getElementById('supSummaryFreeBadge');
+    const supSummaryFreeStatus = document.getElementById('supSummaryFreeStatus');
+    const supSummaryPaidStatus = document.getElementById('supSummaryPaidStatus');
+
+    if (supSummaryFreeBadge) {
+      if (isFreeExhausted) {
+        supSummaryFreeBadge.innerText = 'QUOTA ÉPUISÉ';
+        supSummaryFreeBadge.className = 'badge-key-pill badge-key-thinking';
+      } else {
+        supSummaryFreeBadge.innerText = freeMasked ? 'PAR DÉFAUT' : 'NON CONFIGURÉE';
+        supSummaryFreeBadge.className = 'badge-key-pill ' + (freeMasked ? 'badge-key-free' : 'badge-key-thinking');
+      }
+    }
+    if (supSummaryFreeStatus) {
+      if (isFreeExhausted) {
+        supSummaryFreeStatus.innerText = 'Quota dépassé - Repli sur clé payante';
+        supSummaryFreeStatus.style.color = '#f59e0b';
+      } else {
+        supSummaryFreeStatus.innerText = 'Active par défaut (0.00 $ - Inclus)';
+        supSummaryFreeStatus.style.color = '#38bdf8';
+      }
+    }
+
+    if (supSummaryPaidBadge) {
+      supSummaryPaidBadge.innerText = paidMasked ? (isFreeExhausted ? 'ACTIVE (REPLI EN COURS)' : 'ACTIVE') : 'NON CONFIGURÉE';
+      supSummaryPaidBadge.className = 'badge-key-pill ' + (paidMasked ? 'badge-key-paid' : 'badge-key-free');
+    }
+    if (supSummaryPaidStatus) {
+      if (isFreeExhausted) {
+        supSummaryPaidStatus.innerText = 'Voix Live, Thinking, Flash & Antigravity';
+        supSummaryPaidStatus.style.color = '#a855f7';
+      } else {
+        supSummaryPaidStatus.innerText = 'Thinking, Flash, Antigravity & Repli';
+        supSummaryPaidStatus.style.color = '#a855f7';
+      }
+    }
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// Initialisation des écouteurs d'événements pour le modal de supervision
+if (btnOpenOverview) {
+  btnOpenOverview.onclick = openSupervisionModal;
+}
+if (engineChip) {
+  engineChip.onclick = openSupervisionModal;
+}
+if (btnCloseSupervision) {
+  btnCloseSupervision.onclick = closeSupervisionModal;
+}
+if (btnCloseSupervisionFooter) {
+  btnCloseSupervisionFooter.onclick = closeSupervisionModal;
+}
+if (btnRefreshSupervision) {
+  btnRefreshSupervision.onclick = () => {
+    fetchSupervisionOverview();
+  };
+}
+
+if (btnSwitchLiveStd) {
+  btnSwitchLiveStd.onclick = () => {
+    setLiveModel('gemini-3.8-live');
+  };
+}
+if (btnSwitchLiveThinking) {
+  btnSwitchLiveThinking.onclick = () => {
+    setLiveModel('gemini-3.8-live-extended-thinking');
+  };
+}
+
+// Fermeture par touche Echap ou clic sur l'overlay
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && supervisionModal && supervisionModal.style.display !== 'none') {
+    closeSupervisionModal();
+  }
+});
+if (supervisionModal) {
+  supervisionModal.addEventListener('click', (e) => {
+    if (e.target === supervisionModal) {
+      closeSupervisionModal();
+    }
+  });
+}
+
+// Initialisation dès le chargement de la page
+fetchSupervisionOverview();
+
+// Nettoyage strict lors de la fermeture, rechargement ou masquage de la page pour éviter les sessions zombies
+window.addEventListener('beforeunload', () => {
+  disconnectJarvis("Page fermée");
+});
+window.addEventListener('pagehide', () => {
+  disconnectJarvis("Page masquée");
+});

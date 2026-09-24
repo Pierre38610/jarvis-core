@@ -10,10 +10,10 @@ from google.genai import types
 from config import GEMINI_API_KEY_FREE, GEMINI_API_KEY_PAID, HAS_PAID_API_KEY, WORKSPACE_DIR
 from google_antigravity import AntigravityAgent, resolve_antigravity_model
 
-# Client payant : utilisé pour les raisonnements profonds et taches Antigravity
-# Si la clé payante n'est pas configurée, on tombe sur la clé gratuite automatiquement
-client = genai.Client(api_key=GEMINI_API_KEY_PAID) if GEMINI_API_KEY_PAID else None
+# Client payant : utilisé pour les raisonnements approfondis (Gemini 3.8 Flash) et tâches Antigravity
+client_paid = genai.Client(api_key=GEMINI_API_KEY_PAID) if GEMINI_API_KEY_PAID else None
 client_free = genai.Client(api_key=GEMINI_API_KEY_FREE) if GEMINI_API_KEY_FREE else None
+client = client_paid or client_free
 
 async def run_antigravity_task(
     instruction: str,
@@ -73,8 +73,8 @@ async def run_deep_reasoning(question: str, model_choice: str | None = None, eng
             "full_text": ag_res.get("summary", "")
         }
 
-    # 2. Tentative via l'API officielle Google GenAI Thinking (clé gratuite prioritaire)
-    thinking_client = client_free or client
+    # 2. Exécution via l'API officielle Google GenAI Thinking (clé payante toujours utilisée)
+    thinking_client = client or client_free
     if thinking_client:
         try:
             print(f"[Reasoning Service] Exécution Google GenAI Thinking : {question[:60]}...")

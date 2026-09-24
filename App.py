@@ -10,6 +10,7 @@ os.environ["no_proxy"] = "127.0.0.1,localhost,::1,0.0.0.0"
 import json
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response
+from starlette.websockets import WebSocketDisconnected
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -26,6 +27,7 @@ from services.browser_service import search_web, run_browser_task, open_browser_
 from services.system_service import get_system_status, launch_application
 from services.email_service import send_email_async, list_outbox_emails
 from services.console_monitor import console_monitor
+from services.supervision_service import supervision_service
 
 app = FastAPI(title="J.A.R.V.I.S. Core Server")
 
@@ -39,13 +41,39 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 
-# ─── Deux clients Gemini : gratuit (Live Audio) et payant (tâches lourdes) ─────
-# Le client gratuit est utilisé UNIQUEMENT pour la session Live Audio vocale
-# Le client payant est utilisé pour : code Antigravity, raisonnement, browser autonome
-client_free = genai.Client(api_key=config.GEMINI_API_KEY_FREE) if config.GEMINI_API_KEY_FREE else None
+# ─── Clients Gemini : Répartition Clé Gratuite / Clé Payante ─────────────────
+# - Clé GRATUITE (client_free) : utilisée prioritairement pour gemini-3.8-live (voix standard sans réflexion).
+# - Clé PAYANTE (client_paid) : utilisée pour gemini-3.8-live-extended-thinking, gemini-3.8-flash,
+#   Antigravity Agents, Browser-Use et repli automatique immédiat si le quota gratuit est atteint.
 client_paid = genai.Client(api_key=config.GEMINI_API_KEY_PAID) if config.GEMINI_API_KEY_PAID else None
-# Alias de compatibilité pour les sections qui utilisent encore 'client'
+client_free = genai.Client(api_key=config.GEMINI_API_KEY_FREE) if config.GEMINI_API_KEY_FREE else None
 client = client_paid or client_free
+
+def is_quota_or_limit_error(exc: Exception | None) -> bool:
+    """Détecte si une exception correspond à un épuisement de quota ou limitation de débit (429, ResourceExhausted)."""
+    if exc is None:
+        return False
+    err_str = f"{type(exc).__name__}: {str(exc)}".lower()
+    quota_keywords = [
+        "429", "quota", "resource_exhausted", "resourceexhausted", 
+        "rate limit", "ratelimit", "too many requests", "limit exceeded",
+        "exceeded your current quota", "free tier", "billing", "exhausted"
+    ]
+    if any(k in err_str for k in quota_keywords):
+        return True
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if code in (429, 8):  # 8 corresponds to grpc.StatusCode.RESOURCE_EXHAUSTED
+        return True
+    return False
+
+class QuotaExhaustedError(Exception):
+    """Exception levée en cas de dépassement de quota ou limitation de débit sur une clé API."""
+    pass
+
+class ModelSwitchRequested(Exception):
+    """Signal interne pour basculer dynamiquement le modèle vocal en direct."""
+    def __init__(self, model: str):
+        self.model = model
 
 class AuthRequest(BaseModel):
     password: str
@@ -166,6 +194,34 @@ async def api_preview_email(email_id: str):
                 return FileResponse(os.path.join(config.EMAIL_OUTBOX_DIR, fname), media_type="text/html")
     return JSONResponse(content={"error": "E-mail introuvable"}, status_code=404)
 
+@app.get("/api/supervision/overview")
+async def get_supervision_overview(request: Request):
+    """Retourne la vue d'ensemble complète : modèle vocal, clé API, actions actives, outils et fenêtres ouvertes."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    return supervision_service.get_full_overview()
+
+@app.get("/api/supervision/windows")
+async def get_supervision_windows(request: Request):
+    """Retourne la liste rafraîchie des fenêtres ouvertes."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    return {"windows": supervision_service.get_open_windows()}
+
+async def broadcast_supervision():
+    """Diffuse la vue d'ensemble en temps réel via WebSocket au client connecté."""
+    ws = active_task_controller.get("websocket")
+    if ws:
+        try:
+            await ws.send_text(json.dumps({
+                "type": "supervision_update",
+                "overview": supervision_service.get_full_overview()
+            }))
+        except Exception:
+            pass
+
 
 
 def merge_user_speech(current: str, incoming: str) -> str:
@@ -196,8 +252,8 @@ active_task_controller = {
     "websocket": None,
     "live_session": None,   # Référence à la session Gemini Live active
     "bg_task": None,        # asyncio.Task du développement en arrière-plan
-    "paid_consent_given": False,    # Accord préalable de Pierre pour action payante
-    "paid_live_approved": False,    # Accord préalable de Pierre pour bascule Live payante
+    "paid_consent_given": True,     # Accès payant permanent (garde-fou supprimé)
+    "paid_live_approved": True,     # Accord Live permanent
     "paid_consent_event": None      # asyncio.Event pour attendre la confirmation
 }
 
@@ -239,10 +295,15 @@ async def get_live_model():
     }
 
 @app.post("/api/live-model")
+@app.post("/api/supervision/set-model")
 async def set_live_model(req: LiveModelRequest):
     """Bascule le modèle vocal Gemini Live entre gemini-3.8-live et gemini-3.8-live-extended-thinking."""
     if req.model in ("gemini-3.8-live", "gemini-3.8-live-extended-thinking"):
         config.GEMINI_LIVE_MODEL = req.model
+        is_thinking = "extended-thinking" in req.model
+        is_paid = is_thinking or supervision_service._free_quota_exhausted or not bool(config.GEMINI_API_KEY_FREE)
+        supervision_service.update_voice_state(supervision_service._voice_state["status"], model=req.model, is_paid=is_paid)
+        await broadcast_supervision()
         return {"status": "ok", "current_model": config.GEMINI_LIVE_MODEL}
     return JSONResponse(
         status_code=400,
@@ -329,16 +390,38 @@ async def voice_channel(websocket: WebSocket):
         await websocket.close(code=1008, reason="Terminal non autorise")
         return
 
+    # S'assurer qu'une seule instance WebSocket et session Live existe à la fois côté serveur
+    prev_ws = active_task_controller.get("websocket")
+    prev_session_ctx = active_task_controller.get("live_session_ctx")
+    prev_session = active_task_controller.get("live_session")
+
+    if prev_ws and prev_ws != websocket:
+        try:
+            print("[Voice Channel] Fermeture de la précédente connexion WebSocket orpheline...")
+            await prev_ws.close(code=1000, reason="Nouvelle connexion active")
+        except Exception:
+            pass
+    if prev_session_ctx:
+        try:
+            print("[Voice Channel] Fermeture de la session Live Google précédente...")
+            await prev_session_ctx.__aexit__(None, None, None)
+        except Exception:
+            pass
+    elif prev_session:
+        try:
+            await prev_session.close()
+        except Exception:
+            pass
+
     await websocket.accept()
     active_task_controller["websocket"] = websocket
 
-    # Client prioritaire pour la voix Live : clé gratuite par défaut, avec repli sur clé payante sur accord de Pierre
-    live_client = client_free if client_free else client_paid
-    if not live_client:
+    # Vérification qu'au moins une clé GEMINI est configurée
+    if not (client_paid or client_free):
         await websocket.send_text(json.dumps({
             "type": "transcript",
             "role": "jarvis",
-            "text": "Erreur : Aucune clé GEMINI (gratuite ou payante) configurée."
+            "text": "Erreur : Aucune clé GEMINI configurée."
         }))
         await websocket.close()
         return
@@ -379,11 +462,7 @@ async def voice_channel(websocket: WebSocket):
                             ),
                             "confirmed_by_user": types.Schema(
                                 type="BOOLEAN",
-                                description=(
-                                    "OBLIGATOIRE : Mettre à True UNIQUEMENT si Pierre a expressément donné son accord oral ou écrit "
-                                    "pour mobiliser la clé payante après que tu lui as expliqué la raison et l'estimation du coût (~0.005 $ pour Flash, ~0.03 $ pour Pro). "
-                                    "Si Pierre n'a pas encore validé, laisse à False."
-                                )
+                                description="Facultatif (garde-fou levé : la clé payante est active en permanence, exécution immédiate sans confirmation)."
                             )
                         },
                         required=["instruction"]
@@ -437,7 +516,7 @@ async def voice_channel(websocket: WebSocket):
                             ),
                             "confirmed_by_user": types.Schema(
                                 type="BOOLEAN",
-                                description="Mettre à True si Pierre a validé l'utilisation d'un grand modèle Antigravity payant (~0.03 $). Non requis pour engine='google_api' qui est gratuit."
+                                description="Facultatif (garde-fou levé : la clé payante est active en permanence, exécution immédiate sans confirmation)."
                             )
                         },
                         required=["question"]
@@ -474,11 +553,7 @@ async def voice_channel(websocket: WebSocket):
                             ),
                             "confirmed_by_user": types.Schema(
                                 type="BOOLEAN",
-                                description=(
-                                    "OBLIGATOIRE : Mettre à True UNIQUEMENT si Pierre a expressément donné son accord oral ou écrit "
-                                    "pour mobiliser la clé payante pour cette mission web (coût estimé : ~0.02 $). "
-                                    "Si Pierre n'a pas encore validé, laisse à False."
-                                )
+                                description="Facultatif (garde-fou levé : la clé payante est active en permanence, exécution immédiate sans confirmation)."
                             )
                         },
                         required=["goal"]
@@ -656,21 +731,11 @@ async def voice_channel(websocket: WebSocket):
         f"ENVIRONNEMENT ET MODÈLE VOCAL GEMINI 3.8 LIVE ({paid_key_status}) :\n"
         f"Ta session vocale s'exécute sur le modèle nouvelle génération : {config.GEMINI_LIVE_MODEL}.\n"
         "Pour le code, les tests et les tâches agentiques concrètes, tu t'appuies sur l'agent autonome outillé Google Antigravity.\n\n"
-        "PROTOCOLE D'ACCORD PRÉALABLE OBLIGATOIRE POUR L'UTILISATION DE LA CLÉ PAYANTE :\n"
-        "Ta session vocale s'exécute sur le plan gratuit. La clé payante ne doit JAMAIS être sollicitée à l'insu de Pierre.\n"
-        "Toute action lourde (développement de code Antigravity 'run_antigravity_task', navigation web autonome Browser-Use 'run_browser_task', réflexion complexe sur modèle lourd 'ask_deep_reasoning') nécessite de tirer sur la clé payante.\n\n"
-        "RÈGLE STRICTE DES 3 ÉTAPES AVANT TOUTE ACTION PAYANTE :\n"
-        "1. EXPLICATION DU MOTIF : Explique clairement à Pierre avec ta voix Aoede pourquoi tu souhaites utiliser la clé payante (ex: 'Pierre, pour développer ce jeu Snake et manipuler les fichiers du projet, je dois mobiliser l'agent d'ingénierie Antigravity sur la clé payante.').\n"
-        "2. ESTIMATION DU COÛT : Indique systématiquement à voix haute l'estimation du coût en dollars :\n"
-        "   - Code Antigravity Flash 3.8 : ~0.005 $ (moins d'un demi-centime)\n"
-        "   - Code Antigravity Pro 3.1 : ~0.03 $\n"
-        "   - Navigation autonome Browser-Use : ~0.02 $\n"
-        "   - Réflexion Antigravity Pro / Claude : ~0.03 $\n"
-        "3. DEMANDE D'ACCORD ET ATTENTE OBLIGATOIRE : Demande explicitement son accord oral à Pierre (ex: 'Le coût estimé est d'environ 0,005 dollar. M'autorisez-vous à mobiliser la clé payante ?') et ATTENDS sa confirmation.\n\n"
-        "RÈGLE D'UTILISATION DU PARAMÈTRE 'confirmed_by_user' :\n"
-        "- Tu NE DOIS JAMAIS mettre confirmed_by_user=True si Pierre ne t'a pas expressément donné son accord oral ou via le HUD !\n"
-        "- Dès que Pierre te donne son accord oral ('Oui', 'D'accord', 'Vas-y', 'Je valide') ou que tu reçois la notification d'accord du HUD, déclenche IMMÉDIATEMENT l'outil avec 'confirmed_by_user=True'.\n"
-        "- Si Pierre refuse, confirme calmement l'annulation avec ta voix Aoede et reste à sa disposition.\n\n"
+        "ALLOCATION DES CLÉS D'API GEMINI & GARDE-FOU LEVÉ :\n"
+        "- Voix de base standard ('gemini-3.8-live') : s'exécute sur la clé d'API GRATUITE pour optimiser les coûts tant que tu réponds simplement à l'oral sans réflexion complexe. Si le quota gratuit est atteint, un repli automatique instantané bascule sur la clé payante en toute fluidité.\n"
+        "- Modèles avancés et outillés ('gemini-3.8-live-extended-thinking', 'gemini-3.8-flash', raisonnement profond 'ask_deep_reasoning', agents de code outillés Antigravity 'run_antigravity_task', navigation 'run_browser_task') : s'exécutent systématiquement sur la CLÉ D'API PAYANTE.\n"
+        "- Pierre a expressément levé tout garde-fou et validé une utilisation continue sans restriction : tu n'as JAMAIS besoin de lui demander la permission ni de solliciter une validation préalable avant de lancer des outils ('run_antigravity_task', 'run_browser_task', 'ask_deep_reasoning', etc.).\n"
+        "Tu déclenches immédiatement ces outils dès qu'une tâche le requiert, en informant Pierre avec ta voix Aoede avec dynamisme, assurance et complicité.\n\n"
         "HIÉRARCHIE ET OBLIGATION ABSOLUE D'UTILISATION D'ANTIGRAVITY POUR LE CODE ET LES ACTIONS PROJET :\n"
         "1. INTERDICTION DE CODER À L'ORAL : En tant qu'interface vocale, tu NE DOIS JAMAIS générer du code en texte brut ou réciter des lignes de script à Pierre. Tu n'as pas de compilateur ni d'accès direct au système de fichiers dans ton moteur de parole.\n"
         "2. INVOCATION OBLIGATOIRE DE 'run_antigravity_task' :\n"
@@ -723,130 +788,59 @@ async def voice_channel(websocket: WebSocket):
     )
 
     active_live_model = config.GEMINI_LIVE_MODEL
-    thinking_cfg = None
-    if "extended-thinking" in active_live_model:
-        thinking_cfg = types.ThinkingConfig(include_thoughts=True)
 
-    live_config = types.LiveConnectConfig(
-        response_modalities=["AUDIO"],
-        tools=tools_list,
-        temperature=0.65,
-        thinking_config=thinking_cfg,
-        speech_config=types.SpeechConfig(
-            voice_config=types.VoiceConfig(
-                prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                    voice_name=config.JARVIS_VOICE or "Aoede"
-                )
+    async def _establish_live_session(model_name: str, client_to_use):
+        thinking_cfg = types.ThinkingConfig(include_thoughts=True) if "extended-thinking" in model_name else None
+        live_cfg = types.LiveConnectConfig(
+            response_modalities=["AUDIO"],
+            tools=tools_list,
+            temperature=0.65,
+            thinking_config=thinking_cfg,
+            speech_config=types.SpeechConfig(
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                        voice_name=config.JARVIS_VOICE or "Aoede"
+                    )
+                ),
+                language_code="fr-FR"
             ),
-            language_code="fr-FR"
-        ),
-        input_audio_transcription=types.AudioTranscriptionConfig(),
-        output_audio_transcription=types.AudioTranscriptionConfig(),
-        system_instruction=types.Content(
-            parts=[types.Part.from_text(text=system_instruction_text)]
+            input_audio_transcription=types.AudioTranscriptionConfig(),
+            output_audio_transcription=types.AudioTranscriptionConfig(),
+            system_instruction=types.Content(
+                parts=[types.Part.from_text(text=system_instruction_text)]
+            )
         )
-    )
+        s_ctx = client_to_use.aio.live.connect(model=model_name, config=live_cfg)
+        sess = await s_ctx.__aenter__()
+        return s_ctx, sess
 
-    live_display_label = "Gemini 3.8 Live (Thinking)" if "extended-thinking" in active_live_model else "Gemini 3.8 Live"
-
-    # Session Live bidirectionnelle native Gemini 3.8 Live (CLÉ GRATUITE PRIORITAIRE avec repli payant conditionnel)
-    current_live_client = live_client
-    is_paid_live = (current_live_client == client_paid and current_live_client != client_free)
+    # Sélection initiale du client selon le modèle :
+    # - gemini-3.8-live (modèle de base standard) : clé gratuite en priorité (sauf si quota épuisé), avec repli sur clé payante
+    # - gemini-3.8-live-extended-thinking : clé payante
+    is_base_live = (active_live_model == "gemini-3.8-live")
+    if is_base_live and client_free and not supervision_service._free_quota_exhausted:
+        current_live_client = client_free
+        is_paid_live = False
+        tier_badge = "Clé Gratuite"
+    else:
+        current_live_client = client_paid or client_free
+        is_paid_live = (current_live_client is client_paid)
+        tier_badge = "Clé Payante" if is_paid_live else "Clé Gratuite"
 
     session = None
     session_ctx = None
+    setup_done_event = asyncio.Event()
+    greeting_sent = False
 
-    while True:
-        try:
-            tier_badge = "Clé Payante" if is_paid_live else "Clé Gratuite"
-            print(f"[Voice Channel] Tentative de connexion Live ({active_live_model}) avec {tier_badge}...")
-            session_ctx = current_live_client.aio.live.connect(
-                model=active_live_model,
-                config=live_config,
-            )
-            session = await session_ctx.__aenter__()
-            active_task_controller["live_session"] = session
-            await websocket.send_text(json.dumps({
-                "type": "jarvis_announcement",
-                "text": f"Canal vocal {live_display_label} opérationnel ({tier_badge}).",
-                "voice": False
-            }))
-            break
-        except Exception as live_err:
-            err_msg = str(live_err).lower()
-            is_quota_err = any(k in err_msg for k in ["429", "resource_exhausted", "quota", "rate limit", "limit exceeded"])
-            if is_quota_err and current_live_client != client_paid and client_paid:
-                print(f"[Voice Channel] Quota clé gratuite épuisé ({live_err}). Demande d'accord pour bascule payante...")
-                reason = "Le quota de requêtes de votre clé API gratuite a été atteint pour le modèle vocal Gemini 3.8 Live."
-                est_cost = "~0.02 $ / min (~0.10 $ pour 5 min)"
-
-                # Affichage du modal de consentement sur le HUD mobile / web
-                await websocket.send_text(json.dumps({
-                    "type": "paid_consent_request",
-                    "action": "live_fallback",
-                    "title": "QUOTA GRATUIT ÉPUISÉ - SESSION LIVE",
-                    "reason": reason,
-                    "estimated_cost": est_cost,
-                    "message": "Le quota gratuit pour la voix est épuisé. Autorisez-vous J.A.R.V.I.S. à basculer sur votre clé payante pour converser ?"
-                }))
-                await websocket.send_text(json.dumps({
-                    "type": "transcript",
-                    "role": "jarvis",
-                    "text": (
-                        "Pierre, le quota de la clé gratuite pour la voix Gemini 3.8 Live est épuisé. "
-                        "Pour continuer à converser de vive voix, je peux basculer sur votre clé payante (coût estimé : environ 0,02 dollar par minute). "
-                        "Veuillez valider sur votre écran pour m'autoriser à continuer."
-                    )
-                }))
-
-                consent_ev = asyncio.Event()
-                active_task_controller["paid_consent_event"] = consent_ev
-                active_task_controller["paid_live_approved"] = False
-
-                try:
-                    while not consent_ev.is_set():
-                        raw_msg = await asyncio.wait_for(websocket.receive(), timeout=90.0)
-                        if "text" in raw_msg and raw_msg["text"]:
-                            try:
-                                p_data = json.loads(raw_msg["text"])
-                                if p_data.get("type") == "paid_consent_response":
-                                    active_task_controller["paid_live_approved"] = p_data.get("approved", False)
-                                    consent_ev.set()
-                            except Exception:
-                                pass
-                except (asyncio.TimeoutError, WebSocketDisconnect):
-                    pass
-
-                if active_task_controller.get("paid_live_approved"):
-                    await websocket.send_text(json.dumps({
-                        "type": "jarvis_announcement",
-                        "text": "Accord reçu. Basculement sur la clé payante...",
-                        "voice": False
-                    }))
-                    await websocket.send_text(json.dumps({"type": "hide_paid_consent"}))
-                    current_live_client = client_paid
-                    is_paid_live = True
-                    continue
-                else:
-                    await websocket.send_text(json.dumps({
-                        "type": "transcript",
-                        "role": "jarvis",
-                        "text": "Accès à la clé payante non accordé. Session vocale en pause."
-                    }))
-                    return
-            else:
-                print(f"[Voice Channel] Erreur ouverture session Live: {live_err}")
-                await websocket.send_text(json.dumps({
-                    "type": "transcript",
-                    "role": "jarvis",
-                    "text": f"Erreur de connexion Live : {live_err}"
-                }))
-                return
-
-        async def upload_audio():
+    try:
+        async def client_to_gemini():
             try:
+                # Respect du protocole : attendre explicitement setupComplete avant d'envoyer l'audio du microphone
+                await setup_done_event.wait()
                 while True:
                     msg = await websocket.receive()
+                    if msg.get("type") == "websocket.disconnect":
+                        raise WebSocketDisconnect(code=1000)
                     if "bytes" in msg and msg["bytes"]:
                         # Toujours envoyer l'audio à Gemini Live, même pendant le codage
                         await session.send_realtime_input(
@@ -871,12 +865,16 @@ async def voice_channel(websocket: WebSocket):
                             elif payload.get("type") == "set_live_model":
                                 new_model = (payload.get("model") or "").strip()
                                 if new_model in ("gemini-3.8-live", "gemini-3.8-live-extended-thinking"):
-                                    config.GEMINI_LIVE_MODEL = new_model
-                                    await websocket.send_text(json.dumps({
-                                        "type": "jarvis_announcement",
-                                        "text": f"Modèle vocal configuré sur {new_model}.",
-                                        "voice": False
-                                    }))
+                                    if new_model != active_live_model:
+                                        raise ModelSwitchRequested(new_model)
+                                    else:
+                                        await websocket.send_text(json.dumps({
+                                            "type": "jarvis_announcement",
+                                            "text": f"Modèle vocal déjà actif sur {new_model}.",
+                                            "voice": False
+                                        }))
+                            elif payload.get("type") == "get_supervision_overview":
+                                await broadcast_supervision()
                             elif payload.get("type") == "paid_consent_response":
                                 action = payload.get("action", "")
                                 approved = bool(payload.get("approved", False))
@@ -935,23 +933,36 @@ async def voice_channel(websocket: WebSocket):
                                             print(f"[Paid Rejection Injection] {e}")
                             elif payload.get("type") == "user_interrupt":
                                 pass
+                        except ModelSwitchRequested:
+                            raise
                         except Exception as e:
                             print(f"[Upload Audio] Erreur message texte: {e}")
-            except (WebSocketDisconnect, asyncio.CancelledError):
-                pass
+            except (WebSocketDisconnect, WebSocketDisconnected, asyncio.CancelledError, ModelSwitchRequested, QuotaExhaustedError):
+                raise
             except Exception as e:
+                if is_quota_or_limit_error(e):
+                    raise QuotaExhaustedError(str(e))
                 if "disconnect message has been received" in str(e).lower():
-                    pass
+                    raise WebSocketDisconnect(code=1000)
                 else:
-                    print(f"[Upload Audio] Erreur: {e}")
-                    console_monitor.record_error(source="Upload Audio", message=str(e), level="WARNING")
+                    print(f"[client_to_gemini] Erreur: {e}")
+                    console_monitor.record_error(source="client_to_gemini", message=str(e), level="WARNING")
+                    raise
+            finally:
+                # Fermeture du websocket Google pour débloquer immédiatement gemini_to_client
+                try:
+                    await session.close()
+                except Exception:
+                    pass
 
-        async def stream_ai_feedback():
+        async def gemini_to_client():
             user_speech_buffer = ""
             is_speaking_state = False
             try:
                 while True:
                     async for chunk in session.receive():
+                        if getattr(chunk, "setup_complete", None):
+                            setup_done_event.set()
                         sc = chunk.server_content
                         if sc:
                             # Interruption (barge-in serveur)
@@ -981,12 +992,16 @@ async def voice_channel(websocket: WebSocket):
                                 user_speech_buffer = ""
                                 for part in sc.model_turn.parts:
                                     if getattr(part, 'thought', False) and part.text:
+                                        supervision_service.update_voice_state("thinking", model=active_live_model, is_paid=is_paid_live)
+                                        await broadcast_supervision()
                                         await websocket.send_text(json.dumps({
                                             "type": "status",
                                             "state": "thinking",
                                             "msg": "JARVIS analyse votre demande...",
                                             "engine": "Google API",
-                                            "model": live_display_label
+                                            "model": live_display_label,
+                                            "api_type": "paid" if is_paid_live else "free",
+                                            "api_label": "Clé Payante" if is_paid_live else "Clé Gratuite"
                                         }))
                                     elif part.text and not getattr(sc, "output_transcription", None):
                                         await websocket.send_text(json.dumps({
@@ -997,12 +1012,16 @@ async def voice_channel(websocket: WebSocket):
                                     elif part.inline_data and part.inline_data.data:
                                         if not is_speaking_state:
                                             is_speaking_state = True
+                                            supervision_service.update_voice_state("speaking", model=active_live_model, is_paid=is_paid_live)
+                                            await broadcast_supervision()
                                             await websocket.send_text(json.dumps({
                                                 "type": "status",
                                                 "state": "speaking",
                                                 "msg": "JARVIS vous répond...",
                                                 "engine": "Google API",
-                                                "model": live_display_label
+                                                "model": live_display_label,
+                                                "api_type": "paid" if is_paid_live else "free",
+                                                "api_label": "Clé Payante" if is_paid_live else "Clé Gratuite"
                                             }))
                                         await websocket.send_bytes(part.inline_data.data)
 
@@ -1019,6 +1038,8 @@ async def voice_channel(websocket: WebSocket):
                             if getattr(sc, "turn_complete", False):
                                 user_speech_buffer = ""
                                 is_speaking_state = False
+                                supervision_service.update_voice_state("idle", model=active_live_model, is_paid=is_paid_live)
+                                await broadcast_supervision()
                                 await websocket.send_text(json.dumps({"type": "turn_complete"}))
 
                         # Gestion des appels d'outils
@@ -1039,60 +1060,44 @@ async def voice_channel(websocket: WebSocket):
                                     instruction = args.get("instruction", "")
                                     model_choice = args.get("model") or "gemini-3.8-flash"
                                     _, model_label = resolve_antigravity_model(model_choice)
-                                    is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
+                                    active_task_controller["info"]["running"] = True
+                                    active_task_controller["info"]["task"] = instruction
+                                    active_task_controller["info"]["model"] = model_label
+                                    active_task_controller["directives"] = []
+                                    # Réinitialisation propre de la queue de directives
+                                    while not active_task_controller["queue"].empty():
+                                        try:
+                                            active_task_controller["queue"].get_nowait()
+                                        except Exception:
+                                            break
 
-                                    if not is_confirmed:
-                                        reason, cost_str = estimate_tool_cost(name, args)
-                                        await websocket.send_text(json.dumps({
-                                            "type": "paid_consent_request",
-                                            "action": name,
-                                            "title": "ACCORD REQUIS - CODE ANTIGRAVITY",
-                                            "reason": reason,
-                                            "estimated_cost": cost_str,
-                                            "message": "Votre accord est requis pour utiliser l'API payante pour coder avec Antigravity."
-                                        }))
-                                        tool_resp = {
-                                            "status": "requires_user_confirmation",
-                                            "requires_paid_consent": True,
-                                            "reason": reason,
-                                            "estimated_cost": cost_str,
-                                            "instruction_to_jarvis": (
-                                                f"ATTENTION : Le développement avec Antigravity nécessite la clé payante ({cost_str}). "
-                                                f"RÈGLE STRICTE : Tu NE DOIS PAS exécuter cette tâche maintenant sans accord préalable. "
-                                                f"Explique immédiatement à Pierre avec ta voix Aoede pourquoi tu souhaites utiliser la clé payante ({reason}), "
-                                                f"indique-lui l'estimation du coût ({cost_str}), "
-                                                f"et demande-lui explicitement son accord oral ('M'autorisez-vous à mobiliser la clé payante pour cette tâche ?'). "
-                                                f"Attends sa réponse. Dès qu'il a validé oralement ou via le bouton du HUD, réinvoque immédiatement 'run_antigravity_task' avec confirmed_by_user=True."
-                                            )
-                                        }
-                                    else:
-                                        active_task_controller["paid_consent_given"] = False
-                                        await websocket.send_text(json.dumps({"type": "hide_paid_consent"}))
+                                    supervision_service.start_action(
+                                        "antigravity_task",
+                                        "Développement Antigravity",
+                                        "run_antigravity_task",
+                                        instruction,
+                                        model_label,
+                                        api_type="paid",
+                                        api_label="Clé Payante",
+                                        cost_est=estimate_tool_cost(name, args)[1]
+                                    )
+                                    await broadcast_supervision()
 
-                                        active_task_controller["info"]["running"] = True
-                                        active_task_controller["info"]["task"] = instruction
-                                        active_task_controller["info"]["model"] = model_label
-                                        active_task_controller["directives"] = []
-                                        # Réinitialisation propre de la queue de directives
-                                        while not active_task_controller["queue"].empty():
-                                            try:
-                                                active_task_controller["queue"].get_nowait()
-                                            except Exception:
-                                                break
-
-                                        # Annonce visuelle au lancement
-                                        await websocket.send_text(json.dumps({
-                                            "type": "jarvis_announcement",
-                                            "text": f"Lancement du développement avec {model_label} : {instruction}.",
-                                            "voice": False
-                                        }))
+                                    # Annonce visuelle au lancement
+                                    await websocket.send_text(json.dumps({
+                                        "type": "jarvis_announcement",
+                                        "text": f"Lancement du développement avec {model_label} : {instruction}.",
+                                        "voice": False
+                                    }))
                                     await websocket.send_text(json.dumps({
                                         "type": "status",
                                         "state": "coding",
                                         "msg": "JARVIS développe via Antigravity...",
                                         "task": instruction,
                                         "engine": "Antigravity IDE",
-                                        "model": model_label
+                                        "model": model_label,
+                                        "api_type": "paid",
+                                        "api_label": "Clé Payante"
                                     }))
 
                                     # Callback de progression : envoie l'état en temps réel au frontend
@@ -1107,6 +1112,8 @@ async def voice_channel(websocket: WebSocket):
                                         active_ws = active_task_controller.get("websocket") or _ws_orig
                                         active_sess = active_task_controller.get("live_session")
                                         # Affichage visuel dans le HUD
+                                        supervision_service.update_action_progress("antigravity_task", step, text, model=_ml)
+                                        await broadcast_supervision()
                                         if active_ws:
                                             try:
                                                 await active_ws.send_text(json.dumps({
@@ -1171,6 +1178,9 @@ async def voice_channel(websocket: WebSocket):
                                             or res.get("error_type") == "high_demand"
                                             or any(k in res.get("summary", "").lower() for k in ["503", "high demand", "forte demande", "satur", "unavailable", "quota"])
                                         )
+
+                                        supervision_service.complete_action("antigravity_task", status="error" if is_error else "completed", summary=res.get("summary", "")[:250], model=res.get("model_label", _ml2))
+                                        await broadcast_supervision()
 
                                         current_ws = active_task_controller.get("websocket") or _ws
                                         current_sess = active_task_controller.get("live_session") or _sess
@@ -1271,6 +1281,8 @@ async def voice_channel(websocket: WebSocket):
                                 elif name == "set_browser_link":
                                     link_url = args.get("url", "")
                                     link_title = args.get("title") or "Page sélectionnée"
+                                    supervision_service.track_browser_window(link_url, link_title)
+                                    await broadcast_supervision()
                                     await websocket.send_text(json.dumps({
                                         "type": "browser_update",
                                         "url": link_url,
@@ -1289,56 +1301,49 @@ async def voice_channel(websocket: WebSocket):
                                     engine = args.get("engine") or "auto"
                                     model_choice = args.get("model")
                                     is_heavy = (engine == "antigravity") or (model_choice and any(k in model_choice.lower() for k in ["pro", "claude", "sonnet", "opus"]))
-                                    is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
-
-                                    if is_heavy and not is_confirmed:
-                                        reason, cost_str = estimate_tool_cost(name, args)
-                                        await websocket.send_text(json.dumps({
-                                            "type": "paid_consent_request",
-                                            "action": name,
-                                            "title": "ACCORD REQUIS - RÉFLEXION ANTIGRAVITY",
-                                            "reason": reason,
-                                            "estimated_cost": cost_str,
-                                            "message": "Votre accord est requis pour utiliser la clé payante pour cette réflexion approfondie."
-                                        }))
-                                        tool_resp = {
-                                            "status": "requires_user_confirmation",
-                                            "requires_paid_consent": True,
-                                            "reason": reason,
-                                            "estimated_cost": cost_str,
-                                            "instruction_to_jarvis": (
-                                                f"Cette réflexion avec grand modèle ({model_choice or 'Pro/Claude'}) nécessite la clé payante ({cost_str}). "
-                                                f"Explique à Pierre avec ta voix Aoede pourquoi tu préconises un grand modèle pour cette question ({reason}), "
-                                                f"donne l'estimation du coût ({cost_str}), et demande explicitement son accord oral ('M'autorisez-vous à utiliser l'API payante ?'). "
-                                                f"S'il refuse, tu pourras répondre avec engine='google_api' qui utilise la clé gratuite sans frais."
-                                            )
-                                        }
+                                    if engine == "antigravity" or (model_choice and any(k in model_choice.lower() for k in ["pro", "claude", "sonnet", "opus"])):
+                                        _, initial_label = resolve_antigravity_model(model_choice or "gemini-3.1-pro-high")
+                                        initial_engine = "Antigravity IDE"
                                     else:
-                                        if is_heavy:
-                                            active_task_controller["paid_consent_given"] = False
-                                            await websocket.send_text(json.dumps({"type": "hide_paid_consent"}))
+                                        initial_label = "Gemini 3.8 Flash (Thinking)"
+                                        initial_engine = "Google API"
 
-                                        if engine == "antigravity" or (model_choice and any(k in model_choice.lower() for k in ["pro", "claude", "sonnet", "opus"])):
-                                            _, initial_label = resolve_antigravity_model(model_choice or "gemini-3.1-pro-high")
-                                            initial_engine = "Antigravity IDE"
-                                        else:
-                                            initial_label = "Gemini 3.8 Flash (Thinking)"
-                                            initial_engine = "Google API"
+                                    supervision_service.start_action(
+                                        "deep_reasoning",
+                                        "Raisonnement Approfondi",
+                                        "ask_deep_reasoning",
+                                        question,
+                                        initial_label,
+                                        api_type="paid",
+                                        api_label="Clé Payante",
+                                        cost_est=estimate_tool_cost(name, args)[1]
+                                    )
+                                    await broadcast_supervision()
 
-                                        await websocket.send_text(json.dumps({
-                                            "type": "jarvis_announcement",
-                                            "text": f"Engagement des protocoles de réflexion approfondie avec {initial_label}.",
-                                            "voice": False
-                                        }))
+                                    await websocket.send_text(json.dumps({
+                                        "type": "jarvis_announcement",
+                                        "text": f"Engagement des protocoles de réflexion approfondie avec {initial_label}.",
+                                        "voice": False
+                                    }))
                                     await websocket.send_text(json.dumps({
                                         "type": "status",
                                         "state": "thinking",
                                         "msg": "Réflexion approfondie en cours...",
                                         "task": question,
                                         "engine": initial_engine,
-                                        "model": initial_label
+                                        "model": initial_label,
+                                        "api_type": "paid",
+                                        "api_label": "Clé Payante"
                                     }))
                                     res = await run_deep_reasoning(question, model_choice=model_choice, engine=engine)
+
+                                    supervision_service.complete_action(
+                                        "deep_reasoning",
+                                        status="completed",
+                                        summary=res.get("summary", "")[:250],
+                                        model=res.get("model_label", initial_label)
+                                    )
+                                    await broadcast_supervision()
                                     
                                     # Mise à jour de l'indicateur après résultat
                                     await websocket.send_text(json.dumps({
@@ -1347,7 +1352,9 @@ async def voice_channel(websocket: WebSocket):
                                         "msg": "Analyse terminée, formulation de la synthèse...",
                                         "task": question,
                                         "engine": res.get("source", initial_engine),
-                                        "model": res.get("model_label", initial_label)
+                                        "model": res.get("model_label", initial_label),
+                                        "api_type": "paid",
+                                        "api_label": "Clé Payante"
                                     }))
 
                                     tool_resp = {
@@ -1360,6 +1367,18 @@ async def voice_channel(websocket: WebSocket):
 
                                 elif name == "search_web":
                                     query = args.get("query", "")
+                                    supervision_service.start_action(
+                                        "search_web",
+                                        "Recherche Internet",
+                                        "search_web",
+                                        query,
+                                        "Playwright / DuckDuckGo",
+                                        api_type="free",
+                                        api_label="Clé Gratuite",
+                                        cost_est="0.00 $"
+                                    )
+                                    await broadcast_supervision()
+
                                     await websocket.send_text(json.dumps({
                                         "type": "jarvis_announcement",
                                         "text": f"Recherche sur Internet : {query}",
@@ -1371,7 +1390,9 @@ async def voice_channel(websocket: WebSocket):
                                         "msg": "Recherche sur Internet...",
                                         "task": query,
                                         "engine": "Clé Gratuite",
-                                        "model": "DuckDuckGo / Playwright"
+                                        "model": "DuckDuckGo / Playwright",
+                                        "api_type": "free",
+                                        "api_label": "Clé Gratuite"
                                     }))
 
                                     # ─── RÉPONSE IMMÉDIATE à Gemini Live pour libérer la voix ────────────
@@ -1400,6 +1421,11 @@ async def voice_channel(websocket: WebSocket):
                                                 first = res["results"][0]
                                                 best_url = first.get("url", "")
                                                 best_title = first.get("title", _q)
+                                            
+                                            supervision_service.complete_action("search_web", status="completed", summary=f"Résultats pour {best_title}")
+                                            supervision_service.track_browser_window(best_url, best_title)
+                                            await broadcast_supervision()
+
                                             try:
                                                 await _ws.send_text(json.dumps({
                                                     "type": "browser_update",
@@ -1412,7 +1438,9 @@ async def voice_channel(websocket: WebSocket):
                                                     "state": "idle",
                                                     "msg": "En veille active",
                                                     "engine": "Google API Live",
-                                                    "model": live_display_label
+                                                    "model": live_display_label,
+                                                    "api_type": "paid" if is_paid_live else "free",
+                                                    "api_label": "Clé Payante" if is_paid_live else "Clé Gratuite"
                                                 }))
                                             except Exception:
                                                 pass
@@ -1435,6 +1463,8 @@ async def voice_channel(websocket: WebSocket):
                                                 print(f"[Search BG] Erreur injection résultats: {inj_err}")
                                         except Exception as e:
                                             print(f"[Search BG] Erreur: {e}")
+                                            supervision_service.complete_action("search_web", status="error", summary=str(e))
+                                            await broadcast_supervision()
                                             try:
                                                 await _sess.send_client_content(
                                                     turns=types.Content(
@@ -1453,49 +1483,33 @@ async def voice_channel(websocket: WebSocket):
                                 elif name == "run_browser_task":
                                     goal = args.get("goal", "")
                                     target_url = args.get("url") or ""
-                                    is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
+                                    supervision_service.start_action(
+                                        "browser_task",
+                                        "Navigation Web Autonome",
+                                        "run_browser_task",
+                                        goal,
+                                        "Gemini 3.6 Flash (Vision LLM)",
+                                        api_type="paid",
+                                        api_label="Clé Payante",
+                                        cost_est="~0.02 $"
+                                    )
+                                    await broadcast_supervision()
 
-                                    if not is_confirmed:
-                                        reason, cost_str = estimate_tool_cost(name, args)
-                                        await websocket.send_text(json.dumps({
-                                            "type": "paid_consent_request",
-                                            "action": name,
-                                            "title": "ACCORD REQUIS - NAVIGATION WEB",
-                                            "reason": reason,
-                                            "estimated_cost": cost_str,
-                                            "message": "Votre accord est requis pour utiliser l'API payante pour la navigation autonome Browser-Use."
-                                        }))
-                                        tool_resp = {
-                                            "status": "requires_user_confirmation",
-                                            "requires_paid_consent": True,
-                                            "reason": reason,
-                                            "estimated_cost": cost_str,
-                                            "instruction_to_jarvis": (
-                                                f"ATTENTION : La navigation autonome Browser-Use nécessite la clé payante ({cost_str}). "
-                                                f"RÈGLE STRICTE : Tu NE DOIS PAS exécuter cette tâche maintenant. "
-                                                f"Explique à Pierre avec ta voix Aoede pourquoi tu souhaites utiliser la clé payante pour cette mission ({reason}), "
-                                                f"donne l'estimation du coût ({cost_str}), "
-                                                f"et demande explicitement son accord oral ('M'autorisez-vous à mobiliser la clé payante pour cette navigation ?'). "
-                                                f"Attends sa confirmation. Dès qu'il a dit oui oralement ou validé via le HUD, réinvoque immédiatement 'run_browser_task' avec confirmed_by_user=True."
-                                            )
-                                        }
-                                    else:
-                                        active_task_controller["paid_consent_given"] = False
-                                        await websocket.send_text(json.dumps({"type": "hide_paid_consent"}))
-
-                                        await websocket.send_text(json.dumps({
-                                            "type": "jarvis_announcement",
-                                            "text": f"Navigation autonome : {goal}",
-                                            "voice": False
-                                        }))
-                                        await websocket.send_text(json.dumps({
-                                            "type": "status",
-                                            "state": "browsing",
-                                            "msg": "Navigation autonome en cours...",
-                                            "task": goal,
-                                            "engine": "Clé Payante",
-                                            "model": "Browser-Use (Vision LLM)"
-                                        }))
+                                    await websocket.send_text(json.dumps({
+                                        "type": "jarvis_announcement",
+                                        "text": f"Navigation autonome : {goal}",
+                                        "voice": False
+                                    }))
+                                    await websocket.send_text(json.dumps({
+                                        "type": "status",
+                                        "state": "browsing",
+                                        "msg": "Navigation autonome en cours...",
+                                        "task": goal,
+                                        "engine": "Clé Payante",
+                                        "model": "Browser-Use (Vision LLM)",
+                                        "api_type": "paid",
+                                        "api_label": "Clé Payante"
+                                    }))
 
                                     # ─── RÉPONSE IMMÉDIATE à Gemini Live pour libérer la voix ────────────
                                     tool_resp = {
@@ -1518,6 +1532,11 @@ async def voice_channel(websocket: WebSocket):
                                         try:
                                             res = await run_browser_task(_g, _u)
                                             final_site_url = res.get("site_visited") or _u or "https://www.google.com"
+                                            
+                                            supervision_service.complete_action("browser_task", status="completed", summary=res.get("summary", "")[:250])
+                                            supervision_service.track_browser_window(final_site_url, res.get("page_title", _g))
+                                            await broadcast_supervision()
+
                                             try:
                                                 await _ws.send_text(json.dumps({
                                                     "type": "browser_update",
@@ -1530,7 +1549,9 @@ async def voice_channel(websocket: WebSocket):
                                                     "state": "idle",
                                                     "msg": "En veille active",
                                                     "engine": "Google API Live",
-                                                    "model": live_display_label
+                                                    "model": live_display_label,
+                                                    "api_type": "paid" if is_paid_live else "free",
+                                                    "api_label": "Clé Payante" if is_paid_live else "Clé Gratuite"
                                                 }))
                                             except Exception:
                                                 pass
@@ -1552,6 +1573,8 @@ async def voice_channel(websocket: WebSocket):
                                                 print(f"[Browser BG] Erreur injection résultats: {inj_err}")
                                         except Exception as e:
                                             print(f"[Browser BG] Erreur: {e}")
+                                            supervision_service.complete_action("browser_task", status="error", summary=str(e))
+                                            await broadcast_supervision()
                                             try:
                                                 await _sess.send_client_content(
                                                     turns=types.Content(
@@ -1575,6 +1598,8 @@ async def voice_channel(websocket: WebSocket):
                                         "voice": False
                                     }))
                                     res = open_browser_window(target_url)
+                                    supervision_service.track_browser_window(target_url, "Google Chrome")
+                                    await broadcast_supervision()
                                     tool_resp = {
                                         "status": "completed",
                                         "result": res,
@@ -1644,6 +1669,18 @@ async def voice_channel(websocket: WebSocket):
                                     attachments = args.get("attachments") or []
                                     include_screenshot = bool(args.get("include_latest_screenshot", False))
 
+                                    supervision_service.start_action(
+                                        "send_email",
+                                        "Expédition E-mail",
+                                        "send_email",
+                                        f"Sujet : {subject} -> {to_email}",
+                                        "SMTP Stark Protocol",
+                                        api_type="free",
+                                        api_label="Service Local",
+                                        cost_est="0.00 $"
+                                    )
+                                    await broadcast_supervision()
+
                                     await websocket.send_text(json.dumps({
                                         "type": "jarvis_announcement",
                                         "text": f"Préparation de l'e-mail pour {to_email}.",
@@ -1655,7 +1692,9 @@ async def voice_channel(websocket: WebSocket):
                                         "msg": "Expédition d'e-mail en cours...",
                                         "task": subject,
                                         "engine": "Google API",
-                                        "model": "Stark Email Protocol"
+                                        "model": "Stark Email Protocol",
+                                        "api_type": "free",
+                                        "api_label": "Service Local"
                                     }))
 
                                     res = await send_email_async(
@@ -1666,6 +1705,13 @@ async def voice_channel(websocket: WebSocket):
                                         include_screenshot=include_screenshot,
                                         is_html_report=True
                                     )
+
+                                    supervision_service.complete_action(
+                                        "send_email",
+                                        status="completed" if res.get("status") in ("sent", "saved") else "error",
+                                        summary=res.get("message", f"E-mail traité pour {to_email}")
+                                    )
+                                    await broadcast_supervision()
 
                                     await websocket.send_text(json.dumps({
                                         "type": "email_sent",
@@ -1738,40 +1784,210 @@ async def voice_channel(websocket: WebSocket):
                                     "type": "tool_end",
                                     "tool_name": name
                                 }))
-            except (WebSocketDisconnect, asyncio.CancelledError):
-                pass
+            except (WebSocketDisconnect, WebSocketDisconnected, asyncio.CancelledError, ModelSwitchRequested, QuotaExhaustedError):
+                raise
             except Exception as e:
-                print(f"[Stream AI Feedback] Erreur: {e}")
+                if is_quota_or_limit_error(e):
+                    raise QuotaExhaustedError(str(e))
+                err_str = str(e).lower()
+                if "cannot call" in err_str or "close message has been sent" in err_str or "connection closed" in err_str or "disconnect" in err_str or "closed" in err_str:
+                    raise WebSocketDisconnect(code=1000)
+                else:
+                    print(f"[gemini_to_client] Erreur: {e}")
+                    console_monitor.record_error(source="gemini_to_client", message=str(e), level="WARNING")
+                    raise
+            finally:
+                pass
+        while True:
+            live_display_label = "Gemini 3.8 Live (Thinking)" if "extended-thinking" in active_live_model else "Gemini 3.8 Live"
 
-        audio_task = asyncio.create_task(upload_audio())
-        feedback_task = asyncio.create_task(stream_ai_feedback())
-        try:
-            done, pending = await asyncio.wait(
-                [audio_task, feedback_task],
-                return_when=asyncio.FIRST_COMPLETED
-            )
-            for t in pending:
-                t.cancel()
-        except Exception as e:
-            print(f"[Voice Channel] Exception: {e}")
-        finally:
-            if session_ctx:
+            try:
+                print(f"[Voice Channel] Connexion Live ({active_live_model}) avec {tier_badge}...")
+                session_ctx, session = await _establish_live_session(active_live_model, current_live_client)
+            except Exception as initial_conn_err:
+                # Repli automatique : si la clé gratuite a échoué (quota, limitation ou indisponibilité)
+                if not is_paid_live and client_paid:
+                    print(f"[Voice Channel] Clé gratuite en échec ({initial_conn_err}). Bascule immédiate de repli sur la clé payante...")
+                    supervision_service.set_free_quota_exhausted(True)
+                    console_monitor.record_error(
+                        source="Voice Channel",
+                        message=f"Bascule de repli sur clé payante suite à échec clé gratuite : {initial_conn_err}",
+                        level="WARNING"
+                    )
+                    current_live_client = client_paid
+                    is_paid_live = True
+                    tier_badge = "Clé Payante (Repli Quota)"
+                    await websocket.send_text(json.dumps({
+                        "type": "jarvis_announcement",
+                        "text": "Limite de la clé gratuite atteinte. Bascule automatique sur la clé payante.",
+                        "voice": False
+                    }))
+                    session_ctx, session = await _establish_live_session(active_live_model, current_live_client)
+                else:
+                    raise initial_conn_err
+
+            active_task_controller["live_session"] = session
+            active_task_controller["live_session_ctx"] = session_ctx
+            supervision_service.update_voice_state("idle", model=active_live_model, is_paid=is_paid_live, api_label=tier_badge)
+            await broadcast_supervision()
+            await websocket.send_text(json.dumps({
+                "type": "jarvis_announcement",
+                "text": f"Canal vocal {live_display_label} opérationnel ({tier_badge}).",
+                "voice": False
+            }))
+
+            setup_done_event.clear()
+            setup_done_event.set()
+
+            if not greeting_sent:
+                greeting_sent = True
+                greeting_instruction = (
+                    "[INSTRUCTION SYSTÈME INVISIBLE] La session vocale vient de démarrer. "
+                    "Salue chaleureusement Pierre avec ta voix Aoede en une courte phrase naturelle et vivante pour lui indiquer que tu es à son écoute."
+                )
                 try:
-                    await session_ctx.__aexit__(None, None, None)
+                    await session.send_client_content(
+                        turns=types.Content(
+                            role="user",
+                            parts=[types.Part.from_text(text=greeting_instruction)]
+                        ),
+                        turn_complete=True
+                    )
+                    print("[Voice Channel] Amorce vocale (greeting) envoyée avec succès.")
+                except Exception as greet_err:
+                    print(f"[Voice Channel] Avertissement amorce vocale: {greet_err}")
+
+            client_task = asyncio.create_task(client_to_gemini(), name="client_to_gemini")
+            gemini_task = asyncio.create_task(gemini_to_client(), name="gemini_to_client")
+
+            async def _auto_cancel_sister(t1, t2):
+                try:
+                    await t1
                 except Exception:
                     pass
-            # Nettoyage des références à la session vocale terminée
-            if active_task_controller.get("websocket") == websocket:
-                active_task_controller["websocket"] = None
-            if active_task_controller.get("live_session") == session:
-                active_task_controller["live_session"] = None
+                finally:
+                    if not t2.done():
+                        t2.cancel()
 
-            # IMPORTANT : On ne détruit PAS la tâche de code en arrière-plan si le canal vocal se déconnecte !
-            # Elle continue de coder dans le workspace de façon autonome et mettra à jour l'interface.
-            bg = active_task_controller.get("bg_task")
-            if bg and bg.done():
-                active_task_controller["info"]["running"] = False
-                active_task_controller["bg_task"] = None
+            asyncio.create_task(_auto_cancel_sister(client_task, gemini_task))
+            asyncio.create_task(_auto_cancel_sister(gemini_task, client_task))
+
+            try:
+                await asyncio.gather(client_task, gemini_task)
+                break
+            except (WebSocketDisconnect, WebSocketDisconnected, asyncio.CancelledError):
+                break
+            except ModelSwitchRequested as switch_req:
+                new_model = switch_req.model
+                print(f"[Voice Channel] Bascule dynamique de modèle vocal demandée : {new_model}")
+                active_live_model = new_model
+                config.GEMINI_LIVE_MODEL = new_model
+
+                if session_ctx:
+                    try:
+                        await session_ctx.__aexit__(None, None, None)
+                    except Exception:
+                        pass
+                session = None
+                session_ctx = None
+
+                if new_model == "gemini-3.8-live":
+                    current_live_client = client_free if (client_free and not supervision_service._free_quota_exhausted) else (client_paid or client_free)
+                    is_paid_live = (current_live_client is client_paid)
+                else:
+                    current_live_client = client_paid or client_free
+                    is_paid_live = (current_live_client is client_paid)
+
+                tier_badge = "Clé Payante" if is_paid_live else "Clé Gratuite"
+                await websocket.send_text(json.dumps({
+                    "type": "jarvis_announcement",
+                    "text": f"Bascule vers le modèle {new_model} ({tier_badge})...",
+                    "voice": False
+                }))
+                continue
+            except QuotaExhaustedError as q_err:
+                if not is_paid_live and client_paid:
+                    print(f"[Voice Channel] Quota dépassé sur la clé gratuite en direct ({q_err}). Bascule automatique sur la clé payante...")
+                    supervision_service.set_free_quota_exhausted(True)
+                    console_monitor.record_error(
+                        source="Voice Channel",
+                        message="Quota clé gratuite dépassé en direct. Bascule automatique sur clé payante.",
+                        level="WARNING"
+                    )
+                    if session_ctx:
+                        try:
+                            await session_ctx.__aexit__(None, None, None)
+                        except Exception:
+                            pass
+                    session = None
+                    session_ctx = None
+
+                    current_live_client = client_paid
+                    is_paid_live = True
+                    tier_badge = "Clé Payante (Repli Quota)"
+                    await websocket.send_text(json.dumps({
+                        "type": "jarvis_announcement",
+                        "text": "Limite de la clé gratuite atteinte pendant l'échange. Bascule automatique sur la clé payante effectuée.",
+                        "voice": False
+                    }))
+                    continue
+                else:
+                    raise q_err
+
+    except (WebSocketDisconnect, WebSocketDisconnected, asyncio.CancelledError):
+        pass
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        err_msg = str(e)
+        print(f"[Voice Channel] ERREUR CRITIQUE Live ({active_live_model}): {err_msg}\n{tb}")
+        console_monitor.record_error(source="Voice Channel", message=f"Erreur Live: {err_msg}", level="ERROR")
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "transcript",
+                "role": "jarvis",
+                "text": f"Erreur de connexion Live : {err_msg}"
+            }))
+        except Exception:
+            pass
+        try:
+            await websocket.close(code=1011, reason=f"Live error: {err_msg[:100]}")
+        except Exception:
+            pass
+    finally:
+        # Fermeture propre et immédiate de la session Live Google pour éviter les sessions zombies en conflit 409
+        if session_ctx:
+            try:
+                await session_ctx.__aexit__(None, None, None)
+            except Exception:
+                pass
+        elif session:
+            try:
+                await session.close()
+            except Exception:
+                pass
+
+        # Nettoyage des références à la session vocale terminée
+        print("[Voice Channel] FINALLY: Nettoyage session et références terminé.")
+        if active_task_controller.get("websocket") == websocket:
+            active_task_controller["websocket"] = None
+        if active_task_controller.get("live_session") == session:
+            active_task_controller["live_session"] = None
+        if active_task_controller.get("live_session_ctx") == session_ctx:
+            active_task_controller["live_session_ctx"] = None
+        supervision_service.update_voice_state("offline")
+        await broadcast_supervision()
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+        # IMPORTANT : On ne détruit PAS la tâche de code en arrière-plan si le canal vocal se déconnecte !
+        # Elle continue de coder dans le workspace de façon autonome et mettra à jour l'interface.
+        bg = active_task_controller.get("bg_task")
+        if bg and bg.done():
+            active_task_controller["info"]["running"] = False
+            active_task_controller["bg_task"] = None
 
 if __name__ == "__main__":
     import uvicorn

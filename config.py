@@ -50,23 +50,32 @@ if not os.environ.get("GEMINI_API_KEY"):
         except Exception:
             pass
 
-# Clé gratuite : pour la session Live Audio et les tâches légères
-GEMINI_API_KEY_FREE = os.environ.get("GEMINI_API_KEY_FREE") or os.environ.get("GEMINI_API_KEY", "")
-
-# Clé payante : pour le code, le raisonnement profond, le browser autonome
-# Fallback sur la clé gratuite si non configurée
+# Clés API Gemini :
+# - GEMINI_API_KEY_FREE : utilisée prioritairement pour le modèle vocal de base gemini-3.8-live
+# - GEMINI_API_KEY_PAID : utilisée pour gemini-3.8-live-extended-thinking, gemini-3.8-flash, Agents Antigravity et repli automatique
 _paid_raw = os.environ.get("GEMINI_API_KEY_PAID", "").strip()
-GEMINI_API_KEY_PAID = _paid_raw if (_paid_raw and _paid_raw != "VOTRE_CLE_PAYANTE_ICI") else GEMINI_API_KEY_FREE
+if not _paid_raw or _paid_raw == "VOTRE_CLE_PAYANTE_ICI":
+    _paid_raw = ""
 
-# Alias de compatibilité et environnement global (clé payante prioritaire pour éviter les 429)
+_free_raw = os.environ.get("GEMINI_API_KEY_FREE", "").strip()
+if not _free_raw or _free_raw == "VOTRE_CLE_GRATUITE_ICI":
+    _free_raw = ""
+
+_default_key = os.environ.get("GEMINI_API_KEY", "").strip()
+
+GEMINI_API_KEY_FREE = _free_raw or _default_key or _paid_raw
+GEMINI_API_KEY_PAID = _paid_raw or _default_key or _free_raw
 GEMINI_API_KEY = GEMINI_API_KEY_PAID or GEMINI_API_KEY_FREE
+
 if GEMINI_API_KEY_PAID:
     os.environ["GEMINI_API_KEY_PAID"] = GEMINI_API_KEY_PAID
-    os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY_PAID
-    os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY_PAID
+if GEMINI_API_KEY_FREE:
+    os.environ["GEMINI_API_KEY_FREE"] = GEMINI_API_KEY_FREE
 
-# Indique si la clé payante est réellement différente (et donc disponible)
-HAS_PAID_API_KEY = bool(_paid_raw and _paid_raw != "VOTRE_CLE_PAYANTE_ICI" and _paid_raw != GEMINI_API_KEY_FREE)
+os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
+os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
+
+HAS_PAID_API_KEY = bool(GEMINI_API_KEY_PAID and GEMINI_API_KEY_PAID != "VOTRE_CLE_PAYANTE_ICI")
 
 # Voix préconstruite Gemini Live (Voix féminines disponibles : Aoede, Kore, Leda)
 JARVIS_VOICE = os.environ.get("JARVIS_VOICE", "Aoede").strip()
