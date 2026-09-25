@@ -2166,6 +2166,9 @@ body {
   transition: all 0.25s ease;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  position: relative;
+  z-index: 20;
+  pointer-events: auto;
 }
 .hud-chat-btn:hover {
   background: rgba(2, 132, 199, 0.25);

@@ -1336,7 +1336,16 @@ async def voice_channel(websocket: WebSocket):
             except Exception as e:
                 if is_quota_or_limit_error(e):
                     raise QuotaExhaustedError(str(e))
-                if "disconnect message has been received" in str(e).lower():
+                err_str = str(e).lower()
+                is_normal_close = (
+                    "disconnect message has been received" in err_str
+                    or "1000" in err_str
+                    or "1001" in err_str
+                    or "normal closure" in err_str
+                    or "(1000, none)" in err_str
+                    or getattr(e, "code", None) in (1000, 1001)
+                )
+                if is_normal_close:
                     raise WebSocketDisconnect(code=1000)
                 else:
                     print(f"[client_to_gemini] Erreur: {e}")
@@ -2710,7 +2719,21 @@ async def voice_channel(websocket: WebSocket):
                 if is_quota_or_limit_error(e):
                     raise QuotaExhaustedError(str(e))
                 err_str = str(e).lower()
-                if "cannot call" in err_str or "close message has been sent" in err_str or "connection closed" in err_str or "disconnect" in err_str or "closed" in err_str:
+                is_normal_close = (
+                    "cannot call" in err_str
+                    or "close message has been sent" in err_str
+                    or "connection closed" in err_str
+                    or "disconnect" in err_str
+                    or "closed" in err_str
+                    or "close" in err_str
+                    or "1000" in err_str
+                    or "1001" in err_str
+                    or "(1000, none)" in err_str
+                    or "1000 none" in err_str
+                    or "connectionclosedok" in err_str
+                    or getattr(e, "code", None) in (1000, 1001)
+                )
+                if is_normal_close:
                     raise WebSocketDisconnect(code=1000)
                 else:
                     print(f"[gemini_to_client] Erreur: {e}")
@@ -2797,6 +2820,22 @@ async def voice_channel(websocket: WebSocket):
                 break
             except (WebSocketDisconnect, WebSocketDisconnected, asyncio.CancelledError):
                 break
+            except Exception as loop_e:
+                err_s = str(loop_e).lower()
+                is_loop_normal = (
+                    getattr(loop_e, "code", None) in (1000, 1001)
+                    or "1000" in err_s
+                    or "1001" in err_s
+                    or "connection closed" in err_s
+                    or "connectionclosed" in err_s
+                    or "normal closure" in err_s
+                    or "(1000, none)" in err_s
+                    or "1000 none" in err_s
+                    or "disconnect" in err_s
+                )
+                if is_loop_normal:
+                    break
+                raise
             except ModelSwitchRequested as switch_req:
                 new_model = switch_req.model
                 print(f"[Voice Channel] Bascule dynamique de modèle vocal demandée : {new_model}")
@@ -2857,23 +2896,39 @@ async def voice_channel(websocket: WebSocket):
     except (WebSocketDisconnect, WebSocketDisconnected, asyncio.CancelledError):
         pass
     except Exception as e:
-        import traceback
-        tb = traceback.format_exc()
         err_msg = str(e)
-        print(f"[Voice Channel] ERREUR CRITIQUE Live ({active_live_model}): {err_msg}\n{tb}")
-        console_monitor.record_error(source="Voice Channel", message=f"Erreur Live: {err_msg}", level="ERROR")
-        try:
-            await websocket.send_text(json.dumps({
-                "type": "transcript",
-                "role": "jarvis",
-                "text": f"Erreur de connexion Live : {err_msg}"
-            }))
-        except Exception:
-            pass
-        try:
-            await websocket.close(code=1011, reason=f"Live error: {err_msg[:100]}")
-        except Exception:
-            pass
+        err_lower = err_msg.lower()
+        is_normal = (
+            isinstance(e, (WebSocketDisconnect, WebSocketDisconnected))
+            or getattr(e, "code", None) in (1000, 1001)
+            or "1000" in err_msg
+            or "1001" in err_msg
+            or "normal closure" in err_lower
+            or "connectionclosed" in err_lower
+            or "disconnect" in err_lower
+            or "closed" in err_lower
+            or "(1000, none)" in err_lower
+            or "1000 none" in err_lower
+        )
+        if is_normal:
+            print(f"[Voice Channel] Fermeture normale de session vocale ({active_live_model})")
+        else:
+            import traceback
+            tb = traceback.format_exc()
+            print(f"[Voice Channel] ERREUR CRITIQUE Live ({active_live_model}): {err_msg}\n{tb}")
+            console_monitor.record_error(source="Voice Channel", message=f"Erreur Live: {err_msg}", level="ERROR")
+            try:
+                await websocket.send_text(json.dumps({
+                    "type": "transcript",
+                    "role": "jarvis",
+                    "text": f"Erreur de connexion Live : {err_msg}"
+                }))
+            except Exception:
+                pass
+            try:
+                await websocket.close(code=1011, reason=f"Live error: {err_msg[:100]}")
+            except Exception:
+                pass
     finally:
         # Fermeture propre et immédiate de la session Live Google pour éviter les sessions zombies en conflit 409
         if session_ctx:

@@ -1382,6 +1382,8 @@ async function startJarvis() {
         authScreen.style.display = 'flex';
         authScreen.style.opacity = '1';
         mainScreen.style.display = 'none';
+      } else if (e.code === 1000) {
+        disconnectJarvis("Session vocale en veille");
       } else {
         disconnectJarvis("Connexion terminée");
       }
@@ -1978,6 +1980,7 @@ const lightboxImg = document.getElementById('lightboxImg');
 const lightboxTitle = document.getElementById('lightboxTitle');
 const btnCloseLightbox = document.getElementById('btnCloseLightbox');
 const chatBadge = document.getElementById('chatBadge');
+const btnOpenChat = document.getElementById('btnOpenChat');
 
 // État local de la messagerie
 let selectedChatImageFile = null;
@@ -1988,12 +1991,17 @@ const renderedMessageIds = new Set();
 
 // Ouvre le volet de messagerie
 function openChatDrawer() {
-  if (!chatModal) return;
-  chatModal.style.display = 'flex';
+  const modal = chatModal || document.getElementById('chatModal');
+  if (!modal) {
+    console.error("[Chat] Élément #chatModal introuvable dans le DOM.");
+    return;
+  }
+  modal.style.display = 'flex';
   unreadChatCount = 0;
-  if (chatBadge) {
-    chatBadge.style.display = 'none';
-    chatBadge.innerText = '0';
+  const badge = chatBadge || document.getElementById('chatBadge');
+  if (badge) {
+    badge.style.display = 'none';
+    badge.innerText = '0';
   }
   if (!chatHistoryLoaded) {
     loadChatHistory();
@@ -2001,15 +2009,17 @@ function openChatDrawer() {
     scrollChatToBottom();
   }
   setTimeout(() => {
-    if (chatTextInput) chatTextInput.focus();
+    const input = chatTextInput || document.getElementById('chatTextInput');
+    if (input) input.focus();
   }, 100);
 }
 window.openChatDrawer = openChatDrawer;
 
 // Ferme le volet de messagerie
 function closeChatDrawer() {
-  if (!chatModal) return;
-  chatModal.style.display = 'none';
+  const modal = chatModal || document.getElementById('chatModal');
+  if (!modal) return;
+  modal.style.display = 'none';
 }
 window.closeChatDrawer = closeChatDrawer;
 
@@ -2438,6 +2448,13 @@ function onServerChatMessageReceived(msgData) {
 window.onServerChatMessageReceived = onServerChatMessageReceived;
 
 // ── Liaison des écouteurs d'événements ────────────────────────────────────
+
+if (btnOpenChat) {
+  btnOpenChat.addEventListener('click', (e) => {
+    e.preventDefault();
+    openChatDrawer();
+  });
+}
 
 if (btnChatAttach && chatFileInput) {
   btnChatAttach.onclick = () => chatFileInput.click();
