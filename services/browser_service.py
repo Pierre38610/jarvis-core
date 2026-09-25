@@ -336,12 +336,16 @@ async def _attempt_browser_use(
         try:
             import base64
             last_shot = screenshots[-1]
-            if isinstance(last_shot, str):
+            def _write_shot(data):
+                if isinstance(data, str):
+                    raw = base64.b64decode(data)
+                elif isinstance(data, bytes):
+                    raw = data
+                else:
+                    return
                 with open(SCREENSHOT_PATH, "wb") as f:
-                    f.write(base64.b64decode(last_shot))
-            elif isinstance(last_shot, bytes):
-                with open(SCREENSHOT_PATH, "wb") as f:
-                    f.write(last_shot)
+                    f.write(raw)
+            await asyncio.to_thread(_write_shot, last_shot)
         except Exception as e:
             print(f"[Browser Task] Capture d'écran: {e}")
 

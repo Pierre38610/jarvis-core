@@ -13,7 +13,10 @@ DB_PATH = os.path.join(BASE_DIR, "jarvis_memory.db")
 PROFILE_DIR = os.path.join(BASE_DIR, ".jarvis_chrome_profile")
 WORKSPACE_DIR = os.path.join(BASE_DIR, "my-project")
 
+CHAT_UPLOADS_DIR = os.path.join(STATIC_DIR, "uploads", "chat")
+
 os.makedirs(STATIC_DIR, exist_ok=True)
+os.makedirs(CHAT_UPLOADS_DIR, exist_ok=True)
 os.makedirs(WORKSPACE_DIR, exist_ok=True)
 os.makedirs(PROFILE_DIR, exist_ok=True)
 

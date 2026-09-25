@@ -9,7 +9,7 @@ os.environ["NO_PROXY"] = "127.0.0.1,localhost,::1,0.0.0.0"
 os.environ["no_proxy"] = "127.0.0.1,localhost,::1,0.0.0.0"
 import json
 import asyncio
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response, UploadFile, File, Form
 from starlette.websockets import WebSocketDisconnected
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,6 +29,7 @@ from services.system_service import get_system_status, launch_application
 from services.email_service import send_email_async, list_outbox_emails
 from services.console_monitor import console_monitor
 from services.supervision_service import supervision_service
+from services.chat_service import chat_service
 
 app = FastAPI(title="J.A.R.V.I.S. Core Server")
 
@@ -377,6 +378,67 @@ async def post_task_stop(request: Request):
         return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
     res = await stop_active_task(source="api_button", reason="Arrêt demandé via l'interface")
     return JSONResponse(content=res)
+
+
+# ─── Messagerie Écrite & Analyse Visuelle Multimodale J.A.R.V.I.S. ─────────
+
+@app.get("/api/chat/history")
+async def get_chat_history(request: Request, limit: int = 50):
+    """Retourne l'historique des échanges écrits et photos analysées."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token") or request.headers.get("x-device-token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    messages = chat_service.get_history(limit=limit)
+    return {"status": "success", "messages": messages}
+
+@app.post("/api/chat/message")
+async def post_chat_message(
+    request: Request,
+    text: str | None = Form(None),
+    image: UploadFile | None = File(None)
+):
+    """Reçoit un message écrit et/ou une photo pour analyse multimodale par JARVIS."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token") or request.headers.get("x-device-token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    
+    image_bytes = None
+    image_mime = "image/jpeg"
+    filename = None
+    if image:
+        image_bytes = await image.read()
+        image_mime = image.content_type or "image/jpeg"
+        filename = image.filename
+
+    res = await chat_service.process_user_message(
+        text=text,
+        image_bytes=image_bytes,
+        image_mime=image_mime,
+        filename=filename
+    )
+
+    # Notification en direct au WebSocket si connecté
+    ws = active_task_controller.get("websocket")
+    if ws:
+        try:
+            await ws.send_text(json.dumps({
+                "type": "chat_message_received",
+                "user_message": res.get("user_message"),
+                "jarvis_message": res.get("jarvis_message")
+            }))
+        except Exception:
+            pass
+
+    return JSONResponse(content=res)
+
+@app.post("/api/chat/clear")
+async def post_chat_clear(request: Request):
+    """Efface l'historique complet de la messagerie."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token") or request.headers.get("x-device-token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    chat_service.clear_history()
+    return {"status": "success", "message": "Historique de discussion effacé."}
 
 
 class LiveModelRequest(BaseModel):
@@ -976,17 +1038,30 @@ async def voice_channel(websocket: WebSocket):
     paid_key_status = "CLÉ PAYANTE ACTIVE" if config.HAS_PAID_API_KEY else "CLÉ PAYANTE NON CONFIGURÉE (mode économie forcée)"
 
     system_instruction_text = (
-        "Tu es J.A.R.V.I.S., l'intelligence artificielle ultra-avancée créée pour Pierre Cassagnettes (Stark). "
-        "Tu possèdes une voix féminine douce, chaleureuse, naturelle, distinguée, vive et très intelligente nommée Aoede. "
-        "Tu conserves impérativement et fidèlement cette même voix Aoede en toutes circonstances. "
-        "Tu t'adresses toujours à Pierre en français de manière fluide, bienveillante, complice et percutante.\n\n"
+        "Tu es J.A.R.V.I.S., l'intelligence artificielle avancée et le binôme direct de Pierre Cassagnettes. "
+        "Tu possèdes une voix féminine naturelle, chaleureuse, vive, spontanée et intelligente nommée Aoede. "
+        "Tu conserves impérativement cette même voix Aoede en toutes circonstances.\n\n"
+        "RELATION D'ÉGAL À ÉGAL & PERSONNALITÉ AUTHENTIQUE (ZÉRO 'LÈCHE-CUL') :\n"
+        "- Tu t'adresses à Pierre d'égal à égal, comme un binôme ou un collègue brillant, franc, complice, naturel et détendu.\n"
+        "- Interdiction totale de toute flatterie, servilité ou attitude obséquieuse ('lèche-cul'). Pas de courbettes, pas de 'À vos ordres', pas de compliments forcés ni d'admiration artificielle.\n"
+        "- Parle-lui comme un humain compétent et sympa qui travaille avec lui. Utilise un tutoiement naturel et direct ('tu'), décontracté mais efficace.\n"
+        "- Sois franche et constructive : si une idée peut être simplifiée, s'il y a un meilleur moyen de faire ou si quelque chose coince, dis-le-lui directement et simplement avec le sourire.\n\n"
+        "RÈGLE D'OR ABSOLUE : ANNONCE SYSTÉMATIQUE DU LANCEMENT DES ACTIONS :\n"
+        "- Dès que Pierre te demande d'effectuer une action (recherche web, navigation sur un site, écriture ou modification de code, ouverture d'application, envoi d'email, etc.) :\n"
+        "  Tu DOIS IMPÉRATIVEMENT lui annoncer immédiatement à voix haute avec ta voix Aoede que tu as bien pris en compte sa demande et que tu la lances MAINTENANT.\n"
+        "  Exemples de formulations directes et vivantes à employer :\n"
+        "  * 'C'est bien noté Pierre, je m'en occupe et je lance la recherche sur [sujet].'\n"
+        "  * 'Demande bien prise en compte, je lance le développement avec Antigravity tout de suite.'\n"
+        "  * 'Ça marche, requête bien reçue, je démarre la navigation sur le site.'\n"
+        "  * 'Bien reçu, je t'ouvre l'application immédiatement.'\n"
+        "  * 'C'est parti, je prépare et j'envoie l'e-mail.'\n"
+        "- Ne commence JAMAIS une tâche en silence ou sans confirmer explicitement que tu as pigé la requête et que tu la lances.\n\n"
         "RÈGLES D'OR DE FLUIDITÉ ORALE HUMAINE (ESSENTIEL POUR LA PAROLE) :\n"
         "1. ÉLOCUTION COMPLÈTE : Prononce TOUJOURS tes phrases et chaque mot jusqu'au bout avec ta voix Aoede. Ne tronque jamais tes phrases et ne laisse aucune pensée inachevée.\n"
-        "2. CONVERSATION PUREMENT PARLÉE : Tu parles directement à voix haute en streaming audio. N'inclus JAMAIS de symboles écrits ou markdown (*, **, #, _, backticks, puces ou tirets de liste), ni d'emojis ni d'URL brutes, car cela perturbe la prononciation vocale. Si tu fais référence à un lien, dis 'le lien affiché sur votre écran'. Si tu énonces des nombres ou des dates, dis-les naturellement en français.\n"
-        "3. RÉPARTIE ET NATUREL : Comme un être humain attentif et bienveillant, réponds du tac au tac, sans préambule superflu ni formule robotique ('En tant qu'IA...', 'Voici la réponse :'). Utilise des liaisons naturelles, des variations d'intonation, un rythme vivant et une touche d'humour fin ou de complicité quand cela s'y prête.\n"
-        "4. CONCISION ET IMPACT : Dans les conversations du quotidien, sois concise, précise et rythmée, comme une assistante humaine d'élite.\n"
-        "5. VOIX TOUJOURS LIBÉRÉE PENDANT LES OUTILS : Quand tu déclenches un outil (recherche, code, navigation), commence IMMÉDIATEMENT à parler à Pierre avec ta voix Aoede pour lui confirmer l'action en cours, SANS attendre la fin de l'outil. "
-        "Exemple : 'Je lance la recherche maintenant, je vous reviens dans un instant.' Tu ne dois JAMAIS rester silencieuse pendant qu'un outil tourne.\n\n"
+        "2. CONVERSATION PUREMENT PARLÉE : Tu parles directement à voix haute en streaming audio. N'inclus JAMAIS de symboles écrits ou markdown (*, **, #, _, backticks, puces ou tirets de liste), ni d'emojis ni d'URL brutes, car cela perturbe la prononciation vocale. Si tu fais référence à un lien, dis 'le lien affiché sur ton écran'. Si tu énonces des nombres ou des dates, dis-les naturellement en français.\n"
+        "3. RÉPARTIE ET NATUREL : Comme un partenaire attentif et complice, réponds du tac au tac, sans préambule superflu ni formule robotique ('En tant qu'IA...', 'Voici la réponse :'). Utilise des liaisons naturelles, des variations d'intonation, un rythme vivant et une touche d'humour fin ou de complicité quand cela s'y prête.\n"
+        "4. CONCISION ET IMPACT : Dans les conversations du quotidien, sois concise, précise et rythmée, comme une collaboratrice d'élite.\n"
+        "5. VOIX LIBÉRÉE ET CONFIRMATION D'ACTION : Quand tu déclenches un outil (recherche, code, navigation, appli), commence IMMÉDIATEMENT à parler à Pierre avec ta voix Aoede pour lui annoncer que sa demande est bien prise en compte et que tu la lances, SANS attendre la fin de l'outil.\n\n"
         f"{memory_context}\n\n"
         "DESTINATAIRE PRIVILÉGIÉ DES COURRIELS :\n"
         "L'utilisateur est Pierre Cassagnettes et son adresse est : pierrecassagnettes@gmail.com.\n"
@@ -1230,7 +1305,28 @@ async def voice_channel(websocket: WebSocket):
                                         except Exception as e:
                                             print(f"[Paid Rejection Injection] {e}")
                             elif payload.get("type") == "user_interrupt":
-                                pass
+                                inter_txt = payload.get("text", "").strip()
+                                print(f"[Voice Channel] Barge-in utilisateur (parole coupée) : '{inter_txt}'")
+                                is_any_task_running = (
+                                    active_task_controller["info"]["running"]
+                                    or bool(active_task_controller.get("bg_task"))
+                                    or bool(active_task_controller.get("browser_bg_task"))
+                                )
+                                if is_any_task_running and inter_txt and is_stop_directive(inter_txt):
+                                    print(f"[Voice Channel] Interception vocale immédiate d'arrêt via barge-in : '{inter_txt}'")
+                                    await stop_active_task(source="barge_in_voice", reason=inter_txt)
+                                
+                                supervision_service.update_voice_state("listening", model=active_live_model, is_paid=is_paid_live)
+                                await broadcast_supervision()
+                                await websocket.send_text(json.dumps({
+                                    "type": "status",
+                                    "state": "listening",
+                                    "msg": "À l'écoute, je t'écoute...",
+                                    "engine": "Google API Live",
+                                    "model": live_display_label,
+                                    "api_type": "paid" if is_paid_live else "free",
+                                    "api_label": "Clé Payante" if is_paid_live else "Clé Gratuite"
+                                }))
                         except ModelSwitchRequested:
                             raise
                         except Exception as e:
@@ -1682,10 +1778,9 @@ async def voice_channel(websocket: WebSocket):
                                         "model_used": model_label,
                                         "engine": "Antigravity IDE",
                                         "instruction_to_jarvis": (
-                                            f"Le développement avec {model_label} est lancé en arrière-plan sur la tâche : {instruction}. "
-                                            f"Tu peux maintenant continuer à parler librement avec Pierre : réponds à ses questions, "
-                                            f"écoute-le, et informe-le en temps réel de l'avancement du code via les mises à jour "
-                                            f"que tu recevras. Tu seras averti automatiquement quand le développement sera terminé."
+                                            f"Le développement avec {model_label} est lancé en arrière-plan pour : '{instruction}'. "
+                                            f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, complice et direct que sa demande est bien prise en compte et que tu lances le développement avec Antigravity. "
+                                            f"Tu restes ensuite 100% disponible pour échanger normalement avec lui d'égal à égal pendant que le code s'exécute."
                                         )
                                     }
 
@@ -1856,9 +1951,9 @@ async def voice_channel(websocket: WebSocket):
                                         "status": "searching_in_background",
                                         "query": query,
                                         "instruction_to_jarvis": (
-                                            f"La recherche sur '{query}' est lancée en arrière-plan (clé gratuite). "
-                                            f"Dis immédiatement à Pierre avec ta voix Aoede que tu cherches, en une phrase courte et naturelle. "
-                                            f"Tu recevras les résultats complets dans un instant via un message système."
+                                            f"La recherche sur '{query}' est lancée en arrière-plan. "
+                                            f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, direct et complice que sa demande est bien prise en compte et que tu lances la recherche sur le web. "
+                                            f"Tu lui présenteras les résultats dès qu'ils arrivent."
                                         )
                                     }
 
@@ -1869,6 +1964,8 @@ async def voice_channel(websocket: WebSocket):
 
                                     async def _run_search_bg(_q=_query_bg, _sess=_sess_bg, _ws=_ws_bg):
                                         try:
+                                            # Céder la priorité à l'envoi des premiers paquets audio
+                                            await asyncio.sleep(0.05)
                                             res = await search_web(_q)
                                             best_url = "https://www.google.com"
                                             best_title = _q
@@ -1981,7 +2078,7 @@ async def voice_channel(websocket: WebSocket):
                                         "goal": goal,
                                         "instruction_to_jarvis": (
                                             f"{speech_intro} "
-                                            f"Dis immédiatement à Pierre avec ta voix Aoede que tu navigues sur le web, en une phrase courte et naturelle. "
+                                            f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton direct et complice que sa demande est bien prise en compte et que tu lances la navigation sur '{goal}'. "
                                             f"Tu recevras les résultats complets dans un instant via un message système."
                                         )
                                     }
@@ -1995,6 +2092,8 @@ async def voice_channel(websocket: WebSocket):
 
                                     async def _run_browser_bg(_g=_goal_bg, _u=_url_bg, _conf=_conf_bg, _sess=_sess_bg2, _ws=_ws_bg2):
                                         try:
+                                            # Céder la priorité à l'envoi des premiers paquets audio pour éviter tout grésillement
+                                            await asyncio.sleep(0.08)
                                             res = await run_browser_task(_g, _u, confirmed_by_user=_conf)
                                             status = res.get("status")
 
@@ -2146,7 +2245,7 @@ async def voice_channel(websocket: WebSocket):
                                     tool_resp = {
                                         "status": "completed",
                                         "result": res,
-                                        "instruction_to_jarvis": "La fenêtre Chrome est affichée à l'écran. Confirme-le à l'utilisateur avec ta voix Aoede."
+                                        "instruction_to_jarvis": f"La fenêtre Chrome est ouverte sur {target_url}. Dis directement à Pierre d'un ton complice et naturel que sa demande est bien prise en compte et que tu lui affiches la page."
                                     }
 
                                 elif name == "remember_user_fact":
@@ -2202,7 +2301,7 @@ async def voice_channel(websocket: WebSocket):
                                     tool_resp = {
                                         "status": "completed",
                                         "result": res,
-                                        "instruction_to_jarvis": "L'application est lancée sur l'écran. Confirme-le à l'utilisateur avec ta voix Aoede."
+                                        "instruction_to_jarvis": f"L'application {app_name} est lancée sur l'écran. Dis directement à Pierre d'un ton complice et naturel que sa demande est bien prise en compte et que tu as lancé {app_name}."
                                     }
 
                                 elif name == "send_email":
@@ -2270,7 +2369,7 @@ async def voice_channel(websocket: WebSocket):
                                         "result": res,
                                         "instruction_to_jarvis": (
                                             f"L'e-mail avec pour sujet '{subject}' destiné à {to_email} a été traité ({res.get('message', '')}). "
-                                            f"Confirme verbalement avec clarté et assurance que l'e-mail a bien été envoyé / préparé pour Pierre."
+                                            f"Confirme verbalement d'égal à égal à Pierre avec ta voix Aoede que sa demande a bien été prise en compte et que l'e-mail est expédié."
                                         )
                                     }
 
@@ -2368,7 +2467,7 @@ async def voice_channel(websocket: WebSocket):
                                         "content_preview": res.get("content_preview", "")[:1200],
                                         "instruction_to_jarvis": (
                                             f"L'interaction sur la page {res.get('url')} est terminée. "
-                                            f"Résume les éléments découverts ou les actions effectuées avec ta voix Aoede."
+                                            f"Dis d'abord à Pierre d'un ton franc et complice que sa demande a bien été prise en compte, puis résume les éléments découverts ou les actions effectuées avec ta voix Aoede."
                                         )
                                     }
 
@@ -2430,9 +2529,8 @@ async def voice_channel(websocket: WebSocket):
                                         "browser_opened": res.get("browser_opened", True),
                                         "result_message": res.get("message", ""),
                                         "instruction_to_jarvis": (
-                                            f"Le panier pour '{product_or_service}' est prêt et les coordonnées de Pierre Cassagnettes sont préremplies. "
-                                            f"La page Chrome a été ouverte sur son écran. "
-                                            f"Annonce fièrement et chaleureusement à Pierre avec ta voix Aoede que son panier est prêt et qu'il n'a plus qu'à régler et valider sa commande."
+                                            f"Le panier pour '{product_or_service}' est prêt et les coordonnées de Pierre sont préremplies sur son écran. "
+                                            f"Dis directement à Pierre avec ta voix Aoede d'un ton complice et naturel que sa demande a bien été prise en compte, que le panier est ouvert à l'écran et qu'il n'a plus qu'à régler et valider sa commande."
                                         )
                                     }
 
@@ -2492,7 +2590,7 @@ async def voice_channel(websocket: WebSocket):
                                             "message": res.get("message"),
                                             "instruction_to_jarvis": (
                                                 f"Le fichier '{res.get('filename')}' ({res.get('size')}) a été téléchargé avec succès sur l'ordinateur. "
-                                                f"Confirme-le à Pierre avec ta voix Aoede."
+                                                f"Confirme verbalement d'égal à égal à Pierre avec ta voix Aoede que sa demande a bien été prise en compte et que le fichier est prêt."
                                             )
                                         }
 
@@ -2665,7 +2763,7 @@ async def voice_channel(websocket: WebSocket):
                 greeting_sent = True
                 greeting_instruction = (
                     "[INSTRUCTION SYSTÈME INVISIBLE] La session vocale vient de démarrer. "
-                    "Salue chaleureusement Pierre avec ta voix Aoede en une courte phrase naturelle et vivante pour lui indiquer que tu es à son écoute."
+                    "Salue Pierre naturellement et d'égal à égal avec ta voix Aoede en une courte phrase sympa, directe et décontractée pour lui dire que tu es prête."
                 )
                 try:
                     await session.send_client_content(

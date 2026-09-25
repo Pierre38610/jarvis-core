@@ -602,6 +602,7 @@ function handleTranscript(role, text, mode) {
   const body = currentEntryEl.querySelector('.transcript-body');
   if (body) {
     if (role === 'jarvis') {
+      window._jarvisLastSpokenText = (window._jarvisLastSpokenText || '') + ' ' + text;
       if (mode === 'replace') {
         body.innerText = text.trim();
       } else {
@@ -671,6 +672,26 @@ function downsampleTo16k(inputBuffer, inSampleRate) {
   return result;
 }
 
+// --- BUFFER CIRCULAIRE DE BARGE-IN VOCAL ---
+// Garde en mémoire tampon les 800 à 1000 dernières ms d'audio micro pendant que Jarvis parle.
+// Dès que l'utilisateur prend la parole pour lui couper la parole, ce buffer est flushé immédiatement vers WebSocket
+// afin que Gemini reçoive l'attaque complète de la phrase sans perdre la moindre syllabe !
+let bargeInAudioRingBuffer = [];
+const MAX_BARGE_IN_CHUNKS = 10; // 10 trames de 4096 samples downsamplés (~850ms)
+
+function flushBargeInAudio() {
+  if (ws && ws.readyState === WebSocket.OPEN && bargeInAudioRingBuffer.length > 0) {
+    while (bargeInAudioRingBuffer.length > 0) {
+      const chunk = bargeInAudioRingBuffer.shift();
+      try {
+        ws.send(chunk);
+      } catch (e) {}
+    }
+  } else {
+    bargeInAudioRingBuffer = [];
+  }
+}
+
 // Interruption : coupe immédiatement le son en cours
 function interruptPlayback() {
   if (speechEndTimer) {
@@ -683,6 +704,7 @@ function interruptPlayback() {
   });
   scheduledAudioSources = [];
   isJarvisSpeaking = false;
+  window._jarvisLastSpokenText = '';
   if (btnInterrupt) btnInterrupt.style.display = 'none';
   if (audioCtx) {
     nextPlayTime = audioCtx.currentTime;
@@ -723,10 +745,44 @@ function startLiveSpeechRecognition() {
     };
 
     recognizer.onresult = (event) => {
+      let interimTranscript = '';
       let finalTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const trans = event.results[i][0] ? event.results[i][0].transcript : '';
         if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
+          finalTranscript += trans;
+        } else {
+          interimTranscript += trans;
+        }
+      }
+
+      const spokenNow = (finalTranscript || interimTranscript).trim();
+      if (!spokenNow) return;
+
+      // ── BARGE-IN VOCAL INTELLIGENT (Coupure de parole naturelle) ──
+      // Dès que l'utilisateur prend la parole pendant que Jarvis parle, on s'arrête instantanément !
+      // Le SpeechRecognition filtre tous les bruits parasites (ventilateur, clics, respiration, etc.)
+      if (isJarvisSpeaking || scheduledAudioSources.length > 0) {
+        const cleanSpoken = spokenNow.toLowerCase().trim();
+        const cleanJarvis = (window._jarvisLastSpokenText || '').toLowerCase().trim();
+        const isEcho = cleanJarvis.length > 0 && cleanJarvis.includes(cleanSpoken) && cleanSpoken.length > 3;
+
+        if (!isEcho && cleanSpoken.length >= 2) {
+          console.log("[Barge-In] Prise de parole détectée pendant la réponse de Jarvis :", spokenNow);
+          // 1. Coupe immédiatement le son dans les haut-parleurs
+          interruptPlayback();
+          setJarvisState('listening', "À l'écoute, je t'écoute...");
+          // 2. Envoie l'audio mis en mémoire tampon (début de la phrase)
+          flushBargeInAudio();
+          // 3. Préviens le backend de la coupure de parole
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: "user_interrupt",
+              text: spokenNow
+            }));
+          }
+          // 4. Affiche immédiatement dans le HUD
+          handleTranscript('user', spokenNow, finalTranscript ? 'final' : 'interim');
         }
       }
 
@@ -736,22 +792,14 @@ function startLiveSpeechRecognition() {
       // Si JARVIS est en cours de développement (panneau taskDock actif)
       if (taskDock && taskDock.style.display === 'flex') {
         console.log("[STT] Consigne vocale captée pendant le codage :", text);
-        
-        // 1. Inscrire la parole de l'utilisateur dans l'historique
         handleTranscript('user', text, 'append');
-        
-        // 2. Mettre à jour visuellement le dock de développement
         if (taskDockInstruction) {
           taskDockInstruction.innerText = "Consigne prise en compte : " + text;
         }
         if (taskDockProgressText) {
-          taskDockProgressText.innerText = "J'adapte le code selon votre consigne...";
+          taskDockProgressText.innerText = "J'adapte le code selon ta consigne...";
         }
-        
-        // 3. Chime sonore subtil Stark
         playActionChime();
-        
-        // 4. Transmission temps réel à Antigravity
         sendLiveDirective(text);
       }
     };
@@ -806,6 +854,15 @@ function playPcmChunk(arrayBuffer) {
     float32[i] = int16[i] / 32768.0;
   }
 
+  // Micro-lissage des jointures (fade-in/fade-out de 16 échantillons) pour éliminer tout clic ou grésillement DC offset
+  if (float32.length > 32) {
+    for (let i = 0; i < 16; i++) {
+      const ramp = i / 16;
+      float32[i] *= ramp;
+      float32[float32.length - 1 - i] *= ramp;
+    }
+  }
+
   const audioBuffer = audioCtx.createBuffer(1, float32.length, 24000);
   audioBuffer.getChannelData(0).set(float32);
 
@@ -826,11 +883,16 @@ function playPcmChunk(arrayBuffer) {
     setJarvisState('speaking', "JARVIS vous répond...");
     btnLabel.innerText = "COUPER";
     if (btnInterrupt) btnInterrupt.style.display = 'inline-flex';
+    // Marge initiale de 80ms au démarrage de la réplique
+    nextPlayTime = now + 0.08;
   }
 
-  // Jitter buffer : lookahead de 150ms pour absorber les variations réseau sans latence perceptible
+  // Jitter buffer adaptatif anti-grésillement :
+  // Si un paquet arrive légèrement en retard (ex: pic CPU ou navigation web),
+  // on ne crée PAS de trou de silence artificiel de 150ms qui fait saccader la voix.
+  // On enchaîne immédiatement à now + 0.005s (5ms) pour une parfaite continuité audio.
   if (nextPlayTime < now) {
-    nextPlayTime = now + 0.15;
+    nextPlayTime = now + 0.005;
   }
   source.start(nextPlayTime);
   nextPlayTime += audioBuffer.duration;
@@ -931,15 +993,22 @@ function startMicMonitoring() {
     }
 
     // Protection et Barge-in vocal intelligent :
-    // On ne coupe la parole QUE si l'utilisateur parle délibérément très fort (> 75%)
-    // directement dans le micro pendant plusieurs trames d'affilée (~200ms).
-    // Le son des haut-parleurs ne déclenchera JAMAIS d'interruption accidentelle !
+    // Si Jarvis parle et que le volume micro soutenu indique une prise de parole (> 38% sur ~150ms),
+    // sert de filet de sécurité si le SpeechRecognition web n'a pas encore émis de mot :
     if (isJarvisSpeaking || scheduledAudioSources.length > 0) {
-      if (volumePercent > 75) {
+      if (volumePercent > 38) {
         bargeInConsecutiveFrames++;
-        if (bargeInConsecutiveFrames >= 8) {
+        if (bargeInConsecutiveFrames >= 6) {
+          console.log("[Barge-In VAD] Voix utilisateur soutenue détectée (> 38%)");
           interruptPlayback();
-          setJarvisState('listening', "À l'écoute, posez votre question...");
+          setJarvisState('listening', "À l'écoute, je t'écoute...");
+          flushBargeInAudio();
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: "user_interrupt",
+              text: ""
+            }));
+          }
           bargeInConsecutiveFrames = 0;
         }
       } else {
@@ -1054,13 +1123,13 @@ async function startJarvis() {
       await audioCtx.resume();
     }
 
-    // Dynamics Compressor pour maintenir un volume sonore constant et empêcher tout pic ou baisse inopinée
+    // Dynamics Compressor pour maintenir un son chaud, clair et naturel sans distorsion ni pompage
     dynamicsCompressor = audioCtx.createDynamicsCompressor();
     dynamicsCompressor.threshold.setValueAtTime(-18, audioCtx.currentTime);
-    dynamicsCompressor.knee.setValueAtTime(12, audioCtx.currentTime);
-    dynamicsCompressor.ratio.setValueAtTime(6, audioCtx.currentTime);
-    dynamicsCompressor.attack.setValueAtTime(0.001, audioCtx.currentTime); // Attaque ultra-rapide pour éviter les pops
-    dynamicsCompressor.release.setValueAtTime(0.15, audioCtx.currentTime); // Release rapide pour transitions fluides
+    dynamicsCompressor.knee.setValueAtTime(20, audioCtx.currentTime);
+    dynamicsCompressor.ratio.setValueAtTime(4, audioCtx.currentTime);
+    dynamicsCompressor.attack.setValueAtTime(0.005, audioCtx.currentTime); // 5ms : attaque naturelle sans distorsion
+    dynamicsCompressor.release.setValueAtTime(0.20, audioCtx.currentTime); // 200ms : release doux évitant tout effet de pompage
 
     // GainNode Maître pour contrôle direct du volume
     masterGainNode = audioCtx.createGain();
@@ -1137,19 +1206,30 @@ async function startJarvis() {
           audioCtx.resume();
         }
 
-        // Gating acoustique étendu :
-        // - Pendant que Jarvis parle : évite l'auto-interruption (echo)
-        // - Pendant l'exécution d'un outil : le silence est envoyé séparément par startSilenceSender()
-        if (isJarvisSpeaking || scheduledAudioSources.length > 0 || isToolExecuting) {
-          return;
-        }
-
         const rawFloat32 = e.inputBuffer.getChannelData(0);
         const resampled = downsampleTo16k(rawFloat32, audioCtx.sampleRate);
         const int16 = new Int16Array(resampled.length);
         for (let i = 0; i < resampled.length; i++) {
           int16[i] = Math.max(-1, Math.min(1, resampled[i])) * 0x7FFF;
         }
+
+        // 1. Pendant que Jarvis parle : on retient l'audio dans le ring buffer circulaire (~850ms)
+        // Cela évite que les bruits ambiants n'interrompent la voix de Jarvis à tort,
+        // tout en conservant le début de phrase dès que l'utilisateur lui coupe la parole.
+        if (isJarvisSpeaking || scheduledAudioSources.length > 0) {
+          bargeInAudioRingBuffer.push(int16.buffer);
+          if (bargeInAudioRingBuffer.length > MAX_BARGE_IN_CHUNKS) {
+            bargeInAudioRingBuffer.shift();
+          }
+          return;
+        }
+
+        // 2. Si un outil tourne en tâche de fond sans restitution vocale active :
+        if (isToolExecuting) {
+          return;
+        }
+
+        // 3. Mode normal : streaming direct et fluide du microphone à Gemini Live
         ws.send(int16.buffer);
       }
     };
@@ -1255,6 +1335,10 @@ async function startJarvis() {
           } else if (msg.type === 'supervision_update') {
             if (msg.overview) {
               renderSupervisionOverview(msg.overview);
+            }
+          } else if (msg.type === 'chat_message_received') {
+            if (typeof onServerChatMessageReceived === 'function') {
+              onServerChatMessageReceived(msg);
             }
           } else if (msg.type === 'transcript') {
             handleTranscript(msg.role, msg.text, msg.mode);
@@ -1868,3 +1952,597 @@ window.addEventListener('beforeunload', () => {
 window.addEventListener('pagehide', () => {
   disconnectJarvis("Page masquée");
 });
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   MESSAGERIE & ANALYSE VISUELLE MULTIMODALE J.A.R.V.I.S. (FRONTEND)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+// Éléments du DOM Messagerie
+const chatModal = document.getElementById('chatModal');
+const chatMessages = document.getElementById('chatMessages');
+const chatWelcomeBanner = document.getElementById('chatWelcomeBanner');
+const chatTypingIndicator = document.getElementById('chatTypingIndicator');
+const chatTypingText = document.getElementById('chatTypingText');
+const chatImagePreviewBar = document.getElementById('chatImagePreviewBar');
+const chatPreviewImg = document.getElementById('chatPreviewImg');
+const chatPreviewName = document.getElementById('chatPreviewName');
+const chatFileInput = document.getElementById('chatFileInput');
+const chatTextInput = document.getElementById('chatTextInput');
+const btnChatAttach = document.getElementById('btnChatAttach');
+const btnChatSend = document.getElementById('btnChatSend');
+const btnChatClear = document.getElementById('btnChatClear');
+const btnCloseChat = document.getElementById('btnCloseChat');
+const btnRemoveChatImage = document.getElementById('btnRemoveChatImage');
+const chatLightboxModal = document.getElementById('chatLightboxModal');
+const lightboxImg = document.getElementById('lightboxImg');
+const lightboxTitle = document.getElementById('lightboxTitle');
+const btnCloseLightbox = document.getElementById('btnCloseLightbox');
+const chatBadge = document.getElementById('chatBadge');
+
+// État local de la messagerie
+let selectedChatImageFile = null;
+let isSendingChatMessage = false;
+let unreadChatCount = 0;
+let chatHistoryLoaded = false;
+const renderedMessageIds = new Set();
+
+// Ouvre le volet de messagerie
+function openChatDrawer() {
+  if (!chatModal) return;
+  chatModal.style.display = 'flex';
+  unreadChatCount = 0;
+  if (chatBadge) {
+    chatBadge.style.display = 'none';
+    chatBadge.innerText = '0';
+  }
+  if (!chatHistoryLoaded) {
+    loadChatHistory();
+  } else {
+    scrollChatToBottom();
+  }
+  setTimeout(() => {
+    if (chatTextInput) chatTextInput.focus();
+  }, 100);
+}
+window.openChatDrawer = openChatDrawer;
+
+// Ferme le volet de messagerie
+function closeChatDrawer() {
+  if (!chatModal) return;
+  chatModal.style.display = 'none';
+}
+window.closeChatDrawer = closeChatDrawer;
+
+// Charge l'historique complet depuis le serveur
+async function loadChatHistory() {
+  try {
+    const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+    const res = await fetch(`/api/chat/history?token=${encodeURIComponent(token)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.status === 'success' && Array.isArray(data.messages)) {
+      if (data.messages.length > 0 && chatWelcomeBanner) {
+        chatWelcomeBanner.style.display = 'none';
+      }
+      data.messages.forEach(msg => {
+        renderChatMessage(msg, false);
+      });
+      chatHistoryLoaded = true;
+      scrollChatToBottom();
+    }
+  } catch (err) {
+    console.warn("[Chat] Erreur chargement historique:", err);
+  }
+}
+
+// Fait défiler le fil de discussion vers le bas
+function scrollChatToBottom() {
+  if (!chatMessages) return;
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Convertit Markdown simplifié en HTML sécurisé
+function formatMarkdownText(rawText) {
+  if (!rawText) return '';
+  let escaped = String(rawText)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Blocs de code ```lang ... ```
+  escaped = escaped.replace(/```([a-zA-Z0-9_\-\+]*)\n?([\s\S]*?)```/g, (match, lang, code) => {
+    const l = lang ? lang.trim() : 'code';
+    return `<pre><div class="code-header"><span class="code-lang">${l}</span><button class="chat-msg-btn-action" type="button" onclick="window.copyCodeBlock(this)">Copier</button></div><code>${code.trim()}</code></pre>`;
+  });
+
+  // Code inline `code`
+  escaped = escaped.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+  // Gras **text**
+  escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+  // Italique *text*
+  escaped = escaped.replace(/\*([^\*\n]+)\*/g, '<em>$1</em>');
+
+  // Listes
+  const lines = escaped.split('\n');
+  let inUl = false;
+  let inOl = false;
+  const result = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const ulMatch = line.match(/^(\s*)[-*]\s+(.*)$/);
+    const olMatch = line.match(/^(\s*)\d+\.\s+(.*)$/);
+
+    if (ulMatch) {
+      if (!inUl) {
+        result.push('<ul>');
+        inUl = true;
+      }
+      result.push(`<li>${ulMatch[2]}</li>`);
+    } else if (olMatch) {
+      if (!inOl) {
+        result.push('<ol>');
+        inOl = true;
+      }
+      result.push(`<li>${olMatch[2]}</li>`);
+    } else {
+      if (inUl) {
+        result.push('</ul>');
+        inUl = false;
+      }
+      if (inOl) {
+        result.push('</ol>');
+        inOl = false;
+      }
+      result.push(line);
+    }
+  }
+  if (inUl) result.push('</ul>');
+  if (inOl) result.push('</ol>');
+
+  const processed = result.join('\n');
+  const paragraphs = processed.split(/\n{2,}/).map(p => {
+    const trimmed = p.trim();
+    if (!trimmed) return '';
+    if (trimmed.startsWith('<pre') || trimmed.startsWith('<ul') || trimmed.startsWith('<ol')) {
+      return trimmed;
+    }
+    return `<p>${trimmed.replace(/\n/g, '<br>')}</p>`;
+  });
+
+  return paragraphs.filter(Boolean).join('');
+}
+
+// Affiche une bulle de message dans le fil
+function renderChatMessage(msg, scroll = true) {
+  if (!chatMessages) return;
+  if (msg.id && renderedMessageIds.has(msg.id)) return;
+  if (msg.id) renderedMessageIds.add(msg.id);
+
+  if (chatWelcomeBanner) {
+    chatWelcomeBanner.style.display = 'none';
+  }
+
+  const isUser = (msg.role === 'user');
+  const row = document.createElement('div');
+  row.className = `chat-msg-row ${isUser ? 'user-row' : 'jarvis-row'}`;
+
+  // Horodatage formaté
+  let timeStr = '';
+  if (msg.created_at) {
+    try {
+      const dt = new Date(msg.created_at);
+      timeStr = dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      timeStr = '';
+    }
+  }
+
+  // Meta header (Auteur + Modèle + Heure)
+  const meta = document.createElement('div');
+  meta.className = 'chat-msg-meta';
+  if (isUser) {
+    meta.innerHTML = `<span class="chat-msg-author">VOUS</span> <span>${timeStr}</span>`;
+  } else {
+    const modelTag = msg.model_used ? `<span class="chat-msg-model-tag">${msg.model_used.split('(')[0].trim()}</span>` : '';
+    meta.innerHTML = `<span class="chat-msg-author">J.A.R.V.I.S.</span> ${modelTag} <span>${timeStr}</span>`;
+  }
+  row.appendChild(meta);
+
+  // Bulle de contenu
+  const bubble = document.createElement('div');
+  bubble.className = `chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-jarvis'}`;
+
+  // Image attachée (si présente)
+  if (msg.image_url) {
+    const imgWrap = document.createElement('div');
+    imgWrap.className = 'chat-msg-image-wrap';
+    imgWrap.title = "Cliquer pour agrandir la photo";
+    imgWrap.innerHTML = `
+      <img src="${msg.image_url}" alt="Photo attachée" loading="lazy" />
+      <div class="chat-msg-image-overlay">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+        <span>AGRANDIR</span>
+      </div>
+    `;
+    imgWrap.onclick = () => {
+      openChatLightbox(msg.image_url, isUser ? "Photo transmise à J.A.R.V.I.S." : "Photo analysée par J.A.R.V.I.S.");
+    };
+    bubble.appendChild(imgWrap);
+  }
+
+  // Texte du message
+  const textDiv = document.createElement('div');
+  textDiv.className = 'chat-msg-body';
+  if (isUser) {
+    textDiv.innerText = msg.content;
+  } else {
+    textDiv.innerHTML = formatMarkdownText(msg.content);
+  }
+  bubble.appendChild(textDiv);
+  row.appendChild(bubble);
+
+  // Outils pour messages Jarvis (Copier, Écouter)
+  if (!isUser) {
+    const tools = document.createElement('div');
+    tools.className = 'chat-msg-tools';
+
+    const btnCopy = document.createElement('button');
+    btnCopy.className = 'chat-msg-btn-action';
+    btnCopy.type = 'button';
+    btnCopy.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copier`;
+    btnCopy.onclick = () => copyChatMessage(msg.content, btnCopy);
+    tools.appendChild(btnCopy);
+
+    const btnSpeak = document.createElement('button');
+    btnSpeak.className = 'chat-msg-btn-action';
+    btnSpeak.type = 'button';
+    btnSpeak.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Écouter`;
+    btnSpeak.onclick = () => speakChatMessage(msg.content, btnSpeak);
+    tools.appendChild(btnSpeak);
+
+    row.appendChild(tools);
+  }
+
+  chatMessages.appendChild(row);
+
+  if (scroll) {
+    scrollChatToBottom();
+  }
+}
+
+// Prévisualisation de l'image sélectionnée
+function setChatImageAttachment(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    alert("Veuillez sélectionner un fichier image valide (JPG, PNG, WebP).");
+    return;
+  }
+  selectedChatImageFile = file;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    if (chatPreviewImg) chatPreviewImg.src = e.target.result;
+    if (chatPreviewName) chatPreviewName.innerText = file.name || "photo.jpg";
+    if (chatImagePreviewBar) chatImagePreviewBar.style.display = 'flex';
+  };
+  reader.readAsDataURL(file);
+}
+
+// Supprime l'image sélectionnée
+function removeChatImageAttachment() {
+  selectedChatImageFile = null;
+  if (chatFileInput) chatFileInput.value = '';
+  if (chatPreviewImg) chatPreviewImg.src = '';
+  if (chatImagePreviewBar) chatImagePreviewBar.style.display = 'none';
+}
+window.removeChatImageAttachment = removeChatImageAttachment;
+
+// Envoi d'un message (texte et/ou image)
+async function sendChatMessage() {
+  if (isSendingChatMessage) return;
+
+  const text = chatTextInput ? chatTextInput.value.trim() : '';
+  const file = selectedChatImageFile;
+
+  if (!text && !file) return;
+
+  isSendingChatMessage = true;
+  if (btnChatSend) btnChatSend.disabled = true;
+
+  // Affichage optimiste de l'indicateur d'analyse
+  if (chatTypingIndicator) {
+    if (chatTypingText) {
+      chatTypingText.innerText = file ? "J.A.R.V.I.S. inspecte et analyse l'image..." : "J.A.R.V.I.S. formule sa réponse...";
+    }
+    chatTypingIndicator.style.display = 'flex';
+    scrollChatToBottom();
+  }
+
+  // Sauvegarde temporaire pour affichage optimiste
+  const tempText = text;
+  const tempImgUrl = file && chatPreviewImg ? chatPreviewImg.src : null;
+
+  // Affichage optimiste du message utilisateur
+  renderChatMessage({
+    id: `temp_${Date.now()}`,
+    role: 'user',
+    content: tempText || "Photo transmise pour analyse visuelle.",
+    image_url: tempImgUrl,
+    created_at: new Date().toISOString()
+  }, true);
+
+  // Nettoyage de la saisie
+  if (chatTextInput) {
+    chatTextInput.value = '';
+    chatTextInput.style.height = 'auto';
+  }
+  removeChatImageAttachment();
+
+  try {
+    const formData = new FormData();
+    if (tempText) formData.append('text', tempText);
+    if (file) formData.append('image', file);
+
+    const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+    const res = await fetch(`/api/chat/message?token=${encodeURIComponent(token)}`, {
+      method: 'POST',
+      body: formData
+    });
+
+    const data = await res.json();
+    if (chatTypingIndicator) chatTypingIndicator.style.display = 'none';
+
+    if (data.status === 'success' && data.jarvis_message) {
+      renderChatMessage(data.jarvis_message, true);
+    } else {
+      renderChatMessage({
+        role: 'jarvis',
+        content: `⚠️ Une anomalie est survenue : ${data.message || "Erreur de traitement"}`,
+        model_used: "Système",
+        created_at: new Date().toISOString()
+      }, true);
+    }
+  } catch (err) {
+    if (chatTypingIndicator) chatTypingIndicator.style.display = 'none';
+    console.error("[Chat] Erreur envoi message:", err);
+    renderChatMessage({
+      role: 'jarvis',
+      content: `⚠️ Erreur de connexion avec le serveur J.A.R.V.I.S. (${err.message})`,
+      model_used: "Réseau",
+      created_at: new Date().toISOString()
+    }, true);
+  } finally {
+    isSendingChatMessage = false;
+    if (btnChatSend) btnChatSend.disabled = false;
+  }
+}
+window.sendChatMessage = sendChatMessage;
+
+// Applique un prompt suggéré dans le champ texte
+function applyChatPrompt(promptText) {
+  if (chatTextInput) {
+    chatTextInput.value = promptText;
+    chatTextInput.focus();
+  }
+}
+window.applyChatPrompt = applyChatPrompt;
+
+// Efface l'historique complet
+async function clearChatHistory() {
+  if (!confirm("Voulez-vous réinitialiser l'historique de discussion avec J.A.R.V.I.S. ?")) return;
+  try {
+    const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+    await fetch(`/api/chat/clear?token=${encodeURIComponent(token)}`, { method: 'POST' });
+    if (chatMessages) {
+      chatMessages.innerHTML = '';
+      if (chatWelcomeBanner) {
+        chatWelcomeBanner.style.display = 'flex';
+        chatMessages.appendChild(chatWelcomeBanner);
+      }
+    }
+    renderedMessageIds.clear();
+  } catch (err) {
+    console.warn("[Chat] Erreur clear:", err);
+  }
+}
+window.clearChatHistory = clearChatHistory;
+
+// Visionneuse Lightbox pour photos agrandies
+function openChatLightbox(src, title) {
+  if (!chatLightboxModal || !lightboxImg) return;
+  lightboxImg.src = src;
+  if (lightboxTitle) lightboxTitle.innerText = title || "PHOTO ANALYSÉE PAR J.A.R.V.I.S.";
+  chatLightboxModal.style.display = 'flex';
+}
+window.openChatLightbox = openChatLightbox;
+
+function closeChatLightbox() {
+  if (!chatLightboxModal) return;
+  chatLightboxModal.style.display = 'none';
+  if (lightboxImg) lightboxImg.src = '';
+}
+window.closeChatLightbox = closeChatLightbox;
+
+// Copie de bloc de code
+function copyCodeBlock(btn) {
+  const pre = btn.closest('pre');
+  if (!pre) return;
+  const code = pre.querySelector('code');
+  if (!code) return;
+  navigator.clipboard.writeText(code.innerText).then(() => {
+    const orig = btn.innerText;
+    btn.innerText = 'Copié !';
+    setTimeout(() => { btn.innerText = orig; }, 2000);
+  });
+}
+window.copyCodeBlock = copyCodeBlock;
+
+// Copie du texte complet d'un message
+function copyChatMessage(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    if (btn) {
+      const orig = btn.innerHTML;
+      btn.innerHTML = `✓ Copié !`;
+      setTimeout(() => { btn.innerHTML = orig; }, 2000);
+    }
+  });
+}
+window.copyChatMessage = copyChatMessage;
+
+// Synthèse vocale navigateur pour lire la réponse
+function speakChatMessage(text, btn) {
+  if (!('speechSynthesis' in window)) {
+    alert("La synthèse vocale n'est pas supportée sur ce navigateur.");
+    return;
+  }
+  window.speechSynthesis.cancel();
+  const clean = text.replace(/```[\s\S]*?```/g, " [code source omis] ").replace(/[*_#`]/g, '');
+  const utterance = new SpeechSynthesisUtterance(clean);
+  utterance.lang = 'fr-FR';
+  utterance.rate = 1.05;
+  utterance.pitch = 1.02;
+
+  const voices = window.speechSynthesis.getVoices();
+  const frVoice = voices.find(v => v.lang.startsWith('fr') && (v.name.includes('Female') || v.name.includes('Julie') || v.name.includes('Hortense') || v.name.includes('Google'))) || voices.find(v => v.lang.startsWith('fr'));
+  if (frVoice) utterance.voice = frVoice;
+
+  if (btn) {
+    btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Lecture...`;
+  }
+  utterance.onend = () => {
+    if (btn) btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Écouter`;
+  };
+  utterance.onerror = () => {
+    if (btn) btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Écouter`;
+  };
+  window.speechSynthesis.speak(utterance);
+}
+window.speakChatMessage = speakChatMessage;
+
+// Réception d'un message diffusé par WebSocket
+function onServerChatMessageReceived(msgData) {
+  if (msgData.jarvis_message) {
+    if (!chatModal || chatModal.style.display === 'none') {
+      unreadChatCount++;
+      if (chatBadge) {
+        chatBadge.innerText = String(unreadChatCount);
+        chatBadge.style.display = 'inline-block';
+      }
+    } else {
+      renderChatMessage(msgData.jarvis_message, true);
+    }
+  }
+}
+window.onServerChatMessageReceived = onServerChatMessageReceived;
+
+// ── Liaison des écouteurs d'événements ────────────────────────────────────
+
+if (btnChatAttach && chatFileInput) {
+  btnChatAttach.onclick = () => chatFileInput.click();
+  chatFileInput.onchange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setChatImageAttachment(e.target.files[0]);
+    }
+  };
+}
+
+if (btnRemoveChatImage) {
+  btnRemoveChatImage.onclick = removeChatImageAttachment;
+}
+
+if (btnChatSend) {
+  btnChatSend.onclick = sendChatMessage;
+}
+
+if (btnChatClear) {
+  btnChatClear.onclick = clearChatHistory;
+}
+
+if (btnCloseChat) {
+  btnCloseChat.onclick = closeChatDrawer;
+}
+
+if (btnCloseLightbox) {
+  btnCloseLightbox.onclick = closeChatLightbox;
+}
+
+// Auto-redimensionnement du textarea et envoi par Entrée
+if (chatTextInput) {
+  chatTextInput.addEventListener('input', () => {
+    chatTextInput.style.height = 'auto';
+    chatTextInput.style.height = Math.min(chatTextInput.scrollHeight, 120) + 'px';
+  });
+  chatTextInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  });
+}
+
+// Support Collage direct depuis le Presse-papiers (Ctrl+V) d'une capture d'écran
+document.addEventListener('paste', (e) => {
+  if (!chatModal || chatModal.style.display === 'none') return;
+  const items = (e.clipboardData || window.clipboardData)?.items;
+  if (!items) return;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image') !== -1) {
+      const file = items[i].getAsFile();
+      if (file) {
+        setChatImageAttachment(file);
+        e.preventDefault();
+        break;
+      }
+    }
+  }
+});
+
+// Support Glisser-Déposer d'image sur le volet de messagerie
+if (chatModal) {
+  chatModal.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    chatModal.style.borderColor = '#00f0ff';
+  });
+  chatModal.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    chatModal.style.borderColor = '';
+  });
+  chatModal.addEventListener('drop', (e) => {
+    e.preventDefault();
+    chatModal.style.borderColor = '';
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      if (file.type.startsWith('image/')) {
+        setChatImageAttachment(file);
+      }
+    }
+  });
+  // Fermeture par clic sur l'arrière-plan
+  chatModal.addEventListener('click', (e) => {
+    if (e.target === chatModal) {
+      closeChatDrawer();
+    }
+  });
+}
+
+if (chatLightboxModal) {
+  chatLightboxModal.addEventListener('click', (e) => {
+    if (e.target === chatLightboxModal) {
+      closeChatLightbox();
+    }
+  });
+}
+
+// Touche Échap pour fermer la messagerie ou la lightbox
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (chatLightboxModal && chatLightboxModal.style.display !== 'none') {
+      closeChatLightbox();
+    } else if (chatModal && chatModal.style.display !== 'none') {
+      closeChatDrawer();
+    }
+  }
+});
+

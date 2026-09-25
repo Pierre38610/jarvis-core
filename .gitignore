@@ -19,10 +19,14 @@ cloudflared.exe
 # Databases & local persistent storage
 jarvis_memory.db
 *.db
+*.db-shm
+*.db-wal
 *.sqlite3
+.antigravity_session/
 
 # Logs & temp files
 tunnel_url.txt
+static/latest_screenshot.jpg
 outbox_emails/
 test_workspace/
 .jarvis_chrome_profile/

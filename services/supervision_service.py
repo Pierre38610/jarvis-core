@@ -32,6 +32,16 @@ class SupervisionService:
                 "active": False,
                 "description": "Conversation vocale bidirectionnelle naturelle avec Aoede"
             },
+            "chat_multimodal_messaging": {
+                "name": "Messagerie & Vision Multimodale",
+                "tool": "chat_multimodal_messaging",
+                "model": "Gemini 3.8 Flash (Vision)",
+                "api_type": "hybrid",
+                "api_label": "Clé Payante / Gratuite",
+                "cost_est": "~0.002 $",
+                "active": False,
+                "description": "Messagerie instantanée écrite et analyse visuelle de photos/captures"
+            },
             "run_antigravity_task": {
                 "name": "Développement de Code Antigravity",
                 "tool": "run_antigravity_task",
