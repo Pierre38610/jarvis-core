@@ -22,6 +22,7 @@ import auth
 from fastapi.middleware.cors import CORSMiddleware
 from google_antigravity import resolve_antigravity_model, is_stop_directive
 from services.memory_service import memory_service
+from services.memory import vector_memory
 from services.cache import cache_service
 from services.reasoning_service import run_deep_reasoning, run_antigravity_task
 from services.browser_service import (
@@ -62,7 +63,17 @@ async def startup_event():
     except Exception as e:
         print(f"[Startup] [Cache/Redis] Avertissement initialisation cache : {e}")
 
-    # 2. Bridge Deezer
+    # 2. Mémoire vectorielle long-terme (Qdrant + PostgreSQL + fastembed)
+    try:
+        mem_ok = await vector_memory.init()
+        if mem_ok:
+            print("[Startup] [Memory] Service vectoriel long-terme opérationnel")
+        else:
+            print("[Startup] [Memory] Service vectoriel en mode dégradé (Qdrant/PostgreSQL peut-être hors ligne)")
+    except Exception as e:
+        print(f"[Startup] [Memory] Avertissement initialisation mémoire vectorielle : {e}")
+
+    # 3. Bridge Deezer
     try:
         from deezer_bridge import deezer_controller
         await deezer_controller.start()
@@ -74,6 +85,11 @@ async def shutdown_event():
     """Arrête proprement les connexions et serveurs satellites."""
     try:
         await cache_service.close()
+    except Exception:
+        pass
+
+    try:
+        await vector_memory.close()
     except Exception:
         pass
 
@@ -1282,6 +1298,31 @@ async def voice_channel(websocket: WebSocket):
                     )
                 ),
                 types.FunctionDeclaration(
+                    name="memoriser_information",
+                    description=(
+                        "Mémorise de façon durable et vectorielle une information, préférence, fait ou tâche que Pierre te demande de retenir. "
+                        "Utilise cet outil dès que Pierre dit 'retiens que', 'souviens-toi que', 'note que', 'mémorise que' ou toute formulation similaire."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "cle": types.Schema(
+                                type="STRING",
+                                description="Nom ou titre court de l'information à mémoriser (ex: 'couleur préférée', 'projet en cours')"
+                            ),
+                            "valeur": types.Schema(
+                                type="STRING",
+                                description="Contenu complet et détaillé de l'information à mémoriser"
+                            ),
+                            "categorie": types.Schema(
+                                type="STRING",
+                                description="Catégorie : 'préférence', 'fait', 'tâche', 'habitude', 'projet', 'contact', 'général'"
+                            )
+                        },
+                        required=["cle", "valeur"]
+                    )
+                ),
+                types.FunctionDeclaration(
                     name="get_system_status",
                     description="Consulte l'état en direct de l'ordinateur de l'utilisateur (utilisation du processeur CPU, mémoire RAM, état de la batterie).",
                     parameters=types.Schema(
@@ -1667,7 +1708,19 @@ async def voice_channel(websocket: WebSocket):
     ]
 
     # Injection dynamique du contexte de mémoire long-terme
+    # Tente d'abord une recherche sémantique vectorielle (Qdrant),
+    # puis retombe sur le contexte SQLite local si indisponible.
+    try:
+        if vector_memory._ready:
+            semantic_context = await vector_memory.build_memory_context_for_session()
+        else:
+            semantic_context = ""
+    except Exception as _mem_err:
+        semantic_context = ""
+        print(f"[Session] Erreur chargement mémoire vectorielle : {_mem_err}")
     memory_context = memory_service.build_system_memory_context()
+    if semantic_context:
+        memory_context = semantic_context + "\n\n" + memory_context
 
     paid_key_status = "CLÉ PAYANTE ACTIVE" if config.HAS_PAID_API_KEY else "CLÉ PAYANTE NON CONFIGURÉE (mode économie forcée)"
 
@@ -3025,17 +3078,23 @@ async def voice_channel(websocket: WebSocket):
 
                                 elif name == "remember_user_fact":
                                     fact = args.get("fact", "")
-                                    cat = args.get("category", "general")
+                                    cat = args.get("category", "général")
                                     await websocket.send_text(json.dumps({
                                         "type": "jarvis_announcement",
                                         "text": "Mémorisation de l'information dans la mémoire durable.",
                                         "voice": False
                                     }))
+                                    # Persistance SQLite (legacy)
                                     res = await asyncio.to_thread(memory_service.add_memory, fact, cat)
+                                    # Persistance vectorielle Qdrant + PostgreSQL
+                                    try:
+                                        await vector_memory.save_memory(text=fact, category=cat)
+                                    except Exception as _vm_err:
+                                        print(f"[Memory] Erreur save_memory vectorielle : {_vm_err}")
                                     tool_resp = {
                                         "status": "completed",
                                         "result": res,
-                                        "instruction_to_jarvis": "L'information est enregistrée dans votre mémoire durable. Confirme-le brièvement avec ta voix Aoede."
+                                        "instruction_to_jarvis": "L'information est enregistrée dans ta mémoire durable vectorielle. Confirme-le brièvement avec ta voix Aoede."
                                     }
 
                                 elif name == "recall_user_memories":
@@ -3045,11 +3104,51 @@ async def voice_channel(websocket: WebSocket):
                                         "text": "Consultation des souvenirs mémorisés.",
                                         "voice": False
                                     }))
-                                    memories = await asyncio.to_thread(memory_service.search_memories, query)
+                                    # Recherche vectorielle sémantique en priorité
+                                    try:
+                                        memories = await vector_memory.search_relevant_memories(query, limit=6)
+                                    except Exception:
+                                        memories = []
+                                    if not memories:
+                                        # Fallback SQLite
+                                        memories = await asyncio.to_thread(memory_service.search_memories, query)
                                     tool_resp = {
                                         "status": "completed",
                                         "memories": memories,
-                                        "instruction_to_jarvis": "Voici les souvenirs trouvés. Présente-les à l'utilisateur avec ta voix Aoede."
+                                        "instruction_to_jarvis": "Voici les souvenirs trouvés dans ta mémoire vectorielle. Présente-les à l'utilisateur avec ta voix Aoede de façon naturelle."
+                                    }
+
+                                elif name == "memoriser_information":
+                                    cle     = args.get("cle", "")
+                                    valeur  = args.get("valeur", "")
+                                    categorie = args.get("categorie", "fait")
+                                    # Construit un texte riche pour l'embedding
+                                    full_text = f"{cle} : {valeur}".strip() if cle else valeur.strip()
+                                    await websocket.send_text(json.dumps({
+                                        "type": "jarvis_announcement",
+                                        "text": f"Mémorisation vectorielle : {cle or valeur[:40]}",
+                                        "voice": False
+                                    }))
+                                    try:
+                                        vec_res = await vector_memory.save_memory(
+                                            text=full_text,
+                                            category=categorie or "fait",
+                                            importance=2,
+                                        )
+                                    except Exception as _e:
+                                        vec_res = {"status": "error", "message": str(_e)}
+                                    # Double-write dans SQLite legacy
+                                    try:
+                                        await asyncio.to_thread(memory_service.add_memory, full_text, categorie or "général")
+                                    except Exception:
+                                        pass
+                                    tool_resp = {
+                                        "status": "completed",
+                                        "result": vec_res,
+                                        "instruction_to_jarvis": (
+                                            f"L'information '{cle}' a été mémorisée durablement dans ta mémoire vectorielle. "
+                                            "Confirme-le brièvement et naturellement avec ta voix Aoede."
+                                        )
                                     }
 
                                 elif name == "get_system_status":
