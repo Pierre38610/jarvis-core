@@ -9,12 +9,13 @@ import os
 os.environ["NO_PROXY"] = "127.0.0.1,localhost,::1,0.0.0.0"
 os.environ["no_proxy"] = "127.0.0.1,localhost,::1,0.0.0.0"
 import sys
+import re
 import json
 import uuid
 import asyncio
 import logging
 import webbrowser
-from typing import Dict, Any, Optional, List, Set
+from typing import Dict, Any, Optional, List, Set, Tuple
 import httpx
 import websockets
 from websockets.server import ServerConnection
@@ -34,10 +35,83 @@ DEEZER_HEADERS = {
 }
 
 
+def detect_search_intent(query: str, search_type: str = "track") -> Tuple[str, str, Optional[Dict[str, Any]]]:
+    """Analyse l'intention et le type de contenu musical (Flow, Coups de cœur, Playlist, Album, Artiste, Morceau).
+    Nettoie les mots parasites de la requête pour l'API REST Deezer.
+    """
+    raw = (query or "").strip()
+    # Nettoyage des verbes d'action au début de la phrase
+    q = re.sub(
+        r"^(mets|joue|lance|écoute|ecoute|met|active)\s*(moi\s*)?(un|une|le|la|les|du|de la|des|ce|cette)?\s*",
+        "",
+        raw,
+        flags=re.IGNORECASE
+    ).strip()
+    low = q.lower()
+
+    # 1. Détection Deezer Flow
+    if any(k in low for k in ["flow", "mon flow", "lance le flow", "mets le flow"]):
+        return "flow", "", {
+            "id": "flow",
+            "title": "Flow Deezer",
+            "artist": "Mix infini personnalisé",
+            "album": "",
+            "type": "flow",
+            "duration": 0,
+            "link": f"{DEEZER_WEB_BASE}/fr/channels/flow",
+            "nav_url": f"{DEEZER_WEB_BASE}/fr/channels/flow",
+            "cover": "https://e-cdns-images.dzcdn.net/images/misc/flow/500x500.jpg"
+        }
+
+    # 2. Détection Coups de cœur / Favoris / Titres likés
+    if any(k in low for k in ["coup de coeur", "coups de coeur", "coups de cœur", "mes favoris", "favoris", "titres likés", "titres likes", "ma musique", "mes musiques"]):
+        return "loved", "", {
+            "id": "loved",
+            "title": "Coups de cœur",
+            "artist": "Mes favoris",
+            "album": "",
+            "type": "playlist",
+            "duration": 0,
+            "link": f"{DEEZER_WEB_BASE}/fr/channels/loved-tracks",
+            "nav_url": f"{DEEZER_WEB_BASE}/fr/channels/loved-tracks",
+            "cover": ""
+        }
+
+    # 3. Détection de Playlist
+    if "playlist" in low or "mix" in low or "compil" in low or search_type == "playlist":
+        cleaned = re.sub(r"\b(ma|la|une|des|les|cette)?\s*playlist\s*(de|d'|du|des)?\b", "", q, flags=re.IGNORECASE).strip()
+        if not cleaned:
+            # "mets ma playlist" sans nom -> Coups de cœur / Favoris de l'utilisateur
+            return "loved", "", {
+                "id": "loved",
+                "title": "Coups de cœur",
+                "artist": "Mes favoris",
+                "album": "",
+                "type": "playlist",
+                "duration": 0,
+                "link": f"{DEEZER_WEB_BASE}/fr/channels/loved-tracks",
+                "nav_url": f"{DEEZER_WEB_BASE}/fr/channels/loved-tracks",
+                "cover": ""
+            }
+        return "playlist", cleaned, None
+
+    # 4. Détection d'Album
+    if "album" in low or search_type == "album":
+        cleaned = re.sub(r"\b(l'|le|un|cet|mon)?\s*album\s*(de|d'|du|des)?\b", "", q, flags=re.IGNORECASE).strip()
+        return "album", cleaned or q, None
+
+    # 5. Détection d'Artiste
+    if "artiste" in low or "discographie" in low or search_type == "artist":
+        cleaned = re.sub(r"\b(l'|le|un|cet)?\s*artiste\s*(de|d'|du|des)?\b", "", q, flags=re.IGNORECASE).strip()
+        return "artist", cleaned or q, None
+
+    return search_type or "track", q or raw, None
+
+
 class DeezerController:
     """Contrôleur centralisé pour le Web Player Deezer.
     Gère le serveur WebSocket local, la communication bidirectionnelle avec l'onglet
-    navigateur et les appels à l'API publique Deezer.
+    navigateur et les requêtes intelligentes à l'API publique Deezer.
     """
 
     def __init__(self, host: str = DEEZER_WS_HOST, port: int = DEEZER_WS_PORT):
@@ -82,7 +156,6 @@ class DeezerController:
                 self.is_running = True
                 logger.info(f"✅ Serveur Deezer WebSocket actif sur ws://{self.host}:{self.port}")
             except OSError as e:
-                # Port déjà utilisé (ex: reload FastAPI)
                 if "10048" in str(e) or "already in use" in str(e).lower():
                     logger.warning(f"⚠️ Port {self.port} déjà alloué pour Deezer Bridge, réutilisation.")
                     self.is_running = True
@@ -129,7 +202,6 @@ class DeezerController:
                         if not future.done():
                             future.set_result(msg)
 
-                    # Mettre à jour le statut si fourni dans la réponse
                     data = msg.get("data")
                     if isinstance(data, dict):
                         self.last_status.update(data)
@@ -143,16 +215,7 @@ class DeezerController:
             logger.info(f"Clients Deezer restants : {len(self.clients)}")
 
     async def send_command(self, action: str, params: Optional[Dict[str, Any]] = None, timeout: float = 6.0) -> Dict[str, Any]:
-        """Envoie une instruction au script JS et attend l'accusé de réception.
-        
-        Args:
-            action: Commande ('play', 'pause', 'toggle_play', 'next', 'previous', 'set_shuffle', 'seek', 'play_url', etc.)
-            params: Paramètres de la commande (ex: {'url': '...'}, {'enable': True})
-            timeout: Délai max d'attente de la réponse en secondes.
-            
-        Returns:
-            Dict de réponse contenant le statut et les données actualisées.
-        """
+        """Envoie une instruction au script JS et attend l'accusé de réception."""
         if not self.is_connected():
             return {
                 "status": "completed",
@@ -160,7 +223,7 @@ class DeezerController:
                 "connected": False,
                 "message": (
                     "Commande reçue : aucun onglet Deezer Web n'est actuellement connecté au WebSocket. "
-                    "Ouvrez https://www.deezer.com dans le navigateur avec le script Tampermonkey activé pour la synchronisation en direct."
+                    "Ouvrez https://www.deezer.com dans le navigateur avec le script Tampermonkey activé pour le contrôle en direct."
                 ),
                 "data": self.last_status
             }
@@ -211,26 +274,31 @@ class DeezerController:
 
     async def search_catalog(self, query: str, search_type: str = "track", limit: int = 5) -> Dict[str, Any]:
         """Interroge l'API REST publique de Deezer pour trouver l'ID et l'URL du morceau/album/artiste/playlist.
-        
-        Args:
-            query: Recherche textuelle (ex: 'Daft Punk', 'Get Lucky', 'Bohemian Rhapsody')
-            search_type: Type ('track', 'album', 'playlist', 'artist')
-            limit: Nombre max de résultats
-            
-        Returns:
-            Dict avec le meilleur résultat et la liste complète.
+        Détecte automatiquement l'intention (playlist, album, flow, favoris) et nettoie la requête.
         """
-        clean_q = (query or "").strip()
-        if not clean_q:
-            return {"found": False, "query": "", "results": [], "best": None}
+        intent_type, clean_q, special_obj = detect_search_intent(query, search_type)
 
-        st = search_type.lower().strip()
+        # Si intention spéciale directe (Flow ou Coups de cœur)
+        if special_obj:
+            return {
+                "found": True,
+                "query": query,
+                "type": intent_type,
+                "best": special_obj,
+                "results": [special_obj]
+            }
+
+        if not clean_q:
+            clean_q = query.strip()
+
+        st = intent_type.lower().strip()
         if st in ("album", "albums"):
             endpoint = f"{DEEZER_API_BASE}/search/album"
             canonical_type = "album"
         elif st in ("playlist", "playlists"):
             endpoint = f"{DEEZER_API_BASE}/search/playlist"
             canonical_type = "playlist"
+            limit = max(limit, 10)  # Récupérer plus pour filtrer par pertinence
         elif st in ("artist", "artiste", "artists"):
             endpoint = f"{DEEZER_API_BASE}/search/artist"
             canonical_type = "artist"
@@ -242,9 +310,19 @@ class DeezerController:
             async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=DEEZER_HEADERS) as client:
                 resp = await client.get(endpoint, params={"q": clean_q, "limit": limit})
                 if resp.status_code == 200:
-                    data = resp.json().get("data", [])
+                    raw_data = resp.json().get("data", [])
+
+                    # Pour les playlists : privilégier les playlists volumineuses (>10 morceaux) et populaires
+                    if canonical_type == "playlist" and raw_data:
+                        def score_pl(p):
+                            nb = p.get("nb_tracks", 0) or 0
+                            fans = p.get("fans", 0) or 0
+                            penalty = 0 if nb >= 10 else -1000
+                            return fans + (nb * 3) + penalty
+                        raw_data = sorted(raw_data, key=score_pl, reverse=True)
+
                     results = []
-                    for item in data:
+                    for item in raw_data:
                         item_id = item.get("id")
                         title = item.get("title") or item.get("name") or "Inconnu"
                         
@@ -272,6 +350,7 @@ class DeezerController:
                             "album": album_title,
                             "type": item.get("type", canonical_type),
                             "duration": item.get("duration", 0),
+                            "nb_tracks": item.get("nb_tracks", 0),
                             "link": link,
                             "nav_url": nav_url,
                             "cover": cover,
@@ -344,11 +423,7 @@ class DeezerController:
         }
 
     async def toggle_shuffle(self, enable: Optional[bool] = None) -> Dict[str, Any]:
-        """Active, désactive ou bascule le mode lecture aléatoire (shuffle).
-        
-        Args:
-            enable: True pour forcer l'aléatoire, False pour le désactiver, None pour basculer.
-        """
+        """Active, désactive ou bascule le mode lecture aléatoire (shuffle)."""
         params = {}
         if enable is not None:
             params["enable"] = bool(enable)
@@ -397,17 +472,15 @@ class DeezerController:
         }
 
     async def play_music(self, query: str, search_type: str = "track") -> Dict[str, Any]:
-        """Recherche le titre via l'API REST Deezer puis envoie l'instruction au navigateur
-        pour lancer immédiatement la lecture sans recharger la page si possible.
-        
-        Si aucun onglet Deezer n'est connecté, ouvre l'URL directement dans le navigateur.
+        """Recherche intelligente de musique (titre, album, playlist, Flow, Coups de cœur)
+        et déclenchement immédiat de la lecture sur Deezer Web Player.
         """
         clean_q = (query or "").strip()
         if not clean_q:
             return await self.play()
 
-        # 1. Recherche du meilleur résultat sur l'API Deezer
-        search_res = await self.search_catalog(clean_q, search_type=search_type, limit=5)
+        # 1. Recherche avec détection d'intention automatique
+        search_res = await self.search_catalog(clean_q, search_type=search_type, limit=10)
         best = search_res.get("best")
 
         if not best:
@@ -427,11 +500,19 @@ class DeezerController:
         artist = best.get("artist", "")
         album = best.get("album", "")
         cover = best.get("cover", "")
+        item_id = best.get("id")
+        item_type = best.get("type", "track")
         artist_desc = f" par {artist}" if artist else ""
 
-        # 2. Si l'onglet Deezer est connecté via WebSocket, commande play_url directe
+        # 2. Si l'onglet Deezer est connecté via WebSocket, envoyer les paramètres précis
         if self.is_connected():
-            cmd_res = await self.send_command("play_url", {"url": target_url}, timeout=8.0)
+            cmd_params = {
+                "url": target_url,
+                "type": item_type,
+                "id": str(item_id),
+                "title": title
+            }
+            cmd_res = await self.send_command("play_url", cmd_params, timeout=10.0)
             return {
                 "status": "playing",
                 "app": "Deezer Web",
@@ -442,7 +523,7 @@ class DeezerController:
                 "cover": cover,
                 "url": target_url,
                 "track": best,
-                "message": f"Lecture de '{title}'{artist_desc} lancée sur Deezer Web.",
+                "message": f"Lecture de '{title}'{artist_desc} lancée sur Deezer Web ({item_type}).",
                 "data": cmd_res.get("data", self.last_status)
             }
         else:
@@ -484,7 +565,7 @@ class DeezerController:
         }
 
     async def control_deezer(self, action: str = "playpause", query: str = "", item_type: str = "track", **kwargs) -> Dict[str, Any]:
-        """Point d'entrée universel pour la rétrocompatibilité complète avec J.A.R.V.I.S."""
+        """Point d'entrée universel pour le contrôle complet (100%) de Deezer Web Player."""
         act = (action or "playpause").lower().strip()
 
         if act in ("pause", "stop", "arreter", "arrête"):
@@ -545,49 +626,40 @@ deezer_controller = DeezerController()
 
 
 async def play() -> Dict[str, Any]:
-    """Lance la lecture sur Deezer Web."""
     return await deezer_controller.play()
 
 
 async def pause() -> Dict[str, Any]:
-    """Met la musique en pause sur Deezer Web."""
     return await deezer_controller.pause()
 
 
 async def next_track() -> Dict[str, Any]:
-    """Passe au morceau suivant sur Deezer Web."""
     return await deezer_controller.next_track()
 
 
 async def previous_track() -> Dict[str, Any]:
-    """Revient au morceau précédent sur Deezer Web."""
     return await deezer_controller.previous_track()
 
 
 async def toggle_shuffle(enable: Optional[bool] = None) -> Dict[str, Any]:
-    """Active ou désactive la lecture aléatoire sur Deezer Web."""
     return await deezer_controller.toggle_shuffle(enable)
 
 
 async def play_music(query: str, search_type: str = "track") -> Dict[str, Any]:
-    """Recherche un titre/artiste/album/playlist et lance immédiatement la lecture sur Deezer Web."""
     return await deezer_controller.play_music(query, search_type=search_type)
 
 
 async def get_playback_status() -> Dict[str, Any]:
-    """Renvoie le statut en cours de lecture sur Deezer Web."""
     return await deezer_controller.get_playback_status()
 
 
 async def search_catalog(query: str, search_type: str = "track", limit: int = 5) -> Dict[str, Any]:
-    """Recherche dans le catalogue officiel Deezer."""
     return await deezer_controller.search_catalog(query, search_type=search_type, limit=limit)
 
 
 # ─── EXÉCUTION STANDALONE DU SERVEUR ──────────────────────────────────────────
 
 async def main():
-    """Démarre le contrôleur Deezer en mode autonome."""
     print("=" * 60)
     print("🎵 J.A.R.V.I.S. - Serveur Deezer WebSocket Bridge")
     print(f"🔗 WebSocket : ws://{DEEZER_WS_HOST}:{DEEZER_WS_PORT}")

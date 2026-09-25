@@ -1,20 +1,21 @@
 // ==UserScript==
 // @name         Deezer Controller for J.A.R.V.I.S.
 // @namespace    https://github.com/Pierre38610/jarvis-core
-// @version      2.0.0
+// @version      2.1.0
 // @description  Contrôle total du Web Player Deezer en temps réel via WebSocket pour J.A.R.V.I.S.
 // @author       Pierre / J.A.R.V.I.S.
 // @match        https://www.deezer.com/*
 // @icon         https://www.deezer.com/favicon.ico
-// @grant        none
+// @grant        unsafeWindow
 // @run-at       document-idle
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    console.log('[J.A.R.V.I.S. Deezer Controller] Initialisation du contrôleur Web Player...');
+    console.log('[J.A.R.V.I.S. Deezer Controller v2.1.0] Démarrage du contrôleur Web Player...');
 
+    const win = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
     const WS_URL = 'ws://localhost:8765';
     const RECONNECT_DELAY = 3000;
     let ws = null;
@@ -22,6 +23,7 @@
     let isConnected = false;
     let lastSentStatusJson = '';
     let lastTimeupdateSent = 0;
+    let autoplayPollTimer = null;
 
     // ─── GESTION DU HUD VISUEL DISCRET ──────────────────────────────────────────
 
@@ -53,15 +55,15 @@
                 display: flex;
                 align-items: center;
                 gap: 8px;
-                padding: 6px 12px;
-                background: rgba(15, 23, 42, 0.85);
-                backdrop-filter: blur(8px);
-                border: 1px solid rgba(56, 189, 248, 0.3);
+                padding: 6px 14px;
+                background: rgba(15, 23, 42, 0.90);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(56, 189, 248, 0.4);
                 border-radius: 9999px;
                 color: #e2e8f0;
                 font-size: 11px;
                 font-weight: 600;
-                box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
                 transition: all 0.3s ease;
             }
             #jarvis-status-dot {
@@ -78,13 +80,14 @@
             }
             #jarvis-toast {
                 margin-top: 6px;
-                padding: 5px 10px;
-                background: rgba(14, 165, 233, 0.9);
-                border-radius: 6px;
+                padding: 6px 12px;
+                background: rgba(14, 165, 233, 0.95);
+                border-radius: 8px;
                 color: #ffffff;
-                font-size: 10px;
-                font-weight: 500;
+                font-size: 11px;
+                font-weight: 600;
                 text-align: center;
+                box-shadow: 0 4px 12px rgba(14, 165, 233, 0.4);
                 animation: jarvisFadeIn 0.2s ease;
             }
             @keyframes jarvisFadeIn {
@@ -122,109 +125,88 @@
         clearTimeout(toast._timer);
         toast._timer = setTimeout(() => {
             toast.style.display = 'none';
-        }, 2500);
+        }, 3000);
     }
 
-    // ─── SÉLECTEURS ROBUSTES AVEC FALLBACKS ────────────────────────────────────
+    // ─── CLIC ROBUSTE POUR REACT / SYNTHETIC EVENTS ─────────────────────────────
 
-    const SELECTORS = {
-        playPause: [
-            'button[data-testid="play_button"]',
-            'button[data-testid="play_button_play"]',
-            'button[data-testid="play_button_pause"]',
-            'button[data-testid="player-play"]',
-            'button[data-testid="player-pause"]',
-            'button[aria-label="Lecture"]',
-            'button[aria-label="Pause"]',
-            'button[aria-label="Play"]',
-            'button[aria-label*="Lecture" i]',
-            'button[aria-label*="Pause" i]',
-            'button[aria-label*="Play" i]'
-        ],
-        next: [
-            'button[data-testid="next_track_button"]',
-            'button[data-testid="next_button"]',
-            'button[data-testid="player-next"]',
-            'button[aria-label="Piste suivante"]',
-            'button[aria-label="Next track"]',
-            'button[aria-label*="suivante" i]',
-            'button[aria-label*="next" i]'
-        ],
-        previous: [
-            'button[data-testid="previous_track_button"]',
-            'button[data-testid="prev_button"]',
-            'button[data-testid="player-previous"]',
-            'button[aria-label="Piste précédente"]',
-            'button[aria-label="Previous track"]',
-            'button[aria-label*="précédente" i]',
-            'button[aria-label*="previous" i]'
-        ],
-        shuffle: [
-            'button[data-testid="shuffle_button"]',
-            'button[data-testid="player-shuffle"]',
-            'button[aria-label*="aléatoire" i]',
-            'button[aria-label*="shuffle" i]'
-        ],
-        repeat: [
-            'button[data-testid="repeat_button"]',
-            'button[data-testid="player-repeat"]',
-            'button[aria-label*="répéter" i]',
-            'button[aria-label*="repeat" i]'
-        ],
-        volumeSlider: [
-            'input[type="range"][data-testid="volume_slider"]',
-            'input[type="range"][aria-label*="volume" i]',
-            '.slider-volume input[type="range"]'
-        ],
-        title: [
-            '[data-testid="item_title"] a',
-            '[data-testid="item_title"]',
-            '.track-title',
-            '[data-testid="player-track-title"]',
-            '.marquee-track-title'
-        ],
-        artist: [
-            '[data-testid="item_subtitle"] a',
-            '[data-testid="item_subtitle"]',
-            '.track-artist',
-            '[data-testid="player-track-artist"]',
-            '.marquee-track-artist'
-        ],
-        cover: [
-            '[data-testid="player-cover"] img',
-            '.marquee-track-cover img',
-            'img[data-testid="cover"]',
-            '#page_player img'
-        ],
-        pagePlay: [
-            'button[data-testid="item_play_button"]',
-            'button[data-testid="item_top_banner_play_button"]',
-            'button[data-testid="masthead-play-button"]',
-            'button[aria-label="Écouter"]',
-            'button[aria-label="Tout écouter"]',
-            'button[aria-label="Play"]',
-            'button[aria-label="Listen"]',
-            'button[data-testid="track_play_button"]',
-            'button[data-testid="play_button"]'
-        ]
-    };
+    function robustClick(el) {
+        if (!el) return false;
+        try {
+            el.focus();
+            el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        } catch (e) {}
 
-    function findFirstElement(selectors) {
-        for (const selector of selectors) {
-            try {
-                const el = document.querySelector(selector);
-                if (el) return el;
-            } catch (e) {}
+        const eventInit = {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            composed: true,
+            buttons: 1
+        };
+
+        try { el.dispatchEvent(new PointerEvent('pointerdown', eventInit)); } catch (e) {}
+        try { el.dispatchEvent(new MouseEvent('mousedown', eventInit)); } catch (e) {}
+        try { el.dispatchEvent(new PointerEvent('pointerup', eventInit)); } catch (e) {}
+        try { el.dispatchEvent(new MouseEvent('mouseup', eventInit)); } catch (e) {}
+        try { el.dispatchEvent(new MouseEvent('click', eventInit)); } catch (e) {}
+        try { el.click(); } catch (e) {}
+        return true;
+    }
+
+    function triggerKey(code, key, shift = false) {
+        const keyCodeMap = { 'Space': 32, 'ArrowRight': 39, 'ArrowLeft': 37, 'KeyK': 75, 'KeyS': 83 };
+        const kCode = keyCodeMap[code] || 0;
+        const opts = {
+            key: key,
+            code: code,
+            keyCode: kCode,
+            which: kCode,
+            shiftKey: shift,
+            bubbles: true,
+            cancelable: true,
+            composed: true
+        };
+        try {
+            window.dispatchEvent(new KeyboardEvent('keydown', opts));
+            document.dispatchEvent(new KeyboardEvent('keydown', opts));
+            window.dispatchEvent(new KeyboardEvent('keyup', opts));
+            document.dispatchEvent(new KeyboardEvent('keyup', opts));
+        } catch (e) {}
+    }
+
+    function dismissCookieBanner() {
+        const cookieSelectors = [
+            '#didomi-notice-agree-button',
+            'button#didomi-notice-agree-button',
+            '#onetrust-accept-btn-handler',
+            'button[data-testid="cookie-banner-accept"]',
+            'button[aria-label*="accepter" i]',
+            'button[aria-label*="agree" i]'
+        ];
+        for (const s of cookieSelectors) {
+            const btn = document.querySelector(s);
+            if (btn) {
+                try {
+                    btn.click();
+                    console.log('[J.A.R.V.I.S. Deezer] Bannière cookies acceptée automatiquement.');
+                } catch (e) {}
+                break;
+            }
         }
-        return null;
     }
 
     function getAudioElement() {
         return document.querySelector('audio');
     }
 
+    function getBottomPlayer() {
+        return document.querySelector('#page_player, [data-testid="player-bottom"], [data-testid="player"], footer');
+    }
+
     function isShuffleActive() {
-        const btn = findFirstElement(SELECTORS.shuffle);
+        const bottom = getBottomPlayer() || document;
+        const btn = bottom.querySelector('button[data-testid="shuffle_button"], button[data-testid="player-shuffle"], button[aria-label*="aléatoire" i], button[aria-label*="shuffle" i]');
         if (!btn) return false;
         const ariaChecked = btn.getAttribute('aria-checked');
         if (ariaChecked !== null) return ariaChecked === 'true';
@@ -234,7 +216,8 @@
     }
 
     function getRepeatMode() {
-        const btn = findFirstElement(SELECTORS.repeat);
+        const bottom = getBottomPlayer() || document;
+        const btn = bottom.querySelector('button[data-testid="repeat_button"], button[data-testid="player-repeat"], button[aria-label*="répéter" i], button[aria-label*="repeat" i]');
         if (!btn) return 'off';
         const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
         if (ariaLabel.includes('un seul') || ariaLabel.includes('one')) return 'one';
@@ -247,9 +230,7 @@
 
     function getStatus() {
         const audio = getAudioElement();
-        const titleEl = findFirstElement(SELECTORS.title);
-        const artistEl = findFirstElement(SELECTORS.artist);
-        const coverEl = findFirstElement(SELECTORS.cover);
+        const bottom = getBottomPlayer();
 
         let isPlaying = false;
         if (audio) {
@@ -259,11 +240,25 @@
             isPlaying = Boolean(pauseBtn);
         }
 
+        let titleEl = bottom ? bottom.querySelector('[data-testid="item_title"] a, [data-testid="item_title"], .track-title, [data-testid="player-track-title"], .marquee-track-title') : null;
+        if (!titleEl) {
+            titleEl = document.querySelector('[data-testid="player-track-title"], .track-title');
+        }
+
+        let artistEl = bottom ? bottom.querySelector('[data-testid="item_subtitle"] a, [data-testid="item_subtitle"], .track-artist, [data-testid="player-track-artist"], .marquee-track-artist') : null;
+        if (!artistEl) {
+            artistEl = document.querySelector('[data-testid="player-track-artist"], .track-artist');
+        }
+
+        let coverEl = bottom ? bottom.querySelector('[data-testid="player-cover"] img, .marquee-track-cover img, img[data-testid="cover"]') : null;
+        if (!coverEl) {
+            coverEl = document.querySelector('[data-testid="player-cover"] img, #page_player img');
+        }
+
         let title = titleEl ? (titleEl.textContent || '').trim() : '';
         let artist = artistEl ? (artistEl.textContent || '').trim() : '';
         const cover = coverEl ? coverEl.src : '';
 
-        // Fallback titre depuis le document
         if (!title && document.title && document.title.includes('·')) {
             const parts = document.title.split('·');
             title = parts[0].trim();
@@ -307,7 +302,7 @@
         }
     }
 
-    // ─── ÉCOUTEURS D'ÉVÉNEMENTS AUDIO & DOM ────────────────────────────────────
+    // ─── ÉCOUTEURS D'ÉVÉNEMENTS AUDIO & OBSERVATEUR DOM ───────────────────────
 
     let currentAudioEl = null;
 
@@ -328,15 +323,13 @@
                     sendStatusUpdate(false);
                 }
             });
-            console.log('[J.A.R.V.I.S. Deezer] Écouteurs audio HTML5 attachés avec succès.');
+            console.log('[J.A.R.V.I.S. Deezer] Écouteurs audio HTML5 attachés.');
         }
     }
 
-    // Observer pour détecter l'apparition de l'audio ou les mutations du lecteur
     const observer = new MutationObserver(() => {
         attachAudioListeners();
-        // Vérifier si un autoplay est en attente
-        checkPendingAutoplay();
+        dismissCookieBanner();
     });
 
     observer.observe(document.documentElement, {
@@ -344,36 +337,110 @@
         subtree: true
     });
 
-    // ─── AUTOPLAY INTELLIGENT APRÈS NAVIGATION ────────────────────────────────
+    // ─── AUTOPLAY INTELLIGENT ET ROBUSTE ──────────────────────────────────────
+
+    function startAutoplayPolling(expectedType = null, expectedId = null) {
+        if (autoplayPollTimer) {
+            clearInterval(autoplayPollTimer);
+            autoplayPollTimer = null;
+        }
+
+        console.log(`[J.A.R.V.I.S. Deezer] Démarrage polling autoplay (type: ${expectedType}, id: ${expectedId})...`);
+        const startTime = Date.now();
+        let clickAttempts = 0;
+
+        autoplayPollTimer = setInterval(() => {
+            const elapsed = Date.now() - startTime;
+            if (elapsed > 15000) {
+                console.log('[J.A.R.V.I.S. Deezer] Timeout polling autoplay (15s).');
+                clearInterval(autoplayPollTimer);
+                autoplayPollTimer = null;
+                sessionStorage.removeItem('jarvis_dz_pending');
+                return;
+            }
+
+            dismissCookieBanner();
+
+            // 1. Si audio déjà en lecture, mission accomplie !
+            const audio = getAudioElement();
+            if (audio && !audio.paused && audio.currentTime > 0) {
+                console.log('✅ [J.A.R.V.I.S. Deezer] Lecture active détectée ! Autoplay réussi.');
+                clearInterval(autoplayPollTimer);
+                autoplayPollTimer = null;
+                sessionStorage.removeItem('jarvis_dz_pending');
+                showToast('▶ Lecture en cours');
+                setTimeout(() => sendStatusUpdate(true), 300);
+                return;
+            }
+
+            // 2. Si intention Flow
+            if (expectedType === 'flow' || window.location.href.includes('/channels/flow')) {
+                const flowBtn = document.querySelector('button[data-testid="flow-button"], [data-testid="flow"] button, button[aria-label*="Flow" i]');
+                if (flowBtn) {
+                    console.log('[J.A.R.V.I.S. Deezer] Bouton Flow trouvé, clic...');
+                    robustClick(flowBtn);
+                    clickAttempts++;
+                    return;
+                }
+            }
+
+            // 3. Bouton Play principal de la page (UNIQUEMENT dans le contenu principal, JAMAIS dans la barre inférieure)
+            const mainContent = document.querySelector('main, #page_naboo_item, #page_content, .page-content, [data-testid="item-header"]') || document.body;
+            
+            // Sélecteurs spécifiques pour la page / playlist / album
+            const heroPlaySelectors = [
+                'main button[data-testid="item_play_button"]',
+                'main button[data-testid="item_top_banner_play_button"]',
+                'main button[data-testid="masthead-play-button"]',
+                'main button[data-testid="action-play"]',
+                'main [data-testid="item-header"] button',
+                'main button[aria-label*="Tout écouter" i]',
+                'main button[aria-label*="Écouter la playlist" i]',
+                'main button[aria-label*="Écouter l\'album" i]',
+                'main button[aria-label*="Écouter" i]',
+                'main button[aria-label*="Play" i]',
+                // Piste 1 de la tracklist
+                'main [data-testid="tracklist-row"]:first-child button',
+                'main [data-testid="datagrid-row"]:first-child button',
+                'main [role="row"]:nth-of-type(2) button',
+                'main table tbody tr:first-child button',
+                'main [data-testid="tracklist-row"]:first-child',
+                'main [role="row"]:nth-of-type(2)'
+            ];
+
+            for (const sel of heroPlaySelectors) {
+                const el = document.querySelector(sel);
+                if (el) {
+                    console.log(`[J.A.R.V.I.S. Deezer] Bouton Play hero détecté (${sel}), clic...`);
+                    robustClick(el);
+                    clickAttempts++;
+                    if (clickAttempts >= 3) {
+                        try { el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); } catch (e) {}
+                    }
+                    break;
+                }
+            }
+        }, 250);
+    }
 
     function checkPendingAutoplay() {
-        const pendingJson = sessionStorage.getItem('jarvis_deezer_autoplay');
+        const pendingJson = sessionStorage.getItem('jarvis_dz_pending');
         if (!pendingJson) return;
 
         try {
             const pending = JSON.parse(pendingJson);
             const now = Date.now();
-            // Expire après 30 secondes
             if (now - pending.time > 30000) {
-                sessionStorage.removeItem('jarvis_deezer_autoplay');
+                sessionStorage.removeItem('jarvis_dz_pending');
                 return;
             }
-
-            // Recherche du bouton play sur la page chargée
-            const playBtn = findFirstElement(SELECTORS.pagePlay);
-            if (playBtn) {
-                console.log('[J.A.R.V.I.S. Deezer] Bouton Play détecté sur la page, déclenchement...');
-                playBtn.click();
-                showToast('Lecture auto J.A.R.V.I.S.');
-                sessionStorage.removeItem('jarvis_deezer_autoplay');
-                setTimeout(() => sendStatusUpdate(true), 500);
-            }
+            startAutoplayPolling(pending.type, pending.id);
         } catch (e) {
-            sessionStorage.removeItem('jarvis_deezer_autoplay');
+            sessionStorage.removeItem('jarvis_dz_pending');
         }
     }
 
-    // ─── GESTION DES COMMANDES REÇUES ─────────────────────────────────────────
+    // ─── GESTION DES COMMANDES ENTRANTES ──────────────────────────────────────
 
     async function handleCommand(msg) {
         const action = msg.action;
@@ -387,101 +454,151 @@
         try {
             switch (action) {
                 case 'play': {
+                    // 1. dzPlayer
+                    if (win?.dzPlayer?.play) {
+                        try { win.dzPlayer.play(); } catch (e) {}
+                    }
+                    // 2. Audio HTML5
                     const audio = getAudioElement();
                     if (audio && audio.paused) {
                         try { await audio.play(); } catch (e) {}
                     }
-                    const playBtn = findFirstElement(SELECTORS.playPause);
-                    if (playBtn) playBtn.click();
+                    // 3. Bouton barre inférieure
+                    const bottom = getBottomPlayer() || document;
+                    const playBtn = bottom.querySelector('button[data-testid="play_button"], button[data-testid="play_button_play"], button[aria-label*="Lecture" i], button[aria-label*="Play" i]');
+                    if (playBtn) {
+                        robustClick(playBtn);
+                    } else {
+                        triggerKey('Space', ' ');
+                    }
                     showToast('▶ Lecture');
                     break;
                 }
 
                 case 'pause': {
+                    // 1. dzPlayer
+                    if (win?.dzPlayer?.pause) {
+                        try { win.dzPlayer.pause(); } catch (e) {}
+                    }
+                    // 2. Audio HTML5
                     const audio = getAudioElement();
                     if (audio && !audio.paused) {
                         try { audio.pause(); } catch (e) {}
                     }
-                    const pauseBtn = document.querySelector('button[data-testid="play_button_pause"], button[aria-label="Pause"]') || findFirstElement(SELECTORS.playPause);
-                    if (pauseBtn) pauseBtn.click();
+                    // 3. Bouton barre inférieure
+                    const bottom = getBottomPlayer() || document;
+                    const pauseBtn = bottom.querySelector('button[data-testid="play_button_pause"], button[data-testid="play_button"], button[aria-label*="Pause" i]');
+                    if (pauseBtn) {
+                        robustClick(pauseBtn);
+                    } else {
+                        triggerKey('Space', ' ');
+                    }
                     showToast('⏸ Pause');
                     break;
                 }
 
                 case 'toggle_play': {
-                    const playBtn = findFirstElement(SELECTORS.playPause);
-                    if (playBtn) {
-                        playBtn.click();
-                    } else {
-                        const audio = getAudioElement();
-                        if (audio) {
-                            if (audio.paused) await audio.play();
-                            else audio.pause();
-                        }
+                    const audio = getAudioElement();
+                    const isPlaying = audio ? !audio.paused : Boolean(document.querySelector('button[data-testid="play_button_pause"], button[aria-label="Pause"], svg[data-testid="Pause"]'));
+
+                    if (win?.dzPlayer?.playPause) {
+                        try { win.dzPlayer.playPause(); } catch (e) {}
+                    } else if (win?.dzPlayer?.play && win?.dzPlayer?.pause) {
+                        try { isPlaying ? win.dzPlayer.pause() : win.dzPlayer.play(); } catch (e) {}
                     }
-                    showToast('⏯ Play / Pause');
+
+                    if (audio) {
+                        try { isPlaying ? audio.pause() : audio.play(); } catch (e) {}
+                    }
+
+                    const bottom = getBottomPlayer() || document;
+                    const btn = bottom.querySelector('button[data-testid="play_button_play"], button[data-testid="play_button_pause"], button[data-testid="play_button"], button[aria-label*="Lecture" i], button[aria-label*="Pause" i]');
+                    if (btn) {
+                        robustClick(btn);
+                    } else {
+                        triggerKey('Space', ' ');
+                    }
+                    showToast(isPlaying ? '⏸ Pause' : '▶ Lecture');
                     break;
                 }
 
                 case 'next': {
-                    const nextBtn = findFirstElement(SELECTORS.next);
-                    if (nextBtn) {
-                        nextBtn.click();
-                        showToast('⏭ Piste suivante');
-                    } else {
-                        success = false;
-                        responseMessage = 'Bouton suivant introuvable.';
+                    // 1. dzPlayer
+                    if (win?.dzPlayer?.control?.nextTrack) {
+                        try { win.dzPlayer.control.nextTrack(); } catch (e) {}
+                    } else if (win?.dzPlayer?.next) {
+                        try { win.dzPlayer.next(); } catch (e) {}
                     }
+                    // 2. Bouton Suivant
+                    const bottom = getBottomPlayer() || document;
+                    const nextBtn = bottom.querySelector('button[data-testid="next_track_button"], button[data-testid="next_button"], button[data-testid="player-next"], button[aria-label*="suivante" i], button[aria-label*="next" i]');
+                    if (nextBtn) {
+                        robustClick(nextBtn);
+                    } else {
+                        triggerKey('ArrowRight', 'ArrowRight', true);
+                    }
+                    showToast('⏭ Piste suivante');
                     break;
                 }
 
                 case 'previous': {
-                    const prevBtn = findFirstElement(SELECTORS.previous);
-                    if (prevBtn) {
-                        prevBtn.click();
-                        showToast('⏮ Piste précédente');
-                    } else {
-                        success = false;
-                        responseMessage = 'Bouton précédent introuvable.';
+                    // 1. dzPlayer
+                    if (win?.dzPlayer?.control?.prevTrack) {
+                        try { win.dzPlayer.control.prevTrack(); } catch (e) {}
+                    } else if (win?.dzPlayer?.prev) {
+                        try { win.dzPlayer.prev(); } catch (e) {}
                     }
+                    // 2. Bouton Précédent
+                    const bottom = getBottomPlayer() || document;
+                    const prevBtn = bottom.querySelector('button[data-testid="previous_track_button"], button[data-testid="prev_button"], button[data-testid="player-previous"], button[aria-label*="précédente" i], button[aria-label*="previous" i]');
+                    if (prevBtn) {
+                        robustClick(prevBtn);
+                    } else {
+                        triggerKey('ArrowLeft', 'ArrowLeft', true);
+                    }
+                    showToast('⏮ Piste précédente');
                     break;
                 }
 
                 case 'set_shuffle': {
-                    const shuffleBtn = findFirstElement(SELECTORS.shuffle);
-                    if (shuffleBtn) {
-                        const current = isShuffleActive();
-                        const target = params.enable !== undefined ? Boolean(params.enable) : !current;
-                        if (current !== target) {
-                            shuffleBtn.click();
-                        }
-                        showToast(target ? '🔀 Aléatoire : Activé' : '➡️ Aléatoire : Désactivé');
-                    } else {
-                        success = false;
-                        responseMessage = 'Bouton shuffle introuvable.';
+                    const current = isShuffleActive();
+                    const target = params.enable !== undefined ? Boolean(params.enable) : !current;
+
+                    if (win?.dzPlayer?.setShuffle) {
+                        try { win.dzPlayer.setShuffle(target); } catch (e) {}
                     }
+
+                    const bottom = getBottomPlayer() || document;
+                    const shuffleBtn = bottom.querySelector('button[data-testid="shuffle_button"], button[data-testid="player-shuffle"], button[aria-label*="aléatoire" i], button[aria-label*="shuffle" i]');
+                    if (shuffleBtn && current !== target) {
+                        robustClick(shuffleBtn);
+                    } else if (!shuffleBtn) {
+                        triggerKey('KeyS', 's', true);
+                    }
+                    showToast(target ? '🔀 Aléatoire : Activé' : '➡️ Aléatoire : Désactivé');
                     break;
                 }
 
                 case 'set_repeat': {
-                    const repeatBtn = findFirstElement(SELECTORS.repeat);
+                    const bottom = getBottomPlayer() || document;
+                    const repeatBtn = bottom.querySelector('button[data-testid="repeat_button"], button[data-testid="player-repeat"], button[aria-label*="répéter" i], button[aria-label*="repeat" i]');
                     if (repeatBtn) {
-                        repeatBtn.click();
-                        showToast('🔁 Répétition basculée');
-                    } else {
-                        success = false;
-                        responseMessage = 'Bouton repeat introuvable.';
+                        robustClick(repeatBtn);
                     }
+                    showToast('🔁 Répétition');
                     break;
                 }
 
                 case 'set_volume': {
                     const vol = Math.max(0, Math.min(100, parseInt(params.volume ?? 100)));
+                    if (win?.dzPlayer?.setVolume) {
+                        try { win.dzPlayer.setVolume(vol); } catch (e) {}
+                    }
                     const audio = getAudioElement();
                     if (audio) {
                         audio.volume = vol / 100;
                     }
-                    const slider = findFirstElement(SELECTORS.volumeSlider);
+                    const slider = document.querySelector('input[type="range"][data-testid="volume_slider"], input[type="range"][aria-label*="volume" i], .slider-volume input[type="range"]');
                     if (slider) {
                         slider.value = vol;
                         slider.dispatchEvent(new Event('input', { bubbles: true }));
@@ -497,27 +614,61 @@
                     if (params.offset !== undefined && audio) {
                         pos = audio.currentTime + parseFloat(params.offset);
                     }
+                    if (win?.dzPlayer?.seek) {
+                        try { win.dzPlayer.seek(pos); } catch (e) {}
+                    }
                     if (audio) {
                         audio.currentTime = Math.max(0, Math.min(audio.duration || 9999, pos));
-                        showToast(`⏱ ${Math.round(pos)}s`);
-                    } else {
-                        success = false;
-                        responseMessage = 'Élément audio introuvable pour seek.';
                     }
+                    showToast(`⏱ ${Math.round(pos)}s`);
                     break;
                 }
 
                 case 'play_url': {
                     const url = params.url;
+                    const itemType = params.type || '';
+                    const itemId = params.id || '';
+
                     if (!url) {
                         success = false;
                         responseMessage = 'URL manquante.';
                         break;
                     }
 
-                    // Enregistrement de l'intention d'autoplay
-                    sessionStorage.setItem('jarvis_deezer_autoplay', JSON.stringify({
+                    // 1. Essai direct via dzPlayer sans recharger la page si possible
+                    let playedDirectly = false;
+                    if (win?.dzPlayer && itemId && !isNaN(itemId)) {
+                        const numId = parseInt(itemId);
+                        try {
+                            if (itemType === 'playlist' && win.dzPlayer.playPlaylist) {
+                                win.dzPlayer.playPlaylist(numId);
+                                playedDirectly = true;
+                            } else if (itemType === 'track' && win.dzPlayer.playTrack) {
+                                win.dzPlayer.playTrack(numId);
+                                playedDirectly = true;
+                            } else if (itemType === 'album' && win.dzPlayer.playAlbum) {
+                                win.dzPlayer.playAlbum(numId);
+                                playedDirectly = true;
+                            } else if (itemType === 'flow' && win.dzPlayer.playFlow) {
+                                win.dzPlayer.playFlow();
+                                playedDirectly = true;
+                            }
+                        } catch (e) {
+                            console.warn('[J.A.R.V.I.S. Deezer] dzPlayer direct play échoué, repli DOM :', e);
+                        }
+                    }
+
+                    if (playedDirectly) {
+                        showToast(`▶ Lancement immédiat (${itemType})`);
+                        startAutoplayPolling(itemType, itemId);
+                        break;
+                    }
+
+                    // 2. Enregistrement de l'autoplay persistant
+                    sessionStorage.setItem('jarvis_dz_pending', JSON.stringify({
                         url: url,
+                        type: itemType,
+                        id: itemId,
                         time: Date.now()
                     }));
 
@@ -525,17 +676,39 @@
                     const targetClean = url.split('?')[0].replace(/\/$/, '');
 
                     if (currentClean === targetClean) {
-                        // Déjà sur la page, déclenchement direct
-                        checkPendingAutoplay();
+                        // Déjà sur la page cible : lancer directement le polling
+                        showToast('Lancement sur la page...');
+                        startAutoplayPolling(itemType, itemId);
                     } else {
-                        showToast('Chargement musique...');
-                        window.location.href = url;
+                        showToast(`Chargement ${itemType || 'musique'}...`);
+                        
+                        // Navigation client-side (SPA) si possible pour préserver le WebSocket
+                        let spaNavigated = false;
+                        try {
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.style.display = 'none';
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            spaNavigated = true;
+                        } catch (e) {}
+
+                        // Démarrer immédiatement le polling
+                        startAutoplayPolling(itemType, itemId);
+
+                        // Si après 600ms l'URL n'a pas bougé, forcer la redirection
+                        setTimeout(() => {
+                            const nowClean = window.location.href.split('?')[0].replace(/\/$/, '');
+                            if (nowClean !== targetClean) {
+                                window.location.href = url;
+                            }
+                        }, 600);
                     }
                     break;
                 }
 
                 case 'get_status': {
-                    // Renvoie simplement le statut actuel
                     break;
                 }
 
@@ -549,7 +722,6 @@
             console.error('[J.A.R.V.I.S. Deezer] Erreur action :', err);
         }
 
-        // Bref délai pour laisser le DOM s'actualiser avant de renvoyer l'état
         await new Promise(r => setTimeout(r, 200));
 
         const updatedStatus = getStatus();
@@ -578,12 +750,11 @@
 
             ws.onopen = () => {
                 isConnected = true;
-                console.log('✅ [J.A.R.V.I.S. Deezer] Connecté au serveur Python local (ws://localhost:8765)');
+                console.log('✅ [J.A.R.V.I.S. Deezer] Connecté au serveur Python (ws://localhost:8765)');
                 updateHUD(true, 'Connecté à J.A.R.V.I.S.');
                 clearTimeout(reconnectTimer);
                 attachAudioListeners();
                 sendStatusUpdate(true);
-                // Si autoplay en attente, le déclencher
                 checkPendingAutoplay();
             };
 
@@ -598,9 +769,7 @@
                 }
             };
 
-            ws.onerror = () => {
-                // Silencieux pour éviter de polluer la console en cas de serveur fermé
-            };
+            ws.onerror = () => {};
 
             ws.onclose = () => {
                 isConnected = false;
@@ -620,19 +789,21 @@
         reconnectTimer = setTimeout(connectWebSocket, RECONNECT_DELAY);
     }
 
-    // Initialisation
-    window.addEventListener('load', () => {
+    // ─── INITIALISATION ───────────────────────────────────────────────────────
+
+    function init() {
         createHUD();
+        dismissCookieBanner();
         connectWebSocket();
         attachAudioListeners();
         checkPendingAutoplay();
-    });
+    }
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        createHUD();
-        connectWebSocket();
-        attachAudioListeners();
-        checkPendingAutoplay();
+        init();
+    } else {
+        window.addEventListener('DOMContentLoaded', init);
+        window.addEventListener('load', init);
     }
 
 })();

@@ -2694,6 +2694,15 @@ async def voice_channel(websocket: WebSocket):
                                     volume = args.get("volume")
                                     enable = args.get("enable")
 
+                                    if query:
+                                        q_low = query.lower()
+                                        if any(k in q_low for k in ["playlist", "mix", "compil"]):
+                                            item_type = "playlist"
+                                        elif any(k in q_low for k in ["flow", "mon flow"]):
+                                            item_type = "flow"
+                                        elif any(k in q_low for k in ["coup de coeur", "coups de coeur", "favoris", "ma musique"]):
+                                            item_type = "loved"
+
                                     action_label_map = {
                                         "play": "Lecture Deezer",
                                         "pause": "Pause Deezer",
@@ -2703,7 +2712,7 @@ async def voice_channel(websocket: WebSocket):
                                         "shuffle": "Aléatoire Deezer",
                                         "volume": f"Volume Deezer ({volume}%)" if volume is not None else "Volume Deezer",
                                         "status": "Statut lecture Deezer",
-                                        "choose": f"Musique Deezer : {query}",
+                                        "choose": f"Musique Deezer ({item_type}) : {query}",
                                         "open": "Ouverture Deezer Web"
                                     }
                                     action_label = action_label_map.get(action.lower(), f"Deezer : {action}")
