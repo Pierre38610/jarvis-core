@@ -382,23 +382,88 @@ muteBtn.onclick = () => {
 applyVolume(currentVolume);
 
 // --- GESTION DES ÉTATS JARVIS & DU MODÈLE ACTIF ---
+let activeActionState = null;
+
+function getActionLabel(state) {
+  switch (state) {
+    case 'kindle': return "LISEUSE & EBOOK KINDLE";
+    case 'music': return "MUSIQUE DEEZER";
+    case 'media': return "CINÉMA & VIDÉO";
+    case 'downloading': return "TÉLÉCHARGEMENT";
+    case 'system': return "DIAGNOSTIC SYSTÈME";
+    case 'memory': return "MÉMOIRE DURABLE";
+    case 'shopping': return "PANIER & ACHAT";
+    case 'coding': return "PROGRAMMATION";
+    case 'browsing': return "NAVIGATION SUR INTERNET";
+    case 'emailing': return "EXPÉDITION D'E-MAIL";
+    case 'thinking': return "RÉFLEXION";
+    case 'speaking': return "PAROLE";
+    case 'listening': return "À L'ÉCOUTE";
+    default: return "EN COURS";
+  }
+}
+
 function setJarvisState(state, customMsg, detail, engineInfo) {
-  btn.classList.remove('state-listening', 'state-thinking', 'state-speaking', 'state-coding', 'state-browsing', 'state-emailing', 'state-offline');
+  const isActionState = ['coding', 'browsing', 'thinking', 'emailing', 'kindle', 'music', 'media', 'downloading', 'system', 'memory', 'shopping'].includes(state);
+  if (isActionState) {
+    activeActionState = { state, customMsg, detail, engineInfo };
+  } else if (state === 'offline' || state === 'listening' || state === 'idle') {
+    activeActionState = null;
+  }
+
+  btn.classList.remove(
+    'state-listening', 'state-thinking', 'state-speaking', 'state-coding',
+    'state-browsing', 'state-emailing', 'state-kindle', 'state-music',
+    'state-media', 'state-downloading', 'state-system', 'state-memory',
+    'state-shopping', 'state-offline'
+  );
   stateBadge.className = 'state-badge';
 
+  // Gestion directe et stricte des calques SVG de l'avatar :
+  // Masque tous les calques mime et affiche uniquement le calque ciblé
+  const targetLayer = (state === 'speaking' && activeActionState) ? activeActionState.state : state;
+  const allMimeLayers = document.querySelectorAll('.mime-layer');
+  allMimeLayers.forEach(l => {
+    l.style.setProperty('display', 'none', 'important');
+    l.style.opacity = '0';
+  });
+
+  if (!['listening', 'idle', 'offline'].includes(targetLayer)) {
+    const activeMimeLayer = document.querySelector(`.mime-${targetLayer}-layer`);
+    if (activeMimeLayer) {
+      activeMimeLayer.style.setProperty('display', 'block', 'important');
+      activeMimeLayer.style.opacity = '1';
+    }
+  }
+
   // Mise à jour de la couleur d'ambiance du halo selon la tâche en cours
+  const effectiveState = (state === 'speaking' && activeActionState) ? activeActionState.state : state;
   if (reactorHalo) {
-    if (state === 'speaking') {
+    if (effectiveState === 'speaking') {
       reactorHalo.style.background = 'radial-gradient(circle, rgba(0, 240, 255, 0.35) 0%, transparent 70%)';
-    } else if (state === 'coding') {
+    } else if (effectiveState === 'coding') {
       reactorHalo.style.background = 'radial-gradient(circle, rgba(168, 85, 247, 0.35) 0%, transparent 70%)';
-    } else if (state === 'browsing') {
+    } else if (effectiveState === 'browsing') {
       reactorHalo.style.background = 'radial-gradient(circle, rgba(56, 189, 248, 0.35) 0%, transparent 70%)';
-    } else if (state === 'thinking') {
+    } else if (effectiveState === 'thinking') {
       reactorHalo.style.background = 'radial-gradient(circle, rgba(245, 158, 11, 0.35) 0%, transparent 70%)';
-    } else if (state === 'emailing') {
+    } else if (effectiveState === 'emailing') {
       reactorHalo.style.background = 'radial-gradient(circle, rgba(16, 185, 129, 0.35) 0%, transparent 70%)';
-    } else if (state === 'listening') {
+    } else if (effectiveState === 'kindle') {
+      reactorHalo.style.background = 'radial-gradient(circle, rgba(245, 158, 11, 0.40) 0%, transparent 70%)';
+    } else if (effectiveState === 'music') {
+      reactorHalo.style.background = 'radial-gradient(circle, rgba(236, 72, 153, 0.40) 0%, transparent 70%)';
+    } else if (effectiveState === 'media') {
+      reactorHalo.style.background = 'radial-gradient(circle, rgba(239, 68, 68, 0.40) 0%, transparent 70%)';
+    } else if (effectiveState === 'downloading') {
+      reactorHalo.style.background = 'radial-gradient(circle, rgba(6, 182, 212, 0.40) 0%, transparent 70%)';
+    } else if (effectiveState === 'system') {
+      reactorHalo.style.background = 'radial-gradient(circle, rgba(132, 204, 22, 0.38) 0%, transparent 70%)';
+    } else if (effectiveState === 'memory') {
+      reactorHalo.style.background = 'radial-gradient(circle, rgba(99, 102, 241, 0.40) 0%, transparent 70%)';
+    } else if (effectiveState === 'shopping') {
+      reactorHalo.style.background = 'radial-gradient(circle, rgba(16, 185, 129, 0.40) 0%, transparent 70%)';
+    } else if (effectiveState === 'listening') {
       reactorHalo.style.background = 'radial-gradient(circle, rgba(56, 189, 248, 0.28) 0%, transparent 70%)';
     } else {
       reactorHalo.style.background = 'radial-gradient(circle, rgba(100, 116, 139, 0.18) 0%, transparent 70%)';
@@ -448,12 +513,24 @@ function setJarvisState(state, customMsg, detail, engineInfo) {
   }
 
   if (state === 'speaking') {
-    btn.classList.add('state-speaking');
-    stateBadge.classList.add('badge-speaking');
-    stateLabel.innerText = "PAROLE";
-    statusMessage.innerText = customMsg || "JARVIS vous répond...";
-    btnLabel.innerText = "COUPER";
-    if (btnInterrupt) btnInterrupt.style.display = 'inline-flex';
+    if (activeActionState) {
+      // Une action est active : garder l'animation de l'action tout en autorisant la parole
+      btn.classList.add(`state-${activeActionState.state}`);
+      btn.classList.add('is-speaking');
+      stateBadge.classList.add(`badge-${activeActionState.state}`);
+      stateLabel.innerText = `${getActionLabel(activeActionState.state)} (PAROLE)`;
+      statusMessage.innerText = customMsg || "JARVIS vous répond...";
+      btnLabel.innerText = "COUPER";
+      if (btnInterrupt) btnInterrupt.style.display = 'inline-flex';
+    } else {
+      btn.classList.add('state-speaking');
+      btn.classList.add('is-speaking');
+      stateBadge.classList.add('badge-speaking');
+      stateLabel.innerText = "PAROLE";
+      statusMessage.innerText = customMsg || "JARVIS vous répond...";
+      btnLabel.innerText = "COUPER";
+      if (btnInterrupt) btnInterrupt.style.display = 'inline-flex';
+    }
   } else {
     if (btnInterrupt && !isJarvisSpeaking && !isPlaybackPaused) {
       btnInterrupt.style.display = 'none';
@@ -489,6 +566,48 @@ function setJarvisState(state, customMsg, detail, engineInfo) {
       stateLabel.innerText = "EXPÉDITION D'E-MAIL";
       statusMessage.innerText = customMsg || (detail ? `E-mail : ${detail}` : "Préparation et envoi du courriel...");
       btnLabel.innerText = "ONLINE";
+    } else if (state === 'kindle') {
+      btn.classList.add('state-kindle');
+      stateBadge.classList.add('badge-kindle');
+      stateLabel.innerText = "LISEUSE & EBOOK KINDLE";
+      statusMessage.innerText = customMsg || (detail ? `Kindle : ${detail}` : "Recherche et transfert vers votre Kindle...");
+      btnLabel.innerText = "KINDLE";
+    } else if (state === 'music') {
+      btn.classList.add('state-music');
+      stateBadge.classList.add('badge-music');
+      stateLabel.innerText = "MUSIQUE DEEZER";
+      statusMessage.innerText = customMsg || (detail ? `Deezer : ${detail}` : "Lecture musicale sur Deezer...");
+      btnLabel.innerText = "DEEZER";
+    } else if (state === 'media') {
+      btn.classList.add('state-media');
+      stateBadge.classList.add('badge-media');
+      stateLabel.innerText = "CINÉMA & VIDÉO";
+      statusMessage.innerText = customMsg || (detail ? `Stremio : ${detail}` : "Diffusion et streaming Stremio...");
+      btnLabel.innerText = "STREMIO";
+    } else if (state === 'downloading') {
+      btn.classList.add('state-downloading');
+      stateBadge.classList.add('badge-downloading');
+      stateLabel.innerText = "TÉLÉCHARGEMENT SÉCURISÉ";
+      statusMessage.innerText = customMsg || (detail ? `Téléchargement : ${detail}` : "Téléchargement sécurisé en cours...");
+      btnLabel.innerText = "DOWNLOAD";
+    } else if (state === 'system') {
+      btn.classList.add('state-system');
+      stateBadge.classList.add('badge-system');
+      stateLabel.innerText = "DIAGNOSTIC SYSTÈME";
+      statusMessage.innerText = customMsg || (detail ? `Système : ${detail}` : "Analyse et maintenance système en cours...");
+      btnLabel.innerText = "SYSTÈME";
+    } else if (state === 'memory') {
+      btn.classList.add('state-memory');
+      stateBadge.classList.add('badge-memory');
+      stateLabel.innerText = "MÉMOIRE DURABLE";
+      statusMessage.innerText = customMsg || (detail ? `Mémoire : ${detail}` : "Accès à la mémoire persistante SQLite...");
+      btnLabel.innerText = "MÉMOIRE";
+    } else if (state === 'shopping') {
+      btn.classList.add('state-shopping');
+      stateBadge.classList.add('badge-shopping');
+      stateLabel.innerText = "PANIER & ACHAT";
+      statusMessage.innerText = customMsg || (detail ? `Panier : ${detail}` : "Préparation du panier en ligne...");
+      btnLabel.innerText = "PANIER";
     } else {
       btn.classList.add('state-offline');
       stateBadge.classList.add('badge-offline');
@@ -500,11 +619,14 @@ function setJarvisState(state, customMsg, detail, engineInfo) {
   }
 }
 
+// Initialisation au chargement : tous les calques mime masqués et avatar en veille propre
+setJarvisState('offline');
+
 // ── BANDEAU D'ACTIVITÉ LIVE ──────────────────────────────────────────────────────────────
 // Affiche en temps réel : outil actif, clé API utilisée, modèle, tâche et progression
 function updateLiveActivityBand(state, msg, task, engine, model, apiType, apiLabel) {
   if (!liveActivityBand) return;
-  const activeStates = ['coding', 'browsing', 'thinking', 'emailing'];
+  const activeStates = ['coding', 'browsing', 'thinking', 'emailing', 'kindle', 'music', 'media', 'downloading', 'system', 'memory', 'shopping'];
   const isActive = activeStates.includes(state);
 
   if (!isActive) {
@@ -522,7 +644,14 @@ function updateLiveActivityBand(state, msg, task, engine, model, apiType, apiLab
     coding: 'DÉVELOPPEMENT EN COURS',
     browsing: 'NAVIGATION WEB',
     thinking: 'ANALYSE APPROFONDIE',
-    emailing: 'EXPÉDITION E-MAIL'
+    emailing: 'EXPÉDITION E-MAIL',
+    kindle: 'LISEUSE & EBOOK KINDLE',
+    music: 'DEEZER // STREAMING AUDIO',
+    media: 'STREMIO // CINÉMA & VIDÉO',
+    downloading: 'TÉLÉCHARGEMENT SÉCURISÉ',
+    system: 'DIAGNOSTIC SYSTÈME',
+    memory: 'MÉMOIRE DURABLE SQLITE',
+    shopping: 'PANIER E-COMMERCE'
   };
   if (liveActivityTitle) liveActivityTitle.innerText = titles[state] || 'OUTIL EN COURS';
 
@@ -547,7 +676,14 @@ function updateLiveActivityBand(state, msg, task, engine, model, apiType, apiLab
     coding: 'header-action-dot-coding',
     browsing: 'header-action-dot-browsing',
     thinking: 'header-action-dot-thinking',
-    emailing: 'header-action-dot-active'
+    emailing: 'header-action-dot-active',
+    kindle: 'header-action-dot-thinking',
+    music: 'header-action-dot-coding',
+    media: 'header-action-dot-coding',
+    downloading: 'header-action-dot-browsing',
+    system: 'header-action-dot-active',
+    memory: 'header-action-dot-thinking',
+    shopping: 'header-action-dot-active'
   };
   if (headerActionDot) headerActionDot.className = dotClasses[state] || 'header-action-dot-active';
 
@@ -1113,9 +1249,12 @@ function playPcmChunk(arrayBuffer) {
 
   if (!isJarvisSpeaking) {
     isJarvisSpeaking = true;
-    isToolExecuting = false; // Dès que Jarvis commence à parler, l'exécution de l'outil est terminée
-    stopSilenceSender();     // Arrêt du silence de maintien de session
+    if (!activeActionState) {
+      isToolExecuting = false;
+      stopSilenceSender();
+    }
     jarvisSpeechStartTime = Date.now();
+    btn.classList.add('is-speaking');
     setJarvisState('speaking', "JARVIS vous répond...");
     btnLabel.innerText = "COUPER";
     if (btnInterrupt) btnInterrupt.style.display = 'inline-flex';
@@ -1153,6 +1292,7 @@ function checkSpeechEnded() {
       if (scheduledAudioSources.length === 0 && turnCompletePending && !isPlaybackPaused) {
         turnCompletePending = false;
         isJarvisSpeaking = false;
+        btn.classList.remove('is-speaking');
         turnAudioChunks = [];
         turnResumeIndex = 0;
         window._jarvisLastSpokenText = '';
@@ -1162,9 +1302,15 @@ function checkSpeechEnded() {
         if (btnInterrupt) btnInterrupt.style.display = 'none';
         finalizeUserSpeech();
         resetTranscriptTurn();
-        if (taskDock && taskDock.style.display === 'flex') {
+
+        // Si une action est en cours d'exécution, on conserve son affichage au lieu de repasser en écoute
+        if (isToolExecuting && activeActionState) {
+          setJarvisState(activeActionState.state, activeActionState.customMsg, activeActionState.detail, activeActionState.engineInfo);
+        } else if (taskDock && taskDock.style.display === 'flex') {
           setJarvisState('coding', "JARVIS développe via Antigravity...");
-        } else {
+        } else if (!isToolExecuting) {
+          activeActionState = null;
+          updateLiveActivityBand('idle');
           setJarvisState('listening', "JARVIS à l'écoute, posez votre question...");
         }
       }
@@ -1471,7 +1617,12 @@ async function startJarvis() {
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'status') {
-            setJarvisState(msg.state, msg.msg, msg.detail || msg.task, { engine: msg.engine, model: msg.model });
+            if (msg.speaking_only && activeActionState) {
+              // Notification de parole alors qu'une action est en cours :
+              // on ne détruit pas activeActionState, on laisse playPcmChunk afficher la voix combinée à l'action
+            } else {
+              setJarvisState(msg.state, msg.msg, msg.detail || msg.task, { engine: msg.engine, model: msg.model });
+            }
             // Mise à jour du bandeau d'activité live avec la clé réelle
             updateLiveActivityBand(msg.state, msg.msg, msg.detail || msg.task, msg.engine, msg.model, msg.api_type, msg.api_label);
             if (msg.state === 'coding') {
@@ -1482,10 +1633,14 @@ async function startJarvis() {
               // Activation du gating + silence sender pour maintien de session pendant le codage
               isToolExecuting = true;
               startSilenceSender();
-            } else if (msg.state === 'browsing' || msg.state === 'emailing' || msg.state === 'thinking') {
-              // Gating mic + silence sender pendant toutes les actions Jarvis
+            } else if (['browsing', 'emailing', 'thinking', 'kindle', 'music', 'media', 'downloading', 'system', 'memory', 'shopping'].includes(msg.state)) {
+              // Gating mic + silence sender pendant toutes les actions actives de Jarvis
               isToolExecuting = true;
               startSilenceSender();
+            } else if (msg.state === 'idle' || msg.state === 'listening') {
+              activeActionState = null;
+              isToolExecuting = false;
+              stopSilenceSender();
             }
           } else if (msg.type === 'jarvis_announcement') {
             handleTranscript('jarvis', msg.text, 'replace');
@@ -1584,15 +1739,18 @@ async function startJarvis() {
           } else if (msg.type === 'transcript') {
             handleTranscript(msg.role, msg.text, msg.mode);
           } else if (msg.type === 'turn_complete') {
-            // Signal de fin de génération reçu : attend la fin effective de lecture sonore
-            // L'outil a terminé, on désactive le gating et le silence sender
-            isToolExecuting = false;
-            stopSilenceSender();
+            // Signal de fin de transmission sonore reçu pour ce tour émis par Gemini
+            // ATTENTION : Si un outil Python est en cours d'exécution (isToolExecuting === true),
+            // on ne coupe PAS isToolExecuting ici car l'outil s'exécute encore en arrière-plan !
             turnCompletePending = true;
+            if (!isToolExecuting) {
+              stopSilenceSender();
+            }
             if (!isPlaybackPaused && scheduledAudioSources.length === 0) {
               checkSpeechEnded();
             }
           } else if (msg.type === 'interrupted') {
+            activeActionState = null;
             isToolExecuting = false;
             stopSilenceSender();
             interruptPlayback();
@@ -1601,11 +1759,23 @@ async function startJarvis() {
             // Un outil vient de démarrer : activation immédiate du gating et du silence sender
             isToolExecuting = true;
             startSilenceSender();
+            if (msg.state) {
+              setJarvisState(msg.state, msg.msg, msg.task, { engine: msg.engine, model: msg.model });
+              updateLiveActivityBand(msg.state, msg.msg, msg.task, msg.engine, msg.model, msg.api_type, msg.api_label);
+            }
           } else if (msg.type === 'tool_end') {
-            // L'outil est terminé : Gemini va répondre avec de l'audio immédiatement
-            // On désactive isToolExecuting SEULEMENT quand le premier chunk audio arrive (dans playPcmChunk)
-            // pour éviter tout blanc entre la fin de l'outil et le début de la parole
-            // isToolExecuting reste true jusqu'au premier PCM chunk reçu
+            // L'outil Python a fini son traitement
+            isToolExecuting = false;
+            stopSilenceSender();
+            // Délai de grâce fluide (2s) avant de repasser en écoute si aucun audio n'arrive
+            if (speechEndTimer) clearTimeout(speechEndTimer);
+            speechEndTimer = setTimeout(() => {
+              if (!isToolExecuting && !isJarvisSpeaking && (!scheduledAudioSources || scheduledAudioSources.length === 0)) {
+                activeActionState = null;
+                updateLiveActivityBand('idle');
+                setJarvisState('listening', "JARVIS à l'écoute, posez votre question...");
+              }
+            }, 2000);
           }
         } catch (err) {
           console.error("Erreur message JSON:", err);

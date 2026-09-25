@@ -343,7 +343,11 @@ async def api_send_to_kindle(req: SendToKindleRequest, request: Request):
     token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
     if not auth.is_device_authorized(token):
         return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
-    res = await send_page_to_kindle(url=req.url, title=req.title, open_in_chrome=True)
+    await broadcast_jarvis_state("kindle", f"Send to Kindle : {req.title or req.url}...", task=f"Kindle : {req.title or req.url}", engine="Amazon Send to Kindle", model="Send to Kindle Extension")
+    try:
+        res = await send_page_to_kindle(url=req.url, title=req.title, open_in_chrome=True)
+    finally:
+        await broadcast_jarvis_state("listening", "Prêt pour votre prochaine instruction.")
     return res
 
 @app.post("/api/browser/send-file-to-kindle")
@@ -352,7 +356,11 @@ async def api_send_file_to_kindle(req: SendFileToKindleRequest, request: Request
     token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
     if not auth.is_device_authorized(token):
         return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
-    res = await send_file_to_kindle_web(file_path=req.file_path, open_browser_if_needed=req.open_browser_if_needed)
+    await broadcast_jarvis_state("kindle", f"Dépôt Kindle : {os.path.basename(req.file_path)}...", task=f"Kindle : {os.path.basename(req.file_path)}", engine="Amazon Send to Kindle", model="Send to Kindle Web")
+    try:
+        res = await send_file_to_kindle_web(file_path=req.file_path, open_browser_if_needed=req.open_browser_if_needed)
+    finally:
+        await broadcast_jarvis_state("listening", "Prêt pour votre prochaine instruction.")
     return res
 
 @app.post("/api/browser/upload-and-send-to-kindle")
@@ -369,7 +377,11 @@ async def api_upload_and_send_to_kindle(request: Request, file: UploadFile = Fil
         content = await file.read()
         f_out.write(content)
 
-    res = await send_file_to_kindle_web(file_path=file_location, open_browser_if_needed=False)
+    await broadcast_jarvis_state("kindle", f"Téléversement & envoi Kindle : {file.filename}...", task=f"Kindle : {file.filename}", engine="Amazon Send to Kindle", model="Send to Kindle Web")
+    try:
+        res = await send_file_to_kindle_web(file_path=file_location, open_browser_if_needed=False)
+    finally:
+        await broadcast_jarvis_state("listening", "Prêt pour votre prochaine instruction.")
     return res
 
 @app.get("/api/browser/kindle-status")
@@ -417,6 +429,25 @@ async def broadcast_supervision():
         except Exception:
             pass
 
+async def broadcast_jarvis_state(state: str, msg: str, task: str = "", detail: str = "", engine: str = "", model: str = "", api_type: str = "free", api_label: str = "Service Local"):
+    """Diffuse un changement d'état visuel et d'animation de JARVIS (Kindle, Deezer, Stremio, etc.) au client connecté."""
+    ws = active_task_controller.get("websocket")
+    if ws:
+        try:
+            await ws.send_text(json.dumps({
+                "type": "status",
+                "state": state,
+                "msg": msg,
+                "task": task or msg,
+                "detail": detail or task or msg,
+                "engine": engine or "Local",
+                "model": model or "JARVIS Engine",
+                "api_type": api_type,
+                "api_label": api_label
+            }))
+        except Exception:
+            pass
+
 
 
 def merge_user_speech(current: str, incoming: str) -> str:
@@ -455,6 +486,142 @@ active_task_controller = {
     "paid_consent_modal_open": False,
     "paid_consent_event": None   # asyncio.Event pour attendre la confirmation
 }
+
+def get_tool_metadata(name: str, args: dict = None) -> dict:
+    """Retourne l'état visuel pour l'avatar (Kindle, Musique, Média, Code, etc.), le message et les métadonnées de l'action."""
+    args = args or {}
+    if name in ("search_and_download_ebook", "send_to_ereader", "send_page_to_kindle", "send_file_to_kindle"):
+        query = args.get("query") or args.get("title") or args.get("file_path") or args.get("url") or "Livre Kindle"
+        return {
+            "state": "kindle",
+            "msg": f"Liseuse Kindle : {query}",
+            "task": f"Kindle : {query}",
+            "engine": "Amazon Send to Kindle",
+            "model": "Send to Kindle / Anna's Archive",
+            "api_type": "free",
+            "api_label": "Service Local"
+        }
+    elif name == "play_music_deezer":
+        q = args.get("query") or args.get("action") or "Musique"
+        return {
+            "state": "music",
+            "msg": f"Deezer — {q}",
+            "task": f"Deezer : {q}",
+            "engine": "WebSocket Bridge",
+            "model": "Deezer Web Player",
+            "api_type": "free",
+            "api_label": "Local"
+        }
+    elif name == "play_video_stremio":
+        t = args.get("title") or "Cinéma"
+        return {
+            "state": "media",
+            "msg": f"Stremio — Recherche de '{t}'...",
+            "task": f"Stremio : {t}",
+            "engine": "Cinemeta / Torrentio",
+            "model": "Stremio 4K",
+            "api_type": "free",
+            "api_label": "Local"
+        }
+    elif name == "download_file":
+        fn = args.get("filename") or args.get("url") or "Fichier"
+        return {
+            "state": "downloading",
+            "msg": f"Téléchargement : {fn}...",
+            "task": f"Téléchargement : {fn}",
+            "engine": "Stark Transfer",
+            "model": "Secure Downloader",
+            "api_type": "free",
+            "api_label": "Service Local"
+        }
+    elif name == "run_antigravity_task":
+        instr = args.get("instruction") or "Développement de code..."
+        model_choice = args.get("model") or "gemini-3.8-flash"
+        _, m_label = resolve_antigravity_model(model_choice)
+        return {
+            "state": "coding",
+            "msg": "JARVIS développe via Antigravity...",
+            "task": instr,
+            "engine": "Antigravity IDE",
+            "model": m_label,
+            "api_type": "paid",
+            "api_label": "Clé Payante"
+        }
+    elif name == "ask_deep_reasoning":
+        q = args.get("question") or "Analyse approfondie..."
+        return {
+            "state": "thinking",
+            "msg": "Réflexion approfondie en cours...",
+            "task": q,
+            "engine": "Google API",
+            "model": "Gemini Thinking",
+            "api_type": "free",
+            "api_label": "Clé Gratuite"
+        }
+    elif name in ("search_web", "run_browser_task", "interact_web_page", "open_user_browser"):
+        q = args.get("query") or args.get("goal") or args.get("url") or "Navigation internet"
+        return {
+            "state": "browsing",
+            "msg": f"Navigation Web : {q}",
+            "task": q,
+            "engine": "Playwright / DuckDuckGo",
+            "model": "Browser Engine",
+            "api_type": "free",
+            "api_label": "Clé Gratuite"
+        }
+    elif name in ("send_email", "read_emails"):
+        sub = args.get("subject") or "Messagerie Gmail"
+        return {
+            "state": "emailing",
+            "msg": f"Messagerie Stark : {sub}",
+            "task": sub,
+            "engine": "SMTP / IMAP Stark",
+            "model": "Gmail Protocol",
+            "api_type": "free",
+            "api_label": "Service Local"
+        }
+    elif name in ("remember_user_fact", "recall_user_memories"):
+        f = args.get("fact") or args.get("query") or "Mémoire persistante"
+        return {
+            "state": "memory",
+            "msg": f"Mémoire durable : {f}",
+            "task": f,
+            "engine": "SQLite Durable Memory",
+            "model": "Stark Memory Protocol",
+            "api_type": "free",
+            "api_label": "Service Local"
+        }
+    elif name == "prepare_web_cart_or_checkout":
+        p = args.get("product_or_service") or "Panier web"
+        return {
+            "state": "shopping",
+            "msg": f"Préparation du panier : {p}",
+            "task": f"Panier : {p}",
+            "engine": "Playwright E-Commerce",
+            "model": "Chrome Automation",
+            "api_type": "free",
+            "api_label": "Clé Gratuite"
+        }
+    elif name in ("check_console_errors", "get_system_status", "launch_application", "list_chrome_extensions"):
+        return {
+            "state": "system",
+            "msg": "Diagnostic et maintenance système...",
+            "task": "Diagnostic système",
+            "engine": "OS Monitor",
+            "model": "System Telemetry",
+            "api_type": "free",
+            "api_label": "Service Local"
+        }
+    else:
+        return {
+            "state": "thinking",
+            "msg": f"Exécution : {name}...",
+            "task": name,
+            "engine": "Système Jarvis",
+            "model": "Agent Core",
+            "api_type": "free",
+            "api_label": "Service Local"
+        }
 
 async def stop_active_task(source: str = "user", reason: str = "Arrêt demandé par l'utilisateur") -> dict:
     """Interrompt immédiatement toute action en cours (code Antigravity, navigation Browser-Use, recherche, etc.)"""
@@ -721,6 +888,22 @@ def estimate_tool_cost(tool_name: str, args: dict) -> tuple[str, str]:
         return reason, cost
 
     return "Opération sur clé payante", "~0.01 $"
+
+# ─── WebSocket Agent Relais Local (PC de bureau de Pierre) ───────────────────
+from services.local_agent_service import local_agent_service
+
+@app.websocket("/ws/local-agent")
+async def local_agent_ws_endpoint(websocket: WebSocket):
+    token = websocket.query_params.get("token") or websocket.headers.get("x-jarvis-token")
+    if token != config.ACCESS_PASSWORD:
+        await websocket.close(code=4003, reason="Token agent invalide")
+        return
+    await local_agent_service.register(websocket)
+    await local_agent_service.handle_agent_messages()
+
+@app.get("/api/local-agent/status")
+async def local_agent_status_endpoint():
+    return local_agent_service.get_info()
 
 @app.websocket("/ws")
 async def voice_channel(websocket: WebSocket):
@@ -1849,7 +2032,8 @@ async def voice_channel(websocket: WebSocket):
                                                 "engine": "Google API",
                                                 "model": live_display_label,
                                                 "api_type": "paid" if is_paid_live else "free",
-                                                "api_label": "Clé Payante" if is_paid_live else "Clé Gratuite"
+                                                "api_label": "Clé Payante" if is_paid_live else "Clé Gratuite",
+                                                "speaking_only": True
                                             }))
                                         await websocket.send_bytes(part.inline_data.data)
 
@@ -1880,9 +2064,28 @@ async def voice_channel(websocket: WebSocket):
 
                                 # Signal immédiat au frontend : l'outil commence
                                 # Cela active le silence sender et le gating mic côté client
+                                t_meta = get_tool_metadata(name, args)
                                 await websocket.send_text(json.dumps({
                                     "type": "tool_start",
-                                    "tool_name": name
+                                    "tool_name": name,
+                                    "state": t_meta["state"],
+                                    "msg": t_meta["msg"],
+                                    "task": t_meta["task"],
+                                    "engine": t_meta["engine"],
+                                    "model": t_meta["model"],
+                                    "api_type": t_meta["api_type"],
+                                    "api_label": t_meta["api_label"]
+                                }))
+                                await websocket.send_text(json.dumps({
+                                    "type": "status",
+                                    "state": t_meta["state"],
+                                    "msg": t_meta["msg"],
+                                    "task": t_meta["task"],
+                                    "detail": t_meta["task"],
+                                    "engine": t_meta["engine"],
+                                    "model": t_meta["model"],
+                                    "api_type": t_meta["api_type"],
+                                    "api_label": t_meta["api_label"]
                                 }))
 
                                 if name == "stop_current_action":
@@ -2750,7 +2953,7 @@ async def voice_channel(websocket: WebSocket):
                                     }))
                                     await websocket.send_text(json.dumps({
                                         "type": "status",
-                                        "state": "browsing",
+                                        "state": "music",
                                         "msg": f"Deezer — {action_label}...",
                                         "task": query or action,
                                         "engine": "WebSocket Bridge",
@@ -2763,13 +2966,6 @@ async def voice_channel(websocket: WebSocket):
 
                                     supervision_service.complete_action("play_music_deezer", status=res.get("status", "completed"), summary=res.get("message", "Deezer contrôlé avec succès"))
                                     await broadcast_supervision()
-                                    await websocket.send_text(json.dumps({
-                                        "type": "status",
-                                        "state": "idle",
-                                        "msg": "En veille active",
-                                        "engine": "Google API Live",
-                                        "model": live_display_label
-                                    }))
                                     tool_resp = {
                                         "status": res.get("status", "completed"),
                                         "result": res,
@@ -2800,7 +2996,7 @@ async def voice_channel(websocket: WebSocket):
                                     }))
                                     await websocket.send_text(json.dumps({
                                         "type": "status",
-                                        "state": "browsing",
+                                        "state": "media",
                                         "msg": f"Stremio — Recherche de '{title}'...",
                                         "task": title,
                                         "engine": "Local",
@@ -2819,16 +3015,6 @@ async def voice_channel(websocket: WebSocket):
                                             res = await play_on_stremio(_t, _ct)
                                             supervision_service.complete_action("play_video_stremio", status=res.get("status", "launched"), summary=res.get("message", f"Stremio lancé sur {_t}"))
                                             await broadcast_supervision()
-                                            try:
-                                                await _ws.send_text(json.dumps({
-                                                    "type": "status",
-                                                    "state": "idle",
-                                                    "msg": "En veille active",
-                                                    "engine": "Google API Live",
-                                                    "model": live_display_label
-                                                }))
-                                            except Exception:
-                                                pass
                                             stream = res.get("stream_info", {})
                                             size_msg = ""
                                             if stream.get("found") and stream.get("size_gb"):
@@ -3139,7 +3325,7 @@ async def voice_channel(websocket: WebSocket):
                                     }))
                                     await websocket.send_text(json.dumps({
                                         "type": "status",
-                                        "state": "browsing",
+                                        "state": "shopping",
                                         "msg": "Préparation du panier et préremplissage...",
                                         "task": f"Panier : {product_or_service}",
                                         "engine": "Playwright E-Commerce",
@@ -3195,6 +3381,16 @@ async def voice_channel(websocket: WebSocket):
                                         cost_est="0.00 $"
                                     )
                                     await broadcast_supervision()
+                                    await websocket.send_text(json.dumps({
+                                        "type": "status",
+                                        "state": "downloading",
+                                        "msg": f"Téléchargement sécurisé : {filename or target_url}...",
+                                        "task": f"Téléchargement : {filename or target_url}",
+                                        "engine": "Stark Transfer Protocol",
+                                        "model": "Secure Downloader",
+                                        "api_type": "free",
+                                        "api_label": "Service Local"
+                                    }))
 
                                     res = await download_file(
                                         url=target_url,
@@ -3260,6 +3456,17 @@ async def voice_channel(websocket: WebSocket):
                                         "text": "Transfert de l'ebook vers la liseuse...",
                                         "voice": False
                                     }))
+                                    await websocket.send_text(json.dumps({
+                                        "type": "status",
+                                        "state": "kindle",
+                                        "msg": "Acheminement de l'ebook vers votre liseuse Kindle...",
+                                        "task": "Kindle : Acheminement liseuse",
+                                        "detail": f"Livre : {os.path.basename(file_path) if file_path else 'Ebook'}",
+                                        "engine": "Amazon Send to Kindle",
+                                        "model": "Stark Reader Protocol",
+                                        "api_type": "free",
+                                        "api_label": "Service Local"
+                                    }))
 
                                     res = await send_to_ereader(file_path=file_path, ereader_email=ereader_email, method=method)
 
@@ -3295,6 +3502,22 @@ async def voice_channel(websocket: WebSocket):
                                         cost_est="0.00 $"
                                     )
                                     await broadcast_supervision()
+                                    await websocket.send_text(json.dumps({
+                                        "type": "jarvis_announcement",
+                                        "text": f"Recherche et transfert de l'ebook '{query}' vers votre Kindle...",
+                                        "voice": False
+                                    }))
+                                    await websocket.send_text(json.dumps({
+                                        "type": "status",
+                                        "state": "kindle",
+                                        "msg": f"Recherche & acheminement Kindle : {query}...",
+                                        "task": f"Kindle : {query}",
+                                        "detail": f"Ebook : {query} ({lang_arg or 'auto'})",
+                                        "engine": "Amazon Send to Kindle",
+                                        "model": "Send to Kindle / Anna's Archive",
+                                        "api_type": "free",
+                                        "api_label": "Service Local"
+                                    }))
 
                                     res = await search_and_download_ebook(
                                         query=query,
@@ -3357,6 +3580,17 @@ async def voice_channel(websocket: WebSocket):
                                         "text": "Mise en page et envoi de l'article vers votre Kindle...",
                                         "voice": False
                                     }))
+                                    await websocket.send_text(json.dumps({
+                                        "type": "status",
+                                        "state": "kindle",
+                                        "msg": f"Mise en page Send to Kindle : {title or target_url}...",
+                                        "task": f"Kindle : {title or target_url}",
+                                        "detail": "Formatage article web...",
+                                        "engine": "Amazon Send to Kindle",
+                                        "model": "Send to Kindle Extension",
+                                        "api_type": "free",
+                                        "api_label": "Service Local"
+                                    }))
 
                                     res = await send_page_to_kindle(url=target_url, title=title, open_in_chrome=True)
 
@@ -3389,8 +3623,19 @@ async def voice_channel(websocket: WebSocket):
                                     await broadcast_supervision()
                                     await websocket.send_text(json.dumps({
                                         "type": "jarvis_announcement",
-                                        "text": f"Dépôt du fichier {file_path} sur Amazon Send to Kindle...",
+                                        "text": f"Dépôt du fichier {os.path.basename(file_path) if file_path else 'document'} sur Amazon Send to Kindle...",
                                         "voice": False
+                                    }))
+                                    await websocket.send_text(json.dumps({
+                                        "type": "status",
+                                        "state": "kindle",
+                                        "msg": f"Dépôt Amazon Send to Kindle : {os.path.basename(file_path) if file_path else 'document'}...",
+                                        "task": f"Kindle : {os.path.basename(file_path) if file_path else 'document'}",
+                                        "detail": "Amazon Playwright Authenticated Session...",
+                                        "engine": "Amazon Send to Kindle",
+                                        "model": "Send to Kindle Web",
+                                        "api_type": "free",
+                                        "api_label": "Service Local"
                                     }))
 
                                     res = await send_file_to_kindle_web(file_path=file_path, open_browser_if_needed=open_browser)
@@ -3445,7 +3690,8 @@ async def voice_channel(websocket: WebSocket):
                                 # dès que Gemini enverra le premier chunk audio de réponse
                                 await websocket.send_text(json.dumps({
                                     "type": "tool_end",
-                                    "tool_name": name
+                                    "tool_name": name,
+                                    "state": t_meta.get("state", "listening")
                                 }))
             except (WebSocketDisconnect, WebSocketDisconnected, asyncio.CancelledError, ModelSwitchRequested, QuotaExhaustedError):
                 raise

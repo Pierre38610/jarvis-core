@@ -73,6 +73,29 @@ def is_deezer_running() -> bool:
 
 def launch_deezer(query: str = "") -> Dict[str, Any]:
     """Ouvre Deezer Web Player dans le navigateur par défaut."""
+    try:
+        from services.local_agent_service import local_agent_service
+        if sys.platform != "win32" or local_agent_service.is_connected():
+            if not local_agent_service.is_connected():
+                return {
+                    "status": "pc_offline",
+                    "app": "Deezer Web",
+                    "message": "Votre ordinateur personnel est éteint ou hors ligne. Impossible d'ouvrir Deezer sur votre écran."
+                }
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = None
+            if loop and loop.is_running():
+                return asyncio.run_coroutine_threadsafe(
+                    local_agent_service.execute_command("launch_media", app="deezer", query=query),
+                    loop
+                ).result(timeout=12)
+            else:
+                return asyncio.run(local_agent_service.execute_command("launch_media", app="deezer", query=query))
+    except Exception:
+        pass
+
     import webbrowser
     url = f"https://www.deezer.com/search/{query}" if query else "https://www.deezer.com"
     try:
@@ -236,6 +259,29 @@ async def find_best_1080p_stream(imdb_id: str, content_type: str = "movie") -> D
 
 def launch_stremio(stremio_id: str = "", content_type: str = "movie") -> Dict[str, Any]:
     """Ouvre Stremio, avec deeplink direct vers un contenu si l'ID est fourni."""
+    try:
+        from services.local_agent_service import local_agent_service
+        if sys.platform != "win32" or local_agent_service.is_connected():
+            if not local_agent_service.is_connected():
+                return {
+                    "status": "pc_offline",
+                    "app": "Stremio",
+                    "message": "Votre ordinateur personnel est éteint ou hors ligne. Impossible d'ouvrir Stremio sur votre écran."
+                }
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = None
+            if loop and loop.is_running():
+                return asyncio.run_coroutine_threadsafe(
+                    local_agent_service.execute_command("launch_media", app="stremio", stremio_id=stremio_id, content_type=content_type),
+                    loop
+                ).result(timeout=12)
+            else:
+                return asyncio.run(local_agent_service.execute_command("launch_media", app="stremio", stremio_id=stremio_id, content_type=content_type))
+    except Exception:
+        pass
+
     exe = _find_exe(STREMIO_PATHS)
     cat = "series" if content_type in ("series", "serie", "tv") else "movie"
 
@@ -334,6 +380,29 @@ async def play_on_stremio(title: str, content_type: str = "movie") -> Dict[str, 
 
 def launch_vlc(target: str = "") -> Dict[str, Any]:
     """Ouvre VLC avec un fichier local ou une URL."""
+    try:
+        from services.local_agent_service import local_agent_service
+        if sys.platform != "win32" or local_agent_service.is_connected():
+            if not local_agent_service.is_connected():
+                return {
+                    "status": "pc_offline",
+                    "app": "VLC",
+                    "message": "Votre ordinateur personnel est éteint ou hors ligne. Impossible d'ouvrir VLC sur votre écran."
+                }
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = None
+            if loop and loop.is_running():
+                return asyncio.run_coroutine_threadsafe(
+                    local_agent_service.execute_command("launch_media", app="vlc", target=target),
+                    loop
+                ).result(timeout=12)
+            else:
+                return asyncio.run(local_agent_service.execute_command("launch_media", app="vlc", target=target))
+    except Exception:
+        pass
+
     if not os.path.exists(VLC_PATH):
         return {"status": "error", "message": f"VLC introuvable a {VLC_PATH}"}
     try:

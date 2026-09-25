@@ -47,7 +47,13 @@ MEDIA_APPS = {"deezer", "stremio"}
 
 
 def get_system_status() -> Dict[str, Any]:
-    """Retourne l'etat en temps reel des ressources du systeme (CPU, RAM, batterie)."""
+    try:
+        from services.local_agent_service import local_agent_service
+        if local_agent_service.is_connected() and local_agent_service._last_pc_status:
+            return local_agent_service._last_pc_status
+    except Exception:
+        pass
+
     try:
         cpu_usage = psutil.cpu_percent(interval=None)
         mem = psutil.virtual_memory()
@@ -121,6 +127,38 @@ def launch_application(app_name: str) -> Dict[str, Any]:
                 f"Applications disponibles : {', '.join(k for k in ALLOWED_APPS.keys() if ALLOWED_APPS[k])}."
             )
         }
+
+    # Delegation a l'Agent PC si sur Linux VPS ou si le PC de bureau est connecte
+    try:
+        import sys
+        import asyncio
+        from services.local_agent_service import local_agent_service
+        if sys.platform != "win32" or local_agent_service.is_connected():
+            if not local_agent_service.is_connected():
+                return {
+                    "status": "pc_offline",
+                    "app": app_name,
+                    "message": (
+                        f"Votre ordinateur personnel est actuellement éteint ou déconnecté. "
+                        f"Impossible de lancer '{app_name}' sur votre écran physique pour le moment."
+                    )
+                }
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                future = asyncio.run_coroutine_threadsafe(
+                    local_agent_service.execute_command("launch_app", app_name=app_name),
+                    loop
+                )
+                return future.result(timeout=12)
+            else:
+                return asyncio.run(local_agent_service.execute_command("launch_app", app_name=app_name))
+    except Exception as e:
+        if sys.platform != "win32":
+            return {"status": "error", "message": f"Erreur relais PC: {e}"}
 
     try:
         subprocess.Popen(target_cmd, shell=True)
