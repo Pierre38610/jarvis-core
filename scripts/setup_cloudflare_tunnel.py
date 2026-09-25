@@ -18,9 +18,10 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ENV_FILE = os.path.join(BASE_DIR, ".env")
-CLOUDFLARED_BIN = os.path.join(BASE_DIR, "cloudflared.exe")
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = ROOT_DIR
+ENV_FILE = os.path.join(ROOT_DIR, ".env")
+CLOUDFLARED_BIN = os.path.join(ROOT_DIR, "cloudflared.exe")
 
 
 def set_env_value(key: str, value: str):

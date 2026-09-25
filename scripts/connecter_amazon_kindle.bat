@@ -5,7 +5,7 @@ echo   J.A.R.V.I.S. - SESSION AMAZON SEND TO KINDLE
 echo =====================================================================
 echo.
 echo Ce script ouvre Google Chrome officiel avec votre profil Jarvis :
-echo "%~dp0.jarvis_chrome_profile"
+echo "%~dp0..\.jarvis_chrome_profile"
 echo directement sur la page Amazon Send to Kindle :
 echo https://www.amazon.fr/sendtokindle
 echo.
@@ -14,7 +14,7 @@ echo envoyer automatiquement tous vos fichiers vers votre liseuse Kindle !
 echo =====================================================================
 echo.
 
-set "PROFILE_DIR=%~dp0.jarvis_chrome_profile"
+set "PROFILE_DIR=%~dp0..\.jarvis_chrome_profile"
 set "CHROME_EXE=C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 if not exist "%CHROME_EXE%" (

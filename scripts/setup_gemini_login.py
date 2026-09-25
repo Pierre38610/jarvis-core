@@ -1,12 +1,19 @@
+"""J.A.R.V.I.S. - Authentification Sécurisée Google Gemini.
+Lance Google Chrome officiel natif avec le profil .jarvis_chrome_profile
+pour permettre la connexion Google sans aucun outil d'automatisation.
+"""
+
 import os
 import sys
 import subprocess
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROFILE_DIR = os.path.join(ROOT_DIR, ".jarvis_chrome_profile")
 
 CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 if not os.path.exists(CHROME_PATH):
     CHROME_PATH = r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
 
-PROFILE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".jarvis_chrome_profile")
 
 def setup_login():
     print("=" * 65)
@@ -46,6 +53,7 @@ def setup_login():
     print()
     print("[Succès] Session Google enregistrée dans :", PROFILE_DIR)
     print("JARVIS peut maintenant utiliser votre session connectée pour la réflexion !")
+
 
 if __name__ == "__main__":
     setup_login()

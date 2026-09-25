@@ -5,7 +5,7 @@ echo   J.A.R.V.I.S. - CONNEXION GOOGLE GEMINI SANS AUCUN OUTIL AUTOMATISE
 echo =====================================================================
 echo.
 echo Ce script lance Google Chrome officiel natif avec votre profil Jarvis :
-echo "%~dp0.jarvis_chrome_profile"
+echo "%~dp0..\.jarvis_chrome_profile"
 echo.
 echo Comme il s'agit du vrai Google Chrome sans automation, Google vous
 echo autorisera a vous connecter normalement avec votre mot de passe et 2FA.
@@ -14,7 +14,7 @@ echo Une fois connecte sur l'interface de Gemini, fermez simplement Chrome.
 echo =====================================================================
 echo.
 
-set "PROFILE_DIR=%~dp0.jarvis_chrome_profile"
+set "PROFILE_DIR=%~dp0..\.jarvis_chrome_profile"
 set "CHROME_EXE=C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 if not exist "%CHROME_EXE%" (

@@ -325,7 +325,9 @@ async def api_deezer_status(request: Request = None):
 @app.get("/api/media/deezer/userscript")
 async def api_deezer_userscript():
     """Sert le script Tampermonkey pour installation directe en un clic."""
-    script_path = os.path.join(config.WORKSPACE_ROOT, "deezer_controller.user.js")
+    script_path = os.path.join(config.STATIC_DIR, "deezer_controller.user.js")
+    if not os.path.exists(script_path):
+        script_path = os.path.join(config.BASE_DIR, "deezer_controller.user.js")
     if os.path.exists(script_path):
         return FileResponse(script_path, media_type="text/javascript", filename="deezer_controller.user.js")
     return JSONResponse(status_code=404, content={"message": "Script Tampermonkey introuvable"})

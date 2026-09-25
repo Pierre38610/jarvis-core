@@ -6,8 +6,14 @@ import os
 import sys
 import subprocess
 import asyncio
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
 from config import CHROME_PATH, PROFILE_DIR
 from services.browser_service import check_kindle_web_status
+
 
 def open_amazon_login():
     print("=" * 65)
@@ -42,6 +48,7 @@ def open_amazon_login():
         print("J.A.R.V.I.S. peut désormais envoyer vos documents et livres directement sur votre Kindle !")
     else:
         print("[Information] La session n'est pas encore connectée. Vous pourrez relancer ce script à tout moment.")
+
 
 if __name__ == "__main__":
     open_amazon_login()

@@ -337,7 +337,9 @@ def save_tunnel_data(tunnel_url: str, local_ip: str):
 def launch_qr_gui(qr_url: str, base_url: str, mode: str):
     """Ouvre la fenêtre graphique stylisée Stark HUD avec le QR Code."""
     try:
-        qr_script = os.path.join(BASE_DIR, "show_qr.py")
+        qr_script = os.path.join(BASE_DIR, "scripts", "show_qr.py")
+        if not os.path.exists(qr_script):
+            qr_script = os.path.join(BASE_DIR, "show_qr.py")
         py_bin = sys.executable
         subprocess.Popen([py_bin, qr_script, qr_url, base_url, mode],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

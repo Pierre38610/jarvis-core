@@ -387,6 +387,7 @@
             // 3. Bouton Play principal de la page (UNIQUEMENT dans le contenu principal, JAMAIS dans la barre inférieure)
             const mainContent = document.querySelector('main, #page_naboo_item, #page_content, .page-content, [data-testid="item-header"]') || document.body;
             
+            // Sélecteurs spécifiques pour la page / playlist / album
             const heroPlaySelectors = [
                 'main button[data-testid="item_play_button"]',
                 'main button[data-testid="item_top_banner_play_button"]',
@@ -453,13 +454,16 @@
         try {
             switch (action) {
                 case 'play': {
+                    // 1. dzPlayer
                     if (win?.dzPlayer?.play) {
                         try { win.dzPlayer.play(); } catch (e) {}
                     }
+                    // 2. Audio HTML5
                     const audio = getAudioElement();
                     if (audio && audio.paused) {
                         try { await audio.play(); } catch (e) {}
                     }
+                    // 3. Bouton barre inférieure
                     const bottom = getBottomPlayer() || document;
                     const playBtn = bottom.querySelector('button[data-testid="play_button"], button[data-testid="play_button_play"], button[aria-label*="Lecture" i], button[aria-label*="Play" i]');
                     if (playBtn) {
@@ -472,13 +476,16 @@
                 }
 
                 case 'pause': {
+                    // 1. dzPlayer
                     if (win?.dzPlayer?.pause) {
                         try { win.dzPlayer.pause(); } catch (e) {}
                     }
+                    // 2. Audio HTML5
                     const audio = getAudioElement();
                     if (audio && !audio.paused) {
                         try { audio.pause(); } catch (e) {}
                     }
+                    // 3. Bouton barre inférieure
                     const bottom = getBottomPlayer() || document;
                     const pauseBtn = bottom.querySelector('button[data-testid="play_button_pause"], button[data-testid="play_button"], button[aria-label*="Pause" i]');
                     if (pauseBtn) {
@@ -516,11 +523,13 @@
                 }
 
                 case 'next': {
+                    // 1. dzPlayer
                     if (win?.dzPlayer?.control?.nextTrack) {
                         try { win.dzPlayer.control.nextTrack(); } catch (e) {}
                     } else if (win?.dzPlayer?.next) {
                         try { win.dzPlayer.next(); } catch (e) {}
                     }
+                    // 2. Bouton Suivant
                     const bottom = getBottomPlayer() || document;
                     const nextBtn = bottom.querySelector('button[data-testid="next_track_button"], button[data-testid="next_button"], button[data-testid="player-next"], button[aria-label*="suivante" i], button[aria-label*="next" i]');
                     if (nextBtn) {
@@ -533,11 +542,13 @@
                 }
 
                 case 'previous': {
+                    // 1. dzPlayer
                     if (win?.dzPlayer?.control?.prevTrack) {
                         try { win.dzPlayer.control.prevTrack(); } catch (e) {}
                     } else if (win?.dzPlayer?.prev) {
                         try { win.dzPlayer.prev(); } catch (e) {}
                     }
+                    // 2. Bouton Précédent
                     const bottom = getBottomPlayer() || document;
                     const prevBtn = bottom.querySelector('button[data-testid="previous_track_button"], button[data-testid="prev_button"], button[data-testid="player-previous"], button[aria-label*="précédente" i], button[aria-label*="previous" i]');
                     if (prevBtn) {
@@ -665,11 +676,14 @@
                     const targetClean = url.split('?')[0].replace(/\/$/, '');
 
                     if (currentClean === targetClean) {
+                        // Déjà sur la page cible : lancer directement le polling
                         showToast('Lancement sur la page...');
                         startAutoplayPolling(itemType, itemId);
                     } else {
                         showToast(`Chargement ${itemType || 'musique'}...`);
                         
+                        // Navigation client-side (SPA) si possible pour préserver le WebSocket
+                        let spaNavigated = false;
                         try {
                             const link = document.createElement('a');
                             link.href = url;
@@ -677,10 +691,13 @@
                             document.body.appendChild(link);
                             link.click();
                             document.body.removeChild(link);
+                            spaNavigated = true;
                         } catch (e) {}
 
+                        // Démarrer immédiatement le polling
                         startAutoplayPolling(itemType, itemId);
 
+                        // Si après 600ms l'URL n'a pas bougé, forcer la redirection
                         setTimeout(() => {
                             const nowClean = window.location.href.split('?')[0].replace(/\/$/, '');
                             if (nowClean !== targetClean) {
