@@ -23,7 +23,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from google_antigravity import resolve_antigravity_model, is_stop_directive
 from services.memory_service import memory_service
 from services.reasoning_service import run_deep_reasoning, run_antigravity_task
-from services.browser_service import search_web, run_browser_task, open_browser_window, interact_web_page, prepare_web_cart_or_checkout, send_page_to_kindle, list_installed_chrome_extensions
+from services.browser_service import (
+    search_web, run_browser_task, open_browser_window, interact_web_page,
+    prepare_web_cart_or_checkout, send_page_to_kindle, send_file_to_kindle_web,
+    check_kindle_web_status, list_installed_chrome_extensions
+)
 from services.download_service import download_file, send_to_ereader, search_and_download_ebook, list_downloaded_files
 from services.system_service import get_system_status, launch_application
 from services.email_service import send_email_async, list_outbox_emails, read_received_emails_async
@@ -97,6 +101,11 @@ class DeezerControlRequest(BaseModel):
 class SendToKindleRequest(BaseModel):
     url: str
     title: str = ""
+
+class SendFileToKindleRequest(BaseModel):
+    file_path: str = ""
+    open_browser_if_needed: bool = True
+
 
 
 @app.get("/")
@@ -291,6 +300,49 @@ async def api_send_to_kindle(req: SendToKindleRequest, request: Request):
         return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
     res = await send_page_to_kindle(url=req.url, title=req.title, open_in_chrome=True)
     return res
+
+@app.post("/api/browser/send-file-to-kindle")
+async def api_send_file_to_kindle(req: SendFileToKindleRequest, request: Request):
+    """Dépose un fichier local sur Amazon Send to Kindle et l'envoie sur la Kindle de Pierre."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    res = await send_file_to_kindle_web(file_path=req.file_path, open_browser_if_needed=req.open_browser_if_needed)
+    return res
+
+@app.post("/api/browser/upload-and-send-to-kindle")
+async def api_upload_and_send_to_kindle(request: Request, file: UploadFile = File(...)):
+    """Reçoit un fichier téléversé depuis l'interface ou mobile et l'expédie immédiatement sur Amazon Send to Kindle."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+
+    upload_dir = os.path.join(config.STATIC_DIR, "uploads", "kindle")
+    os.makedirs(upload_dir, exist_ok=True)
+    file_location = os.path.join(upload_dir, file.filename)
+    with open(file_location, "wb") as f_out:
+        content = await file.read()
+        f_out.write(content)
+
+    res = await send_file_to_kindle_web(file_path=file_location, open_browser_if_needed=False)
+    return res
+
+@app.get("/api/browser/kindle-status")
+async def api_kindle_status(request: Request):
+    """Vérifie si la session Amazon Send to Kindle est active et connectée sur la machine."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    return await check_kindle_web_status()
+
+@app.post("/api/browser/open-kindle-login")
+async def api_open_kindle_login(request: Request):
+    """Ouvre Google Chrome sur la page Amazon Send to Kindle avec le profil Jarvis pour se connecter."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    return open_browser_window("https://www.amazon.fr/sendtokindle", load_extensions=True)
+
 
 @app.get("/api/supervision/overview")
 async def get_supervision_overview(request: Request):
@@ -1223,6 +1275,29 @@ async def voice_channel(websocket: WebSocket):
                     )
                 ),
                 types.FunctionDeclaration(
+                    name="send_file_to_kindle",
+                    description=(
+                        "ENVOI DE FICHIER SUR LISEUSE KINDLE (AMAZON SEND TO KINDLE WEB) : "
+                        "Dépose et envoie un fichier (livre numérique EPUB, document PDF, texte TXT, document Word DOC/DOCX, image) "
+                        "directement sur la liseuse Kindle de Pierre via la page officielle Amazon Send to Kindle connectée à son compte. "
+                        "Exemples : 'envoie ce fichier sur ma Kindle', 'mets ce livre sur ma liseuse', 'dépose ce PDF sur ma Kindle', 'envoie l'ebook téléchargé sur ma liseuse'."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "file_path": types.Schema(
+                                type="STRING",
+                                description="Chemin ou nom du fichier à déposer sur Amazon Send to Kindle (ex: 'downloads/livre.epub', 'mon_document.pdf')"
+                            ),
+                            "open_browser_if_needed": types.Schema(
+                                type="BOOLEAN",
+                                description="Ouvre Chrome à l'écran si une reconnexion Amazon est requise (True par défaut)"
+                            )
+                        },
+                        required=["file_path"]
+                    )
+                ),
+                types.FunctionDeclaration(
                     name="list_chrome_extensions",
                     description=(
                         "Liste les extensions Google Chrome installées sur l'ordinateur de Pierre "
@@ -1381,11 +1456,12 @@ async def voice_channel(websocket: WebSocket):
         "   - Pour navigation générale nécessitant un compte (YouTube, Google, etc.) : 'run_browser_task' ou 'interact_web_page'.\n"
         "   - Pour ouvrir Chrome visible avec le profil connecté : 'open_user_browser'.\n"
         "   - IMPORTANT : Pour que la connexion auto fonctionne, Pierre doit s'être connecté une première fois manuellement depuis son Chrome. L'agent utilise ensuite ce profil enregistré automatiquement.\n"
-        "24. EXTENSIONS GOOGLE CHROME & SEND TO KINDLE ('send_page_to_kindle', 'list_chrome_extensions') :\n"
-        "   - Pierre possède l'extension officielle Google Chrome 'Send to Kindle' (ainsi que Wanteeed, Adblock, etc.).\n"
-        "   - Dès que Pierre te demande d'envoyer un article, une page web ou un document vers sa liseuse Kindle (ex: 'envoie cette page à ma kindle', 'mets cet article sur ma liseuse', 'utilise l'extension Send to Kindle', 'balance ça sur ma Kindle') :\n"
-        "     Utilise IMMÉDIATEMENT 'send_page_to_kindle' avec l'URL de la page.\n"
-        "   - Cet outil extrait automatiquement l'article épuré (sans pubs, sans menus), le convertit au format lisible Kindle, l'expédie par courriel direct vers sa liseuse, et ouvre la page dans Google Chrome avec l'extension Send to Kindle prête.\n"
+        "24. AMAZON SEND TO KINDLE & LISEUSE ('send_file_to_kindle', 'send_page_to_kindle', 'list_chrome_extensions') :\n"
+        "   - Pierre dispose de l'accès direct et connecté à la page officielle Amazon Send to Kindle (amazon.fr/sendtokindle) avec son compte Amazon authentifié.\n"
+        "   - Dès que Pierre te demande d'envoyer un fichier, un livre numérique, un PDF, un document Word, un texte ou une image sur sa Kindle (ex: 'envoie ce fichier sur ma Kindle', 'mets ce livre sur ma liseuse', 'dépose ce fichier sur Send to Kindle', 'envoie le PDF sur ma Kindle') :\n"
+        "     Utilise IMMÉDIATEMENT 'send_file_to_kindle' avec le nom ou chemin du fichier.\n"
+        "   - Jarvis ouvre la page officielle Amazon Send to Kindle avec le compte connecté de Pierre, y dépose le fichier (formats acceptés : EPUB, PDF, DOC, DOCX, TXT, RTF, etc.), valide l'envoi et confirme la livraison sur sa bibliothèque Kindle.\n"
+        "   - Pour un article web ou une page internet : utilise 'send_page_to_kindle' avec l'URL de la page.\n"
         "   - Pour consulter les extensions installées : utilise 'list_chrome_extensions'.\n"
         "\n"
         "RÈGLE D'EXÉCUTION DES OUTILS : "
@@ -3144,9 +3220,12 @@ async def voice_channel(websocket: WebSocket):
                                         await broadcast_supervision()
                                         tool_resp = {
                                             "status": "requires_user_confirmation",
+                                            "query": query,
+                                            "book_title": res.get("book_title") or res.get("filename"),
+                                            "source_url": res.get("source_url"),
                                             "filename": res.get("filename"),
-                                            "size": res.get("estimated_size"),
-                                            "domain": res.get("domain"),
+                                            "size": res.get("estimated_size") or res.get("size"),
+                                            "domain": res.get("domain") or res.get("source") or "Anna's Archive",
                                             "instruction_to_jarvis": res.get("instruction_to_jarvis")
                                         }
                                     else:
@@ -3193,6 +3272,41 @@ async def voice_channel(websocket: WebSocket):
                                         "instruction_to_jarvis": (
                                             f"{res.get('message', 'Article transféré sur la Kindle.')} "
                                             f"Annonce avec ta voix Aoede que l'article a été mis en page et expédié vers sa Kindle, et que Google Chrome est ouvert sur la page avec l'extension Send to Kindle prête."
+                                        )
+                                    }
+
+                                elif name == "send_file_to_kindle":
+                                    file_path = args.get("file_path", "")
+                                    open_browser = args.get("open_browser_if_needed", True)
+
+                                    supervision_service.start_action(
+                                        "send_file_to_kindle",
+                                        "Amazon Send to Kindle Web",
+                                        "send_file_to_kindle",
+                                        f"Fichier : {file_path}",
+                                        "Amazon Playwright Authenticated Session",
+                                        api_type="free",
+                                        api_label="Service Local",
+                                        cost_est="0.00 $"
+                                    )
+                                    await broadcast_supervision()
+                                    await websocket.send_text(json.dumps({
+                                        "type": "jarvis_announcement",
+                                        "text": f"Dépôt du fichier {file_path} sur Amazon Send to Kindle...",
+                                        "voice": False
+                                    }))
+
+                                    res = await send_file_to_kindle_web(file_path=file_path, open_browser_if_needed=open_browser)
+
+                                    supervision_service.complete_action("send_file_to_kindle", status=res.get("status", "completed"), summary=res.get("message", "Fichier envoyé sur Kindle"))
+                                    await broadcast_supervision()
+
+                                    tool_resp = {
+                                        "status": res.get("status", "completed"),
+                                        "result": res,
+                                        "instruction_to_jarvis": (
+                                            f"{res.get('message', 'Fichier envoyé sur la Kindle.')} "
+                                            f"Annonce avec ta voix Aoede que le document a été déposé et envoyé avec succès sur sa liseuse Kindle via sa session Amazon connectée."
                                         )
                                     }
 

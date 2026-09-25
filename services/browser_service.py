@@ -274,6 +274,28 @@ async def search_web(query: str, max_results: int = 5) -> Dict[str, Any]:
     except Exception as e:
         print(f"[Search Web] Erreur DuckDuckGo: {e}")
 
+    # Repli DuckDuckGo Lite si besoin
+    if not results:
+        try:
+            async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+                resp = await client.post("https://lite.duckduckgo.com/lite/", data={"q": q}, headers=headers)
+                if resp.status_code == 200:
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    for a in soup.find_all("a", class_="result-link"):
+                        raw_href = a.get("href", "")
+                        if "uddg=" in raw_href:
+                            try:
+                                raw_href = unquote(raw_href.split("uddg=")[1].split("&")[0])
+                            except Exception:
+                                pass
+                        title = a.get_text(strip=True)
+                        if title and raw_href.startswith("http"):
+                            results.append({"title": title, "url": raw_href, "snippet": ""})
+                            if len(results) >= max_results:
+                                break
+        except Exception:
+            pass
+
     # Repli Playwright si besoin
     if not results:
         return await _search_via_playwright(query, max_results)
@@ -1409,5 +1431,354 @@ def list_installed_chrome_extensions() -> Dict[str, Any]:
         "extensions": exts,
         "message": f"{len(exts)} extensions Google Chrome détectées. Extension Send to Kindle : {'Active' if s2k_installed else 'Non détectée'}."
     }
+
+
+# ─── SERVICE OFFICIEL AMAZON SEND TO KINDLE (WEB PERSISTANT) ─────────────────
+
+AMAZON_KINDLE_SUPPORTED_EXTENSIONS = {
+    ".pdf", ".doc", ".docx", ".txt", ".rtf",
+    ".htm", ".html", ".png", ".gif", ".jpg", ".jpeg", ".bmp", ".epub"
+}
+
+def resolve_local_file_path(file_path: str) -> Optional[str]:
+    """Résout intelligemment le chemin d'un fichier local à travers les dossiers de travail de Jarvis."""
+    if not file_path:
+        return None
+    raw = file_path.strip().strip('"').strip("'")
+    if os.path.isabs(raw) and os.path.isfile(raw):
+        return os.path.abspath(raw)
+    
+    candidates = [
+        raw,
+        os.path.join(BASE_DIR, raw),
+        os.path.join(BASE_DIR, "downloads", raw),
+        os.path.join(BASE_DIR, "downloads", "ebooks", raw),
+        os.path.join(BASE_DIR, "downloads", os.path.basename(raw)),
+        os.path.join(BASE_DIR, "downloads", "ebooks", os.path.basename(raw)),
+        os.path.join(BASE_DIR, "my-project", raw),
+        os.path.join(BASE_DIR, "my-project", os.path.basename(raw)),
+        os.path.join(STATIC_DIR, "uploads", raw),
+        os.path.join(STATIC_DIR, "uploads", "chat", raw),
+        os.path.join(STATIC_DIR, "uploads", "chat", os.path.basename(raw)),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return os.path.abspath(c)
+    return None
+
+def is_valid_epub(file_path: str) -> bool:
+    """Vérifie si un fichier est une archive EPUB valide (ZIP contenant mimetype et documents)."""
+    if not file_path or not os.path.isfile(file_path) or os.path.getsize(file_path) < 1000:
+        return False
+    import zipfile
+    try:
+        with zipfile.ZipFile(file_path, "r") as z:
+            names = z.namelist()
+            if "mimetype" in names:
+                with z.open("mimetype") as m:
+                    content = m.read().decode("utf-8", errors="ignore")
+                    if "epub" in content:
+                        return True
+            return any(n.endswith((".opf", ".ncx", ".xhtml", ".html", ".htm")) for n in names)
+    except Exception:
+        return False
+
+
+async def send_file_to_kindle_web(
+    file_path: str,
+    open_browser_if_needed: bool = True,
+    timeout_sec: int = 45
+) -> Dict[str, Any]:
+    """Dépose et expédie un fichier sur la liseuse Kindle de Pierre via la page officielle Amazon Send to Kindle.
+    Utilise le profil Chrome persistant de Jarvis (.jarvis_chrome_profile) avec le compte Amazon connecté.
+    Supporte : PDF, DOC, DOCX, TXT, RTF, HTM, HTML, PNG, GIF, JPG, JPEG, BMP, EPUB (max 200 Mo).
+    """
+    from playwright.async_api import async_playwright
+
+    resolved_path = resolve_local_file_path(file_path)
+    if not resolved_path:
+        return {
+            "status": "error",
+            "message": f"Fichier introuvable : '{file_path}'. Veuillez vérifier le nom ou l'emplacement du fichier."
+        }
+
+    ext = os.path.splitext(resolved_path)[1].lower()
+    file_name = os.path.basename(resolved_path)
+    file_size_bytes = os.path.getsize(resolved_path)
+    file_size_mb = file_size_bytes / (1024 * 1024)
+
+    if file_size_mb > 200:
+        return {
+            "status": "error",
+            "message": f"Le fichier '{file_name}' ({file_size_mb:.1f} Mo) dépasse la limite de 200 Mo autorisée par Amazon Send to Kindle."
+        }
+
+    if ext not in AMAZON_KINDLE_SUPPORTED_EXTENSIONS:
+        return {
+            "status": "warning",
+            "message": (
+                f"L'extension '{ext}' du fichier '{file_name}' n'est pas officiellement dans la liste Send to Kindle "
+                f"(formats supportés : {', '.join(sorted(AMAZON_KINDLE_SUPPORTED_EXTENSIONS))})."
+            )
+        }
+
+    # Validation d'intégrité pour les fichiers EPUB (évite les fausses pages HTML d'archive.org rejetées par Amazon)
+    if ext == ".epub" and not is_valid_epub(resolved_path):
+        return {
+            "status": "error",
+            "file_name": file_name,
+            "message": (
+                f"Le fichier '{file_name}' n'est pas un ePub valide "
+                f"(il s'agit d'une page HTML ou d'un fichier corrompu). "
+                f"Amazon rejetterait ce document lors de la conversion. Envoi annulé."
+            )
+        }
+
+    size_str = f"{file_size_mb:.2f} Mo" if file_size_mb >= 1 else f"{file_size_bytes / 1024:.1f} Ko"
+    print(f"[Send to Kindle] Préparation du transfert web pour '{file_name}' ({size_str})...")
+
+    # Options anti-détection avec position hors-champ pour neutraliser les blocages anti-bot d'Amazon
+    browser_args = [
+        "--disable-blink-features=AutomationControlled",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--window-size=1280,850",
+        "--window-position=-2000,-2000"
+    ]
+
+    try:
+        async with async_playwright() as p:
+            context = await p.chromium.launch_persistent_context(
+                user_data_dir=PROFILE_DIR,
+                executable_path=CHROME_PATH if os.path.exists(CHROME_PATH) else None,
+                headless=False,
+                args=browser_args,
+                viewport={"width": 1280, "height": 950}
+            )
+            page = context.pages[0] if context.pages else await context.new_page()
+
+            try:
+                # 1. Navigation vers Amazon Send to Kindle
+                await page.goto("https://www.amazon.fr/sendtokindle", wait_until="domcontentloaded", timeout=25000)
+                await page.wait_for_timeout(3000)
+
+                # Gestion d'éventuelle page d'erreur temporaire Amazon
+                body_txt = await page.evaluate("() => document.body ? document.body.innerText : ''")
+                if "difficultés" in body_txt.lower() or "désolés" in body_txt.lower():
+                    print("[Send to Kindle] Rechargement automatique suite à page temporaire d'Amazon...")
+                    await page.wait_for_timeout(2000)
+                    await page.reload(wait_until="domcontentloaded")
+                    await page.wait_for_timeout(3000)
+
+                # Gestion d'éventuels cookies
+                try:
+                    cookie_loc = page.locator("button#sp-cc-accept, input#sp-cc-accept, button:has-text('Accepter')").first
+                    if await cookie_loc.count() > 0 and await cookie_loc.is_visible():
+                        await cookie_loc.click(timeout=2000)
+                        await page.wait_for_timeout(1000)
+                except Exception:
+                    pass
+
+                cur_url = page.url.lower()
+                has_signin_btn = (await page.locator("#s2k-dnd-sign-in-button, button:has-text(\"S'identifier\"), a:has-text(\"S'identifier\")").count() > 0)
+                is_signin = (
+                    "signin" in cur_url or 
+                    "ap/signin" in cur_url or 
+                    (await page.locator("input#ap_email, input#ap_password").count() > 0) or
+                    has_signin_btn
+                )
+
+                if is_signin:
+                    await page.screenshot(path=SCREENSHOT_PATH, type="jpeg", quality=75)
+                    await context.close()
+                    if open_browser_if_needed:
+                        open_browser_window("https://www.amazon.fr/sendtokindle")
+                    return {
+                        "status": "need_login",
+                        "url": page.url,
+                        "file_name": file_name,
+                        "message": (
+                            "Votre compte Amazon a besoin d'être authentifié sur la page Send to Kindle. "
+                            "Google Chrome a été ouvert sur votre écran sur la page Send to Kindle : "
+                            "veuillez vous identifier à votre compte Amazon, vos identifiants resteront sauvegardés pour tous les prochains envois."
+                        )
+                    }
+
+                # 2. Localisation du bouton d'ajout de fichiers
+                upload_btn = page.locator("#s2k-dnd-add-your-files-button, button:has-text('Sélectionnez des fichiers')").first
+                if await upload_btn.count() == 0:
+                    try:
+                        await page.wait_for_selector("#s2k-dnd-add-your-files-button", timeout=8000)
+                        upload_btn = page.locator("#s2k-dnd-add-your-files-button")
+                    except Exception:
+                        pass
+
+                if await upload_btn.count() == 0 or not await upload_btn.is_visible():
+                    await page.screenshot(path=SCREENSHOT_PATH, type="jpeg", quality=75)
+                    await context.close()
+                    return {
+                        "status": "error",
+                        "file_name": file_name,
+                        "message": "Impossible de trouver la zone de dépôt de documents sur la page Amazon Send to Kindle."
+                    }
+
+                # 3. Dépôt du fichier via le sélecteur d'Amazon
+                async with page.expect_file_chooser(timeout=12000) as fc_info:
+                    await upload_btn.click()
+
+                file_chooser = await fc_info.value
+                await file_chooser.set_files(resolved_path)
+
+                # 4. Attente de la validation du fichier et de l'apparition du bouton d'envoi
+                send_btn = page.locator("#s2k-r2s-send-button")
+                try:
+                    await page.wait_for_selector("#s2k-r2s-send-button", state="visible", timeout=15000)
+                except Exception:
+                    pass
+
+                if await send_btn.count() == 0 or not await send_btn.is_visible():
+                    await page.screenshot(path=SCREENSHOT_PATH, type="jpeg", quality=75)
+                    await context.close()
+                    return {
+                        "status": "error",
+                        "file_name": file_name,
+                        "message": f"Le fichier '{file_name}' n'a pas pu être préparé par la page Amazon Send to Kindle (format ou validation rejetée)."
+                    }
+
+                # Capture d'écran avant envoi
+                await page.screenshot(path=SCREENSHOT_PATH, type="jpeg", quality=80)
+
+                # 5. Clic sur Envoyer
+                await send_btn.click()
+
+                # 6. Attente de confirmation de livraison
+                try:
+                    await page.wait_for_function("""() => {
+                        const text = document.body ? document.body.innerText : '';
+                        return text.includes('Vos fichiers sont en route') || 
+                               text.includes('Traitement en cours') || 
+                               text.includes('Dans la bibliothèque') ||
+                               text.includes('Fichiers récemment envoyés');
+                    }""", timeout=15000)
+                except Exception:
+                    await page.wait_for_timeout(4000)
+
+                # Capture finale de confirmation
+                await page.screenshot(path=SCREENSHOT_PATH, type="jpeg", quality=80)
+                await context.close()
+
+                return {
+                    "status": "success",
+                    "file_name": file_name,
+                    "file_path": resolved_path,
+                    "file_size": size_str,
+                    "channel": "amazon_send_to_kindle_web",
+                    "service": "Amazon Send to Kindle (Compte connecté)",
+                    "screenshot": "/static/latest_screenshot.jpg",
+                    "message": (
+                        f"Le fichier '{file_name}' ({size_str}) a été déposé et envoyé avec succès sur votre liseuse Kindle "
+                        f"via la page officielle Amazon Send to Kindle connectée à votre compte. "
+                        f"Vos fichiers sont en route et seront synchronisés automatiquement sur votre appareil."
+                    )
+                }
+
+            except Exception as inner_ex:
+                try:
+                    await page.screenshot(path=SCREENSHOT_PATH, type="jpeg", quality=75)
+                except Exception:
+                    pass
+                await context.close()
+                raise inner_ex
+
+    except Exception as ex:
+        err_msg = str(ex)
+        if "Process singleton" in err_msg or "Target page, context or browser has been closed" in err_msg:
+            return {
+                "status": "warning",
+                "file_name": file_name,
+                "message": (
+                    "Google Chrome est actuellement ouvert sur votre ordinateur avec le profil Jarvis. "
+                    "Veuillez fermer la fenêtre Chrome pour permettre à Jarvis d'exécuter l'envoi en tâche de fond, "
+                    "ou demandez-lui d'ouvrir la page pour le faire en direct."
+                )
+            }
+        return {
+            "status": "error",
+            "file_name": file_name,
+            "message": f"Erreur lors du transfert Amazon Send to Kindle : {err_msg}"
+        }
+
+async def check_kindle_web_status() -> Dict[str, Any]:
+    """Vérifie l'état de connexion de la session Amazon Send to Kindle."""
+    from playwright.async_api import async_playwright
+
+    browser_args = [
+        "--disable-blink-features=AutomationControlled",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--window-size=1280,850",
+        "--window-position=-2000,-2000"
+    ]
+
+    try:
+        async with async_playwright() as p:
+            context = await p.chromium.launch_persistent_context(
+                user_data_dir=PROFILE_DIR,
+                executable_path=CHROME_PATH if os.path.exists(CHROME_PATH) else None,
+                headless=False,
+                args=browser_args,
+                viewport={"width": 1280, "height": 850}
+            )
+            page = context.pages[0] if context.pages else await context.new_page()
+            try:
+                await page.goto("https://www.amazon.fr/sendtokindle", wait_until="domcontentloaded", timeout=20000)
+                await page.wait_for_timeout(3000)
+
+                body_txt = await page.evaluate("() => document.body ? document.body.innerText : ''")
+                if "difficultés" in body_txt.lower() or "désolés" in body_txt.lower():
+                    await page.wait_for_timeout(2000)
+                    await page.reload(wait_until="domcontentloaded")
+                    await page.wait_for_timeout(3000)
+
+                cur_url = page.url.lower()
+                has_signin_btn = (await page.locator("#s2k-dnd-sign-in-button, button:has-text(\"S'identifier\"), a:has-text(\"S'identifier\")").count() > 0)
+                is_signin = (
+                    "signin" in cur_url or 
+                    "ap/signin" in cur_url or 
+                    (await page.locator("input#ap_email, input#ap_password").count() > 0) or
+                    has_signin_btn
+                )
+
+                user_name = "Pierre"
+                body_text = await page.evaluate("() => document.body ? document.body.innerText : ''")
+                if "Bonjour " in body_text and not is_signin:
+                    import re
+                    match = re.search(r"Bonjour\s+([A-Za-z0-9_\-]+)", body_text)
+                    if match:
+                        user_name = match.group(1)
+
+                await page.screenshot(path=SCREENSHOT_PATH, type="jpeg", quality=75)
+                await context.close()
+
+                return {
+                    "status": "success",
+                    "logged_in": not is_signin,
+                    "user_name": user_name if not is_signin else None,
+                    "service_url": "https://www.amazon.fr/sendtokindle",
+                    "message": (
+                        f"Session Amazon Send to Kindle active pour {user_name}." if not is_signin
+                        else "Session Amazon Send to Kindle non connectée. Connexion requise."
+                    )
+                }
+            except Exception as e:
+                await context.close()
+                return {"status": "error", "logged_in": False, "message": str(e)}
+    except Exception as ex:
+        return {"status": "error", "logged_in": False, "message": str(ex)}
+
 
 

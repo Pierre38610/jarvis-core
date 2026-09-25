@@ -2420,35 +2420,26 @@ function copyChatMessage(text, btn) {
 }
 window.copyChatMessage = copyChatMessage;
 
-// Synthèse vocale navigateur pour lire la réponse
+// Lecture vocale par la voix native Aoede de J.A.R.V.I.S. (zéro synthèse robotique locale)
 function speakChatMessage(text, btn) {
-  if (!('speechSynthesis' in window)) {
-    alert("La synthèse vocale n'est pas supportée sur ce navigateur.");
-    return;
+  if (window.liveWs && window.liveWs.readyState === WebSocket.OPEN) {
+    if (btn) {
+      btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Aoede...`;
+      setTimeout(() => {
+        btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Écouter`;
+      }, 4000);
+    }
+    const clean = text.replace(/```[\s\S]*?```/g, " [code source omis] ").replace(/[*_#`]/g, '');
+    window.liveWs.send(JSON.stringify({
+      type: "user_text",
+      text: `Lis-moi ce passage à voix haute avec ta voix Aoede : "${clean.substring(0, 300)}"`
+    }));
+  } else {
+    alert("Veuillez activer la connexion vocale J.A.R.V.I.S. pour écouter la réponse avec la voix native Aoede.");
   }
-  window.speechSynthesis.cancel();
-  const clean = text.replace(/```[\s\S]*?```/g, " [code source omis] ").replace(/[*_#`]/g, '');
-  const utterance = new SpeechSynthesisUtterance(clean);
-  utterance.lang = 'fr-FR';
-  utterance.rate = 1.05;
-  utterance.pitch = 1.02;
-
-  const voices = window.speechSynthesis.getVoices();
-  const frVoice = voices.find(v => v.lang.startsWith('fr') && (v.name.includes('Female') || v.name.includes('Julie') || v.name.includes('Hortense') || v.name.includes('Google'))) || voices.find(v => v.lang.startsWith('fr'));
-  if (frVoice) utterance.voice = frVoice;
-
-  if (btn) {
-    btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Lecture...`;
-  }
-  utterance.onend = () => {
-    if (btn) btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Écouter`;
-  };
-  utterance.onerror = () => {
-    if (btn) btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Écouter`;
-  };
-  window.speechSynthesis.speak(utterance);
 }
 window.speakChatMessage = speakChatMessage;
+
 
 // Réception d'un message diffusé par WebSocket
 function onServerChatMessageReceived(msgData) {
@@ -2571,14 +2562,232 @@ if (chatLightboxModal) {
   });
 }
 
-// Touche Échap pour fermer la messagerie ou la lightbox
+// Touche Échap pour fermer la messagerie ou la lightbox ou kindle
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (chatLightboxModal && chatLightboxModal.style.display !== 'none') {
       closeChatLightbox();
     } else if (chatModal && chatModal.style.display !== 'none') {
       closeChatDrawer();
+    } else if (kindleModal && kindleModal.style.display !== 'none') {
+      closeKindleModal();
     }
   }
 });
+
+// ─── GESTION MODAL AMAZON SEND TO KINDLE ──────────────────────────────────────
+
+const kindleModal = document.getElementById('kindleModal');
+const kindleDropzone = document.getElementById('kindleDropzone');
+
+function openKindleModal() {
+  if (!kindleModal) return;
+  kindleModal.style.display = 'flex';
+  fetchKindleStatus();
+}
+
+function closeKindleModal() {
+  if (!kindleModal) return;
+  kindleModal.style.display = 'none';
+}
+
+async function fetchKindleStatus() {
+  const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+  const tag = document.getElementById('kindleAccountStatusTag');
+  const userEl = document.getElementById('kindleUserName');
+  const descEl = document.getElementById('kindleStatusDesc');
+
+  if (tag) {
+    tag.innerText = "VÉRIFICATION...";
+    tag.className = "section-tag";
+  }
+
+  try {
+    const res = await fetch(`/api/browser/kindle-status?token=${encodeURIComponent(token)}`);
+    const data = await res.json();
+
+    if (data.logged_in) {
+      if (tag) {
+        tag.innerText = "CONNECTÉ";
+        tag.className = "section-tag tag-ready";
+        tag.style.background = "rgba(34, 197, 94, 0.2)";
+        tag.style.color = "#22c55e";
+      }
+      if (userEl) userEl.innerText = data.user_name || "Pierre";
+      if (descEl) descEl.innerText = "Compte Amazon prêt. Vos fichiers seront transférés directement sur votre liseuse.";
+    } else {
+      if (tag) {
+        tag.innerText = "CONNEXION REQUISE";
+        tag.className = "section-tag tag-warning";
+        tag.style.background = "rgba(234, 88, 12, 0.2)";
+        tag.style.color = "#ea580c";
+      }
+      if (userEl) userEl.innerText = "Non authentifié";
+      if (descEl) descEl.innerText = "Cliquez sur 'Ouvrir Amazon' pour vous connecter sur la page Send to Kindle.";
+    }
+  } catch (e) {
+    if (tag) {
+      tag.innerText = "HORS LIGNE";
+      tag.className = "section-tag tag-danger";
+    }
+    if (descEl) descEl.innerText = "Impossible de contacter le service : " + e.message;
+  }
+}
+
+async function openAmazonKindleLogin() {
+  const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+  try {
+    const descEl = document.getElementById('kindleStatusDesc');
+    if (descEl) descEl.innerText = "Ouverture de Google Chrome sur Amazon Send to Kindle...";
+    await fetch(`/api/browser/open-kindle-login?token=${encodeURIComponent(token)}`, { method: 'POST' });
+  } catch (e) {
+    console.error("Erreur ouverture Chrome Kindle:", e);
+  }
+}
+
+async function handleKindleFileSelected(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  const card = document.getElementById('kindleUploadCard');
+  const nameEl = document.getElementById('kindleUploadFileName');
+  const tagEl = document.getElementById('kindleUploadStatusTag');
+  const msgEl = document.getElementById('kindleUploadMessage');
+
+  if (card) card.style.display = 'block';
+  if (nameEl) nameEl.innerText = `${file.name} (${(file.size / 1024).toFixed(1)} Ko)`;
+  if (tagEl) {
+    tagEl.innerText = "TÉLÉVERSEMENT EN COURS...";
+    tagEl.style.background = "rgba(56, 189, 248, 0.2)";
+    tagEl.style.color = "#38bdf8";
+  }
+  if (msgEl) msgEl.innerText = "J.A.R.V.I.S. dépose votre fichier sur Amazon Send to Kindle et lance l'expédition...";
+
+  const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch(`/api/browser/upload-and-send-to-kindle?token=${encodeURIComponent(token)}`, {
+      method: 'POST',
+      body: formData
+    });
+    const result = await res.json();
+
+    if (result.status === 'success') {
+      if (tagEl) {
+        tagEl.innerText = "ENVOYÉ AVEC SUCCÈS ✓";
+        tagEl.style.background = "rgba(34, 197, 94, 0.2)";
+        tagEl.style.color = "#22c55e";
+      }
+      if (msgEl) msgEl.innerText = result.message || "Document en route vers votre Kindle !";
+    } else if (result.status === 'need_login') {
+      if (tagEl) {
+        tagEl.innerText = "CONNEXION REQUISE";
+        tagEl.style.background = "rgba(234, 88, 12, 0.2)";
+        tagEl.style.color = "#ea580c";
+      }
+      if (msgEl) msgEl.innerText = result.message || "Veuillez vous identifier sur Amazon, puis réessayez.";
+      fetchKindleStatus();
+    } else {
+      if (tagEl) {
+        tagEl.innerText = "ERREUR D'ENVOI";
+        tagEl.style.background = "rgba(239, 68, 68, 0.2)";
+        tagEl.style.color = "#ef4444";
+      }
+      if (msgEl) msgEl.innerText = result.message || "Une erreur est survenue lors de l'envoi.";
+    }
+  } catch (err) {
+    if (tagEl) {
+      tagEl.innerText = "ERREUR RÉSEAU";
+      tagEl.style.background = "rgba(239, 68, 68, 0.2)";
+      tagEl.style.color = "#ef4444";
+    }
+    if (msgEl) msgEl.innerText = "Échec du transfert : " + err.message;
+  }
+}
+
+async function sendWebArticleToKindle() {
+  const urlInput = document.getElementById('kindleWebArticleUrl');
+  const url = (urlInput ? urlInput.value : '').trim();
+  if (!url) return;
+
+  const card = document.getElementById('kindleUploadCard');
+  const nameEl = document.getElementById('kindleUploadFileName');
+  const tagEl = document.getElementById('kindleUploadStatusTag');
+  const msgEl = document.getElementById('kindleUploadMessage');
+
+  if (card) card.style.display = 'block';
+  if (nameEl) nameEl.innerText = url;
+  if (tagEl) {
+    tagEl.innerText = "MISE EN PAGE...";
+    tagEl.style.background = "rgba(56, 189, 248, 0.2)";
+    tagEl.style.color = "#38bdf8";
+  }
+  if (msgEl) msgEl.innerText = "Extraction du contenu épuré sans publicité et expédition Kindle...";
+
+  const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+  try {
+    const res = await fetch(`/api/browser/send-to-kindle?token=${encodeURIComponent(token)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url })
+    });
+    const result = await res.json();
+    if (result.status === 'success') {
+      if (tagEl) {
+        tagEl.innerText = "ARTICLE EXPÉDIÉ ✓";
+        tagEl.style.background = "rgba(34, 197, 94, 0.2)";
+        tagEl.style.color = "#22c55e";
+      }
+      if (msgEl) msgEl.innerText = result.message;
+      if (urlInput) urlInput.value = '';
+    } else {
+      if (tagEl) {
+        tagEl.innerText = "ERREUR";
+        tagEl.style.background = "rgba(239, 68, 68, 0.2)";
+        tagEl.style.color = "#ef4444";
+      }
+      if (msgEl) msgEl.innerText = result.message || "Erreur lors du traitement.";
+    }
+  } catch (err) {
+    if (tagEl) {
+      tagEl.innerText = "ERREUR";
+      tagEl.style.background = "rgba(239, 68, 68, 0.2)";
+      tagEl.style.color = "#ef4444";
+    }
+    if (msgEl) msgEl.innerText = err.message;
+  }
+}
+
+// Drag and drop sur la dropzone Kindle
+if (kindleDropzone) {
+  kindleDropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    kindleDropzone.style.borderColor = '#38bdf8';
+    kindleDropzone.style.background = 'rgba(56, 189, 248, 0.15)';
+  });
+  kindleDropzone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    kindleDropzone.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+    kindleDropzone.style.background = 'rgba(15, 23, 42, 0.5)';
+  });
+  kindleDropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    kindleDropzone.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+    kindleDropzone.style.background = 'rgba(15, 23, 42, 0.5)';
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleKindleFileSelected({ target: { files: e.dataTransfer.files } });
+    }
+  });
+}
+
+if (kindleModal) {
+  kindleModal.addEventListener('click', (e) => {
+    if (e.target === kindleModal) {
+      closeKindleModal();
+    }
+  });
+}
+
 
