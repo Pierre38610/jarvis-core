@@ -2,6 +2,14 @@
 // J.A.R.V.I.S. Client Engine - Stark Industries HUD
 // ========================================================
 
+// --- REDIRECTION AUTOMATIQUE VERS HTTPS SI ACCÈS HTTP DISTANT ---
+// Indispensable car les navigateurs bloquent strictement le microphone (getUserMedia) sur HTTP non-localhost.
+if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+  const targetHttps = 'https://jarvis.signalcraftapps.com' + window.location.pathname + window.location.search;
+  console.warn("[Security] Accès non sécurisé HTTP détecté. Redirection vers", targetHttps);
+  window.location.replace(targetHttps);
+}
+
 // --- GESTION DE L'AUTHENTIFICATION & PERSISTANCE ---
 const authScreen = document.getElementById('authScreen');
 const mainScreen = document.getElementById('mainScreen');
@@ -304,6 +312,17 @@ let currentEntryEl = null;
 
 let speakerAnalyser = null;
 let speakerDataArray = null;
+
+// --- GESTION DU BARGE-IN VOCAL ET REPRISE DE PAROLE INTELLIGENTE ---
+let bargeInAudioRingBuffer = [];
+const MAX_BARGE_IN_CHUNKS = 25; // ~2.1s de buffer circulaire à 16kHz pour préserver l'attaque de la phrase
+let turnAudioChunks = [];
+let turnResumeIndex = 0;
+let isPlaybackPaused = false;
+let speechPauseTimer = null;
+let speechPauseDetectedText = '';
+let jarvisSpokenWordsSet = new Set();
+let jarvisSpeechStartTime = 0;
 
 // Éléments de l'avatar féminin interactif
 const avatarLipLower = document.querySelector('.avatar-lip-lower');
@@ -810,19 +829,6 @@ function downsampleTo16k(inputBuffer, inSampleRate) {
   }
   return result;
 }
-
-// --- GESTION DU BARGE-IN VOCAL ET REPRISE DE PAROLE INTELLIGENTE ---
-let bargeInAudioRingBuffer = [];
-const MAX_BARGE_IN_CHUNKS = 25; // ~2.1s de buffer circulaire à 16kHz pour préserver l'attaque de la phrase
-
-// État de coupure temporaire et de reprise de la parole
-let turnAudioChunks = [];
-let turnResumeIndex = 0;
-let isPlaybackPaused = false;
-let speechPauseTimer = null;
-let speechPauseDetectedText = '';
-let jarvisSpokenWordsSet = new Set();
-let jarvisSpeechStartTime = 0;
 
 function flushBargeInAudio() {
   if (ws && ws.readyState === WebSocket.OPEN && bargeInAudioRingBuffer.length > 0) {
@@ -1528,6 +1534,15 @@ async function startJarvis() {
         navigator.mediaSession.setActionHandler('pause', () => interruptPlayback());
         navigator.mediaSession.setActionHandler('stop', () => interruptPlayback());
       } catch (e) {}
+    }
+
+    // Vérification de la disponibilité du microphone (contexte sécurisé HTTPS requis)
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        window.location.replace('https://jarvis.signalcraftapps.com');
+        return;
+      }
+      throw new Error("L'accès au microphone requiert une connexion HTTPS sécurisée (https://jarvis.signalcraftapps.com).");
     }
 
     mediaStream = await navigator.mediaDevices.getUserMedia({
