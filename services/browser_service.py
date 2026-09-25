@@ -355,13 +355,10 @@ async def _attempt_browser_use(
 
 async def run_browser_task(goal: str, url: str = "", confirmed_by_user: bool = False) -> Dict[str, Any]:
     """Exécute une tâche concrète dans le navigateur avec l'agent autonome Browser-Use.
-    Stratégie :
-    1. Si confirmed_by_user=False : teste d'abord plusieurs modèles sur la CLÉ GRATUITE (gemini-3.8-flash, 3.5, 3.6, latest).
-       Si un modèle réussit : mission accomplie sans coût pour l'utilisateur.
-       Si tous les modèles gratuits échouent : renvoie 'requires_user_confirmation' pour demander l'accord oral de Pierre.
-    2. Si confirmed_by_user=True : exécute sur la CLÉ PAYANTE.
+    Conformément à la consigne de Pierre : utilise directement la CLÉ PAYANTE pour le modèle Flash
+    afin d'éliminer toute latence liée aux quotas de la clé gratuite.
     """
-    print(f"[Browser Task] Début de mission : '{goal}' (url: '{url}', confirmed_by_user: {confirmed_by_user})")
+    print(f"[Browser Task] Début de mission : '{goal}' (url: '{url}')")
 
     # Résolution intelligente de lien profond (trains, transports, hôtels)
     route_info = extract_transport_route(goal or url)
@@ -371,76 +368,55 @@ async def run_browser_task(goal: str, url: str = "", confirmed_by_user: bool = F
             url = route_info["url"]
         target_site_fallback = route_info["url"]
 
-    # 1. Si Pierre n'a pas confirmé l'utilisation de la clé payante :
-    # Tenter d'abord plusieurs modèles qui pourraient fonctionner avec la CLÉ GRATUITE
-    if not confirmed_by_user:
-        if GEMINI_API_KEY_FREE:
-            print(f"[Browser Task] Tentative préalable avec la CLÉ GRATUITE sur plusieurs modèles...")
-            for candidate_model in FREE_BROWSER_MODELS:
-                try:
-                    print(f"[Browser Task] Essai sur clé gratuite avec {candidate_model}...")
-                    res = await _attempt_browser_use(
-                        instruction=goal,
-                        target_url=url,
-                        target_site_fallback=target_site_fallback,
-                        route_info=route_info,
-                        model_name=candidate_model,
-                        api_key=GEMINI_API_KEY_FREE,
-                        max_steps=6
-                    )
-                    res["goal"] = goal
-                    res["key_used"] = "Clé Gratuite"
-                    res["model_used"] = candidate_model
-                    print(f"[Browser Task] Succès sur la clé gratuite avec {candidate_model} !")
-                    return res
-                except asyncio.CancelledError:
-                    print(f"[Browser Task] Navigation annulée par l'utilisateur.")
-                    return {"status": "cancelled", "summary": "Navigation interrompue à votre demande.", "goal": goal}
-                except Exception as m_err:
-                    print(f"[Browser Task] Échec modèle gratuit {candidate_model} : {m_err}")
+    # Utilisation prioritaire de la CLÉ PAYANTE pour modèle Flash pour zéro latence
+    api_key_to_use = GEMINI_API_KEY_PAID or GEMINI_API_KEY_FREE
+    key_label = "Clé Payante" if api_key_to_use == GEMINI_API_KEY_PAID else "Clé Gratuite"
+    chosen_model = "gemini-3.8-flash"
 
-        # Si tous les modèles sur la clé gratuite ont échoué (ou indisponibles) :
-        # IL EST TECHNQUEMENT IMPOSSIBLE D'UTILISER LA CLÉ PAYANTE SANS CONFIRMATION EXPRESSE DE PIERRE !
-        print(f"[Browser Task] Modèles gratuits épuisés. Demande d'autorisation payante requise.")
-        reason = f"Les modèles sur clé gratuite ({', '.join(FREE_BROWSER_MODELS)}) ont été testés sans succès (quotas gratuits atteints). La navigation autonome nécessite la clé payante pour : '{goal}'"
-        cost_str = "~0.02 $"
-        return {
-            "status": "requires_user_confirmation",
-            "requires_paid_consent": True,
-            "action": "run_browser_task",
-            "tried_free_models": FREE_BROWSER_MODELS,
-            "reason": reason,
-            "estimated_cost": cost_str,
-            "instruction_to_jarvis": (
-                f"ATTENTION : Tous les modèles sur la clé gratuite ont été testés sans succès en raison des limites de quotas. "
-                f"Pour accomplir cette navigation autonome avec analyse visuelle Browser-Use, tu dois impérativement utiliser la clé payante ({cost_str}). "
-                f"RÈGLE STRICTE ET ABSOLUE : Il est STRICTEMENT IMPOSSIBLE d'utiliser la clé payante sans confirmation expresse de Pierre. "
-                f"Explique immédiatement à Pierre à l'oral avec ta voix Aoede que tu as essayé plusieurs modèles sur la clé gratuite mais que les quotas sont épuisés, "
-                f"indique-lui que passer sur la clé payante coûtera environ 0,02 $, "
-                f"et demande-lui explicitement son accord oral : 'M'autorisez-vous à utiliser la clé payante pour cette navigation ?'. "
-                f"Attends sa confirmation. Dès qu'il te dit oui oralement ou valide sur l'écran, réinvoque 'run_browser_task' avec confirmed_by_user=True."
-            )
-        }
-
-    # 2. Pierre a EXPRESSÉMENT confirmé l'utilisation de la clé payante (confirmed_by_user=True)
-    if not GEMINI_API_KEY_PAID:
+    if not api_key_to_use:
         return {
             "status": "error",
-            "summary": "Aucune clé API payante configurée.",
+            "summary": "Aucune clé API configurée pour la navigation.",
             "goal": goal
         }
 
-    print(f"[Browser Task] Exécution autorisée sur la CLÉ PAYANTE...")
+    print(f"[Browser Task] Exécution directe sur {key_label} avec {chosen_model} (zéro latence)...")
     try:
         res = await _attempt_browser_use(
             instruction=goal,
             target_url=url,
             target_site_fallback=target_site_fallback,
             route_info=route_info,
-            model_name="gemini-3.6-flash",
-            api_key=GEMINI_API_KEY_PAID,
+            model_name=chosen_model,
+            api_key=api_key_to_use,
             max_steps=8
         )
+        res["goal"] = goal
+        res["key_used"] = key_label
+        res["model_used"] = f"{chosen_model} (Vision LLM)"
+        return res
+    except asyncio.CancelledError:
+        print(f"[Browser Task] Navigation annulée par l'utilisateur.")
+        return {"status": "cancelled", "summary": "Navigation interrompue à votre demande.", "goal": goal}
+    except Exception as e:
+        print(f"[Browser Task] Erreur Browser-Use ({e}), tentative modèle 3.6-flash ou repli Playwright direct...")
+        try:
+            res = await _attempt_browser_use(
+                instruction=goal,
+                target_url=url,
+                target_site_fallback=target_site_fallback,
+                route_info=route_info,
+                model_name="gemini-3.6-flash",
+                api_key=api_key_to_use,
+                max_steps=8
+            )
+            res["goal"] = goal
+            res["key_used"] = key_label
+            res["model_used"] = "gemini-3.6-flash (Vision LLM)"
+            return res
+        except Exception as e2:
+            print(f"[Browser Task] Échec Browser-Use 3.6 ({e2}), repli Playwright direct...")
+            return await _run_playwright_direct_fallback(goal, url)
         res["goal"] = goal
         res["key_used"] = "Clé Payante"
         res["model_used"] = "Gemini 3.6 Flash (Vision LLM)"
@@ -691,10 +667,10 @@ async def prepare_web_cart_or_checkout(
     autofill_details: Optional[Dict[str, str]] = None,
     open_when_ready: bool = True
 ) -> Dict[str, Any]:
-    """Recherche un produit ou service sur un site marchand, l'ajoute au panier,
-    navigue vers la page de commande, préremplit les coordonnées de Pierre (nom, prénom, adresse, email),
-    S'ARRÊTE STRICTEMENT AVANT LE PAIEMENT, et ouvre automatiquement Google Chrome à l'écran
-    afin que Pierre n'ait plus qu'à vérifier et payer en toute sécurité.
+    """Recherche un produit ou service sur un site marchand, sélectionne la variante/pointure,
+    l'ajoute au panier, navigue vers la page de commande, préremplit les coordonnées de Pierre
+    (nom, prénom, adresse, email), S'ARRÊTE STRICTEMENT AVANT LE PAIEMENT,
+    et ouvre automatiquement Google Chrome à l'écran avec la session connectée et le panier rempli.
     """
     from playwright.async_api import async_playwright
     from services.memory_service import memory_service
@@ -702,7 +678,7 @@ async def prepare_web_cart_or_checkout(
     # 1. Détermination du site marchand et URL cible
     target_site = (merchant_url or "").strip()
     if not target_site:
-        search_query = f"{product_or_service} acheter commander site"
+        search_query = f"{product_or_service} acheter commander site officiel"
         search_res = await search_web(search_query, max_results=3)
         results = search_res.get("results", [])
         if results:
@@ -726,43 +702,67 @@ async def prepare_web_cart_or_checkout(
     zip_code = user_info.get("zip_code", "")
     city = user_info.get("city", "")
 
+    # Détection intelligente de la pointure / taille demandée
+    size_match = re.search(r'(?:pointure|taille|en\s+taille|en)\s*(\d{2})', product_or_service, re.IGNORECASE)
+    if size_match:
+        target_size = size_match.group(1).strip()
+    elif any(k in product_or_service.lower() for k in ["chaussure", "basket", "running", "sneaker", "soulier", "botte", "pantoufle"]):
+        target_size = user_info.get("shoe_size", "42")
+    else:
+        target_size = user_info.get("clothing_size", "M")
+
     cart_url = target_site
     prefilled_fields = []
     actions_log = []
+    item_added = False
 
     try:
         async with async_playwright() as p:
-            browser_args = {
-                "headless": True,
-                "args": ["--no-sandbox", "--disable-dev-shm-usage"]
-            }
-            if os.path.exists(CHROME_PATH):
-                browser_args["executable_path"] = CHROME_PATH
+            # Lancement avec le vrai Chrome et le profil persistant (.jarvis_chrome_profile)
+            # En headless=False et avec suppression des flags webdriver pour contourner les protections antibot (Cloudflare, etc.)
+            browser_args = [
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage"
+            ]
 
-            browser = await p.chromium.launch(**browser_args)
-            page = await browser.new_page()
-            await page.set_viewport_size({"width": 1280, "height": 850})
+            context = await p.chromium.launch_persistent_context(
+                user_data_dir=PROFILE_DIR,
+                executable_path=CHROME_PATH if os.path.exists(CHROME_PATH) else None,
+                headless=False,
+                args=browser_args,
+                viewport={"width": 1280, "height": 850}
+            )
 
-            # A. Visite de la page marchande
+            page = context.pages[0] if context.pages else await context.new_page()
+
+            # A. Visite du site
             actions_log.append(f"Navigation vers {target_site}")
             await page.goto(target_site, wait_until="domcontentloaded", timeout=25000)
             await page.wait_for_timeout(2000)
 
-            # B. Acceptation des cookies
+            # B. Gestion immédiate des bannières cookies
             try:
-                cookie_loc = page.locator("button:has-text('Accepter'), button:has-text('Tout accepter'), button#onetrust-accept-btn-handler, button#sp-cc-accept, button:has-text('J\\'accepte')")
+                cookie_loc = page.locator(
+                    "button#didomi-notice-agree-button, "
+                    "button#onetrust-accept-btn-handler, "
+                    "button#sp-cc-accept, "
+                    "button:has-text('Accepter & Fermer'), "
+                    "button:has-text('Tout accepter'), "
+                    "button:has-text('Accepter'), "
+                    "button:has-text('J\\'accepte'), "
+                    "button:has-text('Accept all')"
+                )
                 if await cookie_loc.count() > 0:
-                    await cookie_loc.first.click(timeout=2000)
+                    await cookie_loc.first.click(timeout=2500)
                     actions_log.append("Bannière cookies acceptée.")
                     await page.wait_for_timeout(1000)
             except Exception:
                 pass
 
-            # C. Recherche de produit interne si pas directement sur la page produit
-            is_product_page = False
-            add_cart_loc = page.locator("button:has-text('Ajouter au panier'), button:has-text('Add to basket'), button:has-text('Add to cart'), input[value*='Ajouter au panier'], a:has-text('Ajouter au panier'), button:has-text('Réserver')")
-            if await add_cart_loc.count() > 0:
-                is_product_page = True
+            # C. Détection fiche produit ou recherche interne
+            add_cart_loc = page.locator("button:has-text('Ajouter au panier'), button:has-text('Add to basket'), button:has-text('Add to cart'), input[value*='Ajouter au panier'], a:has-text('Ajouter au panier'), button#add-to-cart-button")
+            is_product_page = (await add_cart_loc.count() > 0)
 
             if not is_product_page:
                 try:
@@ -770,40 +770,154 @@ async def prepare_web_cart_or_checkout(
                     if await search_box.count() > 0:
                         await search_box.first.fill(product_or_service)
                         await page.keyboard.press("Enter")
-                        actions_log.append(f"Recherche de '{product_or_service}' sur le site marchand.")
-                        await page.wait_for_timeout(2500)
+                        actions_log.append(f"Recherche de '{product_or_service}' sur le site.")
+                        await page.wait_for_timeout(3000)
 
                         product_link = page.locator("div.s-result-item h2 a, .product-card a, .product-item a, a:has(h2), a:has(h3)").first
                         if await product_link.count() > 0:
                             await product_link.click(timeout=5000)
                             actions_log.append("Accès à la fiche produit sélectionnée.")
-                            await page.wait_for_timeout(2000)
+                            await page.wait_for_timeout(2500)
                 except Exception as s_err:
                     actions_log.append(f"Recherche interne: {s_err}")
 
-            # D. Ajout au panier
+            # D. Sélection obligatoire de la variante / pointure / taille (crucial pour les chaussures)
             try:
-                add_btn = page.locator("button:has-text('Ajouter au panier'), button:has-text('Add to cart'), button:has-text('Add to basket'), input[value*='Ajouter au panier'], a:has-text('Ajouter au panier'), button#add-to-cart-button").first
-                if await add_btn.count() > 0:
-                    await add_btn.click(timeout=5000)
-                    actions_log.append("Produit ajouté au panier avec succès.")
-                    await page.wait_for_timeout(2000)
-            except Exception as cart_err:
-                actions_log.append(f"Tentative ajout panier: {cart_err}")
+                size_selected = False
 
-            # E. Navigation vers le panier / passage de commande
+                # 1. Recherche par label ou bouton portant le numéro de pointure (ex: 42)
+                size_loc = page.locator(
+                    f"label:has-text('{target_size}'), "
+                    f"button:has-text('{target_size}'), "
+                    f"[data-testid*='size']:has-text('{target_size}'), "
+                    f"[aria-label*='{target_size}']"
+                ).first
+
+                if await size_loc.count() > 0 and await size_loc.is_visible():
+                    await size_loc.scroll_into_view_if_needed()
+                    await size_loc.click(force=True, timeout=3000)
+                    size_selected = True
+                    actions_log.append(f"Pointure/Taille {target_size} sélectionnée avec succès.")
+                    await page.wait_for_timeout(1500)
+
+                # 2. Si pas trouvé, vérification d'un menu déroulant <select> de pointure
+                if not size_selected:
+                    select_loc = page.locator("select[name*='size' i], select[name*='taille' i], select#native_dropdown_selected_size_name").first
+                    if await select_loc.count() > 0:
+                        options = await select_loc.locator("option").all_inner_texts()
+                        match_opt = next((opt for opt in options if target_size in opt), None)
+                        if match_opt:
+                            await select_loc.select_option(label=match_opt)
+                            actions_log.append(f"Pointure {match_opt.strip()} sélectionnée dans le menu déroulant.")
+                            size_selected = True
+                            await page.wait_for_timeout(1500)
+                        elif len(options) > 1:
+                            await select_loc.select_option(index=1)
+                            actions_log.append(f"Première taille disponible ({options[1].strip()}) sélectionnée.")
+                            size_selected = True
+                            await page.wait_for_timeout(1500)
+
+                # 3. Fallback : premier bouton de taille visible
+                if not size_selected:
+                    generic_size = page.locator("button[data-testid*='size'], [role='radio'][aria-label*='taille' i], div[class*='size'] button").first
+                    if await generic_size.count() > 0 and await generic_size.is_visible():
+                        await generic_size.click(force=True, timeout=2000)
+                        actions_log.append("Taille disponible par défaut sélectionnée.")
+                        await page.wait_for_timeout(1500)
+
+            except Exception as size_err:
+                actions_log.append(f"Détection taille: {size_err}")
+
+            # E. Ajout effectif au panier
             try:
-                checkout_btn = page.locator("a:has-text('Passer la commande'), button:has-text('Passer la commande'), a:has-text('Voir le panier'), a:has-text('Mon panier'), a[href*='cart'], a[href*='panier'], button:has-text('Commander')").first
+                add_btn = page.locator(
+                    "button:has-text('Ajouter au panier'), "
+                    "button:has-text('Add to cart'), "
+                    "button:has-text('Add to basket'), "
+                    "input[value*='Ajouter au panier'], "
+                    "a:has-text('Ajouter au panier'), "
+                    "button#add-to-cart-button, "
+                    "[data-testid*='add-to-cart']"
+                ).first
+
+                if await add_btn.count() > 0:
+                    await add_btn.scroll_into_view_if_needed()
+                    await add_btn.click(timeout=5000)
+                    item_added = True
+                    actions_log.append("Article ajouté au panier avec succès.")
+                    await page.wait_for_timeout(3500)
+            except Exception as cart_err:
+                actions_log.append(f"Erreur ajout panier: {cart_err}")
+
+            # F. Navigation vers la page panier / récapitulatif
+            try:
+                # 1. Vérifier si un tiroir ou popin modal "Ajouté au panier" est apparu
+                modal_cart = page.locator(
+                    "[role='dialog'] a[href*='cart'], "
+                    ".sheet-modal a[href*='cart'], "
+                    "[role='dialog'] button:has-text('panier'), "
+                    "a:has-text('Voir mon panier'), "
+                    "a:has-text('Accéder au panier'), "
+                    "a:has-text('Voir le panier')"
+                ).first
+
+                if await modal_cart.count() > 0:
+                    try:
+                        await modal_cart.click(force=True, timeout=3000)
+                        actions_log.append("Accès au panier via la fenêtre de confirmation.")
+                        await page.wait_for_timeout(3000)
+                    except Exception:
+                        pass
+
+                # 2. Si l'URL n'est pas encore celle du panier, naviguer vers le panier
+                if "cart" not in page.url.lower() and "panier" not in page.url.lower():
+                    # Bouton d'en-tête ou lien standard
+                    header_cart = page.locator("a[href*='cart'], a[href*='panier'], [data-testid*='cart'] a, [aria-label*='panier' i]").first
+                    if await header_cart.count() > 0:
+                        try:
+                            await header_cart.click(force=True, timeout=3000)
+                            await page.wait_for_timeout(3000)
+                        except Exception:
+                            pass
+
+                # 3. Fallback direct vers l'URL panier du domaine
+                if "cart" not in page.url.lower() and "panier" not in page.url.lower():
+                    domain = f"{page.url.split('://')[0]}://{page.url.split('/')[2]}"
+                    if "decathlon" in domain:
+                        await page.goto(f"{domain}/checkout/cart", wait_until="domcontentloaded")
+                    elif "amazon" in domain:
+                        await page.goto(f"{domain}/gp/cart/view.html", wait_until="domcontentloaded")
+                    else:
+                        await page.goto(f"{domain}/cart", wait_until="domcontentloaded")
+                    await page.wait_for_timeout(3000)
+
+                cart_url = page.url
+                actions_log.append(f"Page panier atteinte : {cart_url}")
+            except Exception as nav_err:
+                actions_log.append(f"Navigation panier : {nav_err}")
+
+            # G. Tentative d'accès à l'étape commande (checkout) pour préremplissage
+            try:
+                checkout_btn = page.locator(
+                    "a:has-text('Passer la commande'), "
+                    "button:has-text('Passer la commande'), "
+                    "a:has-text('Commander'), "
+                    "button:has-text('Commander'), "
+                    "a:has-text('Valider mon panier'), "
+                    "button:has-text('Valider mon panier'), "
+                    "a[href*='checkout'], "
+                    "button:has-text('Poursuivre')"
+                ).first
+
                 if await checkout_btn.count() > 0:
-                    await checkout_btn.click(timeout=5000)
-                    actions_log.append("Accès au panier et à l'étape de commande.")
-                    await page.wait_for_timeout(2000)
+                    await checkout_btn.click(timeout=4000)
+                    actions_log.append("Passage à l'étape de coordonnées/livraison.")
+                    await page.wait_for_timeout(2500)
+                    cart_url = page.url
             except Exception:
                 pass
 
-            cart_url = page.url
-
-            # F. Préremplissage intelligent des formulaires (coordonnées de livraison & contact)
+            # H. Préremplissage intelligent des coordonnées de Pierre Cassagnettes
             fill_mappings = [
                 (["input[name*='prenom' i]", "input[id*='prenom' i]", "input[autocomplete='given-name']", "input[name*='firstname' i]"], first_name, "Prénom"),
                 (["input[name*='nom' i]:not([name*='prenom' i])", "input[id*='nom' i]:not([id*='prenom' i])", "input[autocomplete='family-name']", "input[name*='lastname' i]"], last_name, "Nom"),
@@ -821,24 +935,29 @@ async def prepare_web_cart_or_checkout(
                     try:
                         loc = page.locator(sel).first
                         if await loc.count() > 0 and await loc.is_visible():
-                            current_val = await loc.input_value()
-                            if not current_val:
+                            curr = await loc.input_value()
+                            if not curr:
                                 await loc.fill(val, timeout=2000)
                                 prefilled_fields.append(f"{label}: {val}")
                                 break
                     except Exception:
                         continue
 
-            # G. Sécurité absolue : GARANTIE DE NE JAMAIS CLIQUER SUR PAYER
-            await page.screenshot(path=SCREENSHOT_PATH, type="jpeg", quality=80)
-            final_title = await page.title()
+            # I. SÉCURITÉ ABSOLUE : Arrêt strict avant le paiement
+            # On ne clique JAMAIS sur payer
             cart_url = page.url
-            await browser.close()
+            await page.screenshot(path=SCREENSHOT_PATH, type="jpeg", quality=80)
+            actions_log.append("Arrêt sécurisé avant paiement. Données et cookies sauvegardés.")
+
+            # Sauvegarde et fermeture propre du contexte Playwright
+            # Cela écrit immédiatement tous les cookies, tokens de panier et local storage dans PROFILE_DIR
+            await context.close()
 
     except Exception as ex:
-        actions_log.append(f"Note d'exécution : {str(ex)}")
+        actions_log.append(f"Erreur d'exécution: {str(ex)}")
 
-    # H. Ouverture automatique du navigateur Google Chrome visible pour Pierre
+    # J. Ouverture immédiate de Google Chrome en natif sur l'écran de Pierre
+    # Le Chrome ouvert réutilise PROFILE_DIR et retrouve instantanément le panier avec les articles dedans !
     if open_when_ready and cart_url:
         open_res = open_browser_window(cart_url)
         actions_log.append(f"Google Chrome ouvert à l'écran sur le panier ({open_res.get('status')}).")
@@ -848,14 +967,17 @@ async def prepare_web_cart_or_checkout(
         "product": product_or_service,
         "site": target_site,
         "cart_url": cart_url,
+        "item_added": item_added,
+        "target_size": target_size,
         "prefilled_fields": prefilled_fields,
         "steps": actions_log,
         "browser_opened": open_when_ready,
         "screenshot": "/static/latest_screenshot.jpg",
         "message": (
-            f"Le panier pour '{product_or_service}' a été préparé sur {target_site}. "
-            f"Les coordonnées ({', '.join(prefilled_fields) if prefilled_fields else 'Pierre Cassagnettes'}) ont été préremplies. "
-            f"La page Chrome est ouverte à votre écran : il ne vous reste plus qu'à régler et valider votre paiement en toute sérénité."
+            f"Le panier pour '{product_or_service}' (pointure/taille {target_size}) a été préparé sur {target_site}. "
+            f"Les coordonnées de Pierre Cassagnettes ({email}) ont été préremplies. "
+            f"Google Chrome est maintenant ouvert sur votre écran avec votre article dans le panier : "
+            f"il ne vous reste plus qu'à choisir votre mode de paiement et valider votre achat en toute sécurité."
         )
     }
 

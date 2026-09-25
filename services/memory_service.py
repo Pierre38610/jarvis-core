@@ -118,6 +118,8 @@ class MemoryService:
             "zip_code": profile.get("zip_code", profile.get("user_zip", "")),
             "city": profile.get("city", profile.get("user_city", "")),
             "country": profile.get("country", "France"),
+            "shoe_size": profile.get("shoe_size", profile.get("pointure", "42")),
+            "clothing_size": profile.get("clothing_size", profile.get("taille", "M")),
             "ereader_email": profile.get("ereader_email", profile.get("kindle_email", "pierrecassagnettes@gmail.com"))
         }
 

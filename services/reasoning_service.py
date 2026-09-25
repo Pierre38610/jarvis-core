@@ -77,34 +77,38 @@ async def run_antigravity_task(
         }
 
     # 2. Détermination de la clé à utiliser
-    if not confirmed_by_user:
-        # Essai exclusif sur la clé gratuite pour les modèles Flash
-        if GEMINI_API_KEY_FREE:
+    if is_flash_model:
+        # Les modèles Flash passent prioritairement sur la CLÉ PAYANTE selon la consigne de Pierre (zéro latence)
+        if GEMINI_API_KEY_PAID:
+            api_key_to_use = GEMINI_API_KEY_PAID
+            key_label = "Clé Payante"
+            print(f"[Reasoning Service] Antigravity Flash sur CLÉ PAYANTE pour zéro latence ({model})...")
+        elif GEMINI_API_KEY_FREE:
             api_key_to_use = GEMINI_API_KEY_FREE
             key_label = "Clé Gratuite"
-            print(f"[Reasoning Service] Antigravity avec clé GRATUITE ({model})...")
+            print(f"[Reasoning Service] Antigravity Flash sur Clé Gratuite (pas de clé payante)...")
         else:
-            reason = f"Aucune clé gratuite disponible pour le développement de code : '{instruction[:80]}'"
-            cost_str = "~0.005 $"
-            return {
-                "status": "requires_user_confirmation",
-                "requires_paid_consent": True,
-                "action": "run_antigravity_task",
-                "model": model,
-                "reason": reason,
-                "estimated_cost": cost_str,
-                "instruction_to_jarvis": (
-                    f"ATTENTION : Le développement nécessite la clé payante ({cost_str}). "
-                    f"Explique à Pierre la situation et demande-lui son accord oral pour mobiliser la clé payante."
-                )
-            }
+            return {"status": "error", "summary": "Aucune clé API configurée.", "model_label": model}
+    elif not confirmed_by_user:
+        # Modèles non-flash lourds sans confirmation préalable
+        reason = f"L'utilisation du grand modèle {model} nécessite la clé payante."
+        return {
+            "status": "requires_user_confirmation",
+            "requires_paid_consent": True,
+            "action": "run_antigravity_task",
+            "model": model,
+            "reason": reason,
+            "estimated_cost": "~0.03 $",
+            "instruction_to_jarvis": f"Demande confirmation à Pierre pour utiliser {model} sur la clé payante."
+        }
     else:
-        # Pierre a expressément confirmé l'utilisation de la clé payante
+        # Pierre a expressément confirmé pour un grand modèle
         if not GEMINI_API_KEY_PAID:
             return {"status": "error", "summary": "Aucune clé payante configurée.", "model_label": model}
         api_key_to_use = GEMINI_API_KEY_PAID
         key_label = "Clé Payante"
-        print(f"[Reasoning Service] Antigravity avec clé PAYANTE confirmée ({model})...")
+        print(f"[Reasoning Service] Antigravity grand modèle sur CLÉ PAYANTE confirmée ({model})...")
+
 
     try:
         agent = AntigravityAgent(workspace=workspace_path, model=model, api_key=api_key_to_use)
@@ -231,12 +235,15 @@ async def run_deep_reasoning(question: str, model_choice: str | None = None, eng
         ("gemini-flash-latest", "Gemini Flash Latest (Thinking)")
     ]
 
-    # Tentative d'abord avec la clé GRATUITE
-    if client_free:
+    # Priorité à la CLÉ PAYANTE pour zéro latence sur les modèles Flash Thinking (consigne expresse de Pierre)
+    primary_client = client_paid if (client_paid and HAS_PAID_API_KEY) else client_free
+    primary_label = "Clé Payante" if primary_client is client_paid else "Clé Gratuite"
+
+    if primary_client:
         for m_id, m_label in models_to_try:
             try:
-                print(f"[Reasoning Service] Thinking {m_id} avec Clé Gratuite...")
-                response = await client_free.aio.models.generate_content(
+                print(f"[Reasoning Service] Thinking {m_id} avec {primary_label}...")
+                response = await primary_client.aio.models.generate_content(
                     model=m_id,
                     contents=prompt,
                     config=config_thinking
@@ -245,14 +252,15 @@ async def run_deep_reasoning(question: str, model_choice: str | None = None, eng
                 if text_output:
                     return {
                         "source": "Google API",
-                        "model_label": f"{m_label} (Clé Gratuite)",
-                        "key_used": "Clé Gratuite",
+                        "model_label": f"{m_label} ({primary_label})",
+                        "key_used": primary_label,
                         "status": "completed",
                         "summary": text_output[:1800],
                         "full_text": text_output
                     }
             except Exception as m_err:
-                print(f"[Reasoning Service] Modèle gratuit {m_id} indisponible ({m_err})...")
+                print(f"[Reasoning Service] Modèle {m_id} avec {primary_label} indisponible ({m_err})...")
+
 
     # Si la clé gratuite a échoué et que Pierre n'a pas confirmé :
     if not confirmed_by_user:

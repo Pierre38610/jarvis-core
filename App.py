@@ -995,17 +995,16 @@ async def voice_channel(websocket: WebSocket):
         f"ENVIRONNEMENT ET MODÈLE VOCAL GEMINI 3.8 LIVE ({paid_key_status}) :\n"
         f"Ta session vocale s'exécute sur le modèle nouvelle génération : {config.GEMINI_LIVE_MODEL}.\n"
         "Pour le code, les tests et les tâches agentiques concrètes, tu t'appuies sur l'agent autonome outillé Google Antigravity.\n\n"
-        "ALLOCATION DES CLÉS D'API GEMINI & GARDE-FOU STRICT POUR LA CLÉ PAYANTE :\n"
+        "ALLOCATION DES CLÉS D'API GEMINI & GESTION DE LA LATENCE :\n"
+        "- Conformément aux consignes de Pierre : la CLÉ PAYANTE est activée directement pour TOUS les modèles Flash (Gemini 3.8 Flash, 3.5, 3.6, etc.) pour éliminer toute latence.\n"
         "- Voix standard ('gemini-3.8-live') et tâches simples : s'exécutent en priorité sur la clé d'API GRATUITE.\n"
-        "- Navigation web autonome ('run_browser_task') : teste automatiquement plusieurs modèles compatibles sur la clé gratuite (gemini-3.8-flash, 3.5, 3.6, latest) avant toute autre démarche.\n"
-        "- Développement de code ('run_antigravity_task') : les modèles Flash s'exécutent en priorité sur la clé gratuite.\n"
-        "- RÈGLE ABSOLUE ET INVIOLABLE SUR LA CLÉ PAYANTE :\n"
-        "  Il est STRICTEMENT IMPOSSIBLE d'utiliser la clé payante sans la confirmation orale explicite de Pierre !\n"
-        "  Chaque fois qu'une action requiert la clé payante (parce qu'un modèle lourd comme Pro ou Claude est indispensable, ou parce que tous les modèles sur la clé gratuite ont échoué ou épuisé leurs quotas) :\n"
-        "  1. Tu DOIS expliquer oralement à Pierre pourquoi tu as besoin de la clé payante (ex: modèles gratuits épuisés, tâche nécessitant un modèle lourd comme Claude ou Pro).\n"
-        "  2. Tu DOIS lui donner une estimation claire du coût de l'opération (ex: ~0,005 $ pour du code Flash, ~0,02 $ pour la navigation web, ~0,03 $ à 0,05 $ pour un grand modèle Pro ou Claude).\n"
-        "  3. Tu DOIS lui demander explicitement son accord oral : 'M'autorisez-vous à utiliser la clé payante pour cette tâche ?'.\n"
-        "  Tu ne dois JAMAIS mettre 'confirmed_by_user=True' ni lancer une tâche payante tant que Pierre ne t'a pas expressément répondu par l'affirmative à l'oral ('oui', 'vas-y', 'd'accord', 'je valide', etc.) ou validé sur l'écran.\n\n"
+        "- RÈGLE STRICTE SUR LES GRANDS MODÈLES LOURDS (Gemini 3.1 Pro, Claude 3.7 Sonnet, Claude 3 Opus) :\n"
+        "  Il est STRICTEMENT IMPOSSIBLE d'utiliser un grand modèle lourd sans la confirmation orale explicite de Pierre !\n"
+        "  Chaque fois qu'une action requiert un grand modèle lourd :\n"
+        "  1. Tu DOIS expliquer oralement à Pierre pourquoi tu as besoin de ce grand modèle (ex: architecture ultra complexe, refactoring lourd).\n"
+        "  2. Tu DOIS lui donner une estimation claire du coût (~0,03 $ à 0,10 $).\n"
+        "  3. Tu DOIS lui demander explicitement son accord oral : 'M'autorisez-vous à utiliser ce grand modèle pour cette tâche ?'.\n"
+        "  Tu ne dois JAMAIS mettre 'confirmed_by_user=True' pour un modèle lourd tant que Pierre ne t'a pas expressément répondu par l'affirmative à l'oral ou sur l'écran.\n\n"
         "RÈGLE STRICTE SUR L'ARRÊT IMMÉDIAT DES ACTIONS ('stop_current_action') :\n"
         "- Quand Pierre te dit d'arrêter (ex: 'arrête', 'stop', 'annule', 'interromps', 'tais-toi et arrête', 'laisse tomber') :\n"
         "  TU DOIS IMMÉDIATEMENT DÉCLENCHER L'OUTIL 'stop_current_action' !\n"
@@ -1418,7 +1417,7 @@ async def voice_channel(websocket: WebSocket):
                                             break
 
                                     is_flash = any(k in str(model_choice).lower() for k in ["flash", "3.8", "3.5", "3.6"])
-                                    initial_api_type = "paid" if (not is_flash or is_confirmed) else "free"
+                                    initial_api_type = "paid" if ((is_flash and config.GEMINI_API_KEY_PAID) or is_confirmed) else ("paid" if not config.GEMINI_API_KEY_FREE else "free")
                                     initial_api_label = "Clé Payante" if initial_api_type == "paid" else "Clé Gratuite"
 
                                     supervision_service.start_action(

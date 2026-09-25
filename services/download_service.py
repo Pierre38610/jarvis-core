@@ -128,6 +128,7 @@ async def download_file(
 
         return {
             "status": "requires_user_confirmation",
+            "requires_oral_consent": True,
             "action": "download_file",
             "url": target_url,
             "filename": filename,

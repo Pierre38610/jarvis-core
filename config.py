@@ -65,7 +65,7 @@ _default_key = os.environ.get("GEMINI_API_KEY", "").strip()
 
 GEMINI_API_KEY_FREE = _free_raw or _default_key
 GEMINI_API_KEY_PAID = _paid_raw
-GEMINI_API_KEY = GEMINI_API_KEY_FREE or GEMINI_API_KEY_PAID
+GEMINI_API_KEY = GEMINI_API_KEY_PAID or GEMINI_API_KEY_FREE
 
 if GEMINI_API_KEY_PAID:
     os.environ["GEMINI_API_KEY_PAID"] = GEMINI_API_KEY_PAID
