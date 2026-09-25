@@ -12,9 +12,11 @@ from fastapi import WebSocket, WebSocketDisconnect
 class LocalAgentService:
     def __init__(self):
         self._ws: Optional[WebSocket] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._connected_at: Optional[float] = None
         self._pending_requests: Dict[str, asyncio.Future] = {}
         self._last_pc_status: Optional[Dict[str, Any]] = None
+        self._last_deezer_status: Optional[Dict[str, Any]] = None
 
     def is_connected(self) -> bool:
         """Indique si le PC de Pierre est allumé et connecté au VPS."""
@@ -26,13 +28,20 @@ class LocalAgentService:
             "online": self.is_connected(),
             "connected_at": self._connected_at,
             "uptime_seconds": round(time.time() - self._connected_at, 1) if self._connected_at else 0,
-            "last_status": self._last_pc_status
+            "last_status": self._last_pc_status,
+            "deezer_status": self._last_deezer_status
         }
 
     async def register(self, websocket: WebSocket):
         """Enregistre le client WebSocket du PC."""
         await websocket.accept()
+        if self._ws and self._ws != websocket:
+            try:
+                await self._ws.close(code=1000, reason="Nouvelle connexion active")
+            except Exception:
+                pass
         self._ws = websocket
+        self._loop = asyncio.get_running_loop()
         self._connected_at = time.time()
         print("[LocalAgent] ✅ Ordinateur personnel de Pierre connecté au VPS.", flush=True)
 
@@ -69,6 +78,8 @@ class LocalAgentService:
                         fut.set_result(data.get("result", data))
                 elif msg_type == "telemetry":
                     self._last_pc_status = data.get("data")
+                elif msg_type == "deezer_status":
+                    self._last_deezer_status = data.get("data")
         except WebSocketDisconnect:
             pass
         except Exception as e:
@@ -77,18 +88,18 @@ class LocalAgentService:
             self.unregister()
 
     async def execute_command(self, action: str, timeout: float = 12.0, **kwargs) -> Dict[str, Any]:
-        """Transmet une commande à exécuter sur le PC personnel de Pierre."""
+        """Transmet une commande à exécuter sur le PC personnel de Pierre (appel async)."""
         if not self.is_connected():
             return {
                 "status": "pc_offline",
                 "message": (
-                    "Votre ordinateur personnel est actuellement éteint ou déconnecté. "
-                    "Impossible de lancer cette application sur votre écran physique pour le moment."
+                    "Votre ordinateur personnel est actuellement éteint ou le script start_local_agent.bat n'est pas lancé. "
+                    "Impossible d'exécuter cette action sur votre écran physique pour le moment."
                 )
             }
 
         req_id = f"cmd_{int(time.time() * 1000)}_{action}"
-        loop = asyncio.get_running_loop()
+        loop = self._loop or asyncio.get_running_loop()
         fut = loop.create_future()
         self._pending_requests[req_id] = fut
 
@@ -115,5 +126,28 @@ class LocalAgentService:
                 "message": f"Erreur de communication avec votre PC : {e}"
             }
 
+    def execute_command_sync(self, action: str, timeout: float = 12.0, **kwargs) -> Dict[str, Any]:
+        """Transmet une commande depuis un thread synchrone (ex: thread pool) en toute sécurité."""
+        if not self.is_connected() or not self._loop or not self._loop.is_running():
+            return {
+                "status": "pc_offline",
+                "message": (
+                    "Votre ordinateur personnel est actuellement éteint ou le script start_local_agent.bat n'est pas lancé. "
+                    "Impossible d'exécuter cette action sur votre écran physique pour le moment."
+                )
+            }
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                self.execute_command(action, timeout=timeout, **kwargs),
+                self._loop
+            )
+            return future.result(timeout=timeout + 2.0)
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Erreur relais PC : {e}"
+            }
+
 # Instance singleton
 local_agent_service = LocalAgentService()
+

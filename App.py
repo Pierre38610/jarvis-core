@@ -316,6 +316,9 @@ async def api_deezer_status(request: Request = None):
     token = request.query_params.get("token") or request.cookies.get("jarvis_device_token") if request else None
     if token and not auth.is_device_authorized(token):
         return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    from services.local_agent_service import local_agent_service
+    if local_agent_service.is_connected() and local_agent_service._last_deezer_status:
+        return {"status": "ok", "connected": True, "playback": local_agent_service._last_deezer_status}
     from deezer_bridge import deezer_controller
     return await deezer_controller.get_playback_status()
 
@@ -2840,7 +2843,10 @@ async def voice_channel(websocket: WebSocket):
                                         "text": "Ouverture de Google Chrome à l'écran.",
                                         "voice": False
                                     }))
-                                    res = await asyncio.to_thread(open_browser_window, target_url)
+                                    if local_agent_service.is_connected():
+                                        res = await local_agent_service.execute_command("open_browser", url=target_url)
+                                    else:
+                                        res = await asyncio.to_thread(open_browser_window, target_url)
                                     supervision_service.track_browser_window(target_url, "Google Chrome")
                                     await broadcast_supervision()
                                     tool_resp = {
@@ -2898,7 +2904,10 @@ async def voice_channel(websocket: WebSocket):
                                         "text": f"Lancement de {app_name}.",
                                         "voice": False
                                     }))
-                                    res = await asyncio.to_thread(launch_application, app_name)
+                                    if local_agent_service.is_connected():
+                                        res = await local_agent_service.execute_command("launch_app", app_name=app_name)
+                                    else:
+                                        res = await asyncio.to_thread(launch_application, app_name)
                                     tool_resp = {
                                         "status": "completed",
                                         "result": res,

@@ -14,6 +14,6 @@ if not exist "%~dp0venv\Scripts\python.exe" (
     exit /b 1
 )
 
-"%~dp0venv\Scripts\python.exe" "%~dp0jarvis_local_agent.py"
+"%~dp0venv\Scripts\python.exe" -u "%~dp0jarvis_local_agent.py"
 
 pause

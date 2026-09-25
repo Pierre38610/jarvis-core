@@ -2,7 +2,7 @@
 Ce script s'exécute en arrière-plan sur votre PC Windows.
 Il se connecte via WebSocket sécurisé à votre serveur Jarvis sur le VPS.
 Lorsque Jarvis sur le Cloud reçoit un ordre d'ouvrir une application (VS Code, VLC, Deezer, etc.),
-cet agent l'exécute instantanément sur l'écran physique de votre ordinateur.
+d'ouvrir une page web, ou de contrôler le lecteur audio, cet agent l'exécute instantanément sur votre écran physique.
 """
 
 import os
@@ -32,6 +32,14 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 HOSTNAME = os.environ.get("CLOUDFLARE_HOSTNAME", "jarvis.signalcraftapps.com").strip()
 PASSWORD = os.environ.get("JARVIS_PASSWORD", "Bonjourmotdepassedu52..").strip()
 
+# Détection Chrome Windows
+CHROME_PATHS = [
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+]
+CHROME_PATH = next((p for p in CHROME_PATHS if os.path.exists(p)), None)
+
 # Applications locales autorisées
 ALLOWED_APPS = {
     # Utilitaires Windows
@@ -42,16 +50,21 @@ ALLOWED_APPS = {
     "explorateur": "explorer.exe",
     "fichiers": "explorer.exe",
     "explorer": "explorer.exe",
+    "mes fichiers": "explorer.exe",
     # Développement
     "code": "code",
     "vscode": "code",
     "vs code": "code",
+    "visual studio code": "code",
     # Navigateur
-    "chrome": r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-    "google chrome": r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    "chrome": CHROME_PATH or "chrome.exe",
+    "google chrome": CHROME_PATH or "chrome.exe",
+    "navigateur": CHROME_PATH or "chrome.exe",
+    "browser": CHROME_PATH or "chrome.exe",
     # Terminal
     "terminal": "wt.exe",
     "cmd": "cmd.exe",
+    "invite de commandes": "cmd.exe",
     "powershell": "powershell.exe",
     # Multimédia
     "vlc": r"C:\Program Files\VideoLAN\VLC\vlc.exe",
@@ -65,6 +78,8 @@ ALLOWED_APPS = {
     "taskmgr": "taskmgr.exe",
     "gestionnaire": "taskmgr.exe",
     "gestionnaire des taches": "taskmgr.exe",
+    "parametres": "ms-settings:",
+    "settings": "ms-settings:",
 }
 
 STREMIO_PATHS = [
@@ -97,9 +112,46 @@ def get_local_metrics() -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
 
+def execute_open_browser(url: str, load_extensions: bool = True) -> Dict[str, Any]:
+    """Ouvre une URL directement dans Google Chrome ou le navigateur par défaut sur l'écran."""
+    target = (url or "").strip()
+    if not target:
+        target = "https://www.google.com"
+    if not target.startswith("http://") and not target.startswith("https://"):
+        target = "https://" + target
+
+    try:
+        if CHROME_PATH and os.path.exists(CHROME_PATH):
+            subprocess.Popen([CHROME_PATH, target], shell=False)
+        else:
+            webbrowser.open(target)
+        return {
+            "status": "success",
+            "url": target,
+            "message": f"Page '{target}' ouverte avec succès sur votre écran d'ordinateur."
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Impossible d'ouvrir le navigateur sur '{target}' : {e}"
+        }
+
+
 def execute_local_app(app_name: str) -> Dict[str, Any]:
     """Lance une application sur l'écran Windows."""
     name_clean = (app_name or "").strip().lower()
+
+    if "deezer" in name_clean:
+        return execute_media_action({"app": "deezer", "query": ""})
+
+    if "stremio" in name_clean:
+        return execute_media_action({"app": "stremio"})
+
+    if "vlc" in name_clean:
+        return execute_media_action({"app": "vlc"})
+
+    if any(k in name_clean for k in ["chrome", "navigateur", "browser"]):
+        return execute_open_browser("https://www.google.com")
 
     target_cmd = None
     for key, cmd in ALLOWED_APPS.items():
@@ -118,7 +170,7 @@ def execute_local_app(app_name: str) -> Dict[str, Any]:
         target_cmd = name_clean
 
     try:
-        subprocess.Popen(target_cmd, shell=True)
+        subprocess.Popen(f'start "" {target_cmd}', shell=True)
         return {
             "status": "success",
             "app": app_name,
@@ -175,13 +227,52 @@ def execute_media_action(params: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "error", "message": f"Erreur média : {e}"}
 
 
+async def execute_deezer_action(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Exécute une action de contrôle Deezer via le bridge WebSocket local."""
+    try:
+        from deezer_bridge import deezer_controller
+        action = params.get("action", "playpause")
+        query = params.get("query", "")
+        item_type = params.get("item_type", "track")
+        volume = params.get("volume")
+        enable = params.get("enable")
+        seek_pos = params.get("position")
+
+        res = await deezer_controller.control_deezer(
+            action=action,
+            query=query,
+            item_type=item_type,
+            volume=volume,
+            enable=enable,
+            position=seek_pos
+        )
+        return res
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Erreur lors du contrôle Deezer local : {e}"
+        }
+
+
 async def send_telemetry_loop(ws):
-    """Envoie l'état matériel du PC toutes les 30 secondes au serveur."""
+    """Envoie l'état matériel du PC et l'état Deezer toutes les 30 secondes au serveur."""
     try:
         while True:
             metrics = get_local_metrics()
             payload = {"type": "telemetry", "data": metrics}
             await ws.send(json.dumps(payload))
+
+            # Remonter l'état Deezer si disponible
+            try:
+                from deezer_bridge import deezer_controller
+                if deezer_controller.is_connected() or deezer_controller.last_status:
+                    await ws.send(json.dumps({
+                        "type": "deezer_status",
+                        "data": deezer_controller.last_status
+                    }))
+            except Exception:
+                pass
+
             await asyncio.sleep(30)
     except Exception:
         pass
@@ -190,19 +281,29 @@ async def send_telemetry_loop(ws):
 async def agent_loop():
     """Boucle principale de maintien de la connexion WebSocket avec Jarvis VPS."""
     uri = f"wss://{HOSTNAME}/ws/local-agent?token={PASSWORD}"
-    
-    print("=" * 70)
-    print("       ✦  J . A . R . V . I . S .   L O C A L   A G E N T  ✦")
-    print("                 STARK INDUSTRIES PC COMPANION")
-    print("=" * 70)
-    print(f"[*] Cible Cloud : wss://{HOSTNAME}/ws/local-agent")
-    print("[*] En attente de connexion...")
+
+    print("=" * 70, flush=True)
+    print("       ✦  J . A . R . V . I . S .   L O C A L   A G E N T  ✦", flush=True)
+    print("                 STARK INDUSTRIES PC COMPANION", flush=True)
+    print("=" * 70, flush=True)
+    print(f"[*] Cible Cloud      : wss://{HOSTNAME}/ws/local-agent", flush=True)
+
+    # 1. Démarrage du bridge Deezer local pour écouter le Userscript Tampermonkey sur ws://127.0.0.1:8765
+    try:
+        from deezer_bridge import deezer_controller
+        await deezer_controller.start()
+        print("[✔] Deezer Bridge    : Actif sur ws://127.0.0.1:8765 (Tampermonkey prêt)", flush=True)
+    except Exception as e:
+        print(f"[!] Deezer Bridge    : Note ({e})", flush=True)
+
+    print("[*] En attente de synchronisation avec Jarvis Cloud...", flush=True)
 
     while True:
         try:
             async with websockets.connect(uri, ping_interval=20, ping_timeout=15) as ws:
-                print(f"[✔] Connecté à Jarvis Cloud ({HOSTNAME}) ! Votre PC est synchronisé.")
-                
+                print(f"\n[✔] CONNECTÉ À JARVIS CLOUD ({HOSTNAME}) !", flush=True)
+                print("[*] Votre PC est synchronisé : prêt à ouvrir des applications, pages web et contrôler Deezer.\n", flush=True)
+
                 # Lance l'envoi périodique de métriques
                 telemetry_task = asyncio.create_task(send_telemetry_loop(ws))
 
@@ -213,20 +314,26 @@ async def agent_loop():
                         action = data.get("action")
                         params = data.get("params", {})
 
-                        print(f"\n[COMMANDE REÇUE] Action: '{action}' | Params: {params}")
+                        print(f"\n[ORDRE REÇU DU CLOUD] Action: '{action}' | Params: {params}", flush=True)
 
                         result = {}
                         if action == "launch_app":
                             app_name = params.get("app_name", "")
                             result = execute_local_app(app_name)
+                        elif action == "open_browser":
+                            url = params.get("url", "")
+                            load_ext = params.get("load_extensions", True)
+                            result = execute_open_browser(url, load_extensions=load_ext)
                         elif action == "launch_media":
                             result = execute_media_action(params)
+                        elif action == "deezer_action":
+                            result = await execute_deezer_action(params)
                         elif action == "get_status":
                             result = get_local_metrics()
                         else:
                             result = {"status": "error", "message": f"Action inconnue : {action}"}
 
-                        print(f"  -> Résultat : {result.get('message', result.get('status'))}")
+                        print(f"  -> Résultat : {result.get('message', result.get('status'))}", flush=True)
 
                         # Répond au VPS
                         response = {
@@ -236,14 +343,14 @@ async def agent_loop():
                         }
                         await ws.send(json.dumps(response))
                     except Exception as e:
-                        print(f"[!] Erreur traitement commande : {e}")
+                        print(f"[!] Erreur traitement commande : {e}", flush=True)
 
                 telemetry_task.cancel()
 
         except (websockets.ConnectionClosed, websockets.InvalidStatusCode) as e:
-            print(f"[!] Déconnecté ({e}). Reconnexion dans 5 secondes...")
+            print(f"[!] Déconnecté ({e}). Reconnexion automatique dans 5 secondes...", flush=True)
         except Exception as e:
-            print(f"[!] Erreur réseau ({e}). Reconnexion dans 5 secondes...")
+            print(f"[!] Erreur réseau ({e}). Reconnexion automatique dans 5 secondes...", flush=True)
 
         await asyncio.sleep(5)
 
@@ -252,4 +359,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(agent_loop())
     except KeyboardInterrupt:
-        print("\n[*] Arrêt de l'agent local.")
+        print("\n[*] Arrêt de l'agent local.", flush=True)

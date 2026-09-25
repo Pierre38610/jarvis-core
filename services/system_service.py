@@ -131,7 +131,6 @@ def launch_application(app_name: str) -> Dict[str, Any]:
     # Delegation a l'Agent PC si sur Linux VPS ou si le PC de bureau est connecte
     try:
         import sys
-        import asyncio
         from services.local_agent_service import local_agent_service
         if sys.platform != "win32" or local_agent_service.is_connected():
             if not local_agent_service.is_connected():
@@ -139,23 +138,11 @@ def launch_application(app_name: str) -> Dict[str, Any]:
                     "status": "pc_offline",
                     "app": app_name,
                     "message": (
-                        f"Votre ordinateur personnel est actuellement éteint ou déconnecté. "
+                        f"Votre ordinateur personnel est actuellement éteint ou le script start_local_agent.bat n'est pas lancé. "
                         f"Impossible de lancer '{app_name}' sur votre écran physique pour le moment."
                     )
                 }
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = None
-
-            if loop and loop.is_running():
-                future = asyncio.run_coroutine_threadsafe(
-                    local_agent_service.execute_command("launch_app", app_name=app_name),
-                    loop
-                )
-                return future.result(timeout=12)
-            else:
-                return asyncio.run(local_agent_service.execute_command("launch_app", app_name=app_name))
+            return local_agent_service.execute_command_sync("launch_app", timeout=12.0, app_name=app_name)
     except Exception as e:
         if sys.platform != "win32":
             return {"status": "error", "message": f"Erreur relais PC: {e}"}

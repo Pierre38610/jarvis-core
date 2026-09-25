@@ -759,11 +759,42 @@ def open_browser_window(url: str = "https://www.google.com", load_extensions: bo
     if not target.startswith("http://") and not target.startswith("https://"):
         target = "https://" + target
 
+    # Delegation a l'Agent PC si sur Linux VPS ou si le PC de bureau est connecte
+    try:
+        from services.local_agent_service import local_agent_service
+        if sys.platform != "win32" or local_agent_service.is_connected():
+            if not local_agent_service.is_connected():
+                return {
+                    "status": "pc_offline",
+                    "message": (
+                        "Votre ordinateur personnel est actuellement éteint ou le script start_local_agent.bat n'est pas lancé. "
+                        "Impossible d'ouvrir Google Chrome sur votre écran physique pour le moment."
+                    )
+                }
+            return local_agent_service.execute_command_sync(
+                "open_browser",
+                timeout=12.0,
+                url=target,
+                load_extensions=load_extensions
+            )
+    except Exception as e:
+        if sys.platform != "win32":
+            return {"status": "error", "message": f"Erreur relais PC: {e}"}
+
     if not os.path.exists(CHROME_PATH):
-        return {
-            "status": "error",
-            "message": f"Google Chrome introuvable à l'adresse {CHROME_PATH}"
-        }
+        try:
+            import webbrowser
+            webbrowser.open(target)
+            return {
+                "status": "success",
+                "url": target,
+                "message": f"Page ouverte dans votre navigateur sur {target}."
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Google Chrome introuvable et échec navigateur par défaut : {e}"
+            }
 
     cmd = [
         CHROME_PATH,

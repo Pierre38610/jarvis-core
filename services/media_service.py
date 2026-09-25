@@ -80,19 +80,9 @@ def launch_deezer(query: str = "") -> Dict[str, Any]:
                 return {
                     "status": "pc_offline",
                     "app": "Deezer Web",
-                    "message": "Votre ordinateur personnel est éteint ou hors ligne. Impossible d'ouvrir Deezer sur votre écran."
+                    "message": "Votre ordinateur personnel est éteint ou le script start_local_agent.bat n'est pas lancé. Impossible d'ouvrir Deezer sur votre écran."
                 }
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = None
-            if loop and loop.is_running():
-                return asyncio.run_coroutine_threadsafe(
-                    local_agent_service.execute_command("launch_media", app="deezer", query=query),
-                    loop
-                ).result(timeout=12)
-            else:
-                return asyncio.run(local_agent_service.execute_command("launch_media", app="deezer", query=query))
+            return local_agent_service.execute_command_sync("launch_media", timeout=12.0, app="deezer", query=query)
     except Exception:
         pass
 
@@ -169,6 +159,25 @@ async def deezer_send_command(action: str) -> bool:
 
 async def control_deezer(action: str = "playpause", query: str = "", item_type: str = "track", **kwargs) -> Dict[str, Any]:
     """Point d'entrée universel pour le contrôle complet (100%) de Deezer Web Player."""
+    from services.local_agent_service import local_agent_service
+    if sys.platform != "win32" or local_agent_service.is_connected():
+        if not local_agent_service.is_connected():
+            return {
+                "status": "pc_offline",
+                "message": (
+                    "Votre ordinateur personnel est actuellement éteint ou le script start_local_agent.bat n'est pas lancé. "
+                    "Impossible de contrôler Deezer sans le relais local actif sur votre PC."
+                )
+            }
+        return await local_agent_service.execute_command(
+            "deezer_action",
+            timeout=12.0,
+            action=action,
+            query=query,
+            item_type=item_type,
+            **kwargs
+        )
+
     return await deezer_controller.control_deezer(action=action, query=query, item_type=item_type, **kwargs)
 
 
@@ -266,19 +275,15 @@ def launch_stremio(stremio_id: str = "", content_type: str = "movie") -> Dict[st
                 return {
                     "status": "pc_offline",
                     "app": "Stremio",
-                    "message": "Votre ordinateur personnel est éteint ou hors ligne. Impossible d'ouvrir Stremio sur votre écran."
+                    "message": "Votre ordinateur personnel est éteint ou le script start_local_agent.bat n'est pas lancé. Impossible d'ouvrir Stremio sur votre écran."
                 }
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = None
-            if loop and loop.is_running():
-                return asyncio.run_coroutine_threadsafe(
-                    local_agent_service.execute_command("launch_media", app="stremio", stremio_id=stremio_id, content_type=content_type),
-                    loop
-                ).result(timeout=12)
-            else:
-                return asyncio.run(local_agent_service.execute_command("launch_media", app="stremio", stremio_id=stremio_id, content_type=content_type))
+            return local_agent_service.execute_command_sync(
+                "launch_media",
+                timeout=12.0,
+                app="stremio",
+                stremio_id=stremio_id,
+                content_type=content_type
+            )
     except Exception:
         pass
 
@@ -387,19 +392,14 @@ def launch_vlc(target: str = "") -> Dict[str, Any]:
                 return {
                     "status": "pc_offline",
                     "app": "VLC",
-                    "message": "Votre ordinateur personnel est éteint ou hors ligne. Impossible d'ouvrir VLC sur votre écran."
+                    "message": "Votre ordinateur personnel est éteint ou le script start_local_agent.bat n'est pas lancé. Impossible d'ouvrir VLC sur votre écran."
                 }
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = None
-            if loop and loop.is_running():
-                return asyncio.run_coroutine_threadsafe(
-                    local_agent_service.execute_command("launch_media", app="vlc", target=target),
-                    loop
-                ).result(timeout=12)
-            else:
-                return asyncio.run(local_agent_service.execute_command("launch_media", app="vlc", target=target))
+            return local_agent_service.execute_command_sync(
+                "launch_media",
+                timeout=12.0,
+                app="vlc",
+                target=target
+            )
     except Exception:
         pass
 
