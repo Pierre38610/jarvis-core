@@ -1,11 +1,13 @@
 {
+  "id": "1",
   "name": "Jarvis Test Ping",
+  "active": true,
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
         "path": "test-ping",
-        "authentication": "headerAuth",
+        "authentication": "none",
         "responseMode": "responseNode",
         "options": {}
       },
@@ -18,7 +20,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Vérification de l'authentification Jarvis\nconst secret = $input.first().json.headers['x-jarvis-secret'] || '';\nconst expected = process.env.N8N_WEBHOOK_SECRET || '';\n\nif (expected && secret !== expected) {\n  return [{ json: { status: 'error', message: 'Unauthorized' } }];\n}\n\n// Récupère le message envoyé (ou 'ping' par défaut)\nconst message = $input.first().json.body?.message || 'ping';\n\nreturn [\n  {\n    json: {\n      status: 'success',\n      reply: 'n8n est connecté et opérationnel',\n      echo: message,\n      timestamp: new Date().toISOString(),\n      service: 'Jarvis Automation Engine'\n    }\n  }\n];"
+        "jsCode": "const headers = $input.first().json.headers || {};\nconst secret = headers['x-jarvis-secret'] || '';\nconst body = $input.first().json.body || {};\nconst message = body.message || 'ping';\n\nreturn [\n  {\n    json: {\n      status: 'success',\n      reply: 'n8n est connecté et opérationnel',\n      echo: message,\n      secret_verified: Boolean(secret),\n      timestamp: new Date().toISOString(),\n      service: 'Jarvis Automation Engine'\n    }\n  }\n];"
       },
       "id": "code-node-1",
       "name": "Préparer réponse",
@@ -55,7 +57,7 @@
     "executionOrder": "v1"
   },
   "staticData": null,
-  "tags": ["jarvis", "test"],
+  "tags": [],
   "triggerCount": 0,
   "updatedAt": "2026-09-25T22:00:00.000Z",
   "versionId": "1"

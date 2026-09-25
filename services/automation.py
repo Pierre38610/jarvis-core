@@ -149,6 +149,19 @@ def import_workflow_from_json(workflow_dict: dict) -> bool:
             ["docker", "exec", N8N_CONTAINER_NAME, "rm", "-f", container_path],
             capture_output=True, timeout=10
         )
+
+        # Activer/publier automatiquement le workflow si un ID est spécifié
+        workflow_id = workflow_dict.get("id")
+        if workflow_id:
+            pub_cmd = ["docker", "exec", N8N_CONTAINER_NAME, "n8n", "publish:workflow", f"--id={workflow_id}"]
+            pub_res = subprocess.run(pub_cmd, capture_output=True, text=True, timeout=20)
+            if pub_res.returncode == 0:
+                logger.info("[automation] Workflow %s publié avec succès.", workflow_id)
+                # Redémarrer n8n pour recharger les listeners de webhook
+                subprocess.run(["docker", "restart", N8N_CONTAINER_NAME], capture_output=True, text=True, timeout=30)
+            else:
+                logger.warning("[automation] Échec publication workflow %s: %s", workflow_id, pub_res.stderr)
+
         return True
 
     except subprocess.TimeoutExpired:

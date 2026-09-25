@@ -96,6 +96,7 @@ services:
       # Désactive les télémétries pour une installation 100 % privée
       - N8N_DIAGNOSTICS_ENABLED=false
       - N8N_VERSION_NOTIFICATIONS_ENABLED=false
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
       interval: 30s

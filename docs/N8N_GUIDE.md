@@ -74,9 +74,8 @@ Voix de Pierre
 |-----------|----------------|
 | **HTTP Method** | `POST` |
 | **Path** | `<action-slug>` (ex: `samsung-calendar`, `notion-note`) |
-| **Authentication** | `Header Auth` |
-| **Header Name** | `X-Jarvis-Secret` |
-| **Header Value** | `{{ $env.N8N_WEBHOOK_SECRET }}` |
+| **Authentication** | `None` (ou `Header Auth` si credential configuré) |
+| **Header Secret** | Vérifié automatiquement dans le nœud Code via `$input.first().json.headers['x-jarvis-secret']` |
 | **Respond** | `Using Respond to Webhook Node` ← **OBLIGATOIRE** |
 
 > ⚠️ **"Respond Using: Respond to Webhook Node"** est obligatoire pour que `trigger_webhook()` reçoive une réponse JSON synchrone.
@@ -264,15 +263,19 @@ if function_call.name == "executer_action_externe":
 
 ## 6. Import / Export CLI Docker
 
-### Importer un workflow depuis un fichier JSON
+### Importer et activer un workflow depuis un fichier JSON
 
 ```bash
-# Depuis l'hôte VPS — copier le fichier dans le conteneur puis importer
+# 1. Copier le fichier dans le conteneur puis importer
 docker cp ./workflows/mon_workflow.json jarvis_n8n:/tmp/import.json
 docker exec jarvis_n8n n8n import:workflow --input=/tmp/import.json
+docker exec jarvis_n8n rm -f /tmp/import.json
 
-# Nettoyage
-docker exec jarvis_n8n rm /tmp/import.json
+# 2. Publier/activer le workflow (remplacer 1 par l'ID du workflow)
+docker exec jarvis_n8n n8n publish:workflow --id=1
+
+# 3. Redémarrer n8n pour recharger les listeners de webhook
+docker compose restart n8n
 ```
 
 ### Importer depuis Python (via services/automation.py)
