@@ -49,7 +49,7 @@ MEDIA_APPS = {"deezer", "stremio"}
 def get_system_status() -> Dict[str, Any]:
     """Retourne l'etat en temps reel des ressources du systeme (CPU, RAM, batterie)."""
     try:
-        cpu_usage = psutil.cpu_percent(interval=0.2)
+        cpu_usage = psutil.cpu_percent(interval=None)
         mem = psutil.virtual_memory()
         ram_used_gb = round((mem.total - mem.available) / (1024 ** 3), 1)
         ram_total_gb = round(mem.total / (1024 ** 3), 1)

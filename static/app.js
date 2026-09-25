@@ -603,6 +603,9 @@ function handleTranscript(role, text, mode) {
   if (body) {
     if (role === 'jarvis') {
       window._jarvisLastSpokenText = (window._jarvisLastSpokenText || '') + ' ' + text;
+      try {
+        extractSpokenWords(text).forEach(w => jarvisSpokenWordsSet.add(w));
+      } catch (e) {}
       if (mode === 'replace') {
         body.innerText = text.trim();
       } else {
@@ -682,6 +685,8 @@ let turnResumeIndex = 0;
 let isPlaybackPaused = false;
 let speechPauseTimer = null;
 let speechPauseDetectedText = '';
+let jarvisSpokenWordsSet = new Set();
+let jarvisSpeechStartTime = 0;
 
 function flushBargeInAudio() {
   if (ws && ws.readyState === WebSocket.OPEN && bargeInAudioRingBuffer.length > 0) {
@@ -881,6 +886,8 @@ function interruptPlayback() {
   scheduledAudioSources = [];
   isJarvisSpeaking = false;
   window._jarvisLastSpokenText = '';
+  if (jarvisSpokenWordsSet) jarvisSpokenWordsSet.clear();
+  jarvisSpeechStartTime = 0;
   if (btnInterrupt) btnInterrupt.style.display = 'none';
   if (audioCtx) {
     nextPlayTime = audioCtx.currentTime;
@@ -936,12 +943,6 @@ function startLiveSpeechRecognition() {
       if (!spokenNow) return;
 
       // ── BARGE-IN VOCAL INTELLIGENT (Détection de mot & reprise automatique) ──
-      // Dès qu'au moins 1 mot est détecté, Jarvis s'arrête immédiatement de parler (pause).
-      // Si l'utilisateur ne continue pas sa phrase (silence de 1.8s), Jarvis reprend ce qu'il disait.
-      // S'il continue sa phrase ou donne un ordre d'arrêt, la parole est coupée définitivement.
-      const words = extractSpokenWords(spokenNow);
-      const wordCount = words.length;
-
       // 1. Ordre d'arrêt explicite (stop, arrête, silence, etc.) : coupure immédiate sans attente
       if (isExplicitStopOrder(spokenNow)) {
         console.log("[Barge-In] Ordre d'arrêt explicite capté :", spokenNow);
@@ -952,35 +953,52 @@ function startLiveSpeechRecognition() {
 
       // 2. Si Jarvis parle ou est déjà en pause d'écoute :
       if (isJarvisSpeaking || isPlaybackPaused || scheduledAudioSources.length > 0) {
+        // Période de grâce initiale (800ms) : le son vient de démarrer dans les haut-parleurs,
+        // la transcription texte arrive avec une micro-latence réseau. Ignore pour éviter tout faux départ.
+        const timeSinceSpeechStart = jarvisSpeechStartTime > 0 ? (Date.now() - jarvisSpeechStartTime) : 9999;
+        if (timeSinceSpeechStart < 800) {
+          return;
+        }
+
         const cleanSpoken = spokenNow.toLowerCase().trim();
         const cleanJarvis = (window._jarvisLastSpokenText || '').toLowerCase().trim();
-        // Évite le feedback acoustique si les haut-parleurs repassent dans le micro (uniquement pendant l'émission)
-        const isEcho = isJarvisSpeaking && cleanJarvis.length > 0 && cleanJarvis.includes(cleanSpoken) && cleanSpoken.length > 3;
 
-        if (!isEcho && wordCount >= 1) {
+        // Analyse lexicale : compte combien de mots captés sont dans les propos de Jarvis
+        let matchedWords = 0;
+        for (const w of words) {
+          if (jarvisSpokenWordsSet.has(w)) {
+            matchedWords++;
+          }
+        }
+        const overlapRatio = wordCount > 0 ? (matchedWords / wordCount) : 0;
+        const isSubstringMatch = cleanJarvis.length > 0 && cleanJarvis.includes(cleanSpoken) && cleanSpoken.length > 3;
+
+        // Si plus de 30% des mots correspondent au texte de Jarvis, ou si les mots sont connus, c'est l'écho des haut-parleurs
+        const isEcho = isSubstringMatch || (overlapRatio >= 0.3) || (wordCount <= 2 && matchedWords > 0);
+
+        if (!isEcho && wordCount >= 3) {
           if (!isPlaybackPaused) {
-            // Premier mot détecté : pause instantanée du son dans les haut-parleurs !
-            console.log(`[Barge-In] Premier mot détecté ('${spokenNow}'). Coupure temporaire de parole...`);
+            console.log(`[Barge-In] Phrase utilisateur distincte détectée ('${spokenNow}'). Coupure temporaire de parole...`);
             pauseSpeechPlayback(spokenNow);
             handleTranscript('user', spokenNow, finalTranscript ? 'final' : 'interim');
 
-            // Si plus d'un mot a déjà été prononcé dès le premier résultat
-            if (wordCount >= 2) {
-              console.log(`[Barge-In] Phrase de plusieurs mots confirmée d'emblée ('${spokenNow}'). Coupure définitive.`);
+            if (wordCount >= 4) {
+              console.log(`[Barge-In] Phrase confirmée ('${spokenNow}'). Coupure définitive.`);
               confirmBargeInInterrupt(spokenNow);
             }
           } else {
-            // Jarvis est déjà en pause : on teste si l'utilisateur poursuit sa phrase
             const initialWords = extractSpokenWords(speechPauseDetectedText);
             const hasContinued = (wordCount > initialWords.length) || (cleanSpoken.length > speechPauseDetectedText.toLowerCase().trim().length + 2);
 
-            if (hasContinued || wordCount >= 2) {
+            if (hasContinued || wordCount >= 4) {
               console.log(`[Barge-In] Phrase poursuivie par l'utilisateur ('${spokenNow}'). Coupure confirmée !`);
               confirmBargeInInterrupt(spokenNow);
               handleTranscript('user', spokenNow, finalTranscript ? 'final' : 'interim');
             }
           }
         }
+        // Pendant que Jarvis parle, toute parole qui n'est pas un ordre d'arrêt ou un barge-in confirmé est ignorée
+        return;
       }
 
       const text = finalTranscript.trim();
@@ -1051,12 +1069,15 @@ function playPcmChunk(arrayBuffer) {
     float32[i] = int16[i] / 32768.0;
   }
 
-  // Micro-lissage des jointures (fade-in/fade-out de 16 échantillons) pour éliminer tout clic ou grésillement DC offset
-  if (float32.length > 32) {
-    for (let i = 0; i < 16; i++) {
-      const ramp = i / 16;
-      float32[i] *= ramp;
-      float32[float32.length - 1 - i] *= ramp;
+  const now = audioCtx.currentTime;
+  const isTurnStart = (!isJarvisSpeaking && !isPlaybackPaused && scheduledAudioSources.length === 0);
+  const isRecoveringUnderrun = (nextPlayTime < now);
+
+  // Micro fade-in uniquement à l'attaque initiale (32 échantillons = 1.3ms) ou après une reprise
+  // pour éliminer tout "pop" DC sans altérer ni hacher les trames intermédiaires contiguës
+  if ((isTurnStart || isRecoveringUnderrun) && float32.length > 32) {
+    for (let i = 0; i < 32; i++) {
+      float32[i] *= (i / 32.0);
     }
   }
 
@@ -1064,7 +1085,7 @@ function playPcmChunk(arrayBuffer) {
   audioBuffer.getChannelData(0).set(float32);
 
   // Réinitialisation du buffer de chunks lors d'un nouveau tour de parole
-  if (!isJarvisSpeaking && !isPlaybackPaused && scheduledAudioSources.length === 0) {
+  if (isTurnStart) {
     turnAudioChunks = [];
     turnResumeIndex = 0;
   }
@@ -1085,7 +1106,6 @@ function playPcmChunk(arrayBuffer) {
   source.buffer = audioBuffer;
   source.connect(dynamicsCompressor || masterGainNode);
 
-  const now = audioCtx.currentTime;
   if (speechEndTimer) {
     clearTimeout(speechEndTimer);
     speechEndTimer = null;
@@ -1095,19 +1115,19 @@ function playPcmChunk(arrayBuffer) {
     isJarvisSpeaking = true;
     isToolExecuting = false; // Dès que Jarvis commence à parler, l'exécution de l'outil est terminée
     stopSilenceSender();     // Arrêt du silence de maintien de session
+    jarvisSpeechStartTime = Date.now();
     setJarvisState('speaking', "JARVIS vous répond...");
     btnLabel.innerText = "COUPER";
     if (btnInterrupt) btnInterrupt.style.display = 'inline-flex';
-    // Marge initiale de 80ms au démarrage de la réplique
-    nextPlayTime = now + 0.08;
+    // Marge initiale de 160ms au démarrage de la réplique pour absorber les pics CPU et lancements d'app
+    nextPlayTime = now + 0.16;
   }
 
   // Jitter buffer adaptatif anti-grésillement :
-  // Si un paquet arrive légèrement en retard (ex: pic CPU ou navigation web),
-  // on ne crée PAS de trou de silence artificiel de 150ms qui fait saccader la voix.
-  // On enchaîne immédiatement à now + 0.005s (5ms) pour une parfaite continuité audio.
+  // Si un paquet arrive légèrement en retard (lancement d'app, navigation web, pic CPU),
+  // on rattrape avec un coussin de 35ms pour donner du souffle au moteur audio sans coupure
   if (nextPlayTime < now) {
-    nextPlayTime = now + 0.005;
+    nextPlayTime = now + 0.035;
   }
   const startTime = nextPlayTime;
   const endTime = nextPlayTime + audioBuffer.duration;
@@ -1135,6 +1155,9 @@ function checkSpeechEnded() {
         isJarvisSpeaking = false;
         turnAudioChunks = [];
         turnResumeIndex = 0;
+        window._jarvisLastSpokenText = '';
+        if (jarvisSpokenWordsSet) jarvisSpokenWordsSet.clear();
+        jarvisSpeechStartTime = 0;
         btnLabel.innerText = "ONLINE";
         if (btnInterrupt) btnInterrupt.style.display = 'none';
         finalizeUserSpeech();
@@ -1150,22 +1173,12 @@ function checkSpeechEnded() {
 }
 
 // -----------------------------------------------------------------------
-// SILENCE SENDER : maintient la session Gemini Live vivante pendant
-// l'exécution des outils (browser, code, email...) en envoyant des trames
-// de silence 16kHz, empêchant toute déconnexion ou instabilité de session.
+// SILENCE SENDER : neutralisé pour éviter toute pollution du flux Gemini Live.
+// L'envoi continu de zéros pendant les outils provoquait des micro-coupures,
+// des grésillements et des auto-interruptions serveur.
 // -----------------------------------------------------------------------
-const SILENCE_FRAME_SIZE = 1600; // 100ms de silence à 16kHz
-const SILENCE_BUFFER = new Int16Array(SILENCE_FRAME_SIZE); // rempli de zéros
-
 function startSilenceSender() {
-  if (silenceSenderInterval) return; // Déjà actif
-  silenceSenderInterval = setInterval(() => {
-    if (ws && ws.readyState === WebSocket.OPEN && isToolExecuting) {
-      ws.send(SILENCE_BUFFER.buffer);
-    } else if (!isToolExecuting) {
-      stopSilenceSender();
-    }
-  }, 100); // Toutes les 100ms
+  // No-op : Gemini Live maintient naturellement la session sans injection de données parasites
 }
 
 function stopSilenceSender() {

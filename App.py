@@ -1580,6 +1580,7 @@ async def voice_channel(websocket: WebSocket):
     session_ctx = None
     setup_done_event = asyncio.Event()
     greeting_sent = False
+    speaking_state = {"active": False}
 
     try:
         async def client_to_gemini():
@@ -1591,10 +1592,12 @@ async def voice_channel(websocket: WebSocket):
                     if msg.get("type") == "websocket.disconnect":
                         raise WebSocketDisconnect(code=1000)
                     if "bytes" in msg and msg["bytes"]:
-                        # Toujours envoyer l'audio à Gemini Live, même pendant le codage
-                        await session.send_realtime_input(
-                            audio=types.Blob(data=msg["bytes"], mime_type="audio/pcm;rate=16000")
-                        )
+                        # Ne pas saturer Gemini Live d'audio entrant pendant qu'il parle
+                        # pour préserver la fluidité sonore et éviter tout barge-in/coupure intempestive
+                        if not speaking_state["active"]:
+                            await session.send_realtime_input(
+                                audio=types.Blob(data=msg["bytes"], mime_type="audio/pcm;rate=16000")
+                            )
                         # Si une tâche est active : l'audio va aussi dans la queue comme contexte
                         # (la transcription sera capturée par stream_ai_feedback et injectée)
                     elif "text" in msg and msg["text"]:
@@ -1687,6 +1690,7 @@ async def voice_channel(websocket: WebSocket):
                                         except Exception as e:
                                             print(f"[Paid Rejection Injection] {e}")
                             elif payload.get("type") == "user_interrupt":
+                                speaking_state["active"] = False
                                 inter_txt = payload.get("text", "").strip()
                                 print(f"[Voice Channel] Barge-in utilisateur (parole coupée) : '{inter_txt}'")
                                 is_any_task_running = (
@@ -1754,6 +1758,7 @@ async def voice_channel(websocket: WebSocket):
                             if getattr(sc, "interrupted", False):
                                 user_speech_buffer = ""
                                 is_speaking_state = False
+                                speaking_state["active"] = False
                                 await websocket.send_text(json.dumps({"type": "interrupted"}))
 
                             # Transcription voix utilisateur
@@ -1832,6 +1837,7 @@ async def voice_channel(websocket: WebSocket):
                                             "text": part.text
                                         }))
                                     elif part.inline_data and part.inline_data.data:
+                                        speaking_state["active"] = True
                                         if not is_speaking_state:
                                             is_speaking_state = True
                                             supervision_service.update_voice_state("speaking", model=active_live_model, is_paid=is_paid_live)
@@ -1860,6 +1866,7 @@ async def voice_channel(websocket: WebSocket):
                             if getattr(sc, "turn_complete", False):
                                 user_speech_buffer = ""
                                 is_speaking_state = False
+                                speaking_state["active"] = False
                                 supervision_service.update_voice_state("idle", model=active_live_model, is_paid=is_paid_live)
                                 await broadcast_supervision()
                                 await websocket.send_text(json.dumps({"type": "turn_complete"}))
@@ -2630,7 +2637,7 @@ async def voice_channel(websocket: WebSocket):
                                         "text": "Ouverture de Google Chrome à l'écran.",
                                         "voice": False
                                     }))
-                                    res = open_browser_window(target_url)
+                                    res = await asyncio.to_thread(open_browser_window, target_url)
                                     supervision_service.track_browser_window(target_url, "Google Chrome")
                                     await broadcast_supervision()
                                     tool_resp = {
@@ -2647,7 +2654,7 @@ async def voice_channel(websocket: WebSocket):
                                         "text": "Mémorisation de l'information dans la mémoire durable.",
                                         "voice": False
                                     }))
-                                    res = memory_service.add_memory(fact, cat)
+                                    res = await asyncio.to_thread(memory_service.add_memory, fact, cat)
                                     tool_resp = {
                                         "status": "completed",
                                         "result": res,
@@ -2661,7 +2668,7 @@ async def voice_channel(websocket: WebSocket):
                                         "text": "Consultation des souvenirs mémorisés.",
                                         "voice": False
                                     }))
-                                    memories = memory_service.search_memories(query)
+                                    memories = await asyncio.to_thread(memory_service.search_memories, query)
                                     tool_resp = {
                                         "status": "completed",
                                         "memories": memories,
@@ -2674,7 +2681,7 @@ async def voice_channel(websocket: WebSocket):
                                         "text": "Diagnostic des ressources système en cours.",
                                         "voice": False
                                     }))
-                                    status = get_system_status()
+                                    status = await asyncio.to_thread(get_system_status)
                                     tool_resp = {
                                         "status": "completed",
                                         "result": status,
@@ -2688,7 +2695,7 @@ async def voice_channel(websocket: WebSocket):
                                         "text": f"Lancement de {app_name}.",
                                         "voice": False
                                     }))
-                                    res = launch_application(app_name)
+                                    res = await asyncio.to_thread(launch_application, app_name)
                                     tool_resp = {
                                         "status": "completed",
                                         "result": res,
@@ -3408,7 +3415,7 @@ async def voice_channel(websocket: WebSocket):
                                     }
 
                                 elif name == "list_chrome_extensions":
-                                    res = list_installed_chrome_extensions()
+                                    res = await asyncio.to_thread(list_installed_chrome_extensions)
                                     tool_resp = {
                                         "status": "completed",
                                         "result": res,
