@@ -1328,6 +1328,25 @@ async function startJarvis() {
                 emailDock.style.display = 'none';
               }, 10000);
             }
+          } else if (msg.type === 'emails_received') {
+            if (emailDock) {
+              const count = msg.count || (msg.emails ? msg.emails.length : 0);
+              const firstMail = msg.emails && msg.emails.length > 0 ? msg.emails[0] : null;
+              if (emailDockSubject) {
+                emailDockSubject.innerText = firstMail ? `Dernier : ${firstMail.subject}` : "Boîte de réception consultée";
+              }
+              if (emailDockRecipient) {
+                emailDockRecipient.innerText = firstMail ? `De : ${firstMail.from}` : `${count} message(s) relevé(s)`;
+              }
+              if (emailDockStatus) {
+                emailDockStatus.innerText = `RÉCEPTION GMAIL (${count} MESSAGES)`;
+              }
+              emailDock.style.display = 'flex';
+              if (emailDockTimer) clearTimeout(emailDockTimer);
+              emailDockTimer = setTimeout(() => {
+                emailDock.style.display = 'none';
+              }, 10000);
+            }
           } else if (msg.type === 'paid_consent_request') {
             showPaidConsentModal(msg);
           } else if (msg.type === 'hide_paid_consent') {

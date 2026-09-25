@@ -3,6 +3,8 @@ Intègre l'agent autonome open-source Browser-Use (Google Vision LLM) avec repli
 
 import os
 import re
+import json
+import glob
 import asyncio
 import httpx
 import unicodedata
@@ -15,6 +17,108 @@ from config import CHROME_PATH, STATIC_DIR, SCREENSHOT_PATH, PROFILE_DIR, GEMINI
 # Configuration environnement pour Browser-Use
 os.environ["BROWSER_USE_CONFIG_DIR"] = os.path.join(BASE_DIR, ".browseruse")
 os.environ["NO_PROXY"] = "127.0.0.1,localhost"
+
+# Profil shopping dédié (sessions Amazon, Fnac, etc.)
+SHOPPING_PROFILE_DIR = os.path.join(BASE_DIR, ".jarvis_shopping_profile")
+os.makedirs(SHOPPING_PROFILE_DIR, exist_ok=True)
+
+
+# ─── GESTION DES EXTENSIONS CHROME (SEND TO KINDLE, ETC.) ──────────────────────
+
+def get_installed_chrome_extensions() -> List[Dict[str, Any]]:
+    """Détecte automatiquement toutes les extensions Google Chrome installées sur la machine de Pierre.
+    Parcourt le profil 'Default' ainsi que les autres profils Chrome pour trouver les répertoires d'extensions.
+    """
+    user_data = os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\User Data")
+    found_extensions = []
+    seen_ids = set()
+
+    search_dirs = [
+        os.path.join(user_data, "Default", "Extensions"),
+        *glob.glob(os.path.join(user_data, "Profile *", "Extensions"))
+    ]
+
+    for ext_base in search_dirs:
+        if not os.path.exists(ext_base):
+            continue
+        try:
+            for ext_id in os.listdir(ext_base):
+                if ext_id in seen_ids:
+                    continue
+                id_dir = os.path.join(ext_base, ext_id)
+                if not os.path.isdir(id_dir):
+                    continue
+                versions = [v for v in os.listdir(id_dir) if os.path.isdir(os.path.join(id_dir, v))]
+                if not versions:
+                    continue
+                ver_dir = os.path.join(id_dir, sorted(versions)[-1])
+                manifest_path = os.path.join(ver_dir, "manifest.json")
+                if not os.path.exists(manifest_path):
+                    continue
+
+                try:
+                    with open(manifest_path, "r", encoding="utf-8") as f:
+                        manifest = json.load(f)
+                    name = manifest.get("name", ext_id)
+                    description = manifest.get("description", "")
+
+                    # Résolution des messages localisés (__MSG_...)
+                    if name.startswith("__MSG_"):
+                        msg_key = name[6:-2]
+                        for loc in ["fr", "en", "en_US"]:
+                            msg_path = os.path.join(ver_dir, "_locales", loc, "messages.json")
+                            if os.path.exists(msg_path):
+                                with open(msg_path, "r", encoding="utf-8") as mf:
+                                    msgs = json.load(mf)
+                                    if msg_key in msgs:
+                                        name = msgs[msg_key].get("message", name)
+                                        break
+
+                    if description.startswith("__MSG_"):
+                        msg_key = description[6:-2]
+                        for loc in ["fr", "en", "en_US"]:
+                            msg_path = os.path.join(ver_dir, "_locales", loc, "messages.json")
+                            if os.path.exists(msg_path):
+                                with open(msg_path, "r", encoding="utf-8") as mf:
+                                    msgs = json.load(mf)
+                                    if msg_key in msgs:
+                                        description = msgs[msg_key].get("message", description)
+                                        break
+
+                    is_s2k = (ext_id == "cgdjpilhipecahhcilnafpblkieebhea" or "kindle" in name.lower())
+                    action_info = manifest.get("action", {}) or manifest.get("browser_action", {})
+                    default_popup = action_info.get("default_popup", "")
+
+                    found_extensions.append({
+                        "id": ext_id,
+                        "name": name,
+                        "version": manifest.get("version", ""),
+                        "path": ver_dir,
+                        "is_send_to_kindle": is_s2k,
+                        "popup": default_popup,
+                        "description": description
+                    })
+                    seen_ids.add(ext_id)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    return found_extensions
+
+
+def get_extension_load_args() -> List[str]:
+    """Génère les arguments CLI de Google Chrome / Playwright pour charger automatiquement les extensions."""
+    exts = get_installed_chrome_extensions()
+    paths = [e["path"] for e in exts if os.path.exists(e["path"])]
+    if not paths:
+        return []
+    joined = ",".join(paths)
+    return [
+        f"--load-extension={joined}",
+        f"--disable-extensions-except={joined}"
+    ]
+
 
 def _slugify_city(city_str: str) -> str:
     """Transforme un nom de ville (ex: Saint-Étienne, Nîmes) en slug propre pour SNCF / Trainline."""
@@ -291,6 +395,19 @@ FREE_BROWSER_MODELS = [
     "gemini-flash-latest"
 ]
 
+def _detect_needs_auth(instruction: str, url: str) -> bool:
+    """Détecte si la tâche nécessite une session connectée (Google, Amazon, compte, login...)"""
+    auth_signals = [
+        "amazon", "compte", "commande", "panier", "commander", "achat",
+        "gmail", "google", "youtube premium", "connecte", "connecté",
+        "login", "log in", "sign in", "inscription", "profil",
+        "mon compte", "my account", "fnac", "cdiscount", "darty",
+        "spotify", "netflix", "disney", "prime video"
+    ]
+    text = (instruction + " " + url).lower()
+    return any(s in text for s in auth_signals)
+
+
 async def _attempt_browser_use(
     instruction: str,
     target_url: str,
@@ -298,23 +415,53 @@ async def _attempt_browser_use(
     route_info: Dict[str, Any] | None,
     model_name: str,
     api_key: str,
-    max_steps: int = 8
+    max_steps: int = 8,
+    use_user_profile: bool = False
 ) -> Dict[str, Any]:
     from browser_use import Agent, BrowserProfile
     from browser_use.llm import ChatGoogle
 
     llm = ChatGoogle(model=model_name, api_key=api_key)
-    
+
     full_instruction = instruction
     if target_url:
         full_instruction = f"Commence par te rendre sur {target_url}. Objectif : {instruction}"
-    full_instruction += " Réalise l'action de manière efficace, gère les cookies ou popups si nécessaire, et conclus avec un résumé clair des informations trouvées."
+    full_instruction += (
+        " Réalise l'action de manière efficace, gère les cookies ou popups si nécessaire, "
+        "et conclus avec un résumé clair des informations trouvées."
+    )
 
-    profile_args = {"headless": True}
-    if os.path.exists(CHROME_PATH):
-        profile_args["executable_path"] = CHROME_PATH
-
-    browser_profile = BrowserProfile(**profile_args)
+    # Si la tâche nécessite une session connectée, on utilise le profil Chrome persistant
+    # avec toutes les sessions Google/Amazon/etc. déjà sauvegardées
+    if use_user_profile and os.path.exists(PROFILE_DIR):
+        try:
+            ext_args = get_extension_load_args()
+            profile_args = {
+                "headless": False,  # Nécessite headless=False pour utiliser un profil persistant et extensions
+                "user_data_dir": PROFILE_DIR,
+                "args": [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    *ext_args,
+                    "--no-sandbox"
+                ]
+            }
+            if os.path.exists(CHROME_PATH):
+                profile_args["executable_path"] = CHROME_PATH
+            browser_profile = BrowserProfile(**profile_args)
+            print("[Browser Task] Utilisation du profil Chrome connecté avec extensions (Send to Kindle, etc.).")
+        except Exception:
+            # Fallback profil standard
+            profile_args = {"headless": True}
+            if os.path.exists(CHROME_PATH):
+                profile_args["executable_path"] = CHROME_PATH
+            browser_profile = BrowserProfile(**profile_args)
+    else:
+        profile_args = {"headless": True}
+        if os.path.exists(CHROME_PATH):
+            profile_args["executable_path"] = CHROME_PATH
+        browser_profile = BrowserProfile(**profile_args)
 
     agent = Agent(
         task=full_instruction,
@@ -359,10 +506,15 @@ async def _attempt_browser_use(
 
 async def run_browser_task(goal: str, url: str = "", confirmed_by_user: bool = False) -> Dict[str, Any]:
     """Exécute une tâche concrète dans le navigateur avec l'agent autonome Browser-Use.
-    Conformément à la consigne de Pierre : utilise directement la CLÉ PAYANTE pour le modèle Flash
-    afin d'éliminer toute latence liée aux quotas de la clé gratuite.
+    Détecte automatiquement si la tâche nécessite une session connectée (Amazon, Google, etc.)
+    et utilise le profil Chrome persistant avec les sessions sauvegardées dans ce cas.
     """
     print(f"[Browser Task] Début de mission : '{goal}' (url: '{url}')")
+
+    # Détection automatique : la tâche nécessite-t-elle une session connectée ?
+    needs_auth = _detect_needs_auth(goal, url)
+    if needs_auth:
+        print(f"[Browser Task] Session connectée détectée — utilisation du profil Chrome persistant.")
 
     # Résolution intelligente de lien profond (trains, transports, hôtels)
     route_info = extract_transport_route(goal or url)
@@ -372,7 +524,6 @@ async def run_browser_task(goal: str, url: str = "", confirmed_by_user: bool = F
             url = route_info["url"]
         target_site_fallback = route_info["url"]
 
-    # Utilisation prioritaire de la CLÉ PAYANTE pour modèle Flash pour zéro latence
     api_key_to_use = GEMINI_API_KEY_PAID or GEMINI_API_KEY_FREE
     key_label = "Clé Payante" if api_key_to_use == GEMINI_API_KEY_PAID else "Clé Gratuite"
     chosen_model = "gemini-3.8-flash"
@@ -384,7 +535,7 @@ async def run_browser_task(goal: str, url: str = "", confirmed_by_user: bool = F
             "goal": goal
         }
 
-    print(f"[Browser Task] Exécution directe sur {key_label} avec {chosen_model} (zéro latence)...")
+    print(f"[Browser Task] Exécution sur {key_label} avec {chosen_model} (auth={needs_auth})...")
     try:
         res = await _attempt_browser_use(
             instruction=goal,
@@ -393,11 +544,13 @@ async def run_browser_task(goal: str, url: str = "", confirmed_by_user: bool = F
             route_info=route_info,
             model_name=chosen_model,
             api_key=api_key_to_use,
-            max_steps=8
+            max_steps=10 if needs_auth else 8,
+            use_user_profile=needs_auth
         )
         res["goal"] = goal
         res["key_used"] = key_label
         res["model_used"] = f"{chosen_model} (Vision LLM)"
+        res["used_connected_profile"] = needs_auth
         return res
     except asyncio.CancelledError:
         print(f"[Browser Task] Navigation annulée par l'utilisateur.")
@@ -412,25 +565,20 @@ async def run_browser_task(goal: str, url: str = "", confirmed_by_user: bool = F
                 route_info=route_info,
                 model_name="gemini-3.6-flash",
                 api_key=api_key_to_use,
-                max_steps=8
+                max_steps=10 if needs_auth else 8,
+                use_user_profile=needs_auth
             )
             res["goal"] = goal
             res["key_used"] = key_label
             res["model_used"] = "gemini-3.6-flash (Vision LLM)"
+            res["used_connected_profile"] = needs_auth
             return res
         except Exception as e2:
             print(f"[Browser Task] Échec Browser-Use 3.6 ({e2}), repli Playwright direct...")
+            if needs_auth:
+                # Pour les tâches authentifiées, on utilise le profil Chrome persistant en Playwright
+                return await _run_playwright_with_profile(goal, url)
             return await _run_playwright_direct_fallback(goal, url)
-        res["goal"] = goal
-        res["key_used"] = "Clé Payante"
-        res["model_used"] = "Gemini 3.6 Flash (Vision LLM)"
-        return res
-    except asyncio.CancelledError:
-        print(f"[Browser Task] Navigation payante annulée par l'utilisateur.")
-        return {"status": "cancelled", "summary": "Navigation interrompue à votre demande.", "goal": goal}
-    except Exception as e:
-        print(f"[Browser Task] Erreur Browser-Use sur clé payante ({e}), repli Playwright direct...")
-        return await _run_playwright_direct_fallback(goal, url)
 
 async def _run_playwright_direct_fallback(goal: str, url: str = "") -> Dict[str, Any]:
     """Repli robuste Playwright en cas d'indisponibilité temporaire de Browser-Use."""
@@ -497,8 +645,93 @@ async def _run_playwright_direct_fallback(goal: str, url: str = "") -> Dict[str,
             "message": f"Erreur navigation: {str(ex)}"
         }
 
-def open_browser_window(url: str = "https://www.google.com") -> Dict[str, Any]:
-    """Ouvre une vraie fenêtre Google Chrome visible à l'écran avec le profil de l'utilisateur."""
+
+async def _run_playwright_with_profile(goal: str, url: str = "") -> Dict[str, Any]:
+    """Repli Playwright utilisant le profil Chrome persistant avec sessions connectées.
+    Utilisé pour les tâches nécessitant un compte connecté (Amazon, Google, Fnac, etc.)."""
+    from playwright.async_api import async_playwright
+
+    target_url = url.strip() if url else ""
+    if not target_url:
+        search_res = await search_web(goal, max_results=2)
+        if search_res.get("results"):
+            target_url = search_res["results"][0]["url"]
+        else:
+            target_url = f"https://www.google.com/search?q={quote_plus(goal)}"
+
+    if not target_url.startswith("http://") and not target_url.startswith("https://"):
+        target_url = "https://" + target_url
+
+    print(f"[Browser Auth] Playwright avec profil connecté sur : {target_url}")
+
+    try:
+        async with async_playwright() as p:
+            # Lancement avec le profil persistant (session connectée)
+            browser_args = [
+                "--disable-blink-features=AutomationControlled",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--no-sandbox",
+                "--disable-dev-shm-usage"
+            ]
+
+            context = await p.chromium.launch_persistent_context(
+                user_data_dir=PROFILE_DIR,
+                executable_path=CHROME_PATH if os.path.exists(CHROME_PATH) else None,
+                headless=False,
+                args=browser_args,
+                viewport={"width": 1280, "height": 850}
+            )
+
+            page = context.pages[0] if context.pages else await context.new_page()
+            await page.goto(target_url, wait_until="domcontentloaded", timeout=20000)
+            await page.wait_for_timeout(2500)
+
+            # Gestion cookies
+            try:
+                cookie_btn = page.locator(
+                    "button#didomi-notice-agree-button, "
+                    "button#onetrust-accept-btn-handler, "
+                    "button:has-text('Tout accepter'), "
+                    "button:has-text('Accepter'), "
+                    "button:has-text('Accept all')"
+                )
+                if await cookie_btn.count() > 0:
+                    await cookie_btn.first.click(timeout=2500)
+                    await page.wait_for_timeout(1000)
+            except Exception:
+                pass
+
+            await page.screenshot(path=SCREENSHOT_PATH, type="jpeg", quality=75)
+            title = await page.title()
+            final_url = page.url
+
+            body_text = await page.evaluate("() => document.body ? document.body.innerText : ''")
+            clean_lines = [l.strip() for l in body_text.splitlines() if len(l.strip()) > 3]
+            summary = "\n".join(clean_lines[:40])
+
+            # Sauvegarder les cookies/session
+            await context.close()
+
+            return {
+                "status": "success",
+                "goal": goal,
+                "site_visited": final_url,
+                "page_title": title,
+                "summary": summary[:1400],
+                "used_connected_profile": True,
+                "screenshot": "/static/latest_screenshot.jpg"
+            }
+    except Exception as ex:
+        return {
+            "status": "error",
+            "goal": goal,
+            "site_visited": target_url,
+            "message": f"Erreur navigation authentifiée: {str(ex)}"
+        }
+
+def open_browser_window(url: str = "https://www.google.com", load_extensions: bool = True) -> Dict[str, Any]:
+    """Ouvre une vraie fenêtre Google Chrome visible à l'écran avec le profil connecté et les extensions chargées (Send to Kindle, etc.)."""
     import subprocess
     target = url.strip() if url else "https://www.google.com"
     if not target.startswith("http://") and not target.startswith("https://"):
@@ -515,14 +748,19 @@ def open_browser_window(url: str = "https://www.google.com") -> Dict[str, Any]:
         f"--user-data-dir={PROFILE_DIR}",
         "--no-first-run",
         "--no-default-browser-check",
-        target
     ]
+    if load_extensions:
+        ext_args = get_extension_load_args()
+        cmd.extend(ext_args)
+    cmd.append(target)
+
     try:
         subprocess.Popen(cmd)
+        ext_note = " avec vos extensions (Send to Kindle)" if load_extensions else ""
         return {
             "status": "success",
             "url": target,
-            "message": f"Google Chrome ouvert à l'écran sur {target} avec votre session connectée."
+            "message": f"Google Chrome ouvert à l'écran sur {target}{ext_note} et votre session connectée."
         }
     except Exception as e:
         return {
@@ -984,4 +1222,192 @@ async def prepare_web_cart_or_checkout(
             f"il ne vous reste plus qu'à choisir votre mode de paiement et valider votre achat en toute sécurité."
         )
     }
+
+
+# ─── SERVICE SEND TO KINDLE & EXTENSIONS ──────────────────────────────────────
+
+async def extract_clean_article(url: str) -> Dict[str, Any]:
+    """Extrait le contenu textuel et la structure épurée (mode lecture) d'un article web.
+    Supprime les bannières, publicités, menus, traceurs et prépare un document lisible pour Kindle.
+    """
+    clean_url = (url or "").strip()
+    if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
+        clean_url = "https://" + clean_url
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7"
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=headers) as client:
+            resp = await client.get(clean_url)
+            html_text = resp.text
+    except Exception as e:
+        return {"status": "error", "message": f"Impossible de charger la page {clean_url}: {e}"}
+
+    soup = BeautifulSoup(html_text, "html.parser")
+
+    # Suppression des éléments superflus
+    for tag in soup(["script", "style", "noscript", "iframe", "svg", "header", "footer", "nav", "aside", "form"]):
+        tag.decompose()
+
+    # Titre de l'article
+    title = ""
+    og_title = soup.find("meta", property="og:title")
+    if og_title and og_title.get("content"):
+        title = og_title["content"].strip()
+    elif soup.h1:
+        title = soup.h1.get_text().strip()
+    elif soup.title:
+        title = soup.title.get_text().strip()
+    if not title:
+        title = "Article Web"
+
+    # Auteur
+    author = ""
+    meta_author = soup.find("meta", attrs={"name": "author"}) or soup.find("meta", property="article:author")
+    if meta_author and meta_author.get("content"):
+        author = meta_author["content"].strip()
+
+    # Contenu principal
+    main_el = (
+        soup.find("article")
+        or soup.find("main")
+        or soup.find(id=re.compile(r"content|article|main", re.I))
+        or soup.find(class_=re.compile(r"article-content|post-content|entry-content", re.I))
+    )
+    if not main_el:
+        main_el = soup.body
+
+    paragraphs = []
+    if main_el:
+        for p in main_el.find_all(["p", "h2", "h3", "blockquote", "ul", "ol"]):
+            txt = p.get_text().strip()
+            if len(txt) > 20 or p.name in ("h2", "h3"):
+                if p.name == "h2":
+                    paragraphs.append(f"<h2>{txt}</h2>")
+                elif p.name == "h3":
+                    paragraphs.append(f"<h3>{txt}</h3>")
+                elif p.name == "blockquote":
+                    paragraphs.append(f"<blockquote>{txt}</blockquote>")
+                else:
+                    paragraphs.append(f"<p>{txt}</p>")
+
+    article_html = "\n".join(paragraphs) if paragraphs else f"<p>{soup.get_text()[:3000]}</p>"
+
+    # Stylisation élégante Kindle
+    styled_doc = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>{title}</title>
+<style>
+body {{ font-family: 'Georgia', 'Palatino', serif; line-height: 1.6; font-size: 1.15em; max-width: 800px; margin: 0 auto; padding: 2em; color: #111; }}
+h1 {{ font-size: 2em; margin-bottom: 0.2em; }}
+.meta {{ font-size: 0.9em; color: #666; margin-bottom: 2em; border-bottom: 1px solid #ccc; padding-bottom: 0.8em; }}
+p {{ margin: 1em 0; text-align: justify; }}
+blockquote {{ border-left: 3px solid #888; padding-left: 1em; color: #444; font-style: italic; }}
+</style>
+</head>
+<body>
+<h1>{title}</h1>
+<div class="meta">{f'Par {author} &bull; ' if author else ''}Source : <a href="{clean_url}">{clean_url}</a></div>
+<div class="content">
+{article_html}
+</div>
+</body>
+</html>"""
+
+    # Dossier de sauvegarde
+    from services.download_service import EBOOKS_DIR
+    os.makedirs(EBOOKS_DIR, exist_ok=True)
+    slug = re.sub(r"[^a-zA-Z0-9_-]+", "_", title[:50]).strip("_") or "article"
+    file_path = os.path.join(EBOOKS_DIR, f"{slug}.html")
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(styled_doc)
+
+    return {
+        "status": "success",
+        "url": clean_url,
+        "title": title,
+        "author": author,
+        "file_path": file_path,
+        "word_count": len(re.findall(r"\w+", article_html))
+    }
+
+
+async def send_page_to_kindle(
+    url: str = "",
+    title: str = "",
+    open_in_chrome: bool = True
+) -> Dict[str, Any]:
+    """Extrait un article ou page web et l'expédie vers la liseuse Kindle de Pierre.
+    1. Extrait le contenu épuré sans publicité au format liseuse Kindle.
+    2. Achemine l'ebook directement par courriel vers la liseuse (via send_to_ereader).
+    3. Ouvre également la page dans Google Chrome avec l'extension Send to Kindle officielle chargée.
+    """
+    from services.download_service import send_to_ereader
+
+    target_url = (url or "").strip()
+    if not target_url:
+        return {
+            "status": "error",
+            "message": "Veuillez fournir l'URL de l'article ou de la page à envoyer sur votre Kindle."
+        }
+
+    # 1. Extraction et mise en forme mode lecture
+    extracted = await extract_clean_article(target_url)
+    if extracted.get("status") == "error":
+        # Repli : ouvrir Chrome directement sur la page
+        if open_in_chrome:
+            open_browser_window(target_url, load_extensions=True)
+        return {
+            "status": "warning",
+            "url": target_url,
+            "message": f"Impossible d'extraire le texte ({extracted.get('message')}). Google Chrome a été ouvert sur la page avec l'extension Send to Kindle."
+        }
+
+    art_title = title or extracted.get("title", "Article")
+    file_path = extracted["file_path"]
+
+    # 2. Acheminement vers la liseuse (Send-to-Kindle via courriel direct)
+    ereader_res = await send_to_ereader(file_path=file_path, method="email")
+
+    # 3. Lancement de Chrome avec extension Send to Kindle chargée
+    chrome_res = None
+    if open_in_chrome:
+        chrome_res = open_browser_window(target_url, load_extensions=True)
+
+    recipient = ereader_res.get("recipient", "votre adresse Kindle")
+
+    return {
+        "status": "success",
+        "title": art_title,
+        "url": target_url,
+        "file_path": file_path,
+        "word_count": extracted.get("word_count", 0),
+        "ereader_delivery": ereader_res,
+        "chrome_opened": bool(chrome_res and chrome_res.get("status") == "success"),
+        "message": (
+            f"L'article '{art_title}' a été mis en page pour votre liseuse et expédié par courriel vers {recipient}. "
+            f"Google Chrome est également ouvert sur l'article avec l'extension Send to Kindle prête."
+        )
+    }
+
+
+def list_installed_chrome_extensions() -> Dict[str, Any]:
+    """Fournit le bilan complet de toutes les extensions Google Chrome détectées sur la machine de Pierre."""
+    exts = get_installed_chrome_extensions()
+    s2k_installed = any(e.get("is_send_to_kindle") for e in exts)
+    return {
+        "status": "success",
+        "total": len(exts),
+        "send_to_kindle_detected": s2k_installed,
+        "extensions": exts,
+        "message": f"{len(exts)} extensions Google Chrome détectées. Extension Send to Kindle : {'Active' if s2k_installed else 'Non détectée'}."
+    }
+
 

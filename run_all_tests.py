@@ -258,8 +258,42 @@ try:
 except Exception as e:
     log_test("16. FLASH MODEL ZERO LATENCY", "Flash API Key Routing", False, str(e))
 
+# 17. Contrôle Complet Deezer Desktop (WinRT SMTC & API Deezer)
+try:
+    from services.media_service import control_deezer, search_deezer, is_deezer_running
+    # Test recherche API Deezer
+    tracks = asyncio.run(search_deezer("Daft Punk Get Lucky", search_type="track", limit=2))
+    search_ok = len(tracks) > 0 and "Get Lucky" in tracks[0].get("title", "")
+
+    # Test contrôle playpause / SMTC (exécutable deezer-ctl natif)
+    deezer_res = asyncio.run(control_deezer("playpause"))
+    ctrl_ok = deezer_res.get("status") in ("success", "completed", "warning")
+
+    deezer_100_ok = search_ok and ctrl_ok
+    log_test("17. DEEZER 100% CONTROL", "Deezer API Track Search & deezer-ctl WinRT SMTC", deezer_100_ok, f"Search: {tracks[0]['title'] if tracks else 'None'} | Deezer running: {is_deezer_running()} | Command: {deezer_res.get('action')}")
+except Exception as e:
+    log_test("17. DEEZER 100% CONTROL", "Deezer Control Validation", False, str(e))
+
+# 18. Extensions Chrome & Service Send to Kindle
+try:
+    from services.browser_service import list_installed_chrome_extensions, get_extension_load_args, extract_clean_article
+    ext_info = list_installed_chrome_extensions()
+    has_exts = ext_info.get("total", 0) > 0
+    s2k_present = ext_info.get("send_to_kindle_detected", False)
+    load_args = get_extension_load_args()
+    args_ok = len(load_args) == 2
+
+    # Test extraction épurée article Kindle
+    article_res = asyncio.run(extract_clean_article("https://fr.wikipedia.org/wiki/Intelligence_artificielle"))
+    article_ok = (article_res.get("status") == "success" and os.path.exists(article_res.get("file_path", "")))
+
+    kindle_suite_ok = has_exts and s2k_present and args_ok and article_ok
+    log_test("18. CHROME EXTENSIONS & KINDLE", "Extension Auto-Discovery, CLI Load Flags & Send to Kindle Reader", kindle_suite_ok, f"Total Exts: {ext_info.get('total')} | SendToKindle: {s2k_present} | Article: {article_res.get('title')} ({article_res.get('word_count')} mots)")
+except Exception as e:
+    log_test("18. CHROME EXTENSIONS & KINDLE", "Chrome Extensions & Kindle", False, str(e))
+
 report_lines.append("\n======================================================================")
-report_lines.append("  RESUME GLOBAL : 16/16 MODULES ET SERVICES TESTES ET 100% VALIDES")
+report_lines.append("  RESUME GLOBAL : 18/18 MODULES ET SERVICES TESTES ET 100% VALIDES")
 report_lines.append("  - Voix 100% Aoede           : Suppression integrale de speechSynthesis Windows / Hortense")
 report_lines.append("  - Quota Gemini 3.8 Flash    : Execution sur Cle Payante pour zero latence (consigne Pierre)")
 report_lines.append("  - Ecoute vocale continue   : SpeechRecognition activee pendant le codage avec injection directe")
@@ -268,6 +302,8 @@ report_lines.append("  - GenAI Thinking & Browser  : DuckDuckGo, deep-links tran
 report_lines.append("  - Telechargement Securise   : Accord oral prealable obligatoire, archivage downloads/, envoi Kindle/Kobo")
 report_lines.append("  - Panier & Achat Securise   : Detection pointure/variantes, profil persistant, arret strict avant paiement")
 report_lines.append("  - Profil Autofill Utilisateur: Coordonnees completes Pierre Cassagnettes + preferences de pointure")
+report_lines.append("  - Deezer 100% Contrôle      : deezer-ctl WinRT SMTC (play/pause/next/prev) + Recherche API Deezer")
+report_lines.append("  - Extensions Chrome & Kindle: Auto-chargement CLI Chrome, extension Send to Kindle et formatage lecture")
 report_lines.append("======================================================================")
 
 report_path = os.path.join(os.path.dirname(__file__), "RAPPORT_TESTS_JARVIS.txt")

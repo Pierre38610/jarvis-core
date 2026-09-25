@@ -92,6 +92,16 @@ class SupervisionService:
                 "active": False,
                 "description": "Expédition de rapports et synthèses par courriel"
             },
+            "read_emails": {
+                "name": "Réception & Lecture E-mails",
+                "tool": "read_emails",
+                "model": "IMAP Stark Protocol",
+                "api_type": "free",
+                "api_label": "Service Local",
+                "cost_est": "0.00 $",
+                "active": False,
+                "description": "Consultation et lecture des courriels reçus via Gmail IMAP"
+            },
             "open_user_browser": {
                 "name": "Affichage Chrome Utilisateur",
                 "tool": "open_user_browser",

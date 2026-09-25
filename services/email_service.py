@@ -12,8 +12,11 @@ import smtplib
 import asyncio
 import mimetypes
 from datetime import datetime
+import imaplib
+import email
+from email.header import decode_header
 from email.message import EmailMessage
-from email.utils import formatdate, make_msgid
+from email.utils import formatdate, make_msgid, parsedate_to_datetime
 from typing import List, Dict, Any, Optional
 
 from config import (
@@ -26,7 +29,10 @@ from config import (
     EMAIL_SENDER_NAME,
     EMAIL_OUTBOX_DIR,
     SCREENSHOT_PATH,
-    STATIC_DIR
+    STATIC_DIR,
+    IMAP_HOST,
+    IMAP_PORT,
+    IMAP_SSL
 )
 
 
@@ -252,13 +258,21 @@ def send_email(
     msg["Date"] = formatdate(localtime=True)
     msg["Message-ID"] = make_msgid()
 
+    # Distinction selon le destinataire :
+    # Si le mail est adressé à Pierre Cassagnettes (pierrecassagnettes@gmail.com), on conserve le formatage officiel Stark Industries.
+    # Pour tout autre destinataire, aucun template/habillage ni message de base n'est imposé : l'agent rédige le mail de A à Z (y compris corps vide).
+    is_pierre_dest = (recipient.lower() == "pierrecassagnettes@gmail.com")
+
     # Corps alternatif texte brut
-    plain_text = f"{subject}\n\n{body}\n\n---\nTransmis par J.A.R.V.I.S. à destination de {recipient}"
+    if is_pierre_dest:
+        plain_text = f"{subject}\n\n{body}\n\n---\nTransmis par J.A.R.V.I.S. à destination de {recipient}"
+    else:
+        plain_text = body or ""
     msg.set_content(plain_text)
 
-    # Corps HTML enrichi Stark Industries
+    # Corps HTML enrichi Stark Industries (uniquement pour Pierre)
     html_content = ""
-    if is_html_report:
+    if is_pierre_dest and is_html_report:
         html_content = build_stark_html_report(
             subject=subject,
             body=body,
@@ -442,3 +456,239 @@ def list_outbox_emails() -> List[Dict[str, Any]]:
                 
     results.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
     return results
+
+
+def _decode_mime_header(header_value: Optional[str]) -> str:
+    """Décode proprement un en-tête MIME (Sujet, Expéditeur, etc.)."""
+    if not header_value:
+        return ""
+    try:
+        decoded_fragments = decode_header(header_value)
+        parts = []
+        for piece, charset in decoded_fragments:
+            if isinstance(piece, bytes):
+                encoding = charset or "utf-8"
+                try:
+                    parts.append(piece.decode(encoding, errors="replace"))
+                except Exception:
+                    parts.append(piece.decode("utf-8", errors="replace"))
+            else:
+                parts.append(str(piece))
+        return "".join(parts).strip()
+    except Exception:
+        return str(header_value)
+
+
+def _extract_email_body_and_attachments(msg: email.message.Message) -> Dict[str, Any]:
+    """Extrait le corps texte/html et la liste des pièces jointes d'un message email."""
+    text_content = ""
+    html_content = ""
+    attachments = []
+
+    if msg.is_multipart():
+        for part in msg.walk():
+            content_type = part.get_content_type()
+            content_disposition = str(part.get("Content-Disposition", ""))
+
+            # Si c'est une pièce jointe
+            if "attachment" in content_disposition.lower() or part.get_filename():
+                filename = part.get_filename()
+                if filename:
+                    filename = _decode_mime_header(filename)
+                attachments.append(filename or "pièce_jointe")
+                continue
+
+            # Sinon contenu texte
+            if content_type == "text/plain" and not text_content:
+                payload = part.get_payload(decode=True)
+                charset = part.get_content_charset() or "utf-8"
+                if payload:
+                    try:
+                        text_content = payload.decode(charset, errors="replace")
+                    except Exception:
+                        text_content = payload.decode("utf-8", errors="replace")
+            elif content_type == "text/html" and not html_content:
+                payload = part.get_payload(decode=True)
+                charset = part.get_content_charset() or "utf-8"
+                if payload:
+                    try:
+                        html_content = payload.decode(charset, errors="replace")
+                    except Exception:
+                        html_content = payload.decode("utf-8", errors="replace")
+    else:
+        content_type = msg.get_content_type()
+        payload = msg.get_payload(decode=True)
+        charset = msg.get_content_charset() or "utf-8"
+        if payload:
+            decoded = ""
+            try:
+                decoded = payload.decode(charset, errors="replace")
+            except Exception:
+                decoded = payload.decode("utf-8", errors="replace")
+            if content_type == "text/plain":
+                text_content = decoded
+            elif content_type == "text/html":
+                html_content = decoded
+
+    # Nettoyage sommaire HTML si seul HTML est dispo
+    clean_body = text_content.strip()
+    if not clean_body and html_content:
+        import re
+        clean_body = re.sub(r'<[^>]+>', ' ', html_content)
+        clean_body = re.sub(r'\s+', ' ', clean_body).strip()
+
+    return {
+        "body_text": clean_body,
+        "attachments": attachments
+    }
+
+
+def read_received_emails(
+    max_count: int = 5,
+    query: Optional[str] = None,
+    unread_only: bool = False,
+    folder: str = "INBOX"
+) -> Dict[str, Any]:
+    """Interroge la boîte de réception Gmail via IMAP pour récupérer les derniers e-mails reçus."""
+    user = SMTP_USER or DEFAULT_RECIPIENT_EMAIL
+    pwd = (SMTP_PASSWORD or "").replace(" ", "").strip()
+
+    if not user or not pwd:
+        return {
+            "status": "error",
+            "message": "Identifiants Gmail (SMTP_USER / SMTP_PASSWORD) non configurés dans le fichier .env.",
+            "emails": []
+        }
+
+    try:
+        if IMAP_SSL:
+            mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
+        else:
+            mail = imaplib.IMAP4(IMAP_HOST, IMAP_PORT)
+
+        mail.login(user, pwd)
+        status, _ = mail.select(folder, readonly=True)
+        if status != "OK":
+            mail.logout()
+            return {
+                "status": "error",
+                "message": f"Impossible d'accéder au dossier '{folder}'.",
+                "emails": []
+            }
+
+        # Construction du critère de recherche
+        search_criteria = []
+        if unread_only:
+            search_criteria.append("UNSEEN")
+        else:
+            search_criteria.append("ALL")
+
+        if query:
+            # Recherche par sujet ou expéditeur
+            q_clean = query.strip()
+            # Sous IMAP : (OR SUBJECT "terme" FROM "terme") ou texte général
+            search_criteria = [f'(OR SUBJECT "{q_clean}" FROM "{q_clean}")']
+
+        status, search_data = mail.search(None, *search_criteria)
+        if status != "OK":
+            mail.logout()
+            return {
+                "status": "error",
+                "message": "Erreur lors de la recherche des e-mails.",
+                "emails": []
+            }
+
+        msg_ids = search_data[0].split()
+        total_found = len(msg_ids)
+        if total_found == 0:
+            mail.logout()
+            return {
+                "status": "ok",
+                "count": 0,
+                "message": f"Aucun e-mail trouvé avec les critères demandés ({'non lus uniquement' if unread_only else 'tous'}).",
+                "emails": []
+            }
+
+        # Récupérer les 'max_count' plus récents (ils sont en fin de liste)
+        selected_ids = msg_ids[-max_count:]
+        selected_ids.reverse()  # Le plus récent d'abord
+
+        email_list = []
+        for msg_id in selected_ids:
+            try:
+                res, data = mail.fetch(msg_id, "(RFC822)")
+                if res != "OK" or not data or not data[0]:
+                    continue
+
+                raw_email = data[0][1]
+                msg = email.message_from_bytes(raw_email)
+
+                raw_subject = msg.get("Subject", "(Sans sujet)")
+                subject = _decode_mime_header(raw_subject)
+
+                raw_from = msg.get("From", "Inconnu")
+                sender = _decode_mime_header(raw_from)
+
+                date_str = msg.get("Date", "")
+                formatted_date = date_str
+                try:
+                    dt = parsedate_to_datetime(date_str)
+                    formatted_date = dt.strftime("%d/%m/%Y à %H:%M")
+                except Exception:
+                    pass
+
+                content_info = _extract_email_body_and_attachments(msg)
+                body_snippet = content_info["body_text"][:350]
+                if len(content_info["body_text"]) > 350:
+                    body_snippet += "..."
+
+                email_list.append({
+                    "id": msg_id.decode("utf-8", errors="ignore"),
+                    "subject": subject or "(Sans sujet)",
+                    "from": sender,
+                    "date": formatted_date,
+                    "snippet": body_snippet,
+                    "body": content_info["body_text"],
+                    "attachments": content_info["attachments"],
+                    "has_attachments": len(content_info["attachments"]) > 0
+                })
+            except Exception as item_err:
+                print(f"[Email Service] Erreur lors de la lecture d'un message : {item_err}")
+                continue
+
+        mail.logout()
+
+        return {
+            "status": "ok",
+            "account": user,
+            "folder": folder,
+            "total_matches": total_found,
+            "count": len(email_list),
+            "emails": email_list
+        }
+
+    except Exception as exc:
+        err_msg = str(exc)
+        print(f"[Email Service] Erreur IMAP : {err_msg}")
+        return {
+            "status": "error",
+            "message": f"Erreur lors de la connexion IMAP à Gmail : {err_msg}",
+            "emails": []
+        }
+
+
+async def read_received_emails_async(
+    max_count: int = 5,
+    query: Optional[str] = None,
+    unread_only: bool = False,
+    folder: str = "INBOX"
+) -> Dict[str, Any]:
+    """Version asynchrone non-bloquante de read_received_emails pour FastAPI et Gemini Live."""
+    return await asyncio.to_thread(
+        read_received_emails,
+        max_count=max_count,
+        query=query,
+        unread_only=unread_only,
+        folder=folder
+    )
+

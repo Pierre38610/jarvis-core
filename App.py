@@ -23,13 +23,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from google_antigravity import resolve_antigravity_model, is_stop_directive
 from services.memory_service import memory_service
 from services.reasoning_service import run_deep_reasoning, run_antigravity_task
-from services.browser_service import search_web, run_browser_task, open_browser_window, interact_web_page, prepare_web_cart_or_checkout
+from services.browser_service import search_web, run_browser_task, open_browser_window, interact_web_page, prepare_web_cart_or_checkout, send_page_to_kindle, list_installed_chrome_extensions
 from services.download_service import download_file, send_to_ereader, search_and_download_ebook, list_downloaded_files
 from services.system_service import get_system_status, launch_application
-from services.email_service import send_email_async, list_outbox_emails
+from services.email_service import send_email_async, list_outbox_emails, read_received_emails_async
 from services.console_monitor import console_monitor
 from services.supervision_service import supervision_service
 from services.chat_service import chat_service
+from services.media_service import launch_deezer, play_deezer_track, control_deezer, search_deezer, play_on_stremio, launch_stremio, launch_vlc
 
 app = FastAPI(title="J.A.R.V.I.S. Core Server")
 
@@ -81,12 +82,21 @@ class AuthRequest(BaseModel):
     password: str
 
 class EmailRequest(BaseModel):
-    subject: str
-    body: str
+    subject: str = ""
+    body: str = ""
     to_email: str | None = None
     attachments: list[str] | None = None
     include_screenshot: bool = False
     is_html_report: bool = True
+
+class DeezerControlRequest(BaseModel):
+    action: str = "playpause"
+    query: str = ""
+    item_type: str = "track"
+
+class SendToKindleRequest(BaseModel):
+    url: str
+    title: str = ""
 
 
 @app.get("/")
@@ -187,6 +197,16 @@ async def api_get_outbox(request: Request):
     
     return {"emails": list_outbox_emails()}
 
+@app.get("/api/emails/inbox")
+async def api_get_inbox(request: Request, count: int = 5, query: str | None = None, unread_only: bool = False):
+    """Récupère les e-mails reçus sur la boîte Gmail via IMAP"""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+
+    res = await read_received_emails_async(max_count=count, query=query, unread_only=unread_only)
+    return res
+
 @app.get("/api/emails/preview/{email_id}")
 async def api_preview_email(email_id: str):
     """Affiche le rapport HTML d'un courriel généré directement dans le navigateur"""
@@ -195,6 +215,32 @@ async def api_preview_email(email_id: str):
             if email_id in fname and fname.endswith(".html"):
                 return FileResponse(os.path.join(config.EMAIL_OUTBOX_DIR, fname), media_type="text/html")
     return JSONResponse(content={"error": "E-mail introuvable"}, status_code=404)
+
+@app.post("/api/open-chrome-profile")
+async def api_open_chrome_profile(request: Request):
+    """Ouvre Google Chrome avec le profil persistant de Jarvis pour que Pierre
+    puisse se connecter à ses comptes (Amazon, Google, etc.) et sauvegarder ses sessions.
+    Ces sessions seront ensuite réutilisées automatiquement par Jarvis."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    url = "https://www.google.com"
+    try:
+        body = await request.json()
+        url = body.get("url", url)
+    except Exception:
+        pass
+    from services.browser_service import open_browser_window
+    res = open_browser_window(url)
+    return {
+        "status": res.get("status"),
+        "message": (
+            "Chrome est ouvert avec le profil Jarvis. "
+            "Connectez-vous à vos comptes (Amazon, Google, etc.) depuis cette fenêtre. "
+            "Jarvis réutilisera automatiquement ces sessions à chaque navigation."
+        ),
+        "profile_dir": config.PROFILE_DIR if hasattr(config, "PROFILE_DIR") else "Voir config.py"
+    }
 
 @app.get("/api/downloads")
 async def api_list_downloads(request: Request):
@@ -206,6 +252,45 @@ async def api_list_downloads(request: Request):
         "downloads": list_downloaded_files("downloads"),
         "ebooks": list_downloaded_files("ebooks")
     }
+
+# ─── ENDPOINTS MEDIA DEEZER (CONTRÔLE 100% & RECHERCHE) ───────────────────────
+
+@app.post("/api/media/deezer/control")
+async def api_control_deezer(req: DeezerControlRequest, request: Request):
+    """Contrôle total de Deezer Desktop : play, pause, playpause, next, prev, choose, open."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    res = await control_deezer(action=req.action, query=req.query, item_type=req.item_type)
+    return res
+
+@app.get("/api/media/deezer/search")
+async def api_search_deezer(query: str, type: str = "track", limit: int = 5, request: Request = None):
+    """Recherche des morceaux, albums ou playlists via l'API Deezer."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token") if request else None
+    if token and not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    results = await search_deezer(query=query, search_type=type, limit=limit)
+    return {"query": query, "type": type, "count": len(results), "results": results}
+
+# ─── ENDPOINTS EXTENSIONS CHROME & SEND TO KINDLE ─────────────────────────────
+
+@app.get("/api/browser/extensions")
+async def api_list_extensions(request: Request):
+    """Liste toutes les extensions Google Chrome détectées (Send to Kindle, etc.)."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    return list_installed_chrome_extensions()
+
+@app.post("/api/browser/send-to-kindle")
+async def api_send_to_kindle(req: SendToKindleRequest, request: Request):
+    """Extrait un article web et l'achemine vers la liseuse Kindle de Pierre (Send to Kindle)."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    res = await send_page_to_kindle(url=req.url, title=req.title, open_in_chrome=True)
+    return res
 
 @app.get("/api/supervision/overview")
 async def get_supervision_overview(request: Request):
@@ -815,35 +900,95 @@ async def voice_channel(websocket: WebSocket):
                 ),
                 types.FunctionDeclaration(
                     name="launch_application",
-                    description="Ouvre une application locale sur l'ordinateur de l'utilisateur (ex: Calculatrice, Bloc-notes, VS Code, Explorateur de fichiers).",
+                    description=(
+                        "Ouvre une application locale sur l'ordinateur de Pierre "
+                        "(Calculatrice, Bloc-notes, VS Code, Explorateur, Chrome, VLC). "
+                        "IMPORTANT : Pour Deezer utilise 'play_music_deezer'. Pour Stremio utilise 'play_video_stremio'."
+                    ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
                             "app_name": types.Schema(
                                 type="STRING",
-                                description="Nom de l'application (calculatrice, bloc-notes, vscode, explorateur)"
+                                description="Nom de l'application (calculatrice, bloc-notes, vscode, explorateur, chrome, vlc)"
                             )
                         },
                         required=["app_name"]
                     )
                 ),
                 types.FunctionDeclaration(
+                    name="play_music_deezer",
+                    description=(
+                        "CONTRÔLE 100% DE DEEZER DESKTOP : "
+                        "Gère l'application Deezer Desktop (WinRT SMTC & API Deezer) sans interférer avec d'autres lecteurs ou YouTube. "
+                        "Permet de : "
+                        "1) Mettre en pause ('pause', 'arrête la musique') via action='pause', "
+                        "2) Reprendre la lecture ('play', 'remets la musique', 'reprends') via action='play', "
+                        "3) Basculer play/pause via action='playpause', "
+                        "4) Passer au morceau suivant ('suivant', 'morceau suivant', 'next') via action='next', "
+                        "5) Revenir au morceau précédent ('précédent', 'morceau d'avant') via action='prev', "
+                        "6) Choisir et lancer un titre, artiste, album ou playlist ('mets Daft Punk', 'joue du rock', 'choisis Billie Jean') via action='choose' avec query='...'. "
+                        "Exemples : 'mets en pause la musique', 'musique suivante', 'mets Get Lucky de Daft Punk', 'joue du jazz'."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "action": types.Schema(
+                                type="STRING",
+                                description="Action à effectuer : 'play' (lecture), 'pause' (mettre en pause), 'playpause' (bascule), 'next' (morceau suivant), 'prev' (morceau précédent), 'choose' (choisir et jouer une musique), 'open' (ouvrir l'app)"
+                            ),
+                            "query": types.Schema(
+                                type="STRING",
+                                description="Titre du morceau, nom de l'artiste, album ou style de musique recherché (ex: 'Daft Punk', 'Get Lucky', 'Orelsan', 'Chill')"
+                            ),
+                            "item_type": types.Schema(
+                                type="STRING",
+                                description="Type de recherche si applicable : 'track' (morceau, par défaut), 'album', 'playlist', 'artist'"
+                            )
+                        }
+                    )
+                ),
+                types.FunctionDeclaration(
+                    name="play_video_stremio",
+                    description=(
+                        "Lance Stremio (installé sur l'ordi de Pierre) et ouvre automatiquement le film ou la série demandée. "
+                        "Recherche le contenu via l'API Stremio (Cinemeta), sélectionne le meilleur stream 1080p le plus léger en Go (via Torrentio), "
+                        "et ouvre Stremio directement sur le film/série. "
+                        "Utilise cet outil dès que Pierre veut regarder un film ou une série. "
+                        "Exemples : 'lance Inception', 'mets Breaking Bad', 'je veux voir Avatar 2'."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "title": types.Schema(
+                                type="STRING",
+                                description="Titre du film ou de la série (ex: 'Inception', 'Breaking Bad', 'Avatar', 'The Office')"
+                            ),
+                            "content_type": types.Schema(
+                                type="STRING",
+                                description="Type de contenu : 'movie' pour un film (défaut), 'series' pour une série TV"
+                            )
+                        },
+                        required=["title"]
+                    )
+                ),
+                types.FunctionDeclaration(
                     name="send_email",
                     description=(
-                        "Envoie un courriel officiel à Pierre Cassagnettes (pierrecassagnettes@gmail.com) ou au destinataire demandé. "
-                        "Permet d'expédier des synthèses exécutives, des rapports complets, des analyses, ainsi que de joindre des fichiers locaux, "
-                        "documents, images, ou la capture d'écran actuelle du système/navigateur."
+                        "Envoie un courriel à Pierre Cassagnettes (pierrecassagnettes@gmail.com) ou au destinataire externe demandé. "
+                        "Pour Pierre Cassagnettes : utilise le format officiel exécutif Stark Industries (rapport, synthèse, capture d'écran). "
+                        "Pour toute autre adresse : aucun message prédéfini ni habillage n'est ajouté, tu rédiges intégralement le mail de A à Z (sujet, corps libre ou même vide si souhaité)."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
                             "subject": types.Schema(
                                 type="STRING",
-                                description="L'objet précis et élégant de l'e-mail (ex: 'Rapport exécutif J.A.R.V.I.S.', 'Synthèse des recherches', 'Compte-rendu de mission')"
+                                description="L'objet de l'e-mail (ex: 'Rapport J.A.R.V.I.S.', 'Demande d'information', etc.)"
                             ),
                             "body": types.Schema(
                                 type="STRING",
-                                description="Le contenu complet et soigné du rapport ou du message (supporte le markdown: titres, listes à puces, gras)"
+                                description="Le contenu du message rédigé par l'agent de A à Z (peut être vide '' si l'agent le souhaite)."
                             ),
                             "to_email": types.Schema(
                                 type="STRING",
@@ -859,7 +1004,32 @@ async def voice_channel(websocket: WebSocket):
                                 description="Mettre à True pour joindre automatiquement une capture d'écran du système ou du navigateur"
                             )
                         },
-                        required=["subject", "body"]
+                        required=["subject"]
+                    )
+                ),
+                types.FunctionDeclaration(
+                    name="read_emails",
+                    description=(
+                        "Consulte et lit les e-mails reçus par Pierre Cassagnettes sur son adresse pierrecassagnettes@gmail.com via la boîte de réception Gmail. "
+                        "Permet de récupérer les derniers messages reçus, de rechercher des mails précis par mot-clé ou expéditeur, "
+                        "ou de filtrer les e-mails non lus pour en faire une synthèse vocale claire et fluide."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "count": types.Schema(
+                                type="INTEGER",
+                                description="Nombre d'e-mails récents à consulter (par défaut: 3 à 5)"
+                            ),
+                            "query": types.Schema(
+                                type="STRING",
+                                description="Mot-clé ou expéditeur optionnel pour filtrer la recherche (ex: 'banque', 'Amazon', 'Kindle', 'SNCF')"
+                            ),
+                            "unread_only": types.Schema(
+                                type="BOOLEAN",
+                                description="Mettre à True pour ne récupérer que les e-mails non lus"
+                            )
+                        }
                     )
                 ),
                 types.FunctionDeclaration(
@@ -1027,6 +1197,41 @@ async def voice_channel(websocket: WebSocket):
                         },
                         required=["query"]
                     )
+                ),
+                types.FunctionDeclaration(
+                    name="send_page_to_kindle",
+                    description=(
+                        "ENVOI SUR LISEUSE KINDLE : "
+                        "Envoie un article web, une page internet ou un document directement sur la liseuse Kindle de Pierre. "
+                        "Utilise l'extension officielle Google Chrome 'Send to Kindle' et l'acheminement direct e-reader (par courriel vers sa liseuse). "
+                        "Extrait le texte épuré sans publicité en mode lecture, l'expédie par mail et ouvre la page dans Google Chrome avec l'extension prête. "
+                        "Exemples : 'envoie cette page sur ma Kindle', 'mets cet article sur ma liseuse', 'utilise Send to Kindle pour cette page'."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "url": types.Schema(
+                                type="STRING",
+                                description="L'URL directe de l'article web ou de la page à transférer vers la Kindle"
+                            ),
+                            "title": types.Schema(
+                                type="STRING",
+                                description="Titre optionnel de l'article pour la bibliothèque Kindle"
+                            )
+                        },
+                        required=["url"]
+                    )
+                ),
+                types.FunctionDeclaration(
+                    name="list_chrome_extensions",
+                    description=(
+                        "Liste les extensions Google Chrome installées sur l'ordinateur de Pierre "
+                        "(Send to Kindle, Wanteeed, Adblock, SubWallet, etc.) et vérifie la disponibilité de Send to Kindle."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={}
+                    )
                 )
             ]
         )
@@ -1063,10 +1268,12 @@ async def voice_channel(websocket: WebSocket):
         "4. CONCISION ET IMPACT : Dans les conversations du quotidien, sois concise, précise et rythmée, comme une collaboratrice d'élite.\n"
         "5. VOIX LIBÉRÉE ET CONFIRMATION D'ACTION : Quand tu déclenches un outil (recherche, code, navigation, appli), commence IMMÉDIATEMENT à parler à Pierre avec ta voix Aoede pour lui annoncer que sa demande est bien prise en compte et que tu la lances, SANS attendre la fin de l'outil.\n\n"
         f"{memory_context}\n\n"
-        "DESTINATAIRE PRIVILÉGIÉ DES COURRIELS :\n"
+        "GESTION DU COMPTE DE MESSAGERIE DE PIERRE CASSAGNETTES (pierrecassagnettes@gmail.com) :\n"
         "L'utilisateur est Pierre Cassagnettes et son adresse est : pierrecassagnettes@gmail.com.\n"
-        "Quand Pierre te demande de lui envoyer un e-mail, un mail, un rapport, une synthèse, une capture ou quoi que ce soit par écrit, "
-        "utilise immédiatement l'outil 'send_email'. Tu n'as pas besoin de lui redemander son adresse e-mail.\n\n"
+        "- Pour ENVOYER : Quand Pierre te demande d'envoyer un e-mail, utilise 'send_email'.\n"
+        "  * Si le destinataire est Pierre (pierrecassagnettes@gmail.com) : le mail conserve le formatage officiel exécutif Stark Industries (rapport, synthèse, capture).\n"
+        "  * Si le destinataire est une AUTRE adresse : aucun message par défaut ni gabarit n'est inséré. Tu rédiges le mail de A à Z (tu peux même envoyer un courriel au corps totalement vide si c'est demandé ou approprié).\n"
+        "- Pour LIRE / CONSULTER : Quand Pierre te demande de lire ses mails, vérifier s'il a reçu des messages, consulter les derniers emails ou chercher un mail en particulier (ex: de la part d'une personne, d'un service ou avec un mot-clé), utilise immédiatement 'read_emails'. Fais-lui ensuite une restitution orale fidèle, synthétique et agréable.\n\n"
         f"ENVIRONNEMENT ET MODÈLE VOCAL GEMINI 3.8 LIVE ({paid_key_status}) :\n"
         f"Ta session vocale s'exécute sur le modèle nouvelle génération : {config.GEMINI_LIVE_MODEL}.\n"
         "Pour le code, les tests et les tâches agentiques concrètes, tu t'appuies sur l'agent autonome outillé Google Antigravity.\n\n"
@@ -1116,7 +1323,11 @@ async def voice_channel(websocket: WebSocket):
         "9. MÉMOIRE ET PRÉFÉRENCES ('remember_user_fact', 'recall_user_memories').\n"
         "10. ÉTAT DE L'ORDINATEUR ('get_system_status').\n"
         "11. OUVERTURE D'APPLICATIONS ('launch_application', 'open_user_browser').\n"
-        "12. ENVOI D'E-MAILS, RAPPORTS & IMAGES ('send_email') - SMTP direct.\n"
+        "   - 'launch_application' : Calculatrice, Bloc-notes, VS Code, Explorateur, Chrome, VLC.\n"
+        "   - IMPORTANT : Pour Deezer, utilise 'play_music_deezer'. Pour Stremio, utilise 'play_video_stremio'.\n"
+        "12. GESTION DES E-MAILS PIERRE CASSAGNETTES (GMAIL pierrecassagnettes@gmail.com) :\n"
+        "   - Envoi de rapports, synthèses et fichiers : utilise immédiatement 'send_email'.\n"
+        "   - Lecture, consultation et vérification des e-mails reçus (derniers mails, non lus, recherche spécifique) : utilise immédiatement 'read_emails'. Présente un résumé clair, vivant et concis avec les expéditeurs, sujets et l'essentiel du message.\n"
         "13. LIENS DIRECTS PRÉCIS : Lors d'une recherche de train, vol, hôtel ou produit, assure-toi d'utiliser 'set_browser_link' ou de fournir l'URL directe exacte du trajet avec gares et horaires, afin que le bouton 'Ouvrir le lien' mène précisément sur les réservations et non sur la page d'accueil.\n"
         "14. CODAGE EN ARRIÈRE-PLAN ET DISPONIBILITÉ PERMANENTE :\n"
         "   - Quand tu lances 'run_antigravity_task', le développement s'exécute en arrière-plan. Tu RESTES ENTIÈREMENT DISPONIBLE pour Pierre.\n"
@@ -1148,6 +1359,34 @@ async def voice_channel(websocket: WebSocket):
         "     Utilise 'search_and_download_ebook'.\n"
         "   - Demande toujours confirmation à Pierre avant de lancer le téléchargement.\n"
         "   - Une fois téléchargé, l'ebook est acheminé automatiquement vers sa liseuse (soit par copie USB si la liseuse est branchée, soit par courriel direct Send-to-Kindle / boîte email).\n"
+        "21. CONTRÔLE COMPLET DE DEEZER ('play_music_deezer') :\n"
+        "   - Tu as le contrôle à 100% de l'application Deezer Desktop via deezer-ctl (WinRT SMTC) et l'API Deezer officielle.\n"
+        "   - Tes commandes ciblent Deezer et UNIQUEMENT Deezer : aucun conflit avec YouTube ou d'autres onglets.\n"
+        "   - METTRE EN PAUSE : action='pause' (ex: 'mets en pause', 'arrête la musique', 'pause', 'coupe Deezer').\n"
+        "   - REPRENDRE LA LECTURE : action='play' ou 'playpause' (ex: 'remets la musique', 'play', 'reprends').\n"
+        "   - MORCEAU SUIVANT : action='next' (ex: 'morceau suivant', 'suivant', 'musique suivante', 'passe').\n"
+        "   - MORCEAU PRÉCÉDENT : action='prev' (ex: 'morceau précédent', 'précédent', 'remets le morceau d'avant').\n"
+        "   - CHOISIR ET JOUER UNE MUSIQUE : action='choose' avec query='...' (ex: 'mets Daft Punk', 'joue Get Lucky', 'lance Bohemian Rhapsody', 'mets du rap français', 'joue du jazz').\n"
+        "   - Tu peux aussi rechercher des albums (item_type='album') ou des playlists (item_type='playlist').\n"
+        "22. FILMS ET SÉRIES STREMIO ('play_video_stremio') :\n"
+        "   - Dès que Pierre veut regarder un film ou une série : utilise IMMÉDIATEMENT 'play_video_stremio'.\n"
+        "   - Exemples : 'lance Inception', 'mets Breaking Bad', 'je veux voir Avatar 2', 'mets un film d action'.\n"
+        "   - L'outil recherche automatiquement le film/série via l'API Stremio, sélectionne le meilleur stream 1080p (le plus léger en Go), et ouvre Stremio directement dessus.\n"
+        "   - La recherche prend quelques secondes. Dis à Pierre en attendant que tu cherches et que tu vas lancer directement.\n"
+        "   - Pour une série, précise content_type='series'. Pour un film (défaut), content_type='movie'.\n"
+        "23. CONNEXION AUX COMPTES EN LIGNE :\n"
+        "   - Jarvis utilise le profil Chrome persistant de Pierre (.jarvis_chrome_profile) pour toutes les navigations.\n"
+        "   - Ce profil contient les sessions connectées : Google, Amazon, Gmail, et tout site où Pierre s'est connecté depuis Chrome.\n"
+        "   - Pour Amazon/shopping : 'prepare_web_cart_or_checkout' utilise automatiquement ce profil (sessions connectées).\n"
+        "   - Pour navigation générale nécessitant un compte (YouTube, Google, etc.) : 'run_browser_task' ou 'interact_web_page'.\n"
+        "   - Pour ouvrir Chrome visible avec le profil connecté : 'open_user_browser'.\n"
+        "   - IMPORTANT : Pour que la connexion auto fonctionne, Pierre doit s'être connecté une première fois manuellement depuis son Chrome. L'agent utilise ensuite ce profil enregistré automatiquement.\n"
+        "24. EXTENSIONS GOOGLE CHROME & SEND TO KINDLE ('send_page_to_kindle', 'list_chrome_extensions') :\n"
+        "   - Pierre possède l'extension officielle Google Chrome 'Send to Kindle' (ainsi que Wanteeed, Adblock, etc.).\n"
+        "   - Dès que Pierre te demande d'envoyer un article, une page web ou un document vers sa liseuse Kindle (ex: 'envoie cette page à ma kindle', 'mets cet article sur ma liseuse', 'utilise l'extension Send to Kindle', 'balance ça sur ma Kindle') :\n"
+        "     Utilise IMMÉDIATEMENT 'send_page_to_kindle' avec l'URL de la page.\n"
+        "   - Cet outil extrait automatiquement l'article épuré (sans pubs, sans menus), le convertit au format lisible Kindle, l'expédie par courriel direct vers sa liseuse, et ouvre la page dans Google Chrome avec l'extension Send to Kindle prête.\n"
+        "   - Pour consulter les extensions installées : utilise 'list_chrome_extensions'.\n"
         "\n"
         "RÈGLE D'EXÉCUTION DES OUTILS : "
         "Lorsque tu reçois les résultats d'un outil terminé, l'action est DÉJÀ accomplie avec succès. "
@@ -2313,6 +2552,161 @@ async def voice_channel(websocket: WebSocket):
                                         "instruction_to_jarvis": f"L'application {app_name} est lancée sur l'écran. Dis directement à Pierre d'un ton complice et naturel que sa demande est bien prise en compte et que tu as lancé {app_name}."
                                     }
 
+                                elif name == "play_music_deezer":
+                                    action = args.get("action") or ("choose" if args.get("query") else "playpause")
+                                    query = args.get("query", "")
+                                    item_type = args.get("item_type", "track")
+
+                                    action_label_map = {
+                                        "play": "Lecture Deezer",
+                                        "pause": "Pause Deezer",
+                                        "playpause": "Bascule Play/Pause Deezer",
+                                        "next": "Morceau suivant Deezer",
+                                        "prev": "Morceau précédent Deezer",
+                                        "choose": f"Musique Deezer : {query}",
+                                        "open": "Ouverture Deezer Desktop"
+                                    }
+                                    action_label = action_label_map.get(action.lower(), f"Deezer : {action}")
+
+                                    supervision_service.start_action(
+                                        "play_music_deezer",
+                                        action_label,
+                                        "play_music_deezer",
+                                        f"Action : {action} {f'({query})' if query else ''}",
+                                        "Deezer Desktop + WinRT SMTC",
+                                        api_type="free",
+                                        api_label="Local",
+                                        cost_est="0.00 $"
+                                    )
+                                    await broadcast_supervision()
+                                    await websocket.send_text(json.dumps({
+                                        "type": "jarvis_announcement",
+                                        "text": f"{action_label}...",
+                                        "voice": False
+                                    }))
+                                    await websocket.send_text(json.dumps({
+                                        "type": "status",
+                                        "state": "browsing",
+                                        "msg": f"Deezer — {action_label}...",
+                                        "task": query or action,
+                                        "engine": "Local SMTC",
+                                        "model": "Deezer Desktop",
+                                        "api_type": "free",
+                                        "api_label": "Local"
+                                    }))
+
+                                    res = await control_deezer(action=action, query=query, item_type=item_type)
+
+                                    supervision_service.complete_action("play_music_deezer", status=res.get("status", "completed"), summary=res.get("message", "Deezer contrôlé avec succès"))
+                                    await broadcast_supervision()
+                                    await websocket.send_text(json.dumps({
+                                        "type": "status",
+                                        "state": "idle",
+                                        "msg": "En veille active",
+                                        "engine": "Google API Live",
+                                        "model": live_display_label
+                                    }))
+                                    tool_resp = {
+                                        "status": res.get("status", "completed"),
+                                        "result": res,
+                                        "instruction_to_jarvis": (
+                                            f"{res.get('message', 'Action Deezer exécutée.')} "
+                                            f"Confirme brièvement et naturellement à Pierre d'un ton complice que sa demande musicale est prise en compte."
+                                        )
+                                    }
+
+                                elif name == "play_video_stremio":
+                                    title = args.get("title", "")
+                                    content_type = args.get("content_type") or "movie"
+                                    supervision_service.start_action(
+                                        "play_video_stremio",
+                                        "Lecture Stremio",
+                                        "play_video_stremio",
+                                        f"{'Film' if content_type == 'movie' else 'Série'} : {title}",
+                                        "Stremio + Torrentio",
+                                        api_type="free",
+                                        api_label="Local",
+                                        cost_est="0.00 $"
+                                    )
+                                    await broadcast_supervision()
+                                    await websocket.send_text(json.dumps({
+                                        "type": "jarvis_announcement",
+                                        "text": f"Recherche de '{title}' sur Stremio...",
+                                        "voice": False
+                                    }))
+                                    await websocket.send_text(json.dumps({
+                                        "type": "status",
+                                        "state": "browsing",
+                                        "msg": f"Stremio — Recherche de '{title}'...",
+                                        "task": title,
+                                        "engine": "Local",
+                                        "model": "Stremio + Cinemeta",
+                                        "api_type": "free",
+                                        "api_label": "Local"
+                                    }))
+                                    # Lancement en background (la recherche Cinemeta + Torrentio prend qq secondes)
+                                    _title_bg = title
+                                    _ct_bg = content_type
+                                    _sess_stremio = session
+                                    _ws_stremio = websocket
+
+                                    async def _run_stremio_bg(_t=_title_bg, _ct=_ct_bg, _sess=_sess_stremio, _ws=_ws_stremio):
+                                        try:
+                                            res = await play_on_stremio(_t, _ct)
+                                            supervision_service.complete_action("play_video_stremio", status=res.get("status", "launched"), summary=res.get("message", f"Stremio lancé sur {_t}"))
+                                            await broadcast_supervision()
+                                            try:
+                                                await _ws.send_text(json.dumps({
+                                                    "type": "status",
+                                                    "state": "idle",
+                                                    "msg": "En veille active",
+                                                    "engine": "Google API Live",
+                                                    "model": live_display_label
+                                                }))
+                                            except Exception:
+                                                pass
+                                            stream = res.get("stream_info", {})
+                                            size_msg = ""
+                                            if stream.get("found") and stream.get("size_gb"):
+                                                size_msg = f" Le stream 1080p fait {stream['size_gb']} Go."
+                                            found_t = res.get("found_title", _t)
+                                            year = res.get("year", "")
+                                            rating = res.get("imdb_rating", "")
+                                            rating_msg = f" Note IMDb : {rating}." if rating else ""
+                                            inject_msg = (
+                                                f"[STREMIO LANCÉ] Stremio est ouvert sur '{found_t}' ({year}).{rating_msg}{size_msg} "
+                                                f"Dis à Pierre d'un ton complice et enthousiaste que tu as trouvé et lancé '{found_t}' sur Stremio."
+                                            )
+                                            try:
+                                                await _sess.send_client_content(
+                                                    turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_msg)]),
+                                                    turn_complete=True
+                                                )
+                                            except Exception:
+                                                pass
+                                        except Exception as e:
+                                            supervision_service.complete_action("play_video_stremio", status="error", summary=str(e))
+                                            await broadcast_supervision()
+                                            try:
+                                                await _sess.send_client_content(
+                                                    turns=types.Content(role="user", parts=[types.Part.from_text(text=f"[STREMIO ERREUR] Impossible de lancer '{_t}' sur Stremio : {e}. Informe Pierre brièvement.")]),
+                                                    turn_complete=True
+                                                )
+                                            except Exception:
+                                                pass
+
+                                    asyncio.create_task(_run_stremio_bg())
+                                    tool_resp = {
+                                        "status": "searching_in_background",
+                                        "title": title,
+                                        "instruction_to_jarvis": (
+                                            f"La recherche de '{title}' sur Stremio est lancée en arrière-plan. "
+                                            f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton enthousiaste et complice que tu cherches '{title}' sur Stremio et que tu vas le lancer directement. "
+                                            f"Tu lui donneras les détails (1080p, taille) dès que c'est prêt."
+                                        )
+                                    }
+
+
                                 elif name == "send_email":
                                     subject = args.get("subject", "Rapport J.A.R.V.I.S.")
                                     body = args.get("body", "")
@@ -2379,6 +2773,83 @@ async def voice_channel(websocket: WebSocket):
                                         "instruction_to_jarvis": (
                                             f"L'e-mail avec pour sujet '{subject}' destiné à {to_email} a été traité ({res.get('message', '')}). "
                                             f"Confirme verbalement d'égal à égal à Pierre avec ta voix Aoede que sa demande a bien été prise en compte et que l'e-mail est expédié."
+                                        )
+                                    }
+
+                                elif name == "read_emails":
+                                    count = int(args.get("count", 5))
+                                    query = args.get("query")
+                                    unread_only = bool(args.get("unread_only", False))
+
+                                    supervision_service.start_action(
+                                        "read_emails",
+                                        "Lecture E-mails",
+                                        "read_emails",
+                                        f"Consultation Gmail ({count} messages, query={query or 'aucun'})",
+                                        "IMAP Stark Protocol",
+                                        api_type="free",
+                                        api_label="Service Local",
+                                        cost_est="0.00 $"
+                                    )
+                                    await broadcast_supervision()
+
+                                    await websocket.send_text(json.dumps({
+                                        "type": "jarvis_announcement",
+                                        "text": "Consultation de votre boîte de réception Gmail en cours...",
+                                        "voice": False
+                                    }))
+                                    await websocket.send_text(json.dumps({
+                                        "type": "status",
+                                        "state": "emailing",
+                                        "msg": "Lecture des e-mails en cours...",
+                                        "task": f"Boîte de réception ({config.DEFAULT_RECIPIENT_EMAIL})",
+                                        "engine": "Google API",
+                                        "model": "Stark IMAP Protocol",
+                                        "api_type": "free",
+                                        "api_label": "Service Local"
+                                    }))
+
+                                    res = await read_received_emails_async(
+                                        max_count=count,
+                                        query=query,
+                                        unread_only=unread_only
+                                    )
+
+                                    supervision_service.complete_action(
+                                        "read_emails",
+                                        status="completed" if res.get("status") == "ok" else "error",
+                                        summary=f"{res.get('count', 0)} e-mail(s) relevé(s)"
+                                    )
+                                    await broadcast_supervision()
+
+                                    await websocket.send_text(json.dumps({
+                                        "type": "emails_received",
+                                        "status": res.get("status"),
+                                        "count": res.get("count", 0),
+                                        "emails": res.get("emails", []),
+                                        "message": res.get("message", "")
+                                    }))
+
+                                    emails_summary_text = ""
+                                    if res.get("status") == "ok" and res.get("emails"):
+                                        items_desc = []
+                                        for idx, m in enumerate(res["emails"], 1):
+                                            items_desc.append(
+                                                f"E-mail {idx} : De '{m.get('from', 'Inconnu')}', Objet '{m.get('subject', 'Sans sujet')}', reçu le {m.get('date', '')}. Extrait : {m.get('snippet', '')}"
+                                            )
+                                            if m.get("has_attachments"):
+                                                items_desc.append(f"  Pièces jointes : {', '.join(m.get('attachments', []))}")
+                                        emails_summary_text = "\n".join(items_desc)
+                                    else:
+                                        emails_summary_text = res.get("message", "Aucun message trouvé.")
+
+                                    tool_resp = {
+                                        "status": "completed",
+                                        "result": res,
+                                        "instruction_to_jarvis": (
+                                            f"Voici le résultat de la consultation des e-mails reçus sur pierrecassagnettes@gmail.com :\n{emails_summary_text}\n\n"
+                                            "Présente directement à Pierre à l'oral avec ta voix Aoede un compte-rendu clair, concis et naturel de ses messages récents. "
+                                            "Mentionne qui lui a écrit, le sujet principal et l'information clé. S'il n'y a aucun mail, dis-le-lui gentiment."
                                         )
                                     }
 
@@ -2690,6 +3161,51 @@ async def voice_channel(websocket: WebSocket):
                                                 f"Annonce-lui avec ta voix Aoede que son livre est maintenant prêt pour sa lecture."
                                             )
                                         }
+                                elif name == "send_page_to_kindle":
+                                    target_url = args.get("url", "")
+                                    title = args.get("title", "")
+
+                                    supervision_service.start_action(
+                                        "send_page_to_kindle",
+                                        "Envoi Send to Kindle",
+                                        "send_page_to_kindle",
+                                        f"Kindle : {title or target_url}",
+                                        "Send to Kindle Extension & E-Reader Protocol",
+                                        api_type="free",
+                                        api_label="Service Local",
+                                        cost_est="0.00 $"
+                                    )
+                                    await broadcast_supervision()
+                                    await websocket.send_text(json.dumps({
+                                        "type": "jarvis_announcement",
+                                        "text": "Mise en page et envoi de l'article vers votre Kindle...",
+                                        "voice": False
+                                    }))
+
+                                    res = await send_page_to_kindle(url=target_url, title=title, open_in_chrome=True)
+
+                                    supervision_service.complete_action("send_page_to_kindle", status=res.get("status", "completed"), summary=res.get("message", "Article envoyé sur Kindle"))
+                                    await broadcast_supervision()
+
+                                    tool_resp = {
+                                        "status": res.get("status", "completed"),
+                                        "result": res,
+                                        "instruction_to_jarvis": (
+                                            f"{res.get('message', 'Article transféré sur la Kindle.')} "
+                                            f"Annonce avec ta voix Aoede que l'article a été mis en page et expédié vers sa Kindle, et que Google Chrome est ouvert sur la page avec l'extension Send to Kindle prête."
+                                        )
+                                    }
+
+                                elif name == "list_chrome_extensions":
+                                    res = list_installed_chrome_extensions()
+                                    tool_resp = {
+                                        "status": "completed",
+                                        "result": res,
+                                        "instruction_to_jarvis": (
+                                            f"{res.get('message', 'Extensions analysées.')} "
+                                            f"Résume oralement les extensions clés installées sur Chrome à Pierre (notamment Send to Kindle) avec ta voix Aoede."
+                                        )
+                                    }
 
                                 else:
                                     tool_resp = {"status": "error", "message": f"Outil inconnu {name}"}

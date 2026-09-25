@@ -98,7 +98,13 @@ SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")
 EMAIL_SENDER_NAME = os.environ.get("EMAIL_SENDER_NAME", "J.A.R.V.I.S. - Stark Industries")
 
+# Configuration IMAP (Lecture des e-mails reçus)
+IMAP_HOST = os.environ.get("IMAP_HOST", "imap.gmail.com")
+IMAP_PORT = int(os.environ.get("IMAP_PORT", 993))
+IMAP_SSL = os.environ.get("IMAP_SSL", "true").lower() in ("true", "1", "yes")
+
 # Dossier d'archivage local des e-mails envoyés
 EMAIL_OUTBOX_DIR = os.path.join(BASE_DIR, "outbox_emails")
 os.makedirs(EMAIL_OUTBOX_DIR, exist_ok=True)
+
 

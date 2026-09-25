@@ -16,6 +16,7 @@ import config
 from services.memory_service import memory_service
 from services.console_monitor import console_monitor
 from services.supervision_service import supervision_service
+from services.email_service import read_received_emails_async
 
 # Clients Gemini : clé payante en priorité pour zéro latence, repli sur clé gratuite
 client_paid = genai.Client(api_key=config.GEMINI_API_KEY_PAID) if config.GEMINI_API_KEY_PAID else None
@@ -143,11 +144,33 @@ class ChatService:
 
         # 2. Préparation du contexte système et de la mémoire persistante
         memory_ctx = memory_service.build_system_memory_context()
+
+        # Si l'utilisateur mentionne ses e-mails / boîte de réception dans le message écrit
+        email_context_str = ""
+        prompt_lower = (clean_text or "").lower()
+        email_keywords = ["email", "e-mail", "mail", "courriel", "boîte", "inbox", "reçu", "message"]
+        if any(k in prompt_lower for k in email_keywords):
+            try:
+                inbox_res = await read_received_emails_async(max_count=4)
+                if inbox_res.get("status") == "ok" and inbox_res.get("emails"):
+                    lines = ["[DERNIERS E-MAILS REÇUS SUR PIERRECASSAGNETTES@GMAIL.COM VIA GMAIL IMAP]"]
+                    for idx, em in enumerate(inbox_res["emails"], 1):
+                        lines.append(f"- Mail {idx} : De '{em.get('from')}', Objet: '{em.get('subject')}', Reçu: {em.get('date')}")
+                        lines.append(f"  Extrait : {em.get('snippet')}")
+                        if em.get("has_attachments"):
+                            lines.append(f"  Pièces jointes : {', '.join(em.get('attachments', []))}")
+                    email_context_str = "\n".join(lines) + "\n\n"
+            except Exception as e_err:
+                print(f"[ChatService] Note : consultation email context échouée : {e_err}")
+
         system_instruction = (
             "Tu es J.A.R.V.I.S. (Just A Rather Very Intelligent System), l'intelligence artificielle d'élite "
             "conçue pour assister Pierre (Stark Industries).\n"
             "Ton ton est élégant, bienveillant, d'une grande rigueur intellectuelle et courtois (appelle Pierre 'Monsieur' ou 'Pierre').\n"
             "Tu communiques en français par défaut.\n\n"
+            "GESTION DE LA MESSAGERIE (pierrecassagnettes@gmail.com) :\n"
+            "- Si Pierre te demande de consulter ses courriels reçus ou les nouvelles de sa boîte de réception, "
+            "tu as accès direct aux données relevées dans le contexte e-mails ci-dessous.\n\n"
             "CAPACITÉS MULTIMODALES & ANALYSE VISUELLE :\n"
             "- Quand Pierre te transmet une image, une photo ou une capture d'écran, effectue une analyse détaillée, experte et perspicace.\n"
             "- Identifie fidèlement les objets, le texte lisible (OCR), le code source affiché, les messages d'erreur, les interfaces ou l'environnement.\n"
@@ -157,6 +180,7 @@ class ChatService:
             "FORMATAGE DES RÉPONSES ÉCRITES :\n"
             "- Utilise un Markdown soigné : titres courts, puces claires, mise en valeur en gras, blocs de code balisés avec leur langage (ex: ```python).\n"
             "- Reste percutant et évite le verbiage superflu.\n\n"
+            f"{email_context_str}"
             f"{memory_ctx}"
         )
 
