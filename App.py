@@ -48,6 +48,24 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 
+@app.on_event("startup")
+async def startup_event():
+    """Démarre le serveur WebSocket Deezer Bridge au lancement de J.A.R.V.I.S."""
+    try:
+        from deezer_bridge import deezer_controller
+        await deezer_controller.start()
+    except Exception as e:
+        print(f"[Deezer Startup] Erreur lancement bridge : {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Arrête proprement le serveur WebSocket Deezer Bridge."""
+    try:
+        from deezer_bridge import deezer_controller
+        await deezer_controller.stop()
+    except Exception:
+        pass
+
 # ─── Clients Gemini : Répartition Clé Gratuite / Clé Payante ─────────────────
 # - Clé GRATUITE (client_free) : utilisée prioritairement pour gemini-3.8-live (voix standard sans réflexion).
 # - Clé PAYANTE (client_paid) : utilisée pour gemini-3.8-live-extended-thinking, gemini-3.8-flash,
@@ -97,6 +115,9 @@ class DeezerControlRequest(BaseModel):
     action: str = "playpause"
     query: str = ""
     item_type: str = "track"
+    volume: int | None = None
+    position: float | None = None
+    enable: bool | None = None
 
 class SendToKindleRequest(BaseModel):
     url: str
@@ -262,15 +283,22 @@ async def api_list_downloads(request: Request):
         "ebooks": list_downloaded_files("ebooks")
     }
 
-# ─── ENDPOINTS MEDIA DEEZER (CONTRÔLE 100% & RECHERCHE) ───────────────────────
+# ─── ENDPOINTS MEDIA DEEZER (CONTRÔLE 100% WEB PLAYER & RECHERCHE) ────────────
 
 @app.post("/api/media/deezer/control")
 async def api_control_deezer(req: DeezerControlRequest, request: Request):
-    """Contrôle total de Deezer Desktop : play, pause, playpause, next, prev, choose, open."""
+    """Contrôle total du Web Player Deezer : play, pause, playpause, next, prev, shuffle, volume, choose, open."""
     token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
     if not auth.is_device_authorized(token):
         return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
-    res = await control_deezer(action=req.action, query=req.query, item_type=req.item_type)
+    res = await control_deezer(
+        action=req.action,
+        query=req.query,
+        item_type=req.item_type,
+        volume=req.volume,
+        position=req.position,
+        enable=req.enable
+    )
     return res
 
 @app.get("/api/media/deezer/search")
@@ -281,6 +309,23 @@ async def api_search_deezer(query: str, type: str = "track", limit: int = 5, req
         return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
     results = await search_deezer(query=query, search_type=type, limit=limit)
     return {"query": query, "type": type, "count": len(results), "results": results}
+
+@app.get("/api/media/deezer/status")
+async def api_deezer_status(request: Request = None):
+    """Récupère l'état temps réel du Web Player Deezer (titre, artiste, pause, shuffle, position)."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token") if request else None
+    if token and not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    from deezer_bridge import deezer_controller
+    return await deezer_controller.get_playback_status()
+
+@app.get("/api/media/deezer/userscript")
+async def api_deezer_userscript():
+    """Sert le script Tampermonkey pour installation directe en un clic."""
+    script_path = os.path.join(config.WORKSPACE_ROOT, "deezer_controller.user.js")
+    if os.path.exists(script_path):
+        return FileResponse(script_path, media_type="text/javascript", filename="deezer_controller.user.js")
+    return JSONResponse(status_code=404, content={"message": "Script Tampermonkey introuvable"})
 
 # ─── ENDPOINTS EXTENSIONS CHROME & SEND TO KINDLE ─────────────────────────────
 
@@ -971,23 +1016,26 @@ async def voice_channel(websocket: WebSocket):
                 types.FunctionDeclaration(
                     name="play_music_deezer",
                     description=(
-                        "CONTRÔLE 100% DE DEEZER DESKTOP : "
-                        "Gère l'application Deezer Desktop (WinRT SMTC & API Deezer) sans interférer avec d'autres lecteurs ou YouTube. "
+                        "CONTRÔLE 100% DU WEB PLAYER DEEZER (deezer.com) : "
+                        "Gère le Web Player Deezer en temps réel via liaison WebSocket locale et l'API Deezer officielle. "
                         "Permet de : "
                         "1) Mettre en pause ('pause', 'arrête la musique') via action='pause', "
                         "2) Reprendre la lecture ('play', 'remets la musique', 'reprends') via action='play', "
                         "3) Basculer play/pause via action='playpause', "
                         "4) Passer au morceau suivant ('suivant', 'morceau suivant', 'next') via action='next', "
                         "5) Revenir au morceau précédent ('précédent', 'morceau d'avant') via action='prev', "
-                        "6) Choisir et lancer un titre, artiste, album ou playlist ('mets Daft Punk', 'joue du rock', 'choisis Billie Jean') via action='choose' avec query='...'. "
-                        "Exemples : 'mets en pause la musique', 'musique suivante', 'mets Get Lucky de Daft Punk', 'joue du jazz'."
+                        "6) Activer/désactiver/basculer l'aléatoire ('mets en aléatoire', 'shuffle') via action='shuffle' (enable=True/False), "
+                        "7) Régler le volume via action='volume' (ex: volume=75), "
+                        "8) Obtenir l'état de lecture via action='status', "
+                        "9) Choisir et lancer un titre, artiste, album ou playlist ('mets Daft Punk', 'joue du rock', 'choisis Billie Jean') via action='choose' avec query='...'. "
+                        "Exemples : 'mets en pause la musique', 'musique suivante', 'mets Get Lucky de Daft Punk', 'active la lecture aléatoire', 'règle le son à 80%'."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
                             "action": types.Schema(
                                 type="STRING",
-                                description="Action à effectuer : 'play' (lecture), 'pause' (mettre en pause), 'playpause' (bascule), 'next' (morceau suivant), 'prev' (morceau précédent), 'choose' (choisir et jouer une musique), 'open' (ouvrir l'app)"
+                                description="Action à effectuer : 'play' (lecture), 'pause' (mettre en pause), 'playpause' (bascule), 'next' (morceau suivant), 'prev' (morceau précédent), 'shuffle' (lecture aléatoire), 'volume' (ajuster volume), 'status' (titre en cours), 'choose' (choisir et jouer une musique), 'open' (ouvrir Deezer)"
                             ),
                             "query": types.Schema(
                                 type="STRING",
@@ -996,6 +1044,14 @@ async def voice_channel(websocket: WebSocket):
                             "item_type": types.Schema(
                                 type="STRING",
                                 description="Type de recherche si applicable : 'track' (morceau, par défaut), 'album', 'playlist', 'artist'"
+                            ),
+                            "enable": types.Schema(
+                                type="BOOLEAN",
+                                description="Pour shuffle : True pour activer, False pour désactiver, omis pour basculer"
+                            ),
+                            "volume": types.Schema(
+                                type="INTEGER",
+                                description="Niveau de volume de 0 à 100 pour l'action 'volume'"
                             )
                         }
                     )
@@ -1435,12 +1491,15 @@ async def voice_channel(websocket: WebSocket):
         "   - Demande toujours confirmation à Pierre avant de lancer le téléchargement.\n"
         "   - Une fois téléchargé, l'ebook est acheminé automatiquement vers sa liseuse (soit par copie USB si la liseuse est branchée, soit par courriel direct Send-to-Kindle / boîte email).\n"
         "21. CONTRÔLE COMPLET DE DEEZER ('play_music_deezer') :\n"
-        "   - Tu as le contrôle à 100% de l'application Deezer Desktop via deezer-ctl (WinRT SMTC) et l'API Deezer officielle.\n"
-        "   - Tes commandes ciblent Deezer et UNIQUEMENT Deezer : aucun conflit avec YouTube ou d'autres onglets.\n"
+        "   - Tu as le contrôle à 100% du Web Player Deezer (deezer.com) en direct via WebSocket bridge local et l'API Deezer officielle.\n"
+        "   - Tes commandes ciblent le Web Player Deezer sans interférer avec d'autres onglets.\n"
         "   - METTRE EN PAUSE : action='pause' (ex: 'mets en pause', 'arrête la musique', 'pause', 'coupe Deezer').\n"
         "   - REPRENDRE LA LECTURE : action='play' ou 'playpause' (ex: 'remets la musique', 'play', 'reprends').\n"
         "   - MORCEAU SUIVANT : action='next' (ex: 'morceau suivant', 'suivant', 'musique suivante', 'passe').\n"
         "   - MORCEAU PRÉCÉDENT : action='prev' (ex: 'morceau précédent', 'précédent', 'remets le morceau d'avant').\n"
+        "   - LECTURE ALÉATOIRE : action='shuffle' (ex: 'active l'aléatoire', 'shuffle').\n"
+        "   - VOLUME : action='volume' avec volume=0-100 (ex: 'mets le son à 80%').\n"
+        "   - STATUT : action='status' (ex: 'c'est quoi cette musique ?', 'quel est le morceau en cours ?').\n"
         "   - CHOISIR ET JOUER UNE MUSIQUE : action='choose' avec query='...' (ex: 'mets Daft Punk', 'joue Get Lucky', 'lance Bohemian Rhapsody', 'mets du rap français', 'joue du jazz').\n"
         "   - Tu peux aussi rechercher des albums (item_type='album') ou des playlists (item_type='playlist').\n"
         "22. FILMS ET SÉRIES STREMIO ('play_video_stremio') :\n"
@@ -2632,6 +2691,8 @@ async def voice_channel(websocket: WebSocket):
                                     action = args.get("action") or ("choose" if args.get("query") else "playpause")
                                     query = args.get("query", "")
                                     item_type = args.get("item_type", "track")
+                                    volume = args.get("volume")
+                                    enable = args.get("enable")
 
                                     action_label_map = {
                                         "play": "Lecture Deezer",
@@ -2639,8 +2700,11 @@ async def voice_channel(websocket: WebSocket):
                                         "playpause": "Bascule Play/Pause Deezer",
                                         "next": "Morceau suivant Deezer",
                                         "prev": "Morceau précédent Deezer",
+                                        "shuffle": "Aléatoire Deezer",
+                                        "volume": f"Volume Deezer ({volume}%)" if volume is not None else "Volume Deezer",
+                                        "status": "Statut lecture Deezer",
                                         "choose": f"Musique Deezer : {query}",
-                                        "open": "Ouverture Deezer Desktop"
+                                        "open": "Ouverture Deezer Web"
                                     }
                                     action_label = action_label_map.get(action.lower(), f"Deezer : {action}")
 
@@ -2649,7 +2713,7 @@ async def voice_channel(websocket: WebSocket):
                                         action_label,
                                         "play_music_deezer",
                                         f"Action : {action} {f'({query})' if query else ''}",
-                                        "Deezer Desktop + WinRT SMTC",
+                                        "Deezer Web Player (WebSocket Bridge)",
                                         api_type="free",
                                         api_label="Local",
                                         cost_est="0.00 $"
@@ -2665,13 +2729,13 @@ async def voice_channel(websocket: WebSocket):
                                         "state": "browsing",
                                         "msg": f"Deezer — {action_label}...",
                                         "task": query or action,
-                                        "engine": "Local SMTC",
-                                        "model": "Deezer Desktop",
+                                        "engine": "WebSocket Bridge",
+                                        "model": "Deezer Web",
                                         "api_type": "free",
                                         "api_label": "Local"
                                     }))
 
-                                    res = await control_deezer(action=action, query=query, item_type=item_type)
+                                    res = await control_deezer(action=action, query=query, item_type=item_type, volume=volume, enable=enable)
 
                                     supervision_service.complete_action("play_music_deezer", status=res.get("status", "completed"), summary=res.get("message", "Deezer contrôlé avec succès"))
                                     await broadcast_supervision()

@@ -1,6 +1,7 @@
-"""Service multimedia J.A.R.V.I.S. - Deezer et Stremio.
-Contrôle Deezer à 100% (play, pause, next, prev, choix de musique, albums, playlists via deezer-ctl WinRT SMTC et API Deezer)
-et Stremio (recherche film/serie via API Cinemeta + stream 1080p le plus leger via Torrentio).
+"""Service multimedia J.A.R.V.I.S. - Deezer Web Player & Stremio.
+Contrôle Deezer Web Player à 100% en temps réel (play, pause, next, prev, choix de musique, albums, playlists, volume, shuffle)
+via le serveur WebSocket bridge local (deezer_bridge.py) et l'Userscript Tampermonkey (deezer_controller.user.js).
+Et Stremio (recherche film/serie via API Cinemeta + stream 1080p le plus leger via Torrentio).
 """
 
 import os
@@ -12,20 +13,20 @@ import asyncio
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Literal
 
-# Chemins d'installation Deezer
-DEEZER_PATHS = [
-    os.path.expandvars(r"%LOCALAPPDATA%\Programs\deezer-desktop\Deezer.exe"),
-    r"C:\Users\pierr\AppData\Local\Programs\deezer-desktop\Deezer.exe",
-    r"C:\Users\pierr\AppData\Local\Programs\Deezer\Deezer.exe",
-    r"C:\Program Files\Deezer\Deezer.exe",
-    r"C:\Program Files (x86)\Deezer\Deezer.exe",
-]
+from deezer_bridge import (
+    deezer_controller,
+    search_catalog,
+    play as bridge_play,
+    pause as bridge_pause,
+    next_track as bridge_next,
+    previous_track as bridge_prev,
+    toggle_shuffle as bridge_shuffle,
+    play_music as bridge_play_music,
+    get_playback_status as bridge_status
+)
 
-# Répertoire de deezer-ctl (WinRT SMTC binaries et wrapper python)
 _CURRENT_DIR = Path(__file__).resolve().parent
 _WORKSPACE_ROOT = _CURRENT_DIR.parent
-DEEZER_CTL_DIR = _WORKSPACE_ROOT / "my-project" / "deezer-ctl"
-DEEZER_CTL_BIN = DEEZER_CTL_DIR / "bin"
 
 # Chemins d'installation Stremio
 STREMIO_PATHS = [
@@ -42,10 +43,6 @@ STREMIO_CINEMETA_URL = "https://v3-cinemeta.strem.io"
 # Torrentio - addon Stremio pour les streams
 TORRENTIO_URL = "https://torrentio.strem.fun"
 
-DEEZER_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-}
-
 
 def _find_exe(paths: list) -> Optional[str]:
     """Cherche le premier executable existant dans la liste."""
@@ -56,7 +53,9 @@ def _find_exe(paths: list) -> Optional[str]:
 
 
 def is_deezer_running() -> bool:
-    """Vérifie si le processus Deezer Desktop est actuellement en cours d'exécution."""
+    """Vérifie si le Web Player Deezer est connecté via WebSocket ou si le processus Deezer tourne."""
+    if deezer_controller.is_connected():
+        return True
     try:
         startupinfo = None
         if os.name == "nt":
@@ -64,354 +63,91 @@ def is_deezer_running() -> bool:
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = subprocess.SW_HIDE
         cmd = ["tasklist", "/FI", "IMAGENAME eq Deezer.exe", "/NH"]
-        res = subprocess.run(cmd, capture_output=True, text=True, startupinfo=startupinfo, timeout=4)
+        res = subprocess.run(cmd, capture_output=True, text=True, startupinfo=startupinfo, timeout=2)
         return "deezer.exe" in res.stdout.lower()
     except Exception:
         return False
 
 
-# ─── DEEZER-CTL (WinRT SMTC) ──────────────────────────────────────────────────
-
-def deezer_send_command(action: str) -> bool:
-    """Envoie une commande de contrôle média direct (WinRT SMTC) à Deezer Desktop via deezer-ctl.
-    Cette commande n'affecte QUE Deezer, même si une vidéo YouTube ou un autre lecteur est actif.
-    Actions supportées : 'playpause', 'play', 'pause', 'next', 'prev', 'previous', 'toggle'.
-    """
-    # 1. Tentative d'import direct du module Python de deezer-ctl
-    if DEEZER_CTL_DIR.exists():
-        str_ctl_dir = str(DEEZER_CTL_DIR)
-        if str_ctl_dir not in sys.path:
-            sys.path.insert(0, str_ctl_dir)
-        try:
-            import deezer_ctl  # type: ignore
-            res = deezer_ctl.send_command(action)
-            if res:
-                return True
-        except Exception as e:
-            print(f"[deezer-ctl Python] Erreur: {e}")
-
-    # 2. Exécution directe des exécutables compilés dans bin/
-    action_clean = (action or "playpause").lower().strip()
-    if action_clean in ("next",):
-        exe_name, arg = "deezer-next.exe", "next"
-    elif action_clean in ("prev", "previous"):
-        exe_name, arg = "deezer-prev.exe", "prev"
-    else:
-        exe_name, arg = "deezer-playpause.exe", "playpause"
-
-    exe_path = DEEZER_CTL_BIN / exe_name
-    if not exe_path.exists():
-        exe_path = DEEZER_CTL_BIN / "deezer-playpause.exe"
-
-    if exe_path.exists():
-        try:
-            startupinfo = None
-            if os.name == "nt":
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-
-            proc = subprocess.run(
-                [str(exe_path), arg],
-                startupinfo=startupinfo,
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            return proc.returncode == 0
-        except Exception as ex:
-            print(f"[deezer-ctl EXE] Erreur: {ex}")
-
-    return False
-
-
-def deezer_play_pause() -> Dict[str, Any]:
-    """Bascule entre lecture et pause sur Deezer Desktop."""
-    success = deezer_send_command("playpause")
-    return {
-        "status": "success" if success else "warning",
-        "action": "playpause",
-        "app": "Deezer",
-        "message": "Lecture / Pause basculée sur Deezer." if success else "Commande envoyée à Deezer."
-    }
-
-
-def deezer_play() -> Dict[str, Any]:
-    """Reprend ou lance la lecture sur Deezer Desktop."""
-    if not is_deezer_running():
-        launch_deezer()
-        import time; time.sleep(1.0)
-    success = deezer_send_command("play")
-    return {
-        "status": "success" if success else "completed",
-        "action": "play",
-        "app": "Deezer",
-        "message": "Lecture Deezer lancée."
-    }
-
-
-def deezer_pause() -> Dict[str, Any]:
-    """Met la musique en pause sur Deezer Desktop."""
-    success = deezer_send_command("pause")
-    return {
-        "status": "success" if success else "completed",
-        "action": "pause",
-        "app": "Deezer",
-        "message": "Deezer mis en pause."
-    }
-
-
-def deezer_next() -> Dict[str, Any]:
-    """Passe au morceau suivant sur Deezer Desktop."""
-    success = deezer_send_command("next")
-    return {
-        "status": "success" if success else "completed",
-        "action": "next",
-        "app": "Deezer",
-        "message": "Morceau suivant sur Deezer."
-    }
-
-
-def deezer_prev() -> Dict[str, Any]:
-    """Revient au morceau précédent sur Deezer Desktop."""
-    success = deezer_send_command("prev")
-    return {
-        "status": "success" if success else "completed",
-        "action": "previous",
-        "app": "Deezer",
-        "message": "Morceau précédent sur Deezer."
-    }
-
-
-# ─── RECHERCHE & SÉLECTION MUSICALE (API DEEZER PUBLIQUE) ──────────────────────
-
-async def search_deezer(query: str, search_type: str = "track", limit: int = 5) -> List[Dict[str, Any]]:
-    """Recherche des morceaux, albums, artistes ou playlists via l'API publique Deezer."""
-    clean_q = (query or "").strip()
-    if not clean_q:
-        return []
-
-    st = search_type.lower()
-    if st in ("album", "albums"):
-        endpoint = "https://api.deezer.com/search/album"
-    elif st in ("playlist", "playlists"):
-        endpoint = "https://api.deezer.com/search/playlist"
-    elif st in ("artist", "artiste", "artists"):
-        endpoint = "https://api.deezer.com/search/artist"
-    else:
-        endpoint = "https://api.deezer.com/search"
-
-    try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=DEEZER_HEADERS) as client:
-            resp = await client.get(endpoint, params={"q": clean_q, "limit": limit})
-            if resp.status_code == 200:
-                data = resp.json().get("data", [])
-                results = []
-                for item in data:
-                    item_id = item.get("id")
-                    title = item.get("title") or item.get("name") or "Inconnu"
-                    artist_obj = item.get("artist") or {}
-                    artist_name = artist_obj.get("name") if isinstance(artist_obj, dict) else ""
-                    album_obj = item.get("album") or {}
-                    album_title = album_obj.get("title") if isinstance(album_obj, dict) else ""
-                    cover = album_obj.get("cover_medium") if isinstance(album_obj, dict) else (item.get("picture_medium") or "")
-
-                    results.append({
-                        "id": item_id,
-                        "title": title,
-                        "artist": artist_name,
-                        "album": album_title,
-                        "type": item.get("type", search_type),
-                        "duration": item.get("duration", 0),
-                        "link": item.get("link", f"https://www.deezer.com/{search_type}/{item_id}"),
-                        "deeplink": f"deezer://{item.get('type', search_type)}/{item_id}",
-                        "cover": cover,
-                        "preview": item.get("preview", "")
-                    })
-                return results
-    except Exception as e:
-        print(f"[Deezer API] Erreur recherche : {e}")
-
-    return []
-
-
-# ─── LANCEMENT & CONTRÔLE COMPLET DEEZER ──────────────────────────────────────
+# ─── DEEZER WEB PLAYER (WEBSOCKET BRIDGE & REST API) ──────────────────────────
 
 def launch_deezer(query: str = "") -> Dict[str, Any]:
-    """Ouvre Deezer Desktop. Si query est fourni, ouvre la recherche via deeplink."""
-    exe = _find_exe(DEEZER_PATHS)
-
+    """Ouvre Deezer Web Player dans le navigateur par défaut."""
+    import webbrowser
+    url = f"https://www.deezer.com/search/{query}" if query else "https://www.deezer.com"
     try:
-        if exe:
-            subprocess.Popen([exe], shell=False)
-            import time; time.sleep(0.8)
-        else:
-            subprocess.Popen(["cmd", "/c", "start", "", "deezer://"], shell=False)
-            import time; time.sleep(0.8)
-
-        msg = "Deezer est ouvert sur votre écran."
-
-        if query:
-            deeplink = "deezer://www.deezer.com/search/" + query.replace(" ", "%20")
-            try:
-                subprocess.Popen(["cmd", "/c", "start", "", deeplink], shell=False)
-                msg = f"Deezer ouvert et recherche lancée pour : {query}"
-            except Exception:
-                msg = f"Deezer ouvert. Recherche suggérée : {query}"
-
+        webbrowser.open(url)
         return {
             "status": "launched",
-            "app": "Deezer",
+            "app": "Deezer Web",
             "query": query,
-            "exe_found": bool(exe),
-            "message": msg
+            "url": url,
+            "message": f"Web Player Deezer ouvert sur : {url}"
         }
     except Exception as e:
         return {
             "status": "error",
-            "app": "Deezer",
-            "message": f"Impossible de lancer Deezer : {e}"
+            "app": "Deezer Web",
+            "message": f"Impossible d'ouvrir Deezer : {e}"
         }
+
+
+async def search_deezer(query: str, search_type: str = "track", limit: int = 5) -> List[Dict[str, Any]]:
+    """Recherche des morceaux, albums, artistes ou playlists via l'API publique Deezer."""
+    res = await deezer_controller.search_catalog(query=query, search_type=search_type, limit=limit)
+    return res.get("results", [])
 
 
 async def play_deezer_track(track_query: str = "", item_type: str = "track") -> Dict[str, Any]:
-    """Lance Deezer et démarre la lecture précise d'un morceau, album, playlist ou artiste.
-    1. Recherche le meilleur résultat via l'API Deezer.
-    2. Ouvre le contenu directement dans Deezer Desktop via le protocole URI 'deezer://'.
-    3. Envoie la commande de lecture pour s'assurer que la musique démarre immédiatement.
-    """
-    clean_q = (track_query or "").strip()
-    if not clean_q:
-        # Sans requête, on démarre Deezer ou on relance la lecture
-        if not is_deezer_running():
-            return launch_deezer()
-        return deezer_play()
-
-    # 1. Recherche du contenu
-    items = await search_deezer(clean_q, search_type=item_type, limit=5)
-    best_item = items[0] if items else None
-
-    # Si non trouvé en track, chercher sans type spécifique
-    if not best_item and item_type != "track":
-        items = await search_deezer(clean_q, search_type="track", limit=5)
-        best_item = items[0] if items else None
-
-    exe = _find_exe(DEEZER_PATHS)
-
-    # Vérifier si Deezer Desktop doit être démarré
-    if not is_deezer_running():
-        if exe:
-            subprocess.Popen([exe], shell=False)
-        else:
-            subprocess.Popen(["cmd", "/c", "start", "", "deezer://"], shell=False)
-        await asyncio.sleep(1.2)
-
-    if best_item:
-        item_id = best_item["id"]
-        found_type = best_item.get("type", "track")
-        deeplink = f"deezer://{found_type}/{item_id}"
-        web_link = best_item.get("link", f"https://www.deezer.com/{found_type}/{item_id}")
-
-        # Ouvrir le lien profond dans Deezer Desktop
-        try:
-            if exe:
-                subprocess.Popen([exe, deeplink], shell=False)
-            else:
-                subprocess.Popen(["cmd", "/c", "start", "", deeplink], shell=False)
-        except Exception:
-            subprocess.Popen(["cmd", "/c", "start", "", deeplink], shell=False)
-
-        # Attendre un bref instant pour que Deezer charge la page du morceau, puis forcer Play
-        await asyncio.sleep(0.8)
-        deezer_send_command("play")
-
-        title = best_item.get("title", clean_q)
-        artist = best_item.get("artist", "")
-        artist_str = f" par {artist}" if artist else ""
-        album = best_item.get("album", "")
-        album_str = f" (Album : {album})" if album else ""
-
-        return {
-            "status": "playing",
-            "app": "Deezer",
-            "query": clean_q,
-            "track": best_item,
-            "title": title,
-            "artist": artist,
-            "album": album,
-            "deeplink": deeplink,
-            "web_link": web_link,
-            "cover": best_item.get("cover", ""),
-            "message": f"Lecture de '{title}'{artist_str}{album_str} lancée sur Deezer Desktop."
-        }
-    else:
-        # Repli : ouvrir la recherche globale dans Deezer
-        deeplink = "deezer://www.deezer.com/search/" + clean_q.replace(" ", "%20")
-        subprocess.Popen(["cmd", "/c", "start", "", deeplink], shell=False)
-        await asyncio.sleep(0.5)
-        deezer_send_command("play")
-
-        return {
-            "status": "playing",
-            "app": "Deezer",
-            "query": clean_q,
-            "deeplink": deeplink,
-            "message": f"Deezer ouvert sur la recherche : '{clean_q}'."
-        }
+    """Lance la lecture d'un morceau, album, artiste ou playlist sur le Web Player Deezer."""
+    return await deezer_controller.play_music(query=track_query, search_type=item_type)
 
 
-async def control_deezer(action: str = "playpause", query: str = "", item_type: str = "track") -> Dict[str, Any]:
-    """Point d'entrée universel pour le contrôle complet (100%) de Deezer Desktop.
-    Actions :
-    - 'play', 'resume', 'reprendre' : reprend ou démarre la lecture (ou joue query si fourni)
-    - 'pause', 'stop', 'arreter' : met en pause
-    - 'playpause', 'toggle', 'basculer' : bascule lecture / pause
-    - 'next', 'suivant' : morceau suivant
-    - 'prev', 'previous', 'precedent' : morceau précédent
-    - 'choose', 'select', 'choisir', 'jouer', 'search' : choisit et joue un morceau/artiste/album précis
-    - 'open', 'launch', 'ouvrir' : ouvre l'application Deezer Desktop
-    - 'info', 'rechercher' : recherche et renvoie les détails de musique sans lancer immédiatement
-    """
+async def deezer_play() -> Dict[str, Any]:
+    """Reprend ou lance la lecture sur Deezer Web."""
+    return await deezer_controller.play()
+
+
+async def deezer_pause() -> Dict[str, Any]:
+    """Met la lecture en pause sur Deezer Web."""
+    return await deezer_controller.pause()
+
+
+async def deezer_play_pause() -> Dict[str, Any]:
+    """Bascule entre lecture et pause sur Deezer Web."""
+    return await deezer_controller.toggle_play()
+
+
+async def deezer_next() -> Dict[str, Any]:
+    """Passe à la piste suivante sur Deezer Web."""
+    return await deezer_controller.next_track()
+
+
+async def deezer_prev() -> Dict[str, Any]:
+    """Revient à la piste précédente sur Deezer Web."""
+    return await deezer_controller.previous_track()
+
+
+async def deezer_send_command(action: str) -> bool:
+    """Envoie une commande basique au Web Player Deezer."""
     act = (action or "playpause").lower().strip()
-
-    if act in ("pause", "stop", "arreter", "arrête", "pause_music"):
-        return deezer_pause()
-
-    elif act in ("play", "reprendre", "resume", "lecture"):
-        if query:
-            return await play_deezer_track(track_query=query, item_type=item_type)
-        return deezer_play()
-
-    elif act in ("playpause", "toggle", "basculer"):
-        return deezer_play_pause()
-
-    elif act in ("next", "suivant", "next_track"):
-        return deezer_next()
-
-    elif act in ("prev", "previous", "precedent", "précédent", "prev_track"):
-        return deezer_prev()
-
-    elif act in ("choose", "select", "choisir", "jouer", "search", "track", "album", "playlist", "artist"):
-        return await play_deezer_track(track_query=query, item_type=item_type)
-
-    elif act in ("open", "launch", "ouvrir"):
-        return launch_deezer(query=query)
-
-    elif act in ("info", "search_info", "rechercher"):
-        results = await search_deezer(query=query, search_type=item_type, limit=5)
-        return {
-            "status": "success",
-            "query": query,
-            "count": len(results),
-            "results": results,
-            "message": f"{len(results)} résultats trouvés sur Deezer pour '{query}'."
-        }
-
+    if act in ("next",):
+        res = await deezer_controller.next_track()
+    elif act in ("prev", "previous"):
+        res = await deezer_controller.previous_track()
+    elif act in ("pause", "stop"):
+        res = await deezer_controller.pause()
+    elif act in ("play",):
+        res = await deezer_controller.play()
     else:
-        # Par défaut : si query est fourni, jouer la musique, sinon toggle playpause
-        if query:
-            return await play_deezer_track(track_query=query, item_type=item_type)
-        return deezer_play_pause()
+        res = await deezer_controller.toggle_play()
+    return res.get("status") in ("success", "completed")
+
+
+async def control_deezer(action: str = "playpause", query: str = "", item_type: str = "track", **kwargs) -> Dict[str, Any]:
+    """Point d'entrée universel pour le contrôle complet (100%) de Deezer Web Player."""
+    return await deezer_controller.control_deezer(action=action, query=query, item_type=item_type, **kwargs)
+
 
 
 
