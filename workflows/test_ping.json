@@ -1,0 +1,62 @@
+{
+  "name": "Jarvis Test Ping",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "test-ping",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-node-1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "jarvis-test-ping"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Vérification de l'authentification Jarvis\nconst secret = $input.first().json.headers['x-jarvis-secret'] || '';\nconst expected = process.env.N8N_WEBHOOK_SECRET || '';\n\nif (expected && secret !== expected) {\n  return [{ json: { status: 'error', message: 'Unauthorized' } }];\n}\n\n// Récupère le message envoyé (ou 'ping' par défaut)\nconst message = $input.first().json.body?.message || 'ping';\n\nreturn [\n  {\n    json: {\n      status: 'success',\n      reply: 'n8n est connecté et opérationnel',\n      echo: message,\n      timestamp: new Date().toISOString(),\n      service: 'Jarvis Automation Engine'\n    }\n  }\n];"
+      },
+      "id": "code-node-1",
+      "name": "Préparer réponse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-node-1",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [750, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Préparer réponse", "type": "main", "index": 0 }]
+      ]
+    },
+    "Préparer réponse": {
+      "main": [
+        [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["jarvis", "test"],
+  "triggerCount": 0,
+  "updatedAt": "2026-09-25T22:00:00.000Z",
+  "versionId": "1"
+}

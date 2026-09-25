@@ -2,6 +2,7 @@
 # J.A.R.V.I.S. Core Infrastructure Stack - Docker Compose
 # Architecture : Optimisé pour Linux ARM64 (Oracle Cloud Ampere A1 - 4 OCPU, 24 Go RAM)
 # Services : Redis 7 (Cache & PubSub), PostgreSQL 16 (BDD Relationnelle), Qdrant (Base Vectorielle)
+#            n8n Community Edition (Orchestration workflows & intégrations tierces)
 # ==============================================================================
 
 version: "3.8"
@@ -76,6 +77,34 @@ services:
     networks:
       - jarvis-network
 
+  # ─── 4. N8N (Orchestration workflows & intégrations tierces — 100 % gratuit) ──
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: jarvis_n8n
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5678:5678"   # Interface web + Webhooks (accès via tunnel SSH ou sous-domaine)
+    volumes:
+      - n8n_data:/home/node/.n8n
+    environment:
+      - GENERIC_TIMEZONE=Europe/Paris
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://n8n:5678/}
+      - N8N_SECURE_COOKIE=false
+      - N8N_LOG_LEVEL=info
+      - N8N_METRICS=false
+      # Désactive les télémétries pour une installation 100 % privée
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_VERSION_NOTIFICATIONS_ENABLED=false
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - jarvis-network
+
 # ─── VOLUMES PERSISTANTS ───────────────────────────────────────────────────────
 volumes:
   redis_data:
@@ -86,6 +115,9 @@ volumes:
     driver: local
   qdrant_data:
     name: jarvis_qdrant_data
+    driver: local
+  n8n_data:
+    name: jarvis_n8n_data
     driver: local
 
 # ─── RÉSEAU INTERNE ────────────────────────────────────────────────────────────
