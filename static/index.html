@@ -61,6 +61,21 @@
       </div>
     </div>
 
+    <!-- Barre de contrôle rapide Stark : Encoche d'autorisation de la Clé Payante -->
+    <div class="hud-quick-bar">
+      <label class="paid-toggle-container" for="paidKeyToggle" title="Cochez pour autoriser le modèle à utiliser la clé payante. Si décoché, toute requête sur la clé payante est physiquement impossible.">
+        <span class="paid-toggle-icon">⚡</span>
+        <span class="paid-toggle-title">CLÉ PAYANTE</span>
+        <div class="stark-switch">
+          <input type="checkbox" id="paidKeyToggle" class="stark-switch-input" aria-label="Autoriser la clé payante au modèle">
+          <span class="stark-switch-track">
+            <span class="stark-switch-thumb"></span>
+          </span>
+        </div>
+        <span id="paidToggleBadge" class="paid-toggle-badge badge-locked">🔒 VERROUILLÉE</span>
+      </label>
+    </div>
+
     <!-- Centre Avatar Féminin Futuriste avec halo réactif au son -->
     <div class="reactor-container avatar-pod-container">
       <div class="reactor-halo" id="reactorHalo"></div>
@@ -754,11 +769,23 @@
             <div class="sup-api-card paid-api-card">
               <div class="sup-api-card-header">
                 <span class="sup-api-title">CLÉ PAYANTE (GEMINI PAID)</span>
-                <span class="badge-key-pill badge-key-paid" id="supSummaryPaidBadge">ACTIVE</span>
+                <span class="badge-key-pill badge-key-paid" id="supSummaryPaidBadge">VERROUILLÉE</span>
               </div>
               <div class="sup-api-role">Live Thinking, Gemini 3.8 Flash, Agents Antigravity & Repli automatique</div>
-              <div class="sup-api-stat">Statut : <strong id="supSummaryPaidStatus" style="color:#a855f7;">Accès permanent & Repli vocal</strong></div>
+              <div class="sup-api-stat">Statut : <strong id="supSummaryPaidStatus" style="color:#a855f7;">Contrôlée par l'utilisateur</strong></div>
               <div class="sup-api-mask" id="supSummaryPaidKey">••••••••</div>
+              <div class="sup-paid-toggle-row">
+                <label class="paid-toggle-container" for="supPaidKeyToggle" title="Autoriser ou bloquer les requêtes sur la clé payante">
+                  <span class="sup-toggle-desc">Autorisation d'accès :</span>
+                  <div class="stark-switch">
+                    <input type="checkbox" id="supPaidKeyToggle" class="stark-switch-input" aria-label="Autoriser la clé payante">
+                    <span class="stark-switch-track">
+                      <span class="stark-switch-thumb"></span>
+                    </span>
+                  </div>
+                  <span id="supPaidToggleBadge" class="paid-toggle-badge badge-locked">🔒 VERROUILLÉE</span>
+                </label>
+              </div>
             </div>
           </div>
         </div>

@@ -80,6 +80,64 @@ os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
 
 HAS_PAID_API_KEY = bool(_paid_raw and _paid_raw != "VOTRE_CLE_PAYANTE_ICI")
 
+# Encoche d'autorisation de la clé payante :
+# L'utilisateur coche ou décoche dans l'app pour autoriser l'utilisation de la clé payante.
+# Si non cochée, le modèle est dans l'IMPOSSIBILITÉ PHYSIQUE d'effectuer la moindre requête sur la clé payante.
+def _load_paid_key_authorization() -> bool:
+    try:
+        import sqlite3
+        if os.path.exists(DB_PATH):
+            conn = sqlite3.connect(DB_PATH)
+            cur = conn.cursor()
+            cur.execute("SELECT value FROM user_profile WHERE key = 'paid_key_authorized'")
+            row = cur.fetchone()
+            conn.close()
+            if row:
+                return str(row[0]).strip().lower() in ("true", "1", "yes", "on")
+    except Exception:
+        pass
+    return False
+
+PAID_KEY_AUTHORIZED: bool = _load_paid_key_authorization()
+
+def is_paid_key_authorized() -> bool:
+    """Indique si Pierre a coché l'encoche autorisant l'utilisation de la clé payante."""
+    global PAID_KEY_AUTHORIZED
+    return bool(PAID_KEY_AUTHORIZED)
+
+def set_paid_key_authorized(authorized: bool) -> bool:
+    """Met à jour l'encoche d'autorisation et la persiste dans SQLite."""
+    global PAID_KEY_AUTHORIZED
+    PAID_KEY_AUTHORIZED = bool(authorized)
+    try:
+        import sqlite3
+        import datetime
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        now = datetime.datetime.now().isoformat()
+        cur.execute(
+            "INSERT OR REPLACE INTO user_profile (key, value, updated_at) VALUES ('paid_key_authorized', ?, ?)",
+            ("true" if authorized else "false", now)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[Config] Erreur persistance paid_key_authorized : {e}")
+    return PAID_KEY_AUTHORIZED
+
+def get_effective_paid_key() -> str:
+    """Retourne la clé payante UNIQUEMENT si l'encoche est cochée dans l'app.
+    Sinon retourne une chaîne vide : impossibilité physique d'émettre des requêtes payantes.
+    """
+    if not is_paid_key_authorized():
+        return ""
+    return GEMINI_API_KEY_PAID
+
+def is_paid_key_active() -> bool:
+    """Vérifie si la clé payante est à la fois configurée et autorisée par l'utilisateur."""
+    return bool(is_paid_key_authorized() and GEMINI_API_KEY_PAID and HAS_PAID_API_KEY)
+
+
 # Voix préconstruite Gemini Live (Voix féminines disponibles : Aoede, Kore, Leda)
 JARVIS_VOICE = os.environ.get("JARVIS_VOICE", "Aoede").strip()
 
@@ -106,5 +164,22 @@ IMAP_SSL = os.environ.get("IMAP_SSL", "true").lower() in ("true", "1", "yes")
 # Dossier d'archivage local des e-mails envoyés
 EMAIL_OUTBOX_DIR = os.path.join(BASE_DIR, "outbox_emails")
 os.makedirs(EMAIL_OUTBOX_DIR, exist_ok=True)
+
+# Configuration Infrastructure Stack (Redis, PostgreSQL, Qdrant)
+REDIS_HOST = os.environ.get("REDIS_HOST", "127.0.0.1").strip()
+REDIS_PORT = int(os.environ.get("REDIS_PORT", 6379))
+REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "").strip()
+REDIS_DB = int(os.environ.get("REDIS_DB", 0))
+
+POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "127.0.0.1").strip()
+POSTGRES_PORT = int(os.environ.get("POSTGRES_PORT", 5432))
+POSTGRES_DB = os.environ.get("POSTGRES_DB", "jarvis").strip()
+POSTGRES_USER = os.environ.get("POSTGRES_USER", "jarvis_admin").strip()
+POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "").strip()
+
+QDRANT_HOST = os.environ.get("QDRANT_HOST", "127.0.0.1").strip()
+QDRANT_PORT = int(os.environ.get("QDRANT_PORT", 6333))
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "").strip()
+
 
 

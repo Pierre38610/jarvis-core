@@ -22,6 +22,7 @@ import auth
 from fastapi.middleware.cors import CORSMiddleware
 from google_antigravity import resolve_antigravity_model, is_stop_directive
 from services.memory_service import memory_service
+from services.cache import cache_service
 from services.reasoning_service import run_deep_reasoning, run_antigravity_task
 from services.browser_service import (
     search_web, run_browser_task, open_browser_window, interact_web_page,
@@ -50,7 +51,18 @@ app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 
 @app.on_event("startup")
 async def startup_event():
-    """Démarre le serveur WebSocket Deezer Bridge au lancement de J.A.R.V.I.S."""
+    """Initialise les services au lancement de J.A.R.V.I.S."""
+    # 1. Vérification non bloquante de la connectivité Redis
+    try:
+        redis_ok = await cache_service.check_connection(timeout=1.5)
+        if redis_ok:
+            print(f"[Startup] [Cache/Redis] Connecté avec succès à {config.REDIS_HOST}:{config.REDIS_PORT}")
+        else:
+            print("[Startup] [Cache/Redis] Non disponible ou hors ligne - Mode dégradé local actif")
+    except Exception as e:
+        print(f"[Startup] [Cache/Redis] Avertissement initialisation cache : {e}")
+
+    # 2. Bridge Deezer
     try:
         from deezer_bridge import deezer_controller
         await deezer_controller.start()
@@ -59,7 +71,12 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Arrête proprement le serveur WebSocket Deezer Bridge."""
+    """Arrête proprement les connexions et serveurs satellites."""
+    try:
+        await cache_service.close()
+    except Exception:
+        pass
+
     try:
         from deezer_bridge import deezer_controller
         await deezer_controller.stop()
@@ -811,6 +828,11 @@ async def get_live_model():
 async def set_live_model(req: LiveModelRequest):
     """Bascule le modèle vocal Gemini Live entre gemini-3.8-live et gemini-3.8-live-extended-thinking."""
     if req.model in ("gemini-3.8-live", "gemini-3.8-live-extended-thinking"):
+        if "extended-thinking" in req.model and not config.is_paid_key_authorized():
+            return JSONResponse(
+                status_code=403,
+                content={"error": "Le modèle Live Extended Thinking requiert la clé payante. Veuillez cocher l'encoche d'autorisation dans l'application."}
+            )
         config.GEMINI_LIVE_MODEL = req.model
         is_thinking = "extended-thinking" in req.model
         is_paid = is_thinking or supervision_service._free_quota_exhausted or not bool(config.GEMINI_API_KEY_FREE)
@@ -821,6 +843,77 @@ async def set_live_model(req: LiveModelRequest):
         status_code=400,
         content={"error": "Modèle non supporté. Choix: gemini-3.8-live ou gemini-3.8-live-extended-thinking"}
     )
+
+async def broadcast_paid_key_status(authorized: bool):
+    ws = active_task_controller.get("websocket")
+    if ws:
+        try:
+            await ws.send_text(json.dumps({
+                "type": "paid_key_authorized_update",
+                "authorized": authorized,
+                "has_paid_key": config.HAS_PAID_API_KEY
+            }))
+        except Exception:
+            pass
+
+class PaidKeyAuthRequest(BaseModel):
+    authorized: bool
+
+@app.post("/api/settings/paid-key")
+async def post_paid_key_auth(req: PaidKeyAuthRequest, request: Request):
+    """Met à jour l'encoche d'autorisation de la clé payante (cochée ou décochée)."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+    
+    config.set_paid_key_authorized(req.authorized)
+    active_task_controller["paid_consent_given"] = req.authorized
+    await broadcast_paid_key_status(req.authorized)
+    
+    ws = active_task_controller.get("websocket")
+    if ws:
+        try:
+            status_text = "activée et autorisée" if req.authorized else "verrouillée (accès physique coupé)"
+            await ws.send_text(json.dumps({
+                "type": "jarvis_announcement",
+                "text": f"Clé payante {status_text}.",
+                "voice": False
+            }))
+            if active_task_controller.get("live_session"):
+                try:
+                    await active_task_controller["live_session"].send_client_content(
+                        turns=types.Content(
+                            role="user",
+                            parts=[types.Part.from_text(
+                                text=(
+                                    f"[INFO SYSTÈME EN DIRECT] Pierre vient de {'COCHER' if req.authorized else 'DÉCOCHER'} "
+                                    f"l'encoche d'autorisation de la clé payante dans l'application. "
+                                    f"La clé payante est désormais {'AUTORISÉE' if req.authorized else 'VERROUILLÉE ET INTERDITE PHYSIQUEMENT'}."
+                                )
+                            )]
+                        ),
+                        turn_complete=True
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    
+    await broadcast_supervision()
+    return {
+        "status": "ok",
+        "authorized": config.is_paid_key_authorized(),
+        "paid_key_authorized": config.is_paid_key_authorized()
+    }
+
+@app.get("/api/settings/paid-key")
+async def get_paid_key_auth(request: Request):
+    return {
+        "status": "ok",
+        "authorized": config.is_paid_key_authorized(),
+        "paid_key_authorized": config.is_paid_key_authorized(),
+        "has_paid_key": config.HAS_PAID_API_KEY
+    }
 
 class PaidConsentRequest(BaseModel):
     action: str
@@ -834,6 +927,11 @@ async def post_paid_consent(req: PaidConsentRequest, request: Request):
         return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
     
     active_task_controller["paid_consent_given"] = req.approved
+    if req.approved:
+        config.set_paid_key_authorized(True)
+        await broadcast_paid_key_status(True)
+        await broadcast_supervision()
+        
     if req.action == "live_fallback":
         active_task_controller["paid_live_approved"] = req.approved
     if active_task_controller.get("paid_consent_event"):
@@ -943,6 +1041,14 @@ async def voice_channel(websocket: WebSocket):
 
     await websocket.accept()
     active_task_controller["websocket"] = websocket
+    try:
+        await websocket.send_text(json.dumps({
+            "type": "paid_key_authorized_update",
+            "authorized": config.is_paid_key_authorized(),
+            "has_paid_key": config.HAS_PAID_API_KEY
+        }))
+    except Exception:
+        pass
 
     # Vérification qu'au moins une clé GEMINI est configurée
     if not (client_paid or client_free):
@@ -1600,16 +1706,17 @@ async def voice_channel(websocket: WebSocket):
         f"ENVIRONNEMENT ET MODÈLE VOCAL GEMINI 3.8 LIVE ({paid_key_status}) :\n"
         f"Ta session vocale s'exécute sur le modèle nouvelle génération : {config.GEMINI_LIVE_MODEL}.\n"
         "Pour le code, les tests et les tâches agentiques concrètes, tu t'appuies sur l'agent autonome outillé Google Antigravity.\n\n"
-        "ALLOCATION DES CLÉS D'API GEMINI & GESTION DE LA LATENCE :\n"
-        "- Conformément aux consignes de Pierre : la CLÉ PAYANTE est activée directement pour TOUS les modèles Flash (Gemini 3.8 Flash, 3.5, 3.6, etc.) pour éliminer toute latence.\n"
+        "ALLOCATION DES CLÉS D'API GEMINI & CONTRÔLE DE L'ENCOCHE PAYANTE :\n"
+        "- ENCOCHE D'AUTORISATION DE LA CLÉ PAYANTE DANS L'APPLICATION :\n"
+        "  * L'application dispose d'une encoche (case à cocher / toggle switch) que Pierre peut cocher ou décocher à tout moment.\n"
+        "  * RÈGLE MATÉRIELLE ET PHYSIQUE STRICTE : Si la case n'est pas cochée, tu es DANS L'IMPOSSIBILITÉ PHYSIQUE d'effectuer la moindre requête sur la clé API payante (l'accès technique est totalement coupé et verrouillé côté serveur).\n"
+        "  * Si une tâche nécessite la clé payante (grand modèle lourd Pro/Claude, quota gratuit épuisé, réflexion payante) et que l'encoche est décochée :\n"
+        "    Tu PEUX et tu DOIS demander directement et poliment à Pierre à l'oral avec ta voix Aoede : 'Pierre, pour effectuer cette action, j'ai besoin de la clé payante. Peux-tu cocher l'encoche d'autorisation de la clé payante sur ton écran ?'.\n"
+        "  * Dès que Pierre coche la case sur l'écran de l'application, l'accès à la clé payante t'est débloqué.\n"
+        "- Quand l'encoche est cochée : la CLÉ PAYANTE est active pour les modèles Flash et les actions lourdes autorisées.\n"
         "- Voix standard ('gemini-3.8-live') et tâches simples : s'exécutent en priorité sur la clé d'API GRATUITE.\n"
-        "- RÈGLE STRICTE SUR LES GRANDS MODÈLES LOURDS (Gemini 3.1 Pro, Claude 3.7 Sonnet, Claude 3 Opus) :\n"
-        "  Il est STRICTEMENT IMPOSSIBLE d'utiliser un grand modèle lourd sans la confirmation orale explicite de Pierre !\n"
-        "  Chaque fois qu'une action requiert un grand modèle lourd :\n"
-        "  1. Tu DOIS expliquer oralement à Pierre pourquoi tu as besoin de ce grand modèle (ex: architecture ultra complexe, refactoring lourd).\n"
-        "  2. Tu DOIS lui donner une estimation claire du coût (~0,03 $ à 0,10 $).\n"
-        "  3. Tu DOIS lui demander explicitement son accord oral : 'M'autorisez-vous à utiliser ce grand modèle pour cette tâche ?'.\n"
-        "  Tu ne dois JAMAIS mettre 'confirmed_by_user=True' pour un modèle lourd tant que Pierre ne t'a pas expressément répondu par l'affirmative à l'oral ou sur l'écran.\n\n"
+        "- RÈGLE SUR LES GRANDS MODÈLES LOURDS (Gemini 3.1 Pro, Claude 3.7 Sonnet, Claude 3 Opus) :\n"
+        "  Nécessitent à la fois l'encoche cochée ET la confirmation orale de Pierre avec estimation du coût (~0,03 $ à 0,10 $).\n\n"
         "RÈGLE STRICTE SUR L'ARRÊT IMMÉDIAT DES ACTIONS ('stop_current_action') :\n"
         "- Quand Pierre te dit d'arrêter (ex: 'arrête', 'stop', 'annule', 'interromps', 'tais-toi et arrête', 'laisse tomber') :\n"
         "  TU DOIS IMMÉDIATEMENT DÉCLENCHER L'OUTIL 'stop_current_action' !\n"
@@ -1760,9 +1867,14 @@ async def voice_channel(websocket: WebSocket):
         is_paid_live = False
         tier_badge = "Clé Gratuite"
     else:
-        current_live_client = client_paid or client_free
-        is_paid_live = (current_live_client is client_paid)
-        tier_badge = "Clé Payante" if is_paid_live else "Clé Gratuite"
+        if config.is_paid_key_authorized() and client_paid:
+            current_live_client = client_paid
+            is_paid_live = True
+            tier_badge = "Clé Payante"
+        else:
+            current_live_client = client_free
+            is_paid_live = False
+            tier_badge = "Clé Gratuite"
 
     session = None
     session_ctx = None
@@ -1810,7 +1922,13 @@ async def voice_channel(websocket: WebSocket):
                             elif payload.get("type") == "set_live_model":
                                 new_model = (payload.get("model") or "").strip()
                                 if new_model in ("gemini-3.8-live", "gemini-3.8-live-extended-thinking"):
-                                    if new_model != active_live_model:
+                                    if "extended-thinking" in new_model and not config.is_paid_key_authorized():
+                                        await websocket.send_text(json.dumps({
+                                            "type": "jarvis_announcement",
+                                            "text": "Le modèle Extended Thinking requiert la clé payante. Veuillez cocher l'encoche d'autorisation dans l'application.",
+                                            "voice": False
+                                        }))
+                                    elif new_model != active_live_model:
                                         raise ModelSwitchRequested(new_model)
                                     else:
                                         await websocket.send_text(json.dumps({
@@ -1818,6 +1936,35 @@ async def voice_channel(websocket: WebSocket):
                                             "text": f"Modèle vocal déjà actif sur {new_model}.",
                                             "voice": False
                                         }))
+                            elif payload.get("type") == "set_paid_key_authorized":
+                                authorized = bool(payload.get("authorized", False))
+                                config.set_paid_key_authorized(authorized)
+                                active_task_controller["paid_consent_given"] = authorized
+                                await broadcast_paid_key_status(authorized)
+                                status_text = "activée et autorisée" if authorized else "verrouillée (accès physique coupé)"
+                                await websocket.send_text(json.dumps({
+                                    "type": "jarvis_announcement",
+                                    "text": f"Clé payante {status_text}.",
+                                    "voice": False
+                                }))
+                                if active_task_controller.get("live_session"):
+                                    try:
+                                        await active_task_controller["live_session"].send_client_content(
+                                            turns=types.Content(
+                                                role="user",
+                                                parts=[types.Part.from_text(
+                                                    text=(
+                                                        f"[INFO SYSTÈME EN DIRECT] Pierre vient de {'COCHER' if authorized else 'DÉCOCHER'} "
+                                                        f"l'encoche d'autorisation de la clé payante dans l'application. "
+                                                        f"La clé payante est désormais {'AUTORISÉE' if authorized else 'VERROUILLÉE ET INTERDITE PHYSIQUEMENT'}."
+                                                    )
+                                                )]
+                                            ),
+                                            turn_complete=True
+                                        )
+                                    except Exception:
+                                        pass
+                                await broadcast_supervision()
                             elif payload.get("type") == "get_supervision_overview":
                                 await broadcast_supervision()
                             elif payload.get("type") == "paid_consent_response":
@@ -1825,6 +1972,10 @@ async def voice_channel(websocket: WebSocket):
                                 approved = bool(payload.get("approved", False))
                                 active_task_controller["paid_consent_given"] = approved
                                 active_task_controller["paid_consent_modal_open"] = False
+                                if approved:
+                                    config.set_paid_key_authorized(True)
+                                    await broadcast_paid_key_status(True)
+                                    await broadcast_supervision()
                                 if action == "live_fallback":
                                     active_task_controller["paid_live_approved"] = approved
                                 if active_task_controller.get("paid_consent_event"):
@@ -1995,11 +2146,26 @@ async def voice_channel(websocket: WebSocket):
                                     t_clean = user_speech_buffer.lower().strip()
                                     if any(w in t_clean for w in affirmative_words):
                                         print(f"[Voice Channel] Accord oral détecté pour clé payante : '{user_speech_buffer}'")
-                                        active_task_controller["paid_consent_given"] = True
-                                        active_task_controller["paid_consent_modal_open"] = False
-                                        await websocket.send_text(json.dumps({"type": "hide_paid_consent"}))
-                                        if active_task_controller.get("paid_consent_event"):
-                                            active_task_controller["paid_consent_event"].set()
+                                        if not config.is_paid_key_authorized():
+                                            print(f"[Voice Channel] Clé payante verrouillée dans l'app. Rappel oral pour cocher la case.")
+                                            try:
+                                                await session.send_client_content(
+                                                    turns=types.Content(
+                                                        role="user",
+                                                        parts=[types.Part.from_text(
+                                                            text="[RAPPEL ENCOCHE NON COCHÉE] Pierre a donné son accord oral, mais l'encoche d'autorisation de la clé payante est encore décochée dans l'application. Tu es dans l'impossibilité physique de faire des requêtes sur la clé payante tant qu'elle n'est pas cochée. Rappelle immédiatement à Pierre avec ta voix Aoede : 'Merci Pierre, mais pense à cocher l'encoche d'autorisation de la clé payante sur ton écran pour débloquer l'accès technique !'"
+                                                        )]
+                                                    ),
+                                                    turn_complete=True
+                                                )
+                                            except Exception:
+                                                pass
+                                        else:
+                                            active_task_controller["paid_consent_given"] = True
+                                            active_task_controller["paid_consent_modal_open"] = False
+                                            await websocket.send_text(json.dumps({"type": "hide_paid_consent"}))
+                                            if active_task_controller.get("paid_consent_event"):
+                                                active_task_controller["paid_consent_event"].set()
 
 
                             # Tour de parole du modèle
@@ -2119,7 +2285,7 @@ async def voice_channel(websocket: WebSocket):
                                             break
 
                                     is_flash = any(k in str(model_choice).lower() for k in ["flash", "3.8", "3.5", "3.6"])
-                                    initial_api_type = "paid" if ((is_flash and config.GEMINI_API_KEY_PAID) or is_confirmed) else ("paid" if not config.GEMINI_API_KEY_FREE else "free")
+                                    initial_api_type = "paid" if (config.is_paid_key_authorized() and ((is_flash and config.GEMINI_API_KEY_PAID) or is_confirmed)) else ("paid" if (config.is_paid_key_authorized() and not config.GEMINI_API_KEY_FREE) else "free")
                                     initial_api_label = "Clé Payante" if initial_api_type == "paid" else "Clé Gratuite"
 
                                     supervision_service.start_action(
@@ -2428,13 +2594,13 @@ async def voice_channel(websocket: WebSocket):
                                     question = args.get("question", "")
                                     engine = args.get("engine") or "auto"
                                     model_choice = args.get("model")
-                                    is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
+                                    is_confirmed = (bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))) and config.is_paid_key_authorized()
                                     is_heavy = (engine == "antigravity") or (model_choice and any(k in model_choice.lower() for k in ["pro", "claude", "sonnet", "opus"]))
                                     if engine == "antigravity" or (model_choice and any(k in model_choice.lower() for k in ["pro", "claude", "sonnet", "opus"])):
                                         _, initial_label = resolve_antigravity_model(model_choice or "gemini-3.1-pro-high")
                                         initial_engine = "Antigravity IDE"
-                                        initial_api_type = "paid"
-                                        initial_api_label = "Clé Payante"
+                                        initial_api_type = "paid" if config.is_paid_key_authorized() else "free"
+                                        initial_api_label = "Clé Payante" if config.is_paid_key_authorized() else "Clé Gratuite (Verrouillée)"
                                     else:
                                         initial_label = "Gemini 3.8 Flash (Thinking)"
                                         initial_engine = "Google API"
@@ -2641,7 +2807,7 @@ async def voice_channel(websocket: WebSocket):
                                 elif name == "run_browser_task":
                                     goal = args.get("goal", "")
                                     target_url = args.get("url") or ""
-                                    is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
+                                    is_confirmed = (bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))) and config.is_paid_key_authorized()
                                     initial_api_type = "paid" if is_confirmed else "free"
                                     initial_api_label = "Clé Payante" if is_confirmed else "Clé Gratuite (Essai multi-modèles)"
 
@@ -3740,7 +3906,7 @@ async def voice_channel(websocket: WebSocket):
                 session_ctx, session = await _establish_live_session(active_live_model, current_live_client)
             except Exception as initial_conn_err:
                 # Repli automatique : si la clé gratuite a échoué (quota, limitation ou indisponibilité)
-                if not is_paid_live and client_paid:
+                if not is_paid_live and client_paid and config.is_paid_key_authorized():
                     print(f"[Voice Channel] Clé gratuite en échec ({initial_conn_err}). Bascule immédiate de repli sur la clé payante...")
                     supervision_service.set_free_quota_exhausted(True)
                     console_monitor.record_error(
@@ -3758,6 +3924,12 @@ async def voice_channel(websocket: WebSocket):
                     }))
                     session_ctx, session = await _establish_live_session(active_live_model, current_live_client)
                 else:
+                    if not is_paid_live and client_paid and not config.is_paid_key_authorized():
+                        await websocket.send_text(json.dumps({
+                            "type": "jarvis_announcement",
+                            "text": "Limite de la clé gratuite atteinte. La clé payante est verrouillée dans l'application. Cochez l'encoche pour l'autoriser.",
+                            "voice": False
+                        }))
                     raise initial_conn_err
 
             active_task_controller["live_session"] = session
@@ -3856,7 +4028,7 @@ async def voice_channel(websocket: WebSocket):
                 }))
                 continue
             except QuotaExhaustedError as q_err:
-                if not is_paid_live and client_paid:
+                if not is_paid_live and client_paid and config.is_paid_key_authorized():
                     print(f"[Voice Channel] Quota dépassé sur la clé gratuite en direct ({q_err}). Bascule automatique sur la clé payante...")
                     supervision_service.set_free_quota_exhausted(True)
                     console_monitor.record_error(
@@ -3882,6 +4054,12 @@ async def voice_channel(websocket: WebSocket):
                     }))
                     continue
                 else:
+                    if not is_paid_live and client_paid and not config.is_paid_key_authorized():
+                        await websocket.send_text(json.dumps({
+                            "type": "jarvis_announcement",
+                            "text": "Quota de la clé gratuite dépassé. La clé payante est verrouillée dans l'application. Cochez l'encoche pour l'autoriser.",
+                            "voice": False
+                        }))
                     raise q_err
 
     except (WebSocketDisconnect, WebSocketDisconnected, asyncio.CancelledError):

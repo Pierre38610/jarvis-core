@@ -9,6 +9,7 @@ __pycache__/
 # Sensitive / Credentials / Environment
 .env
 .env.*
+!.env.example
 authorized_devices.json
 qr_tickets.json
 
@@ -22,6 +23,8 @@ jarvis_memory.db
 *.db-shm
 *.db-wal
 *.sqlite3
+*.rdb
+data/
 .antigravity_session/
 
 # Logs & temp files

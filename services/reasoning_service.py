@@ -5,13 +5,15 @@ Stratégie de clé : clé GRATUITE en priorité, repli automatique sur clé PAYA
 """
 
 import os
-from typing import Dict, Any
+import asyncio
+from typing import Dict, Any, Optional
 from google import genai
 from google.genai import types
+import config
 from config import GEMINI_API_KEY_FREE, GEMINI_API_KEY_PAID, HAS_PAID_API_KEY, WORKSPACE_DIR
 from google_antigravity import AntigravityAgent, resolve_antigravity_model
 
-# Clients Gemini : clé GRATUITE prioritaire, clé PAYANTE en repli
+# Clients Gemini : clé GRATUITE prioritaire, clé PAYANTE en repli (conditionnée à l'encoche utilisateur)
 client_paid = genai.Client(api_key=GEMINI_API_KEY_PAID) if GEMINI_API_KEY_PAID else None
 client_free = genai.Client(api_key=GEMINI_API_KEY_FREE) if GEMINI_API_KEY_FREE else None
 client = client_paid or client_free
@@ -47,62 +49,111 @@ async def run_antigravity_task(
     is_heavy_model = any(k in model.lower() for k in ["pro", "claude", "sonnet", "opus"])
 
     # 1. Vérification pour les modèles lourds : clé payante obligatoire
-    if is_heavy_model and not confirmed_by_user:
-        if "opus" in model.lower():
-            cost_str = "~0.10 $"
-            model_info = "Claude 3 Opus"
-        elif any(k in model.lower() for k in ["sonnet", "claude"]):
-            cost_str = "~0.05 $"
-            model_info = "Claude 3.7 Sonnet"
-        else:
-            cost_str = "~0.03 $"
-            model_info = "Gemini 3.1 Pro"
-        reason = f"Développement avancé d'architecture et de code avec {model_info} : '{instruction[:80]}'"
-        print(f"[Reasoning Service] Modèle lourd {model} demandé sans confirmation. Accord payant requis.")
-        return {
-            "status": "requires_user_confirmation",
-            "requires_paid_consent": True,
-            "action": "run_antigravity_task",
-            "model": model,
-            "reason": reason,
-            "estimated_cost": cost_str,
-            "instruction_to_jarvis": (
-                f"ATTENTION : Le modèle {model_info} nécessite la clé payante ({cost_str}). "
-                f"RÈGLE STRICTE ET ABSOLUE : Il est STRICTEMENT IMPOSSIBLE d'utiliser la clé payante sans confirmation expresse de Pierre. "
+    if is_heavy_model:
+        if not config.is_paid_key_authorized():
+            if "opus" in model.lower():
+                cost_str = "~0.10 $"
+                model_info = "Claude 3 Opus"
+            elif any(k in model.lower() for k in ["sonnet", "claude"]):
+                cost_str = "~0.05 $"
+                model_info = "Claude 3.7 Sonnet"
+            else:
+                cost_str = "~0.03 $"
+                model_info = "Gemini 3.1 Pro"
+            reason = f"Développement avancé d'architecture et de code avec {model_info} : '{instruction[:80]}'"
+            print(f"[Reasoning Service] Modèle lourd {model} demandé mais clé payante NON AUTORISÉE dans l'application.")
+            prompt_msg = (
+                f"ATTENTION : Le modèle {model_info} nécessite la clé payante ({cost_str}), mais l'encoche d'autorisation de la clé payante est actuellement décochée dans l'application. "
+                f"RÈGLE STRICTE ET ABSOLUE : Tu es dans l'impossibilité physique de faire des requêtes sur la clé payante tant que l'encoche n'est pas cochée par Pierre. "
                 f"Explique immédiatement à Pierre à l'oral avec ta voix Aoede pourquoi tu préconises {model_info} ({reason}), "
                 f"indique-lui l'estimation du coût ({cost_str}), "
-                f"et demande-lui explicitement son accord oral : 'M'autorisez-vous à utiliser la clé payante pour cette tâche ?'. "
-                f"Attends sa confirmation. Dès qu'il valide à l'oral ou via l'écran, réinvoque 'run_antigravity_task' avec confirmed_by_user=True."
+                f"et demande-lui directement : 'Pierre, pour réaliser cette tâche avec {model_info}, j'ai besoin de la clé payante. Peux-tu cocher l'encoche d'autorisation de la clé payante dans l'application ?'. "
+                f"Attends qu'il coche la case dans l'application."
             )
-        }
+            return {
+                "status": "requires_user_confirmation",
+                "requires_paid_consent": True,
+                "requires_checkbox": True,
+                "action": "run_antigravity_task",
+                "model": model,
+                "reason": reason,
+                "estimated_cost": cost_str,
+                "message": prompt_msg,
+                "instruction_to_jarvis": prompt_msg
+            }
+        elif not confirmed_by_user:
+            if "opus" in model.lower():
+                cost_str = "~0.10 $"
+                model_info = "Claude 3 Opus"
+            elif any(k in model.lower() for k in ["sonnet", "claude"]):
+                cost_str = "~0.05 $"
+                model_info = "Claude 3.7 Sonnet"
+            else:
+                cost_str = "~0.03 $"
+                model_info = "Gemini 3.1 Pro"
+            reason = f"Développement avancé d'architecture et de code avec {model_info} : '{instruction[:80]}'"
+            print(f"[Reasoning Service] Modèle lourd {model} demandé sans confirmation. Accord payant requis.")
+            return {
+                "status": "requires_user_confirmation",
+                "requires_paid_consent": True,
+                "action": "run_antigravity_task",
+                "model": model,
+                "reason": reason,
+                "estimated_cost": cost_str,
+                "instruction_to_jarvis": (
+                    f"ATTENTION : Le modèle {model_info} nécessite la clé payante ({cost_str}). "
+                    f"RÈGLE STRICTE ET ABSOLUE : Il est STRICTEMENT IMPOSSIBLE d'utiliser la clé payante sans confirmation expresse de Pierre. "
+                    f"Explique immédiatement à Pierre à l'oral avec ta voix Aoede pourquoi tu préconises {model_info} ({reason}), "
+                    f"indique-lui l'estimation du coût ({cost_str}), "
+                    f"et demande-lui explicitement son accord oral : 'M'autorisez-vous à utiliser la clé payante pour cette tâche ?'. "
+                    f"Attends sa confirmation. Dès qu'il valide à l'oral ou via l'écran, réinvoque 'run_antigravity_task' avec confirmed_by_user=True."
+                )
+            }
 
     # 2. Détermination de la clé à utiliser
     if is_flash_model:
-        # Les modèles Flash passent prioritairement sur la CLÉ PAYANTE selon la consigne de Pierre (zéro latence)
-        if GEMINI_API_KEY_PAID:
+        # Les modèles Flash passent sur la CLÉ PAYANTE UNIQUEMENT SI elle est autorisée par l'utilisateur
+        if config.is_paid_key_authorized() and GEMINI_API_KEY_PAID:
             api_key_to_use = GEMINI_API_KEY_PAID
             key_label = "Clé Payante"
-            print(f"[Reasoning Service] Antigravity Flash sur CLÉ PAYANTE pour zéro latence ({model})...")
+            print(f"[Reasoning Service] Antigravity Flash sur CLÉ PAYANTE autorisée pour zéro latence ({model})...")
         elif GEMINI_API_KEY_FREE:
             api_key_to_use = GEMINI_API_KEY_FREE
             key_label = "Clé Gratuite"
-            print(f"[Reasoning Service] Antigravity Flash sur Clé Gratuite (pas de clé payante)...")
+            print(f"[Reasoning Service] Antigravity Flash sur Clé Gratuite (clé payante verrouillée ou non configurée)...")
         else:
-            return {"status": "error", "summary": "Aucune clé API configurée.", "model_label": model}
-    elif not confirmed_by_user:
-        # Modèles non-flash lourds sans confirmation préalable
-        reason = f"L'utilisation du grand modèle {model} nécessite la clé payante."
+            return {"status": "error", "summary": "Aucune clé API disponible. La clé payante est verrouillée dans l'application et aucune clé gratuite n'est configurée.", "model_label": model}
+    elif not confirmed_by_user or not config.is_paid_key_authorized():
+        # Modèles non-flash lourds sans confirmation préalable ou sans encoche cochée
+        if not config.is_paid_key_authorized():
+            reason = f"L'utilisation du modèle {model} nécessite la clé payante, qui est actuellement verrouillée dans l'application."
+            instr = f"Demande à Pierre à l'oral de cocher l'encoche d'autorisation de la clé payante dans l'application pour utiliser {model}."
+        else:
+            reason = f"L'utilisation du grand modèle {model} nécessite la clé payante."
+            instr = f"Demande confirmation à Pierre pour utiliser {model} sur la clé payante."
         return {
             "status": "requires_user_confirmation",
             "requires_paid_consent": True,
+            "requires_checkbox": not config.is_paid_key_authorized(),
             "action": "run_antigravity_task",
             "model": model,
             "reason": reason,
             "estimated_cost": "~0.03 $",
-            "instruction_to_jarvis": f"Demande confirmation à Pierre pour utiliser {model} sur la clé payante."
+            "instruction_to_jarvis": instr
         }
     else:
-        # Pierre a expressément confirmé pour un grand modèle
+        # Pierre a expressément confirmé pour un grand modèle ET la case est cochée
+        if not config.is_paid_key_authorized():
+            return {
+                "status": "requires_user_confirmation",
+                "requires_paid_consent": True,
+                "requires_checkbox": True,
+                "action": "run_antigravity_task",
+                "model": model,
+                "reason": "La clé payante est physiquement verrouillée (encoche décochée dans l'application).",
+                "estimated_cost": "~0.03 $",
+                "instruction_to_jarvis": "Pierre, l'encoche d'autorisation de la clé payante est décochée dans l'application. Veuillez la cocher pour me permettre d'effectuer des requêtes payantes."
+            }
         if not GEMINI_API_KEY_PAID:
             return {"status": "error", "summary": "Aucune clé payante configurée.", "model_label": model}
         api_key_to_use = GEMINI_API_KEY_PAID
@@ -134,7 +185,25 @@ async def run_antigravity_task(
     except Exception as e:
         # Si la clé gratuite a échoué par quota, NE PAS basculer automatiquement sur la clé payante !
         if key_label == "Clé Gratuite" and _is_quota_error(e):
-            print(f"[Reasoning Service] Quota clé gratuite atteint pour Antigravity. Demande d'accord payant...")
+            print(f"[Reasoning Service] Quota clé gratuite atteint pour Antigravity. Vérification autorisation clé payante...")
+            if not config.is_paid_key_authorized():
+                reason = f"Le quota de la clé gratuite pour coder a été atteint. Pour poursuivre, l'encoche de la clé payante doit être cochée dans l'application : '{instruction[:80]}'"
+                cost_str = "~0.005 $ (< 1 centime)"
+                return {
+                    "status": "requires_user_confirmation",
+                    "requires_paid_consent": True,
+                    "requires_checkbox": True,
+                    "action": "run_antigravity_task",
+                    "model": model,
+                    "reason": reason,
+                    "estimated_cost": cost_str,
+                    "instruction_to_jarvis": (
+                        f"ATTENTION : Le quota de la clé gratuite a été atteint. "
+                        f"La clé payante est actuellement verrouillée dans l'application (encoche décochée). "
+                        f"RÈGLE STRICTE ET ABSOLUE : Tu es dans l'impossibilité physique de continuer sans clé payante. "
+                        f"Demande poliment à Pierre à l'oral avec ta voix Aoede : 'Pierre, le quota de ma clé gratuite est épuisé. Pour que je puisse continuer le développement, pourrais-tu cocher l'encoche d'autorisation de la clé payante dans l'application ?'."
+                    )
+                }
             reason = f"Le quota de la clé gratuite pour coder a été atteint. Pour poursuivre cette tâche, il faut mobiliser la clé payante : '{instruction[:80]}'"
             cost_str = "~0.005 $ (< 1 centime)"
             return {
@@ -186,7 +255,26 @@ async def run_deep_reasoning(question: str, model_choice: str | None = None, eng
 
     if use_antigravity:
         chosen_model = model_choice or "gemini-3.1-pro-high"
-        if not confirmed_by_user:
+        if not config.is_paid_key_authorized():
+            reason = f"Réflexion approfondie et analyse complexe avec grand modèle {chosen_model} : '{question[:80]}'"
+            cost_str = "~0.03 $"
+            prompt_msg = (
+                f"Cette réflexion avec grand modèle ({chosen_model}) nécessite la clé payante ({cost_str}). "
+                f"RÈGLE STRICTE : Tu es dans l'impossibilité physique d'utiliser la clé payante car l'encoche d'autorisation est décochée dans l'application. "
+                f"Demande à Pierre à l'oral avec ta voix Aoede : 'Pierre, pour analyser cette question complexe avec {chosen_model}, j'ai besoin de la clé payante. Peux-tu cocher l'encoche d'autorisation de la clé payante dans l'application ?'. "
+                f"S'il ne souhaite pas l'activer, tu pourras lui répondre via le moteur Google standard sans frais."
+            )
+            return {
+                "status": "requires_user_confirmation",
+                "requires_paid_consent": True,
+                "requires_checkbox": True,
+                "action": "ask_deep_reasoning",
+                "reason": reason,
+                "estimated_cost": cost_str,
+                "message": prompt_msg,
+                "instruction_to_jarvis": prompt_msg
+            }
+        elif not confirmed_by_user:
             reason = f"Réflexion approfondie et analyse complexe avec {chosen_model} pour : '{question[:80]}'"
             cost_str = "~0.03 $"
             return {
@@ -235,9 +323,13 @@ async def run_deep_reasoning(question: str, model_choice: str | None = None, eng
         ("gemini-flash-latest", "Gemini Flash Latest (Thinking)")
     ]
 
-    # Priorité à la CLÉ PAYANTE pour zéro latence sur les modèles Flash Thinking (consigne expresse de Pierre)
-    primary_client = client_paid if (client_paid and HAS_PAID_API_KEY) else client_free
-    primary_label = "Clé Payante" if primary_client is client_paid else "Clé Gratuite"
+    # Priorité à la CLÉ PAYANTE pour zéro latence UNIQUEMENT si l'encoche est cochée par l'utilisateur
+    if config.is_paid_key_authorized() and client_paid and HAS_PAID_API_KEY:
+        primary_client = client_paid
+        primary_label = "Clé Payante"
+    else:
+        primary_client = client_free
+        primary_label = "Clé Gratuite"
 
     if primary_client:
         for m_id, m_label in models_to_try:
@@ -262,8 +354,24 @@ async def run_deep_reasoning(question: str, model_choice: str | None = None, eng
                 print(f"[Reasoning Service] Modèle {m_id} avec {primary_label} indisponible ({m_err})...")
 
 
-    # Si la clé gratuite a échoué et que Pierre n'a pas confirmé :
-    if not confirmed_by_user:
+    # Si la clé gratuite a échoué et que la clé payante n'est pas autorisée ou pas confirmée :
+    if not config.is_paid_key_authorized():
+        reason = f"Les modèles de réflexion sur la clé gratuite ont épuisé leurs quotas pour : '{question[:80]}', et la clé payante est verrouillée dans l'application."
+        cost_str = "~0.01 $"
+        return {
+            "status": "requires_user_confirmation",
+            "requires_paid_consent": True,
+            "requires_checkbox": True,
+            "action": "ask_deep_reasoning",
+            "reason": reason,
+            "estimated_cost": cost_str,
+            "instruction_to_jarvis": (
+                f"Les modèles de réflexion sur la clé gratuite ont épuisé leurs quotas, et la clé payante est verrouillée dans l'application (encoche décochée). "
+                f"RÈGLE STRICTE : Tu es dans l'impossibilité physique de faire des requêtes sur la clé payante. "
+                f"Demande poliment à Pierre à l'oral avec ta voix Aoede : 'Pierre, le quota gratuit de réflexion est épuisé. Peux-tu cocher l'encoche d'autorisation de la clé payante dans l'application si tu souhaites continuer ?'."
+            )
+        }
+    elif not confirmed_by_user:
         reason = f"Les modèles de réflexion sur la clé gratuite ont épuisé leurs quotas pour : '{question[:80]}'"
         cost_str = "~0.01 $"
         return {
@@ -280,8 +388,8 @@ async def run_deep_reasoning(question: str, model_choice: str | None = None, eng
             )
         }
 
-    # Si Pierre a confirmé : tentative sur clé payante
-    if client_paid:
+    # Si Pierre a confirmé ET que la clé payante est cochée : tentative sur clé payante
+    if client_paid and config.is_paid_key_authorized():
         for m_id, m_label in models_to_try:
             try:
                 print(f"[Reasoning Service] Thinking {m_id} avec Clé Payante...")

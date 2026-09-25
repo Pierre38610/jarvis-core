@@ -1,0 +1,95 @@
+# ==============================================================================
+# J.A.R.V.I.S. Core Infrastructure Stack - Docker Compose
+# Architecture : Optimisé pour Linux ARM64 (Oracle Cloud Ampere A1 - 4 OCPU, 24 Go RAM)
+# Services : Redis 7 (Cache & PubSub), PostgreSQL 16 (BDD Relationnelle), Qdrant (Base Vectorielle)
+# ==============================================================================
+
+version: "3.8"
+
+services:
+  # ─── 1. REDIS (Cache temps réel, état des devices & Pub/Sub) ───────────────
+  redis:
+    image: redis:alpine
+    container_name: jarvis_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - jarvis-network
+
+  # ─── 2. POSTGRESQL 16 (Persistance relationnelle & historiques) ────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: jarvis_postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jarvis_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-jarvis}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-jarvis_admin} -d $${POSTGRES_DB:-jarvis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - jarvis-network
+
+  # ─── 3. QDRANT (Moteur vectoriel pour mémoire sémantique et RAG) ───────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: jarvis_qdrant
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"   # API REST
+      - "127.0.0.1:6334:6334"   # API gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__SERVICE__ENABLE_CORS=true
+      - QDRANT__LOG_LEVEL=INFO
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
+    networks:
+      - jarvis-network
+
+# ─── VOLUMES PERSISTANTS ───────────────────────────────────────────────────────
+volumes:
+  redis_data:
+    name: jarvis_redis_data
+    driver: local
+  postgres_data:
+    name: jarvis_postgres_data
+    driver: local
+  qdrant_data:
+    name: jarvis_qdrant_data
+    driver: local
+
+# ─── RÉSEAU INTERNE ────────────────────────────────────────────────────────────
+networks:
+  jarvis-network:
+    name: jarvis_network
+    driver: bridge

@@ -442,6 +442,7 @@ class SupervisionService:
             "recent_actions": self._recent_actions,
             "tools": list(self._active_tools.values()),
             "open_windows": open_windows,
+                "paid_key_authorized": config.is_paid_key_authorized(),
             "api_keys": {
                 "free_key": {
                     "configured": bool(config.GEMINI_API_KEY_FREE),
@@ -453,10 +454,12 @@ class SupervisionService:
                 },
                 "paid_key": {
                     "configured": bool(config.GEMINI_API_KEY_PAID),
+                    "authorized": config.is_paid_key_authorized(),
                     "masked": self._mask_key(config.GEMINI_API_KEY_PAID),
                     "role": "Live Thinking, Gemini 3.8 Flash, Agents Antigravity & Repli automatique",
-                    "security": "Accès direct et permanent sans restriction",
-                    "status": "Active (En écoute / Repli)"
+                    "security": "Contrôle strict par encoche utilisateur (impossibilité physique si décochée)",
+                    "status": "Autorisée par l'utilisateur" if config.is_paid_key_authorized() else "Verrouillée (Interdite physiquement)",
+                    "status_label": "AUTORISÉE (REPLI & MODÈLES LOURDS)" if config.is_paid_key_authorized() else "VERROUILLÉE (CLIC OU ORAL REQUIS)"
                 }
             }
         }

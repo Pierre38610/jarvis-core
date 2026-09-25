@@ -26,7 +26,7 @@ def resolve_antigravity_model(model_name: str | None = None, api_key: str | None
     et retourne le libellé propre destiné à l'affichage dans le HUD mobile.
     """
     key = (model_name or "gemini-3.8-flash").lower().strip()
-    effective_key = api_key or GEMINI_API_KEY_PAID or GEMINI_API_KEY_FREE
+    effective_key = api_key or config.get_effective_paid_key() or GEMINI_API_KEY_FREE
 
     # Détermination intelligente du niveau de réflexion (Thinking Level)
     if "high" in key:
@@ -139,7 +139,12 @@ class AntigravityAgent:
     def __init__(self, workspace: str = "./my-project", model: str | None = None, api_key: str | None = None, **kwargs):
         self.workspace = os.path.abspath(workspace)
         os.makedirs(self.workspace, exist_ok=True)
-        self.api_key = api_key or GEMINI_API_KEY_PAID or GEMINI_API_KEY_FREE
+        # Règle d'impossibilité physique : si la clé payante n'est pas cochée/autorisée dans l'application,
+        # l'agent refuse catégoriquement toute clé payante et bascule sur la clé gratuite.
+        if not config.is_paid_key_authorized():
+            self.api_key = GEMINI_API_KEY_FREE
+        else:
+            self.api_key = api_key or config.get_effective_paid_key() or GEMINI_API_KEY_FREE
         self.is_cancelled = False
 
         if "policies" not in kwargs:

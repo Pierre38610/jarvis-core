@@ -225,15 +225,15 @@ class ChatService:
             ("gemini-flash-latest", "Gemini Flash Latest")
         ]
 
-        # Priorité : client payant (consigne Pierre zéro latence), repli client gratuit
+        # Priorité : client payant (si autorisé par l'utilisateur), repli client gratuit
         clients_to_try = []
-        if client_paid and config.HAS_PAID_API_KEY:
+        if client_paid and config.HAS_PAID_API_KEY and config.is_paid_key_authorized():
             clients_to_try.append((client_paid, "Clé Payante"))
         if client_free:
             clients_to_try.append((client_free, "Clé Gratuite"))
         if not clients_to_try:
             # Repli minimal
-            eff_client = client_paid or client_free
+            eff_client = (client_paid if config.is_paid_key_authorized() else None) or client_free
             if eff_client:
                 clients_to_try.append((eff_client, "Clé Disponible"))
 

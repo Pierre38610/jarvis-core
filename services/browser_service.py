@@ -2,6 +2,7 @@
 Intègre l'agent autonome open-source Browser-Use (Google Vision LLM) avec repli Playwright."""
 
 import os
+import sys
 import re
 import json
 import glob
@@ -12,6 +13,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import unquote, quote_plus
 from typing import Dict, Any, List, Optional
 
+import config
 from config import CHROME_PATH, STATIC_DIR, SCREENSHOT_PATH, PROFILE_DIR, GEMINI_API_KEY, GEMINI_API_KEY_PAID, GEMINI_API_KEY_FREE, BASE_DIR
 
 # Configuration environnement pour Browser-Use
@@ -546,8 +548,8 @@ async def run_browser_task(goal: str, url: str = "", confirmed_by_user: bool = F
             url = route_info["url"]
         target_site_fallback = route_info["url"]
 
-    api_key_to_use = GEMINI_API_KEY_PAID or GEMINI_API_KEY_FREE
-    key_label = "Clé Payante" if api_key_to_use == GEMINI_API_KEY_PAID else "Clé Gratuite"
+    api_key_to_use = config.get_effective_paid_key() or GEMINI_API_KEY_FREE
+    key_label = "Clé Payante" if (api_key_to_use and api_key_to_use == GEMINI_API_KEY_PAID) else "Clé Gratuite"
     chosen_model = "gemini-3.8-flash"
 
     if not api_key_to_use:

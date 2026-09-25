@@ -208,6 +208,11 @@ const supWindowsList = document.getElementById('supWindowsList');
 const supSummaryFreeKey = document.getElementById('supSummaryFreeKey');
 const supSummaryPaidBadge = document.getElementById('supSummaryPaidBadge');
 const supSummaryPaidKey = document.getElementById('supSummaryPaidKey');
+const supSummaryPaidStatus = document.getElementById('supSummaryPaidStatus');
+const paidKeyToggle = document.getElementById('paidKeyToggle');
+const paidToggleBadge = document.getElementById('paidToggleBadge');
+const supPaidKeyToggle = document.getElementById('supPaidKeyToggle');
+const supPaidToggleBadge = document.getElementById('supPaidToggleBadge');
 
 // Panneau & Modal Navigateur
 const browserDock = document.getElementById('browserDock');
@@ -284,6 +289,112 @@ if (btnRejectPaid) {
       }));
     }
   });
+}
+
+// --- CONTRÔLE DE L'AUTORISATION PHYSIQUE DE LA CLÉ PAYANTE ---
+let isPaidKeyAuthorized = false;
+
+function updatePaidKeyAuthorizationUI(authorized) {
+  isPaidKeyAuthorized = !!authorized;
+  window._isPaidKeyAuthorized = !!authorized;
+
+  if (paidKeyToggle) {
+    paidKeyToggle.checked = !!authorized;
+  }
+  if (supPaidKeyToggle) {
+    supPaidKeyToggle.checked = !!authorized;
+  }
+
+  if (paidToggleBadge) {
+    if (authorized) {
+      paidToggleBadge.className = 'paid-toggle-badge badge-authorized';
+      paidToggleBadge.innerText = '⚡ AUTORISÉE';
+    } else {
+      paidToggleBadge.className = 'paid-toggle-badge badge-locked';
+      paidToggleBadge.innerText = '🔒 VERROUILLÉE';
+    }
+  }
+
+  if (supPaidToggleBadge) {
+    if (authorized) {
+      supPaidToggleBadge.className = 'paid-toggle-badge badge-authorized';
+      supPaidToggleBadge.innerText = '⚡ AUTORISÉE';
+    } else {
+      supPaidToggleBadge.className = 'paid-toggle-badge badge-locked';
+      supPaidToggleBadge.innerText = '🔒 VERROUILLÉE';
+    }
+  }
+
+  if (supSummaryPaidBadge) {
+    if (authorized) {
+      supSummaryPaidBadge.innerText = 'AUTORISÉE (ACTIVE)';
+      supSummaryPaidBadge.className = 'badge-key-pill badge-key-paid';
+    } else {
+      supSummaryPaidBadge.innerText = 'VERROUILLÉE';
+      supSummaryPaidBadge.className = 'badge-key-pill badge-key-free';
+    }
+  }
+
+  if (supSummaryPaidStatus) {
+    if (authorized) {
+      supSummaryPaidStatus.innerText = 'Modèles lourds, Flash, Thinking & Repli autorisés';
+      supSummaryPaidStatus.style.color = '#10b981';
+    } else {
+      supSummaryPaidStatus.innerText = 'Bloquée physiquement - Cochez pour autoriser';
+      supSummaryPaidStatus.style.color = '#94a3b8';
+    }
+  }
+}
+
+async function setPaidKeyAuthorization(authorized) {
+  updatePaidKeyAuthorizationUI(authorized);
+
+  // 1. Notification WebSocket en temps réel
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify({
+        type: 'set_paid_key_authorized',
+        authorized: !!authorized
+      }));
+    } catch (e) {
+      console.warn("Échec envoi WS set_paid_key_authorized:", e);
+    }
+  }
+
+  // 2. Persistance via REST API
+  try {
+    const token = localStorage.getItem('jarvis_device_token') || (typeof getCookie === 'function' ? getCookie('jarvis_device_token') : '') || '';
+    const res = await fetch('/api/settings/paid-key' + (token ? '?token=' + encodeURIComponent(token) : ''), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ authorized: !!authorized })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data.authorized === 'boolean') {
+        updatePaidKeyAuthorizationUI(data.authorized);
+      }
+    }
+  } catch (err) {
+    console.warn("Erreur fetch REST setPaidKeyAuthorization:", err);
+  }
+}
+
+async function fetchPaidKeyAuthorization() {
+  try {
+    const token = localStorage.getItem('jarvis_device_token') || (typeof getCookie === 'function' ? getCookie('jarvis_device_token') : '') || '';
+    const res = await fetch('/api/settings/paid-key' + (token ? '?token=' + encodeURIComponent(token) : ''));
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data.authorized === 'boolean') {
+        updatePaidKeyAuthorizationUI(data.authorized);
+      }
+    }
+  } catch (err) {
+    console.warn("Erreur fetch initial paid-key authorization:", err);
+  }
 }
 
 let currentWebUrl = "https://www.google.com";
@@ -1743,6 +1854,10 @@ async function startJarvis() {
             showPaidConsentModal(msg);
           } else if (msg.type === 'hide_paid_consent') {
             hidePaidConsentModal();
+          } else if (msg.type === 'paid_key_authorized_update') {
+            if (typeof msg.authorized === 'boolean') {
+              updatePaidKeyAuthorizationUI(msg.authorized);
+            }
           } else if (msg.type === 'supervision_update') {
             if (msg.overview) {
               renderSupervisionOverview(msg.overview);
@@ -2042,6 +2157,11 @@ function setLiveModel(modelKey) {
 function renderSupervisionOverview(data) {
   if (!data) return;
 
+  // Synchronisation de l'état de l'encoche d'autorisation de la clé payante
+  if (typeof data.paid_key_authorized === 'boolean') {
+    updatePaidKeyAuthorizationUI(data.paid_key_authorized);
+  }
+
   // 1. MODÈLE VOCAL ACTIF & CLÉ
   if (data.voice) {
     const vModel = data.voice.display_label || data.voice.model || "Gemini 3.8 Live";
@@ -2300,17 +2420,33 @@ function renderSupervisionOverview(data) {
       }
     }
 
+    const isPaidAuthorized = (typeof data.paid_key_authorized === 'boolean') ? data.paid_key_authorized : (data.api_keys && data.api_keys.paid_key && data.api_keys.paid_key.authorized);
+
     if (supSummaryPaidBadge) {
-      supSummaryPaidBadge.innerText = paidMasked ? (isFreeExhausted ? 'ACTIVE (REPLI EN COURS)' : 'ACTIVE') : 'NON CONFIGURÉE';
-      supSummaryPaidBadge.className = 'badge-key-pill ' + (paidMasked ? 'badge-key-paid' : 'badge-key-free');
+      if (!paidMasked) {
+        supSummaryPaidBadge.innerText = 'NON CONFIGURÉE';
+        supSummaryPaidBadge.className = 'badge-key-pill badge-key-free';
+      } else if (!isPaidAuthorized) {
+        supSummaryPaidBadge.innerText = 'VERROUILLÉE';
+        supSummaryPaidBadge.className = 'badge-key-pill badge-key-free';
+      } else {
+        supSummaryPaidBadge.innerText = isFreeExhausted ? 'ACTIVE (REPLI EN COURS)' : 'AUTORISÉE (ACTIVE)';
+        supSummaryPaidBadge.className = 'badge-key-pill badge-key-paid';
+      }
     }
     if (supSummaryPaidStatus) {
-      if (isFreeExhausted) {
+      if (!paidMasked) {
+        supSummaryPaidStatus.innerText = 'Aucune clé configurée dans les variables';
+        supSummaryPaidStatus.style.color = '#94a3b8';
+      } else if (!isPaidAuthorized) {
+        supSummaryPaidStatus.innerText = 'Requêtes bloquées physiquement - Cochez pour autoriser';
+        supSummaryPaidStatus.style.color = '#94a3b8';
+      } else if (isFreeExhausted) {
         supSummaryPaidStatus.innerText = 'Voix Live, Thinking, Flash & Antigravity';
         supSummaryPaidStatus.style.color = '#a855f7';
       } else {
-        supSummaryPaidStatus.innerText = 'Thinking, Flash, Antigravity & Repli';
-        supSummaryPaidStatus.style.color = '#a855f7';
+        supSummaryPaidStatus.innerText = 'Thinking, Flash, Antigravity & Repli autorisés';
+        supSummaryPaidStatus.style.color = '#10b981';
       }
     }
   }
@@ -2345,6 +2481,18 @@ if (btnRefreshSupervision) {
   };
 }
 
+// Écouteurs de changement de l'encoche d'autorisation de la clé payante
+if (paidKeyToggle) {
+  paidKeyToggle.addEventListener('change', (e) => {
+    setPaidKeyAuthorization(e.target.checked);
+  });
+}
+if (supPaidKeyToggle) {
+  supPaidKeyToggle.addEventListener('change', (e) => {
+    setPaidKeyAuthorization(e.target.checked);
+  });
+}
+
 if (btnSwitchLiveStd) {
   btnSwitchLiveStd.onclick = () => {
     setLiveModel('gemini-3.8-live');
@@ -2352,6 +2500,10 @@ if (btnSwitchLiveStd) {
 }
 if (btnSwitchLiveThinking) {
   btnSwitchLiveThinking.onclick = () => {
+    if (!window._isPaidKeyAuthorized) {
+      alert("La clé payante est verrouillée. Veuillez cocher l'encoche 'CLÉ PAYANTE' sur l'écran pour autoriser le mode Thinking.");
+      return;
+    }
     setLiveModel('gemini-3.8-live-extended-thinking');
   };
 }
@@ -2371,6 +2523,7 @@ if (supervisionModal) {
 }
 
 // Initialisation dès le chargement de la page
+fetchPaidKeyAuthorization();
 fetchSupervisionOverview();
 
 // Nettoyage strict lors de la fermeture, rechargement ou masquage de la page pour éviter les sessions zombies
