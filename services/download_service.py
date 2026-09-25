@@ -280,24 +280,115 @@ async def send_to_ereader(
     }
 
 
-def clean_book_query(raw_query: str) -> str:
-    """Nettoie la requête utilisateur pour les moteurs de livres (retire parenthèses explicatives, verbes de demande)."""
+def detect_and_clean_book_language(raw_query: str, explicit_lang: Optional[str] = None) -> tuple:
+    """Détecte la langue demandée ('en' ou 'fr') et nettoie la requête pour ne garder que le titre/auteur.
+    Prend en compte les arguments explicites ('en'/'fr') et les mentions textuelles ('en anglais', 'english', etc.).
+    """
     if not raw_query:
-        return ""
+        lang = "en" if explicit_lang and explicit_lang.lower().startswith("en") else "fr"
+        return "", lang
+
     q = raw_query.strip()
-    # Retirer les commentaires entre parenthèses ex: (3ème livre de la série)
+    # Retirer les commentaires entre parenthèses
     q = re.sub(r'\(.*?\)', '', q).strip()
-    # Retirer les formules de demande courantes
-    patterns = [
+
+    detected_lang = None
+    if explicit_lang:
+        el = explicit_lang.strip().lower()
+        if el in ("en", "eng", "english", "anglais"):
+            detected_lang = "en"
+        elif el in ("fr", "fra", "fre", "french", "francais", "français"):
+            detected_lang = "fr"
+
+    en_patterns = [
+        r'\b(?:en\s+anglais|en\s+version\s+anglaise|version\s+anglaise|in\s+english|english\s+version|en\s+vo|version\s+originale)\b',
+        r'\b(?:english|anglais|in\s+en)\b',
+    ]
+    fr_patterns = [
+        r'\b(?:en\s+français|en\s+francais|en\s+version\s+française|version\s+française|in\s+french|french\s+version|en\s+vf)\b',
+        r'\b(?:français|francais|french|in\s+fr)\b',
+    ]
+
+    for pat in en_patterns:
+        if re.search(pat, q, re.I):
+            detected_lang = "en"
+            q = re.sub(pat, ' ', q, flags=re.I)
+            break
+
+    if not detected_lang or detected_lang == "fr":
+        for pat in fr_patterns:
+            if re.search(pat, q, re.I):
+                detected_lang = "fr"
+                q = re.sub(pat, ' ', q, flags=re.I)
+                break
+
+    if not detected_lang:
+        detected_lang = "fr"
+
+    cleanup_patterns = [
         r'^(?:télécharge(?:-moi)?|télécharger|trouve(?:-moi)?|trouver|cherche(?:-moi)?|chercher|peux-tu me (?:télécharger|trouver)|mets(?:-moi)?|envoie(?:-moi)?)\s+',
         r'^(?:le livre|l\'ebook|l\'e-book|le roman|l\'ouvrage|l\'oeuvre|le tome)\s+',
-        r'\s+(?:en e?pub|au format e?pub|en pdf|gratuit|telecharger)$',
+        r'\b(?:au format\s+)?(?:e?pub|pdf)\b',
+        r'\b(?:gratuit|telecharger|download|free)\b',
     ]
-    for p in patterns:
-        q = re.sub(p, '', q, flags=re.I).strip()
-    # Nettoyer les espaces multiples
-    q = re.sub(r'\s+', ' ', q).strip()
-    return q or raw_query.strip()
+    for _ in range(3):
+        for p in cleanup_patterns:
+            q = re.sub(p, ' ', q, flags=re.I).strip()
+
+    q = re.sub(r'[\s\-_]+', ' ', q).strip()
+    return q or raw_query.strip(), detected_lang
+
+
+def clean_book_query(raw_query: str) -> str:
+    """Nettoie la requête utilisateur pour les moteurs de livres (retire parenthèses explicatives, verbes de demande, langue)."""
+    clean_q, _ = detect_and_clean_book_language(raw_query)
+    return clean_q
+
+
+def check_epub_language(file_path: str) -> Optional[str]:
+    """Inspecte les métadonnées et le contenu d'un fichier EPUB pour identifier sa langue ('en' ou 'fr').
+    Vérifie en premier le tag <dc:language> dans l'OPF, puis analyse les attributs HTML et le vocabulaire.
+    """
+    if not file_path or not os.path.isfile(file_path):
+        return None
+    import zipfile
+    try:
+        with zipfile.ZipFile(file_path, "r") as z:
+            opfs = [n for n in z.namelist() if n.lower().endswith(".opf")]
+            for opf in opfs:
+                content = z.read(opf).decode("utf-8", errors="ignore")
+                langs = re.findall(r'<dc:language[^>]*>(.*?)</dc:language>', content, re.I)
+                for l in langs:
+                    clean_l = l.strip().lower()
+                    if clean_l.startswith("en") or clean_l in ("eng",):
+                        return "en"
+                    if clean_l.startswith("fr") or clean_l in ("fra", "fre"):
+                        return "fr"
+
+            html_files = [n for n in z.namelist() if n.lower().endswith((".xhtml", ".html", ".htm")) and not n.lower().endswith("toc.xhtml")]
+            for hf in html_files[:5]:
+                raw_text = z.read(hf).decode("utf-8", errors="ignore")
+                m_lang = re.search(r'(?:xml:lang|lang)=["\']([a-zA-Z\-]+)["\']', raw_text, re.I)
+                if m_lang:
+                    hl = m_lang.group(1).strip().lower()
+                    if hl.startswith("en") or hl in ("eng",):
+                        return "en"
+                    if hl.startswith("fr") or hl in ("fra", "fre"):
+                        return "fr"
+
+                clean_words = re.sub(r'<[^>]+>', ' ', raw_text).lower()
+                tokens = set(re.findall(r'\b[a-z]{2,8}\b', clean_words[:4000]))
+                en_markers = {"the", "and", "that", "with", "from", "this", "which", "they", "were", "been", "have", "their"}
+                fr_markers = {"les", "des", "dans", "avec", "pour", "cette", "sont", "leur", "comme", "mais", "plus", "elle"}
+                en_score = len(tokens.intersection(en_markers))
+                fr_score = len(tokens.intersection(fr_markers))
+                if en_score >= 3 and en_score > fr_score:
+                    return "en"
+                if fr_score >= 3 and fr_score > en_score:
+                    return "fr"
+    except Exception as e:
+        print(f"[Check EPUB Lang] Erreur analyse langue EPUB : {e}")
+    return None
 
 
 async def search_annas_archive(
@@ -307,14 +398,15 @@ async def search_annas_archive(
     limit: int = 8
 ) -> List[Dict[str, Any]]:
     """Recherche des livres électroniques authentiques sur Anna's Archive (https://annas-archive.gl).
-    Gère automatiquement la protection DDoS-Guard et filtre les formats (ePub par défaut).
+    Gère automatiquement la protection DDoS-Guard et filtre les formats et langues (fr ou en).
     """
     from playwright.async_api import async_playwright
     import urllib.parse
 
-    clean_query = clean_book_query(query)
+    clean_query, detected_lang = detect_and_clean_book_language(query, explicit_lang=lang)
+    effective_lang = lang or detected_lang or "fr"
     encoded_query = urllib.parse.quote_plus(clean_query)
-    search_url = f"https://annas-archive.gl/search?q={encoded_query}&lang={lang}&ext={ext}"
+    search_url = f"https://annas-archive.gl/search?q={encoded_query}&lang={effective_lang}&ext={ext}"
 
     browser_args = [
         "--disable-blink-features=AutomationControlled",
@@ -336,7 +428,7 @@ async def search_annas_archive(
             )
             page = await browser.new_page()
             try:
-                print(f"[Anna's Archive Search] Recherche '{clean_query}' sur {search_url}...")
+                print(f"[Anna's Archive Search] Recherche '{clean_query}' (lang={effective_lang}) sur {search_url}...")
                 await page.goto(search_url, wait_until="domcontentloaded", timeout=25000)
 
                 # Attente du passage de DDoS-Guard (vérification de l'url et du titre)
@@ -369,14 +461,25 @@ async def search_annas_archive(
                     return list;
                 }''')
 
-                for item in raw_items[:limit]:
+                for item in raw_items:
+                    raw_text = item["title"]
+                    # Vérifier si l'affichage Anna's Archive indique explicitement la langue opposée
+                    low_text = raw_text.lower()
+                    if effective_lang == "en" and ("[fr]" in low_text or "french" in low_text):
+                        continue
+                    if effective_lang == "fr" and ("[en]" in low_text or "english" in low_text):
+                        continue
+
                     results.append({
                         "title": item["title"],
                         "md5": item["md5"],
                         "url": item["href"],
                         "source": "Anna's Archive",
-                        "format": ext.upper()
+                        "format": ext.upper(),
+                        "lang": effective_lang
                     })
+                    if len(results) >= limit:
+                        break
 
             finally:
                 await browser.close()
@@ -389,10 +492,11 @@ async def search_annas_archive(
 async def download_from_annas_archive(
     md5: str,
     target_filename: Optional[str] = None,
-    timeout_sec: int = 120
+    timeout_sec: int = 120,
+    expected_lang: Optional[str] = None
 ) -> Dict[str, Any]:
     """Télécharge un ePub authentique depuis Anna's Archive via le serveur partenaire avec compte à rebours.
-    Valide l'intégrité de l'archive ePub une fois le téléchargement terminé.
+    Valide l'intégrité de l'archive ePub et sa langue une fois le téléchargement terminé.
     """
     from playwright.async_api import async_playwright
     from services.browser_service import is_valid_epub
@@ -497,14 +601,34 @@ async def download_from_annas_archive(
                 "message": "Le fichier téléchargé n'est pas une archive ePub valide. Téléchargement invalidé pour protéger votre liseuse."
             }
 
+        # Validation de conformité de langue de l'ePub
+        detected_lang = check_epub_language(dest_path)
+        if expected_lang and detected_lang and detected_lang != expected_lang:
+            try:
+                os.remove(dest_path)
+            except Exception:
+                pass
+            labels = {"en": "anglaise", "fr": "française"}
+            exp_txt = labels.get(expected_lang, expected_lang)
+            det_txt = labels.get(detected_lang, detected_lang)
+            print(f"[Anna's Archive DL] Échec conformité langue : attendu={exp_txt}, détecté={det_txt}")
+            return {
+                "status": "error",
+                "language_mismatch": True,
+                "detected_language": detected_lang,
+                "expected_language": expected_lang,
+                "message": f"Le livre téléchargé est en version {det_txt} alors que la version {exp_txt} était demandée."
+            }
+
         size_str = _format_size(os.path.getsize(dest_path))
-        print(f"[Anna's Archive DL] ePub valide téléchargé avec succès : {target_filename} ({size_str})")
+        print(f"[Anna's Archive DL] ePub valide ({detected_lang or 'langue non précisée'}) téléchargé : {target_filename} ({size_str})")
         return {
             "status": "success",
             "filename": target_filename,
             "filepath": dest_path,
             "size": size_str,
             "size_bytes": os.path.getsize(dest_path),
+            "detected_language": detected_lang,
             "source": "Anna's Archive (ePub validé)"
         }
 
@@ -521,19 +645,28 @@ async def search_and_download_ebook(
     source_url: Optional[str] = None,
     confirmed_by_user: bool = False,
     send_to_reader: bool = True,
-    ereader_email: Optional[str] = None
+    ereader_email: Optional[str] = None,
+    lang: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Recherche un ebook (EPUB / PDF) en priorité sur Anna's Archive, demande confirmation orale
-    puis le télécharge et l'envoie automatiquement sur la liseuse Kindle de Pierre.
+    """Recherche un ebook (EPUB / PDF) en priorité sur Anna's Archive dans la langue exacte demandée (en/fr),
+    demande confirmation orale puis le télécharge et l'envoie automatiquement sur la liseuse Kindle de Pierre.
     """
     from services.browser_service import is_valid_epub, search_web
+
+    clean_title, target_lang = detect_and_clean_book_language(query, explicit_lang=lang)
+    lang_labels = {"en": "anglaise", "fr": "française"}
+    lang_label = lang_labels.get(target_lang, "française")
+    safe_base = _sanitize_filename(re.sub(r'[^a-zA-Z0-9à-ÿ\s\-]', '', clean_title)).replace(" ", "_")
+    target_filename = f"{safe_base}_EN.epub" if target_lang == "en" else f"{safe_base}.epub"
 
     # 1. Si source_url commence par "annas:<md5>", téléchargement direct depuis Anna's Archive
     if source_url and source_url.startswith("annas:"):
         md5 = source_url.split("annas:")[1].strip()
-        clean_title = _sanitize_filename(re.sub(r'[^a-zA-Z0-9à-ÿ\s\-]', '', query)).replace(" ", "_")
-        target_filename = f"{clean_title}.epub"
-        dl_res = await download_from_annas_archive(md5, target_filename=target_filename)
+        dl_res = await download_from_annas_archive(
+            md5,
+            target_filename=target_filename,
+            expected_lang=target_lang
+        )
         if dl_res.get("status") == "success" and send_to_reader:
             reader_res = await send_to_ereader(dl_res["filepath"], ereader_email=ereader_email)
             if reader_res.get("status") != "success":
@@ -544,7 +677,8 @@ async def search_and_download_ebook(
                     "filepath": dl_res.get("filepath"),
                     "download": dl_res,
                     "ereader_delivery": reader_res,
-                    "message": f"L'ePub '{dl_res['filename']}' a bien été téléchargé mais le transfert vers la liseuse a échoué : {reader_res.get('message')}."
+                    "lang": target_lang,
+                    "message": f"L'ePub '{dl_res['filename']}' ({lang_label}) a bien été téléchargé mais le transfert vers la liseuse a échoué : {reader_res.get('message')}."
                 }
             return {
                 "status": "success",
@@ -553,12 +687,13 @@ async def search_and_download_ebook(
                 "filepath": dl_res.get("filepath"),
                 "download": dl_res,
                 "ereader_delivery": reader_res,
-                "message": f"L'ePub authentique '{dl_res['filename']}' a été téléchargé depuis Anna's Archive et {reader_res.get('message', 'transféré sur votre liseuse')}."
+                "lang": target_lang,
+                "message": f"L'ePub authentique en version {lang_label} '{dl_res['filename']}' a été téléchargé depuis Anna's Archive et {reader_res.get('message', 'transféré sur votre liseuse')}."
             }
         return dl_res
 
     # 2. Recherche prioritaire sur Anna's Archive (https://annas-archive.gl/)
-    annas_results = await search_annas_archive(query, lang="fr", ext="epub")
+    annas_results = await search_annas_archive(clean_title, lang=target_lang, ext="epub")
     if annas_results:
         best_match = annas_results[0]
         # Demande d'accord oral obligatoire avant tout téléchargement
@@ -568,21 +703,39 @@ async def search_and_download_ebook(
                 "requires_oral_consent": True,
                 "action": "download_ebook",
                 "query": query,
+                "clean_title": clean_title,
+                "lang": target_lang,
                 "book_title": best_match["title"],
                 "source": "Anna's Archive",
                 "format": "ePub",
                 "source_url": f"annas:{best_match['md5']}",
                 "instruction_to_jarvis": (
-                    f"Pierre a demandé l'ebook '{query}'. "
-                    f"Tu as localisé l'ePub complet et authentique '{best_match['title']}' sur Anna's Archive. "
+                    f"Pierre a demandé l'ebook '{clean_title}' en version {lang_label} ({target_lang.upper()}). "
+                    f"Tu as localisé l'ePub authentique '{best_match['title']}' sur Anna's Archive. "
                     f"Demande-lui explicitement son accord oral avec ta voix Aoede : "
-                    f"'J'ai trouvé l'ePub authentique de {best_match['title']} sur Anna's Archive. M'autorisez-vous à le télécharger et à l'envoyer sur votre liseuse ?'. "
-                    f"Dès sa confirmation orale affirmative, réinvoque search_and_download_ebook avec confirmed_by_user=True et source_url='annas:{best_match['md5']}'."
+                    f"'J'ai trouvé l'ePub en version {lang_label} de {clean_title} sur Anna's Archive. M'autorisez-vous à le télécharger et à l'envoyer sur votre liseuse ?'. "
+                    f"Dès sa confirmation orale affirmative, réinvoque search_and_download_ebook avec confirmed_by_user=True, source_url='annas:{best_match['md5']}' et lang='{target_lang}'."
                 )
             }
         else:
-            clean_title = _sanitize_filename(re.sub(r'[^a-zA-Z0-9à-ÿ\s\-]', '', query)).replace(" ", "_")
-            dl_res = await download_from_annas_archive(best_match["md5"], target_filename=f"{clean_title}.epub")
+            dl_res = await download_from_annas_archive(
+                best_match["md5"],
+                target_filename=target_filename,
+                expected_lang=target_lang
+            )
+            # En cas d'inadéquation de langue sur le 1er résultat, tester les alternatives suivantes
+            if dl_res.get("language_mismatch") and len(annas_results) > 1:
+                for alt_match in annas_results[1:3]:
+                    print(f"[Anna's Archive] Tentative sur résultat alternatif : {alt_match.get('title')}")
+                    alt_res = await download_from_annas_archive(
+                        alt_match["md5"],
+                        target_filename=target_filename,
+                        expected_lang=target_lang
+                    )
+                    if alt_res.get("status") == "success":
+                        dl_res = alt_res
+                        break
+
             if dl_res.get("status") == "success" and send_to_reader:
                 reader_res = await send_to_ereader(dl_res["filepath"], ereader_email=ereader_email)
                 if reader_res.get("status") != "success":
@@ -593,7 +746,8 @@ async def search_and_download_ebook(
                         "filepath": dl_res.get("filepath"),
                         "download": dl_res,
                         "ereader_delivery": reader_res,
-                        "message": f"L'ePub '{dl_res['filename']}' a bien été téléchargé mais le transfert vers la liseuse a échoué : {reader_res.get('message')}."
+                        "lang": target_lang,
+                        "message": f"L'ePub '{dl_res['filename']}' ({lang_label}) a bien été téléchargé mais le transfert vers la liseuse a échoué : {reader_res.get('message')}."
                     }
                 return {
                     "status": "success",
@@ -602,26 +756,27 @@ async def search_and_download_ebook(
                     "filepath": dl_res.get("filepath"),
                     "download": dl_res,
                     "ereader_delivery": reader_res,
-                    "message": f"L'ePub authentique '{dl_res['filename']}' a été téléchargé depuis Anna's Archive et {reader_res.get('message', 'transféré sur votre liseuse')}."
+                    "lang": target_lang,
+                    "message": f"L'ePub authentique en version {lang_label} '{dl_res['filename']}' a été téléchargé depuis Anna's Archive et {reader_res.get('message', 'transféré sur votre liseuse')}."
                 }
             return dl_res
 
-    # 3. Fallback recherche web classique
+    # 3. Fallback recherche web classique avec filtrage linguistique
     ebook_url = source_url or ""
     if not ebook_url:
-        search_res = await search_web(f"{query} ebook gratuit epub download")
+        search_kw = f"{clean_title} ebook free epub download english" if target_lang == "en" else f"{clean_title} ebook gratuit epub telecharger francais"
+        search_res = await search_web(search_kw)
         results = search_res.get("results", [])
         if results:
             ebook_url = results[0]["url"]
         else:
             return {
                 "status": "error",
-                "message": f"Aucun livre électronique trouvé pour '{query}' sur Anna's Archive ou sur le web."
+                "message": f"Aucun livre électronique trouvé pour '{clean_title}' en version {lang_label} sur Anna's Archive ou sur le web."
             }
 
     ext = ".epub" if "epub" in query.lower() or "epub" in ebook_url.lower() else (".pdf" if "pdf" in query.lower() else ".epub")
-    clean_title = _sanitize_filename(re.sub(r'[^a-zA-Z0-9à-ÿ\s\-]', '', query)).replace(" ", "_")
-    target_filename = f"{clean_title}{ext}"
+    target_filename = f"{safe_base}_EN{ext}" if target_lang == "en" else f"{safe_base}{ext}"
 
     dl_res = await download_file(
         url=ebook_url,
@@ -632,25 +787,38 @@ async def search_and_download_ebook(
 
     if dl_res.get("status") == "requires_user_confirmation":
         dl_res["instruction_to_jarvis"] = (
-            f"Pierre a demandé l'ebook '{query}'. "
+            f"Pierre a demandé l'ebook '{clean_title}' en version {lang_label}. "
             f"Tu as trouvé une source au format {ext} sur {dl_res.get('domain', 'le web')}. "
             f"Demande-lui son accord oral avec ta voix Aoede : "
-            f"'J'ai trouvé une édition de {query}. M'autorisez-vous à la télécharger et à l'envoyer sur votre liseuse ?'. "
-            f"Dès sa confirmation, relance avec confirmed_by_user=True."
+            f"'J'ai trouvé une édition en version {lang_label} de {clean_title}. M'autorisez-vous à la télécharger et à l'envoyer sur votre liseuse ?'. "
+            f"Dès sa confirmation, relance avec confirmed_by_user=True et lang='{target_lang}'."
         )
         return dl_res
 
     if dl_res.get("status") == "success":
-        # Validation stricte du format ePub pour éviter d'envoyer des pages HTML corrompues à Amazon
-        if ext == ".epub" and not is_valid_epub(dl_res["filepath"]):
-            try:
-                os.remove(dl_res["filepath"])
-            except Exception:
-                pass
-            return {
-                "status": "error",
-                "message": f"Le fichier téléchargé pour '{query}' n'est pas un ePub valide (page web ou redirection). Envoi vers la Kindle refusé."
-            }
+        # Validation stricte du format ePub
+        if ext == ".epub":
+            if not is_valid_epub(dl_res["filepath"]):
+                try:
+                    os.remove(dl_res["filepath"])
+                except Exception:
+                    pass
+                return {
+                    "status": "error",
+                    "message": f"Le fichier téléchargé pour '{clean_title}' n'est pas un ePub valide. Envoi vers la Kindle refusé."
+                }
+            # Validation linguistique ePub
+            detected_lang = check_epub_language(dl_res["filepath"])
+            if detected_lang and detected_lang != target_lang:
+                try:
+                    os.remove(dl_res["filepath"])
+                except Exception:
+                    pass
+                det_txt = lang_labels.get(detected_lang, detected_lang)
+                return {
+                    "status": "error",
+                    "message": f"Le livre téléchargé pour '{clean_title}' est en version {det_txt} alors que la version {lang_label} était demandée. Envoi annulé."
+                }
 
         if send_to_reader:
             reader_res = await send_to_ereader(dl_res["filepath"], ereader_email=ereader_email)
@@ -660,7 +828,8 @@ async def search_and_download_ebook(
                 "filename": dl_res["filename"],
                 "download": dl_res,
                 "ereader_delivery": reader_res,
-                "message": f"L'ebook '{dl_res['filename']}' a été téléchargé et {reader_res.get('message', 'transféré sur votre liseuse')}."
+                "lang": target_lang,
+                "message": f"L'ebook '{dl_res['filename']}' ({lang_label}) a été téléchargé et {reader_res.get('message', 'transféré sur votre liseuse')}."
             }
 
     return dl_res

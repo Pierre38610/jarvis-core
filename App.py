@@ -1301,6 +1301,10 @@ async def voice_channel(websocket: WebSocket):
                             "ereader_email": types.Schema(
                                 type="STRING",
                                 description="Adresse e-mail spécifique de la liseuse si renseignée"
+                            ),
+                            "lang": types.Schema(
+                                type="STRING",
+                                description="Langue demandée pour le livre : 'en' (anglais) ou 'fr' (français). Détecter automatiquement selon la demande de Pierre (ex: 'en anglais', 'in english', 'english', 'VO' -> 'en', 'en français' ou par défaut -> 'fr')."
                             )
                         },
                         required=["query"]
@@ -1488,6 +1492,10 @@ async def voice_channel(websocket: WebSocket):
         "20. EBOOKS ET ACHEMINEMENT SUR LISEUSE ('search_and_download_ebook', 'send_to_ereader') :\n"
         "   - Dès que Pierre te demande un livre numérique ou ebook pour sa liseuse (ex: 'trouve-moi et télécharge un ebook puis envoie-le sur ma liseuse') :\n"
         "     Utilise 'search_and_download_ebook'.\n"
+        "   - GESTION STRICTE DE LA LANGUE (ce sera toujours ANGLAIS ou FRANÇAIS) :\n"
+        "     * Si Pierre demande le livre en anglais (ex: 'en anglais', 'in english', 'version anglaise', 'en VO') : passe OBLIGATOIREMENT lang='en'.\n"
+        "     * Si Pierre demande le livre en français ou sans préciser : passe lang='fr'.\n"
+        "     * INTERDICTION ABSOLUE de télécharger un livre en français si Pierre a demandé de l'anglais, et inversement.\n"
         "   - Demande toujours confirmation à Pierre avant de lancer le téléchargement.\n"
         "   - Une fois téléchargé, l'ebook est acheminé automatiquement vers sa liseuse (soit par copie USB si la liseuse est branchée, soit par courriel direct Send-to-Kindle / boîte email).\n"
         "21. CONTRÔLE COMPLET DE DEEZER ('play_music_deezer') :\n"
@@ -3263,6 +3271,7 @@ async def voice_channel(websocket: WebSocket):
 
                                 elif name == "search_and_download_ebook":
                                     query = args.get("query", "")
+                                    lang_arg = args.get("lang")
                                     source_url = args.get("source_url")
                                     is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
                                     send_to_reader_flag = bool(args.get("send_to_reader", True))
@@ -3272,7 +3281,7 @@ async def voice_channel(websocket: WebSocket):
                                         "send_to_ereader",
                                         "Recherche & Ebook Liseuse",
                                         "search_and_download_ebook",
-                                        f"Ebook : {query}",
+                                        f"Ebook : {query} ({lang_arg or 'auto'})",
                                         "Web / Stark Reader Protocol",
                                         api_type="free",
                                         api_label="Service Local",
@@ -3285,7 +3294,8 @@ async def voice_channel(websocket: WebSocket):
                                         source_url=source_url,
                                         confirmed_by_user=is_confirmed,
                                         send_to_reader=send_to_reader_flag,
-                                        ereader_email=ereader_email
+                                        ereader_email=ereader_email,
+                                        lang=lang_arg
                                     )
 
                                     if res.get("status") == "requires_user_confirmation":
