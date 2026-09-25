@@ -168,6 +168,16 @@ const engineActionsCount = document.getElementById('engineActionsCount');
 const btnOpenOverview = document.getElementById('btnOpenOverview');
 const supervisionActionBadge = document.getElementById('supervisionActionBadge');
 
+// --- BANDEAU D'ACTIVITÉ LIVE ---
+const liveActivityBand = document.getElementById('liveActivityBand');
+const liveActivityTitle = document.getElementById('liveActivityTitle');
+const liveActivityDetail = document.getElementById('liveActivityDetail');
+const liveActivityStep = document.getElementById('liveActivityStep');
+const liveKeyBadge = document.getElementById('liveKeyBadge');
+const liveModelTag = document.getElementById('liveModelTag');
+const liveBandTimestamp = document.getElementById('liveBandTimestamp');
+const headerActionDot = document.getElementById('headerActionDot');
+const apiUsageFooter = document.getElementById('apiUsageFooter');
 // --- MODAL SUPERVISION GLOBALE (MODÈLES, CLÉS API, ACTIONS & FENÊTRES) ---
 const supervisionModal = document.getElementById('supervisionModal');
 const btnCloseSupervision = document.getElementById('btnCloseSupervision');
@@ -490,9 +500,68 @@ function setJarvisState(state, customMsg, detail, engineInfo) {
   }
 }
 
+// ── BANDEAU D'ACTIVITÉ LIVE ──────────────────────────────────────────────────────────────
+// Affiche en temps réel : outil actif, clé API utilisée, modèle, tâche et progression
+function updateLiveActivityBand(state, msg, task, engine, model, apiType, apiLabel) {
+  if (!liveActivityBand) return;
+  const activeStates = ['coding', 'browsing', 'thinking', 'emailing'];
+  const isActive = activeStates.includes(state);
+
+  if (!isActive) {
+    setTimeout(() => {
+      if (liveActivityBand) liveActivityBand.style.display = 'none';
+    }, 800);
+    if (headerActionDot) headerActionDot.className = 'header-action-dot-idle';
+    return;
+  }
+
+  liveActivityBand.style.display = 'block';
+  liveActivityBand.className = `live-activity-band band-${state}`;
+
+  const titles = {
+    coding: 'DÉVELOPPEMENT EN COURS',
+    browsing: 'NAVIGATION WEB',
+    thinking: 'ANALYSE APPROFONDIE',
+    emailing: 'EXPÉDITION E-MAIL'
+  };
+  if (liveActivityTitle) liveActivityTitle.innerText = titles[state] || 'OUTIL EN COURS';
+
+  const isPaid = (apiType === 'paid');
+  if (liveKeyBadge) {
+    liveKeyBadge.className = `live-band-key-badge ${isPaid ? 'badge-key-paid' : 'badge-key-free'}`;
+    liveKeyBadge.innerText = isPaid ? 'CLÉ PAYANTE' : 'CLÉ GRATUITE';
+  }
+
+  if (liveModelTag) liveModelTag.innerText = model || engine || '—';
+  if (liveActivityDetail) liveActivityDetail.innerText = task || msg || '...';
+  if (liveActivityStep) liveActivityStep.innerText = '';
+
+  if (liveBandTimestamp) {
+    const now = new Date();
+    liveBandTimestamp.innerText = now.toLocaleTimeString('fr-FR', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+  }
+
+  const dotClasses = {
+    coding: 'header-action-dot-coding',
+    browsing: 'header-action-dot-browsing',
+    thinking: 'header-action-dot-thinking',
+    emailing: 'header-action-dot-active'
+  };
+  if (headerActionDot) headerActionDot.className = dotClasses[state] || 'header-action-dot-active';
+
+  if (apiUsageFooter) {
+    apiUsageFooter.innerText = isPaid ? 'Clé Payante active' : 'Clé Gratuite active';
+    apiUsageFooter.className = `api-usage-footer ${isPaid ? 'paid' : 'free'}`;
+  }
+}
+
 // Gestion propre et consolidée des bulles de transcription
 function handleTranscript(role, text, mode) {
   if (!text || !text.trim()) return;
+  // transcriptBox peut ne plus exister (chat supprimé)
+  if (!transcriptBox) return;
 
   const welcome = document.getElementById('welcomeMsg');
   if (welcome) welcome.remove();
@@ -1101,6 +1170,8 @@ async function startJarvis() {
           const msg = JSON.parse(event.data);
           if (msg.type === 'status') {
             setJarvisState(msg.state, msg.msg, msg.detail || msg.task, { engine: msg.engine, model: msg.model });
+            // Mise à jour du bandeau d'activité live avec la clé réelle
+            updateLiveActivityBand(msg.state, msg.msg, msg.detail || msg.task, msg.engine, msg.model, msg.api_type, msg.api_label);
             if (msg.state === 'coding') {
               if (taskDock) taskDock.style.display = 'flex';
               if (taskDockStatus) taskDockStatus.innerText = "DÉVELOPPEMENT EN COURS";
@@ -1122,10 +1193,16 @@ async function startJarvis() {
               taskDock.style.display = 'flex';
               if (taskDockProgressText) taskDockProgressText.innerText = msg.text;
             }
+            // Mise à jour de l'étape dans le bandeau live
+            if (liveActivityStep && msg.text) {
+              liveActivityStep.innerText = '▶ ' + msg.text.slice(0, 80);
+            }
             handleTranscript('jarvis', msg.text, 'append');
           } else if (msg.type === 'task_completed') {
             isToolExecuting = false;
             stopSilenceSender();
+            // Cacher le bandeau live après complétion
+            updateLiveActivityBand('idle');
             if (msg.is_error || msg.status === 'error') {
               if (taskDockStatus) {
                 taskDockStatus.innerText = msg.error_type === 'high_demand' ? "SERVEURS SATURÉS (503)" : "ARRÊT DU DÉVELOPPEMENT";

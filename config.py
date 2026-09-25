@@ -63,9 +63,9 @@ if not _free_raw or _free_raw == "VOTRE_CLE_GRATUITE_ICI":
 
 _default_key = os.environ.get("GEMINI_API_KEY", "").strip()
 
-GEMINI_API_KEY_FREE = _free_raw or _default_key or _paid_raw
-GEMINI_API_KEY_PAID = _paid_raw or _default_key or _free_raw
-GEMINI_API_KEY = GEMINI_API_KEY_PAID or GEMINI_API_KEY_FREE
+GEMINI_API_KEY_FREE = _free_raw or _default_key
+GEMINI_API_KEY_PAID = _paid_raw
+GEMINI_API_KEY = GEMINI_API_KEY_FREE or GEMINI_API_KEY_PAID
 
 if GEMINI_API_KEY_PAID:
     os.environ["GEMINI_API_KEY_PAID"] = GEMINI_API_KEY_PAID
@@ -75,7 +75,7 @@ if GEMINI_API_KEY_FREE:
 os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
 os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
 
-HAS_PAID_API_KEY = bool(GEMINI_API_KEY_PAID and GEMINI_API_KEY_PAID != "VOTRE_CLE_PAYANTE_ICI")
+HAS_PAID_API_KEY = bool(_paid_raw and _paid_raw != "VOTRE_CLE_PAYANTE_ICI")
 
 # Voix préconstruite Gemini Live (Voix féminines disponibles : Aoede, Kore, Leda)
 JARVIS_VOICE = os.environ.get("JARVIS_VOICE", "Aoede").strip()

@@ -105,6 +105,28 @@ class MemoryService:
             """, (key, value, now))
             conn.commit()
 
+    def get_user_autofill_profile(self) -> Dict[str, str]:
+        """Retourne le profil complet pour le préremplissage des formulaires web et livraisons."""
+        profile = self.get_profile()
+        return {
+            "first_name": profile.get("first_name", "Pierre"),
+            "last_name": profile.get("last_name", "Cassagnettes"),
+            "full_name": profile.get("full_name", "Pierre Cassagnettes"),
+            "email": profile.get("email", "pierrecassagnettes@gmail.com"),
+            "phone": profile.get("phone", profile.get("user_phone", "")),
+            "address": profile.get("address", profile.get("user_address", "")),
+            "zip_code": profile.get("zip_code", profile.get("user_zip", "")),
+            "city": profile.get("city", profile.get("user_city", "")),
+            "country": profile.get("country", "France"),
+            "ereader_email": profile.get("ereader_email", profile.get("kindle_email", "pierrecassagnettes@gmail.com"))
+        }
+
+    def update_user_autofill_profile(self, details: Dict[str, str]):
+        """Met à jour les informations du profil utilisateur."""
+        for k, v in details.items():
+            if v:
+                self.set_profile_value(k, str(v))
+
     def build_system_memory_context(self) -> str:
         """Construit un résumé textuel concis à injecter dans le prompt système de J.A.R.V.I.S."""
         profile = self.get_profile()
@@ -118,7 +140,15 @@ class MemoryService:
         else:
             memories_text = "AUCUN SOUVENIR ENREGISTRÉ POUR L'INSTANT."
 
-        return f"UTILISATEUR PRINCIPAL : {user_name}\n{memories_text}"
+        autofill = self.get_user_autofill_profile()
+        contact_info = f"PROFIL UTILISATEUR : {autofill['full_name']} | Email : {autofill['email']}"
+        if autofill.get("address"):
+            contact_info += f" | Adresse : {autofill['address']} {autofill.get('zip_code', '')} {autofill.get('city', '')}"
+        if autofill.get("ereader_email") and autofill["ereader_email"] != autofill["email"]:
+            contact_info += f" | Liseuse : {autofill['ereader_email']}"
+
+        return f"UTILISATEUR PRINCIPAL : {user_name}\n{contact_info}\n{memories_text}"
 
 # Instance globale prête à l'emploi
 memory_service = MemoryService()
+

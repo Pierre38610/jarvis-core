@@ -115,6 +115,24 @@ def resolve_antigravity_model(model_name: str | None = None, api_key: str | None
     )
     return target, f"Gemini 3.8 Flash ({label_level})"
 
+def is_stop_directive(text: str) -> bool:
+    """Détecte les ordres explicites d'interruption et d'arrêt de l'utilisateur."""
+    if not text:
+        return False
+    t = text.lower().strip()
+    stop_words = [
+        "arrête", "arrete", "stop", "annule", "annuler", "interromps", "interrompre",
+        "abandonne", "abandonner", "stoppe", "stopper", "pause", "arrête-toi", "arrete-toi",
+        "arrête tout", "arrete tout", "arrête de coder", "arrete de coder",
+        "tais-toi et arrête", "cancel", "quitte", "halt", "abort", "__stop__"
+    ]
+    if t in stop_words:
+        return True
+    for sw in stop_words:
+        if t == sw or t.startswith(sw + " ") or t.endswith(" " + sw) or f" {sw} " in t:
+            return True
+    return False
+
 class AntigravityAgent:
     """Agent Antigravity prêt pour l'exécution asynchrone de tâches avec choix dynamique du modèle."""
 
@@ -122,6 +140,7 @@ class AntigravityAgent:
         self.workspace = os.path.abspath(workspace)
         os.makedirs(self.workspace, exist_ok=True)
         self.api_key = api_key or GEMINI_API_KEY_PAID or GEMINI_API_KEY_FREE
+        self.is_cancelled = False
 
         if "policies" not in kwargs:
             kwargs["policies"] = [policy.allow_all()]
@@ -162,6 +181,11 @@ class AntigravityAgent:
             **kwargs,
         )
 
+    def cancel(self):
+        """Déclenche l'interruption immédiate de l'agent Antigravity."""
+        self.is_cancelled = True
+        print(f"[Antigravity] Ordre de cancellation transmis à l'agent ({self.model_label}).")
+
     async def run_task(self, instruction: str) -> TaskResult:
         return await self.run_task_stream(instruction)
 
@@ -172,6 +196,8 @@ class AntigravityAgent:
         directive_queue: asyncio.Queue | None = None
     ) -> TaskResult:
         """Exécute la tâche en streaming avec émission d'étapes et gestion de consignes en direct."""
+        if self.is_cancelled:
+            return TaskResult(summary="Développement immédiatement arrêté à la demande de l'utilisateur.", status="cancelled", model_label=self.model_label)
         try:
             print(f"[Antigravity] Exécution de la tâche avec {self.model_label} : {instruction[:60]}...")
             if on_progress:
@@ -181,6 +207,9 @@ class AntigravityAgent:
                 })
 
             async with Agent(self.config) as agent:
+                if self.is_cancelled:
+                    raise asyncio.CancelledError("Arrêt demandé par l'utilisateur.")
+
                 if on_progress:
                     await on_progress({
                         "step": "planning",
@@ -195,12 +224,25 @@ class AntigravityAgent:
                 async def process_turn_chunks(active_response):
                     nonlocal last_oral_time
                     async for chunk in active_response.chunks:
+                        if self.is_cancelled:
+                            raise asyncio.CancelledError("Arrêt demandé par l'utilisateur.")
+
                         collected_chunks.append(chunk)
 
-                        # 1. Prise en compte immédiate d'une consigne en direct
+                        # 1. Prise en compte immédiate d'une consigne en direct (ou ordre d'arrêt)
                         if directive_queue and not directive_queue.empty():
                             try:
                                 d = directive_queue.get_nowait()
+                                if is_stop_directive(d):
+                                    self.is_cancelled = True
+                                    print(f"[Antigravity] ORDRE D'ARRÊT REÇU : '{d}'. Interruption immédiate !")
+                                    if on_progress:
+                                        await on_progress({
+                                            "step": "cancelled",
+                                            "text": "Développement immédiatement interrompu à votre demande."
+                                        })
+                                    raise asyncio.CancelledError("Arrêt demandé par l'utilisateur.")
+
                                 print(f"[Antigravity] Consigne reçue en direct : {d}")
                                 pending_directives.append(d)
                                 if on_progress:
@@ -211,11 +253,16 @@ class AntigravityAgent:
                                 conn = getattr(getattr(agent, "conversation", None), "connection", None)
                                 if conn and hasattr(conn, "send_trigger_notification"):
                                     await conn.send_trigger_notification(f"Consigne urgente de l'utilisateur : {d}")
+                            except asyncio.CancelledError:
+                                raise
                             except Exception as d_err:
                                 print(f"[Antigravity] Notice injection directive: {d_err}")
 
                         # 2. Détection des outils exécutés
                         if isinstance(chunk, ToolCall):
+                            if self.is_cancelled:
+                                raise asyncio.CancelledError("Arrêt demandé par l'utilisateur.")
+
                             tool_name = getattr(chunk, "name", "outil")
                             args = getattr(chunk, "args", {})
                             oral_text = None
@@ -242,6 +289,9 @@ class AntigravityAgent:
 
                         # 3. Détection de pensées/choix architecturaux
                         elif isinstance(chunk, Thought):
+                            if self.is_cancelled:
+                                raise asyncio.CancelledError("Arrêt demandé par l'utilisateur.")
+
                             thought_txt = (getattr(chunk, "text", "") or "").lower()
                             now = asyncio.get_event_loop().time()
                             if now - last_oral_time >= 6.0:
@@ -266,8 +316,22 @@ class AntigravityAgent:
                 # Si des consignes ont été reçues pendant le streaming ou restent en attente,
                 # elles sont appliquées proprement sur la session devenue idle
                 while pending_directives or (directive_queue and not directive_queue.empty()):
+                    if self.is_cancelled:
+                        raise asyncio.CancelledError("Arrêt demandé par l'utilisateur.")
+
                     if directive_queue and not directive_queue.empty():
-                        pending_directives.append(directive_queue.get_nowait())
+                        d_next = directive_queue.get_nowait()
+                        if is_stop_directive(d_next):
+                            self.is_cancelled = True
+                            print(f"[Antigravity] ORDRE D'ARRÊT REÇU : '{d_next}'. Interruption immédiate !")
+                            if on_progress:
+                                await on_progress({
+                                    "step": "cancelled",
+                                    "text": "Développement immédiatement interrompu à votre demande."
+                                })
+                            raise asyncio.CancelledError("Arrêt demandé par l'utilisateur.")
+                        pending_directives.append(d_next)
+
                     directive_to_apply = pending_directives.pop(0)
                     print(f"[Antigravity] Application de la consigne complémentaire : {directive_to_apply}")
                     if on_progress:
@@ -282,6 +346,9 @@ class AntigravityAgent:
                     await process_turn_chunks(followup_resp)
                     response = followup_resp
 
+                if self.is_cancelled:
+                    raise asyncio.CancelledError("Arrêt demandé par l'utilisateur.")
+
                 summary = await response.text()
                 if not summary:
                     summary = "Tâche Antigravity exécutée avec succès dans le projet."
@@ -294,6 +361,13 @@ class AntigravityAgent:
 
                 return TaskResult(summary=summary, status="completed", model_label=self.model_label)
 
+        except asyncio.CancelledError:
+            print(f"[Antigravity] Tâche annulée avec succès ({self.model_label}).")
+            return TaskResult(
+                summary="Développement immédiatement arrêté à la demande de l'utilisateur.",
+                status="cancelled",
+                model_label=self.model_label
+            )
         except Exception as e:
             err_msg = str(e)
             print(f"[Antigravity] Exception d'exécution ({self.model_label}): {err_msg}")

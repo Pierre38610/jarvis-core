@@ -45,12 +45,12 @@ class SupervisionService:
             "ask_deep_reasoning": {
                 "name": "Raisonnement Approfondi (Thinking)",
                 "tool": "ask_deep_reasoning",
-                "model": "Gemini Thinking / Pro 3.1",
+                "model": "Gemini Thinking (Gratuite→Payante)",
                 "api_type": "hybrid",
-                "api_label": "Gratuite / Payante",
-                "cost_est": "0.00 $ ou ~0.03 $",
+                "api_label": "Gratuite → Payante (repli)",
+                "cost_est": "0.00 $ (Gratuite) / ~0.03 $ (Payante)",
                 "active": False,
-                "description": "Analyse philosophique, scientifique et synthèse logique"
+                "description": "Thinking: clé gratuite en priorité, repli payante si quota épuisé"
             },
             "run_browser_task": {
                 "name": "Navigation Autonome Browser-Use",
@@ -131,6 +131,46 @@ class SupervisionService:
                 "cost_est": "0.00 $",
                 "active": False,
                 "description": "Inspection des erreurs d'exécution et auto-correction"
+            },
+            "interact_web_page": {
+                "name": "Interaction & Formulaires Web",
+                "tool": "interact_web_page",
+                "model": "Playwright Automation Engine",
+                "api_type": "free",
+                "api_label": "Clé Gratuite / Local",
+                "cost_est": "0.00 $",
+                "active": False,
+                "description": "Lecture, saisie de formulaires et clics sur pages web"
+            },
+            "prepare_web_cart_or_checkout": {
+                "name": "Préparation Panier & Préremplissage",
+                "tool": "prepare_web_cart_or_checkout",
+                "model": "Playwright E-Commerce Engine",
+                "api_type": "free",
+                "api_label": "Clé Gratuite / Local",
+                "cost_est": "0.00 $",
+                "active": False,
+                "description": "Création de panier, préremplissage coordonnées et ouverture Chrome pour paiement"
+            },
+            "download_file": {
+                "name": "Téléchargement Sécurisé Fichiers",
+                "tool": "download_file",
+                "model": "Stark Transfer Protocol",
+                "api_type": "free",
+                "api_label": "Service Local",
+                "cost_est": "0.00 $",
+                "active": False,
+                "description": "Téléchargement de documents et ebooks avec accord oral préalable"
+            },
+            "send_to_ereader": {
+                "name": "Acheminement Liseuse (Kindle/Kobo)",
+                "tool": "send_to_ereader",
+                "model": "USB / SMTP Protocol",
+                "api_type": "free",
+                "api_label": "Service Local",
+                "cost_est": "0.00 $",
+                "active": False,
+                "description": "Transfert direct d'ebooks vers la liseuse par e-mail ou USB"
             }
         }
         self._tracked_windows: List[Dict[str, Any]] = []

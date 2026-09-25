@@ -5,6 +5,8 @@ from services.browser_service import (
     browse_page,
     run_browser_task,
     open_browser_window,
+    interact_web_page,
+    prepare_web_cart_or_checkout,
     SCREENSHOT_PATH,
     STATIC_DIR
 )
@@ -14,6 +16,9 @@ __all__ = [
     "browse_page",
     "run_browser_task",
     "open_browser_window",
+    "interact_web_page",
+    "prepare_web_cart_or_checkout",
     "SCREENSHOT_PATH",
     "STATIC_DIR"
 ]
+
