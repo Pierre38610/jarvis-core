@@ -1653,17 +1653,31 @@ async def send_file_to_kindle_web(
                 # 5. Clic sur Envoyer
                 await send_btn.click()
 
-                # 6. Attente de confirmation de livraison
-                try:
-                    await page.wait_for_function("""() => {
-                        const text = document.body ? document.body.innerText : '';
-                        return text.includes('Vos fichiers sont en route') || 
-                               text.includes('Traitement en cours') || 
-                               text.includes('Dans la bibliothèque') ||
-                               text.includes('Fichiers récemment envoyés');
-                    }""", timeout=15000)
-                except Exception:
-                    await page.wait_for_timeout(4000)
+                # 6. Attente réelle de la fin du transfert réseau vers Amazon
+                # Attention : 'Fichiers récemment envoyés' et 'Dans la bibliothèque' figurent en permanence dans le bas de page !
+                # On doit attendre que 'Envoi en cours...' disparaisse et que 'Vos fichiers sont en route' apparaisse ou que la zone se réinitialise.
+                upload_finished = False
+                for _ in range(35):
+                    await page.wait_for_timeout(1000)
+                    upload_state = await page.evaluate('''() => {
+                        const body = document.body ? document.body.innerText : '';
+                        const inProgress = body.includes('Envoi en cours') || body.includes('Calcul du temps');
+                        const routeConfirmed = body.includes('Vos fichiers sont en route');
+                        const cancelBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.includes('Annuler'));
+                        const sendBtn = document.querySelector('#s2k-r2s-send-button');
+                        const sendVisible = sendBtn ? (sendBtn.offsetParent !== null) : false;
+                        return {
+                            inProgress: inProgress,
+                            routeConfirmed: routeConfirmed,
+                            hasCancelBtn: !!cancelBtn,
+                            sendVisible: sendVisible
+                        };
+                    }''')
+                    if upload_state['routeConfirmed'] or (not upload_state['inProgress'] and not upload_state['hasCancelBtn'] and not upload_state['sendVisible']):
+                        upload_finished = True
+                        break
+
+                await page.wait_for_timeout(2000)
 
                 # Capture finale de confirmation
                 await page.screenshot(path=SCREENSHOT_PATH, type="jpeg", quality=80)

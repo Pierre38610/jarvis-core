@@ -3229,16 +3229,23 @@ async def voice_channel(websocket: WebSocket):
                                             "instruction_to_jarvis": res.get("instruction_to_jarvis")
                                         }
                                     else:
-                                        supervision_service.complete_action("send_to_ereader", status=res.get("status", "completed"), summary=f"Ebook {query} prêt")
+                                        supervision_service.complete_action("send_to_ereader", status=res.get("status", "completed"), summary=f"Ebook {query} : {res.get('status')}")
                                         await broadcast_supervision()
+                                        if res.get("status") == "success":
+                                            instruction = (
+                                                f"L'ebook '{query}' a été téléchargé avec succès et acheminé sur la liseuse Kindle de Pierre. "
+                                                f"Annonce-lui avec ta voix Aoede que son livre est maintenant prêt dans sa bibliothèque Kindle."
+                                            )
+                                        else:
+                                            instruction = (
+                                                f"Une difficulté est survenue lors de la récupération ou de l'envoi de l'ebook '{query}' : {res.get('message', 'Échec du traitement')}. "
+                                                f"Explique la situation avec ta voix Aoede sans prétendre que le livre est envoyé."
+                                            )
                                         tool_resp = {
                                             "status": res.get("status"),
                                             "filename": res.get("filename"),
                                             "message": res.get("message"),
-                                            "instruction_to_jarvis": (
-                                                f"L'ebook '{query}' a été téléchargé et acheminé sur la liseuse de Pierre. "
-                                                f"Annonce-lui avec ta voix Aoede que son livre est maintenant prêt pour sa lecture."
-                                            )
+                                            "instruction_to_jarvis": instruction
                                         }
                                 elif name == "send_page_to_kindle":
                                     target_url = args.get("url", "")
@@ -3301,13 +3308,20 @@ async def voice_channel(websocket: WebSocket):
                                     supervision_service.complete_action("send_file_to_kindle", status=res.get("status", "completed"), summary=res.get("message", "Fichier envoyé sur Kindle"))
                                     await broadcast_supervision()
 
-                                    tool_resp = {
-                                        "status": res.get("status", "completed"),
-                                        "result": res,
-                                        "instruction_to_jarvis": (
+                                    if res.get("status") == "success":
+                                        instruction = (
                                             f"{res.get('message', 'Fichier envoyé sur la Kindle.')} "
                                             f"Annonce avec ta voix Aoede que le document a été déposé et envoyé avec succès sur sa liseuse Kindle via sa session Amazon connectée."
                                         )
+                                    else:
+                                        instruction = (
+                                            f"L'envoi sur la Kindle n'a pas pu aboutir : {res.get('message', 'Erreur de transfert')}. "
+                                            f"Informe Pierre avec ta voix Aoede de la situation sans affirmer que le document est envoyé."
+                                        )
+                                    tool_resp = {
+                                        "status": res.get("status", "completed"),
+                                        "result": res,
+                                        "instruction_to_jarvis": instruction
                                     }
 
                                 elif name == "list_chrome_extensions":

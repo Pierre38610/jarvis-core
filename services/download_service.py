@@ -536,10 +536,21 @@ async def search_and_download_ebook(
         dl_res = await download_from_annas_archive(md5, target_filename=target_filename)
         if dl_res.get("status") == "success" and send_to_reader:
             reader_res = await send_to_ereader(dl_res["filepath"], ereader_email=ereader_email)
+            if reader_res.get("status") != "success":
+                return {
+                    "status": "error",
+                    "action": "ebook_download_success_send_failed",
+                    "filename": dl_res["filename"],
+                    "filepath": dl_res.get("filepath"),
+                    "download": dl_res,
+                    "ereader_delivery": reader_res,
+                    "message": f"L'ePub '{dl_res['filename']}' a bien été téléchargé mais le transfert vers la liseuse a échoué : {reader_res.get('message')}."
+                }
             return {
                 "status": "success",
                 "action": "ebook_download_and_sent",
                 "filename": dl_res["filename"],
+                "filepath": dl_res.get("filepath"),
                 "download": dl_res,
                 "ereader_delivery": reader_res,
                 "message": f"L'ePub authentique '{dl_res['filename']}' a été téléchargé depuis Anna's Archive et {reader_res.get('message', 'transféré sur votre liseuse')}."
@@ -574,10 +585,21 @@ async def search_and_download_ebook(
             dl_res = await download_from_annas_archive(best_match["md5"], target_filename=f"{clean_title}.epub")
             if dl_res.get("status") == "success" and send_to_reader:
                 reader_res = await send_to_ereader(dl_res["filepath"], ereader_email=ereader_email)
+                if reader_res.get("status") != "success":
+                    return {
+                        "status": "error",
+                        "action": "ebook_download_success_send_failed",
+                        "filename": dl_res["filename"],
+                        "filepath": dl_res.get("filepath"),
+                        "download": dl_res,
+                        "ereader_delivery": reader_res,
+                        "message": f"L'ePub '{dl_res['filename']}' a bien été téléchargé mais le transfert vers la liseuse a échoué : {reader_res.get('message')}."
+                    }
                 return {
                     "status": "success",
                     "action": "ebook_download_and_sent",
                     "filename": dl_res["filename"],
+                    "filepath": dl_res.get("filepath"),
                     "download": dl_res,
                     "ereader_delivery": reader_res,
                     "message": f"L'ePub authentique '{dl_res['filename']}' a été téléchargé depuis Anna's Archive et {reader_res.get('message', 'transféré sur votre liseuse')}."
