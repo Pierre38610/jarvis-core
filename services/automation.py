@@ -16,11 +16,21 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # ─── Configuration ────────────────────────────────────────────────────────────
-N8N_BASE_URL = os.getenv("N8N_BASE_URL", "http://n8n:5678")
+N8N_BASE_URL = os.getenv("N8N_BASE_URL", "http://127.0.0.1:5678")
 N8N_WEBHOOK_SECRET = os.getenv("N8N_WEBHOOK_SECRET", "")
 N8N_CONTAINER_NAME = os.getenv("N8N_CONTAINER_NAME", "jarvis_n8n")
 
 _HTTP_TIMEOUT = 30.0  # secondes
+
+# Mapping canonique des actions documentaires vers leurs webhooks n8n
+ACTION_WEBHOOK_MAPPING = {
+    "generer_fichier_tableur": "document-spreadsheet",
+    "document-spreadsheet": "document-spreadsheet",
+    "generer_presentation": "document-slides",
+    "document-slides": "document-slides",
+    "notion_enregistrer": "notion-entry",
+    "notion-entry": "notion-entry",
+}
 
 
 # ─── 1. Déclenchement de workflow via Webhook ────────────────────────────────
@@ -29,7 +39,7 @@ async def trigger_webhook(action_name: str, payload: dict) -> dict:
     """Déclenche un workflow n8n via son Webhook HTTP local (méthode gratuite et illimitée).
 
     Args:
-        action_name: Chemin du webhook configuré dans n8n (ex: "samsung-calendar", "send-email").
+        action_name: Chemin du webhook configuré dans n8n (ex: "document-spreadsheet", "samsung-calendar").
         payload:     Données JSON envoyées au workflow.
 
     Returns:
@@ -55,7 +65,43 @@ async def trigger_webhook(action_name: str, payload: dict) -> dict:
             return {"raw": response.text}
 
 
-# ─── 2. Tool Call Gemini Live : executer_action_externe ──────────────────────
+# ─── 2. Tool Call Gemini Live : executer_action_externe & Helpers Documentaires ───
+
+def build_spreadsheet_payload(nom_fichier: str, colonnes: list[str], lignes: list[list[Any]], description: str = "") -> dict:
+    """Construit et normalise le payload pour le webhook document-spreadsheet."""
+    clean_name = (nom_fichier or "document.xlsx").strip()
+    if not clean_name.lower().endswith(".xlsx"):
+        clean_name += ".xlsx"
+    return {
+        "nom_fichier": clean_name,
+        "colonnes": colonnes or [],
+        "lignes": lignes or [],
+        "description": description or "",
+        "downloads_dir": "/home/opc/jarvis-core/downloads/",
+    }
+
+
+def build_slides_payload(titre: str, theme: str, slides: list[dict[str, Any]]) -> dict:
+    """Construit et normalise le payload pour le webhook document-slides."""
+    clean_titre = (titre or "Presentation").strip()
+    return {
+        "titre": clean_titre,
+        "theme": theme or "stark",
+        "slides": slides or [],
+        "downloads_dir": "/home/opc/jarvis-core/downloads/",
+    }
+
+
+def build_notion_payload(type_entree: str, titre: str, contenu: str, tags: Optional[list[str]] = None) -> dict:
+    """Construit et normalise le payload pour le webhook notion-entry."""
+    return {
+        "type_entree": (type_entree or "note").strip().lower(),
+        "titre": (titre or "Sans titre").strip(),
+        "contenu": (contenu or "").strip(),
+        "tags": tags or [],
+        "source": "jarvis-voice",
+    }
+
 
 async def executer_action_externe(
     action: Optional[str] = None,
@@ -70,16 +116,39 @@ async def executer_action_externe(
     Args:
         action:      Identifiant du workflow n8n (compatibilité rétroactive).
         parametres:  Dictionnaire libre de paramètres extraits par Gemini (optionnel).
-        action_name: Identifiant canonique du workflow n8n (ex: "samsung-calendar", "ajouter-evenement").
+        action_name: Identifiant canonique du workflow n8n (ex: "document-spreadsheet", "notion-entry").
 
     Returns:
         Réponse structurée du workflow n8n, ou dict d'erreur.
     """
-    effective_action = (action_name or action or "").strip()
-    effective_params = parametres if parametres is not None else {}
-
-    if not effective_action:
+    raw_action = (action_name or action or "").strip()
+    if not raw_action:
         return {"status": "error", "error": "Paramètre 'action_name' manquant pour exécuter l'action externe."}
+
+    effective_action = ACTION_WEBHOOK_MAPPING.get(raw_action, raw_action)
+    effective_params = dict(parametres) if isinstance(parametres, dict) else {}
+
+    # Normalisation spécifique des payloads pour les actions documentaires connues
+    if effective_action == "document-spreadsheet":
+        effective_params = build_spreadsheet_payload(
+            nom_fichier=effective_params.get("nom_fichier", "tableur.xlsx"),
+            colonnes=effective_params.get("colonnes", []),
+            lignes=effective_params.get("lignes", []),
+            description=effective_params.get("description", "")
+        )
+    elif effective_action == "document-slides":
+        effective_params = build_slides_payload(
+            titre=effective_params.get("titre", "Presentation"),
+            theme=effective_params.get("theme", "stark"),
+            slides=effective_params.get("slides", [])
+        )
+    elif effective_action == "notion-entry":
+        effective_params = build_notion_payload(
+            type_entree=effective_params.get("type_entree", "note"),
+            titre=effective_params.get("titre", "Note rapide"),
+            contenu=effective_params.get("contenu", ""),
+            tags=effective_params.get("tags", [])
+        )
 
     try:
         result = await trigger_webhook(action_name=effective_action, payload=effective_params)
@@ -99,6 +168,13 @@ async def executer_action_externe(
             "action": effective_action,
             "error": f"Timeout : n8n n'a pas répondu en {_HTTP_TIMEOUT}s. Vérifiez que le workflow est actif.",
         }
+    except httpx.ConnectError:
+        logger.error("[automation] Erreur de connexion à n8n sur '%s'", N8N_BASE_URL)
+        return {
+            "status": "error",
+            "action": effective_action,
+            "error": f"Connexion impossible au serveur n8n ({N8N_BASE_URL}). Assurez-vous que le conteneur Docker n8n est bien démarré.",
+        }
     except Exception as exc:
         logger.error("[automation] Erreur inattendue webhook '%s': %s", effective_action, exc)
         return {"status": "error", "action": effective_action, "error": str(exc)}
@@ -106,18 +182,30 @@ async def executer_action_externe(
 
 # ─── 3. Import de workflow via CLI n8n (Docker exec) ─────────────────────────
 
-def import_workflow_from_json(workflow_dict: dict) -> bool:
-    """Importe un workflow n8n depuis un dictionnaire Python via la CLI Docker.
+def import_workflow_from_json(workflow_dict: Any) -> bool:
+    """Importe un ou plusieurs workflows n8n depuis un dictionnaire Python ou une liste via la CLI Docker.
 
     Mécanisme gratuit : utilise `n8n import:workflow` depuis l'intérieur du conteneur.
     Ne nécessite aucune licence Enterprise ni accès à l'API REST admin.
 
     Args:
-        workflow_dict: Dictionnaire représentant le workflow n8n (format JSON natif).
+        workflow_dict: Dictionnaire ou liste de dictionnaires représentant les workflows n8n (format JSON natif).
 
     Returns:
         True si l'import a réussi, False sinon.
     """
+    if isinstance(workflow_dict, list):
+        all_ok = True
+        for item in workflow_dict:
+            if isinstance(item, dict):
+                if not import_workflow_from_json(item):
+                    all_ok = False
+        return all_ok
+
+    if not isinstance(workflow_dict, dict):
+        logger.error("[automation] Format invalide pour import_workflow_from_json : attendu dict ou list, reçu %s", type(workflow_dict))
+        return False
+
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -226,8 +314,9 @@ AUTOMATION_TOOL_DECLARATION = {
     "name": "executer_action_externe",
     "description": (
         "Déclenche un workflow n8n en arrière-plan pour exécuter une action externe : "
-        "ajouter un événement au calendrier Samsung, envoyer un email, créer une note Notion ou Obsidian, "
-        "envoyer une notification Gotify, synchroniser des contacts, domotique Home Assistant, etc. "
+        "générer un fichier tableur Excel (.xlsx), créer une présentation Google Slides / PowerPoint (.pptx), "
+        "ajouter une note ou tâche dans Notion, synchroniser le calendrier Samsung, envoyer des emails ou messages, "
+        "envoyer une notification Gotify, domotique Home Assistant, etc. "
         "Utilise cette fonction dès qu'une action nécessite un service tiers ou un workflow n8n."
     ),
     "parameters": {
@@ -237,16 +326,18 @@ AUTOMATION_TOOL_DECLARATION = {
                 "type": "string",
                 "description": (
                     "Identifiant ou chemin de l'action / webhook n8n à déclencher. "
-                    "Exemples : 'samsung-calendar', 'send-email', 'notion-note', "
-                    "'gotify-notify', 'deezer-play', 'youtube-search', 'obsidian-note'."
+                    "Exemples : 'document-spreadsheet', 'document-slides', 'notion-entry', "
+                    "'samsung-calendar', 'send-email', 'notion-note', 'gotify-notify', 'obsidian-note'."
                 ),
             },
             "parametres": {
                 "type": "object",
                 "description": (
                     "Paramètres libres optionnels extraits de la conversation vocale et transmis au workflow. "
-                    "Exemple pour 'samsung-calendar': "
-                    '{"titre": "Réunion", "date": "2026-09-26", "heure": "14:00", "duree_minutes": 60}.'
+                    "Exemples : "
+                    "Pour 'document-spreadsheet': {'nom_fichier': 'compta.xlsx', 'colonnes': ['Date', 'Montant'], 'lignes': [['2026-09-26', '150']]}. "
+                    "Pour 'document-slides': {'titre': 'Projet Jarvis', 'theme': 'dark', 'slides': [{'titre_slide': 'Intro', 'points': ['Objectif', 'Scope']}]}. "
+                    "Pour 'notion-entry': {'type_entree': 'note', 'titre': 'Idée', 'contenu': 'Détails...', 'tags': ['Projet']}."
                 ),
             },
         },

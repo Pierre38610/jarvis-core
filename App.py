@@ -45,6 +45,9 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
+_downloads_dir = getattr(config, "DOWNLOADS_DIR", os.path.join(config.BASE_DIR, "downloads"))
+os.makedirs(_downloads_dir, exist_ok=True)
+app.mount("/downloads", StaticFiles(directory=_downloads_dir), name="downloads")
 
 # ─── Enregistrement de tous les routeurs ─────────────────────────────────────
 app.include_router(voice.router)

@@ -1,0 +1,284 @@
+[
+  {
+    "id": "jarvis-doc-spreadsheet",
+    "name": "Jarvis - Document Spreadsheet",
+    "active": true,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "document-spreadsheet",
+          "authentication": "none",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "id": "wh-spreadsheet-1",
+        "name": "Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [240, 300],
+        "webhookId": "jarvis-document-spreadsheet"
+      },
+      {
+        "parameters": {
+          "jsCode": "const body = $input.first().json.body || $input.first().json || {};\nconst nomFichier = (body.nom_fichier || 'tableur_jarvis.xlsx').trim();\nconst colonnes = Array.isArray(body.colonnes) ? body.colonnes : [];\nconst lignes = Array.isArray(body.lignes) ? body.lignes : [];\n\nconst items = [];\nif (lignes.length > 0) {\n  for (const row of lignes) {\n    const rowObj = {};\n    colonnes.forEach((col, idx) => {\n      rowObj[col] = (Array.isArray(row) && row[idx] !== undefined) ? row[idx] : '';\n    });\n    items.push({ json: rowObj });\n  }\n} else {\n  const emptyObj = {};\n  colonnes.forEach(c => emptyObj[c] = '');\n  items.push({ json: emptyObj });\n}\n\nreturn items;"
+        },
+        "id": "code-spreadsheet-data-1",
+        "name": "Formater Données Tableur",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [460, 300]
+      },
+      {
+        "parameters": {
+          "operation": "fromData",
+          "fileFormat": "xlsx",
+          "binaryPropertyName": "data",
+          "options": {
+            "sheetName": "Données Jarvis"
+          }
+        },
+        "id": "spreadsheet-file-1",
+        "name": "Spreadsheet File",
+        "type": "n8n-nodes-base.spreadsheetFile",
+        "typeVersion": 2,
+        "position": [680, 300]
+      },
+      {
+        "parameters": {
+          "fileName": "={{ '/home/opc/jarvis-core/downloads/' + ($node['Webhook'].json.body?.nom_fichier || $node['Webhook'].json.nom_fichier || 'tableur_jarvis.xlsx') }}",
+          "dataPropertyName": "data",
+          "options": {}
+        },
+        "id": "write-binary-file-1",
+        "name": "Enregistrer Fichier Excel",
+        "type": "n8n-nodes-base.writeBinaryFile",
+        "typeVersion": 1,
+        "position": [900, 300]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ { status: 'success', reply: 'Le fichier tableur a été généré avec succès.', nom_fichier: ($node['Webhook'].json.body?.nom_fichier || $node['Webhook'].json.nom_fichier || 'tableur_jarvis.xlsx'), download_url: '/downloads/' + ($node['Webhook'].json.body?.nom_fichier || $node['Webhook'].json.nom_fichier || 'tableur_jarvis.xlsx'), local_path: '/home/opc/jarvis-core/downloads/' + ($node['Webhook'].json.body?.nom_fichier || $node['Webhook'].json.nom_fichier || 'tableur_jarvis.xlsx'), timestamp: new Date().toISOString() } }}",
+          "options": {}
+        },
+        "id": "respond-spreadsheet-1",
+        "name": "Respond to Webhook",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [1120, 300]
+      }
+    ],
+    "connections": {
+      "Webhook": {
+        "main": [
+          [{ "node": "Formater Données Tableur", "type": "main", "index": 0 }]
+        ]
+      },
+      "Formater Données Tableur": {
+        "main": [
+          [{ "node": "Spreadsheet File", "type": "main", "index": 0 }]
+        ]
+      },
+      "Spreadsheet File": {
+        "main": [
+          [{ "node": "Enregistrer Fichier Excel", "type": "main", "index": 0 }]
+        ]
+      },
+      "Enregistrer Fichier Excel": {
+        "main": [
+          [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    },
+    "tags": ["jarvis", "documents", "excel"]
+  },
+  {
+    "id": "jarvis-doc-slides",
+    "name": "Jarvis - Document Slides",
+    "active": true,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "document-slides",
+          "authentication": "none",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "id": "wh-slides-1",
+        "name": "Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [240, 300],
+        "webhookId": "jarvis-document-slides"
+      },
+      {
+        "parameters": {
+          "jsCode": "const body = $input.first().json.body || $input.first().json || {};\nconst titre = (body.titre || 'Présentation Jarvis').trim();\nconst theme = (body.theme || 'stark').trim();\nconst slides = Array.isArray(body.slides) ? body.slides : [];\nconst cleanSlug = titre.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase() || 'presentation';\n\nreturn [{\n  json: {\n    titre: titre,\n    theme: theme,\n    slides: slides,\n    slides_count: slides.length,\n    clean_slug: cleanSlug,\n    filename: cleanSlug + '.pptx',\n    downloads_path: '/home/opc/jarvis-core/downloads/' + cleanSlug + '.pptx',\n    download_url: '/downloads/' + cleanSlug + '.pptx'\n  }\n}];"
+        },
+        "id": "code-slides-prep-1",
+        "name": "Préparer Présentation",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [460, 300]
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "title": "={{ $json.titre }}"
+        },
+        "id": "google-slides-1",
+        "name": "Google Slides",
+        "type": "n8n-nodes-base.googleSlides",
+        "typeVersion": 2,
+        "position": [680, 300]
+      },
+      {
+        "parameters": {
+          "jsCode": "const prep = $node['Préparer Présentation'].json;\nconst slidesRes = $input.first().json;\n\nreturn [{\n  json: {\n    status: 'success',\n    reply: 'La présentation ' + prep.titre + ' a été créée avec succès.',\n    titre: prep.titre,\n    theme: prep.theme,\n    slides_count: prep.slides_count,\n    presentation_id: slidesRes.id || slidesRes.presentationId || ('pres_' + Date.now()),\n    presentation_url: slidesRes.revisionId ? ('https://docs.google.com/presentation/d/' + (slidesRes.id || slidesRes.presentationId)) : '',\n    download_url: prep.download_url,\n    filename: prep.filename,\n    timestamp: new Date().toISOString()\n  }\n}];"
+        },
+        "id": "code-slides-export-1",
+        "name": "Finaliser Export Slides",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [900, 300]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ $json }}",
+          "options": {}
+        },
+        "id": "respond-slides-1",
+        "name": "Respond to Webhook",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [1120, 300]
+      }
+    ],
+    "connections": {
+      "Webhook": {
+        "main": [
+          [{ "node": "Préparer Présentation", "type": "main", "index": 0 }]
+        ]
+      },
+      "Préparer Présentation": {
+        "main": [
+          [{ "node": "Google Slides", "type": "main", "index": 0 }]
+        ]
+      },
+      "Google Slides": {
+        "main": [
+          [{ "node": "Finaliser Export Slides", "type": "main", "index": 0 }]
+        ]
+      },
+      "Finaliser Export Slides": {
+        "main": [
+          [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    },
+    "tags": ["jarvis", "documents", "slides"]
+  },
+  {
+    "id": "jarvis-notion-entry",
+    "name": "Jarvis - Notion Entry",
+    "active": true,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "notion-entry",
+          "authentication": "none",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "id": "wh-notion-1",
+        "name": "Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [240, 300],
+        "webhookId": "jarvis-notion-entry"
+      },
+      {
+        "parameters": {
+          "jsCode": "const body = $input.first().json.body || $input.first().json || {};\nconst typeEntree = (body.type_entree || 'note').trim().toLowerCase();\nconst titre = (body.titre || 'Note rapide').trim();\nconst contenu = (body.contenu || '').trim();\nconst tags = Array.isArray(body.tags) ? body.tags : [];\n\nreturn [{\n  json: {\n    type_entree: typeEntree,\n    titre: titre,\n    contenu: contenu,\n    tags: tags,\n    database_id: body.database_id || 'jarvis_default_notes_db',\n    created_at: new Date().toISOString()\n  }\n}];"
+        },
+        "id": "code-notion-prep-1",
+        "name": "Formater Entrée Notion",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [460, 300]
+      },
+      {
+        "parameters": {
+          "resource": "databasePage",
+          "operation": "create",
+          "databaseId": "={{ $json.database_id }}",
+          "title": "={{ $json.titre }}",
+          "options": {}
+        },
+        "id": "notion-node-1",
+        "name": "Notion",
+        "type": "n8n-nodes-base.notion",
+        "typeVersion": 2,
+        "position": [680, 300]
+      },
+      {
+        "parameters": {
+          "jsCode": "const prep = $node['Formater Entrée Notion'].json;\nconst notionRes = $input.first().json;\n\nreturn [{\n  json: {\n    status: 'success',\n    reply: 'L entrée ' + prep.titre + ' (' + prep.type_entree + ') a été enregistrée dans Notion.',\n    titre: prep.titre,\n    type_entree: prep.type_entree,\n    notion_id: notionRes.id || ('notion_item_' + Date.now()),\n    notion_url: notionRes.url || 'https://notion.so/jarvis-notes',\n    tags: prep.tags,\n    timestamp: new Date().toISOString()\n  }\n}];"
+        },
+        "id": "code-notion-resp-1",
+        "name": "Finaliser Réponse Notion",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [900, 300]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ $json }}",
+          "options": {}
+        },
+        "id": "respond-notion-1",
+        "name": "Respond to Webhook",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [1120, 300]
+      }
+    ],
+    "connections": {
+      "Webhook": {
+        "main": [
+          [{ "node": "Formater Entrée Notion", "type": "main", "index": 0 }]
+        ]
+      },
+      "Formater Entrée Notion": {
+        "main": [
+          [{ "node": "Notion", "type": "main", "index": 0 }]
+        ]
+      },
+      "Notion": {
+        "main": [
+          [{ "node": "Finaliser Réponse Notion", "type": "main", "index": 0 }]
+        ]
+      },
+      "Finaliser Réponse Notion": {
+        "main": [
+          [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    },
+    "tags": ["jarvis", "notion", "notes", "todo"]
+  }
+]

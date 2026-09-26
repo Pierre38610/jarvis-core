@@ -430,7 +430,8 @@ def get_tools_list() -> list[types.Tool]:
                                 type="STRING",
                                 description=(
                                     "Nom ou identifiant de l'action / webhook n8n à déclencher. "
-                                    "Exemples : 'samsung-calendar', 'notion-note', 'gotify-notify', 'send-email', 'obsidian-note'."
+                                    "Exemples : 'document-spreadsheet', 'document-slides', 'notion-entry', "
+                                    "'samsung-calendar', 'notion-note', 'gotify-notify', 'send-email', 'obsidian-note'."
                                 )
                             ),
                             "parametres": types.Schema(
@@ -442,6 +443,112 @@ def get_tools_list() -> list[types.Tool]:
                             ),
                         },
                         required=["action_name"]
+                    )
+                ),
+                types.FunctionDeclaration(
+                    name="generer_fichier_tableur",
+                    description=(
+                        "GÉNÉRATION DE TABLEUR EXCEL (.xlsx) : "
+                        "Convertit des listes et structures de données JSON (comptabilité, budgets, benchmarks, inventaires, listes) "
+                        "en un fichier tableur Excel (.xlsx) propre et téléchargeable via n8n. "
+                        "L'opération s'exécute en arrière-plan et le fichier est déposé dans /downloads/."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "nom_fichier": types.Schema(
+                                type="STRING",
+                                description="Nom du fichier Excel à créer (ex: 'budget_2026.xlsx', 'benchmark_modeles.xlsx')"
+                            ),
+                            "colonnes": types.Schema(
+                                type="ARRAY",
+                                items=types.Schema(type="STRING"),
+                                description="Liste des noms des colonnes du tableau"
+                            ),
+                            "lignes": types.Schema(
+                                type="ARRAY",
+                                items=types.Schema(
+                                    type="ARRAY",
+                                    items=types.Schema(type="STRING"),
+                                    description="Une ligne de données contenant les valeurs de chaque cellule"
+                                ),
+                                description="Liste des lignes du tableau"
+                            ),
+                            "description": types.Schema(
+                                type="STRING",
+                                description="Description optionnelle du contenu ou contexte du tableau"
+                            ),
+                        },
+                        required=["nom_fichier", "colonnes", "lignes"]
+                    )
+                ),
+                types.FunctionDeclaration(
+                    name="generer_presentation",
+                    description=(
+                        "GÉNÉRATION DE PRÉSENTATION GOOGLE SLIDES / POWERPOINT (.pptx) : "
+                        "Crée une présentation structurée avec diapositives (titres, puces, notes d'orateur) via l'API Google Slides "
+                        "ou template n8n. Exportable au format PPTX/PDF et accessible au téléchargement dans /downloads/."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "titre": types.Schema(
+                                type="STRING",
+                                description="Titre général de la présentation"
+                            ),
+                            "theme": types.Schema(
+                                type="STRING",
+                                description="Thème ou ambiance visuelle de la présentation (ex: 'stark', 'dark', 'corporate', 'minimal', 'light')"
+                            ),
+                            "slides": types.Schema(
+                                type="ARRAY",
+                                items=types.Schema(
+                                    type="OBJECT",
+                                    properties={
+                                        "titre_slide": types.Schema(type="STRING", description="Titre de la diapositive"),
+                                        "points": types.Schema(type="ARRAY", items=types.Schema(type="STRING"), description="Liste des points clés ou puces"),
+                                        "notes": types.Schema(type="STRING", description="Notes d'orateur ou texte explicatif optionnel"),
+                                    },
+                                    required=["titre_slide", "points"]
+                                ),
+                                description="Liste ordonnée des diapositives à créer"
+                            ),
+                        },
+                        required=["titre", "theme", "slides"]
+                    )
+                ),
+                types.FunctionDeclaration(
+                    name="notion_enregistrer",
+                    description=(
+                        "PRISE DE NOTES & TO-DO NOTION : "
+                        "Ajoute une entrée structurée (note rapide, item de todo-list, fiche de veille, compte-rendu) "
+                        "dans les bases de données et pages Notion de Pierre via n8n."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "type_entree": types.Schema(
+                                type="STRING",
+                                description="Type d'entrée Notion : 'note' (note rapide), 'todo' (tâche to-do list), 'veille' (fiche de veille/techno), 'projet' (fiche projet)"
+                            ),
+                            "titre": types.Schema(
+                                type="STRING",
+                                description="Titre de la note ou intitulé de la tâche"
+                            ),
+                            "contenu": types.Schema(
+                                type="STRING",
+                                description="Contenu textuel détaillé, description ou étapes"
+                            ),
+                            "tags": types.Schema(
+                                type="ARRAY",
+                                items=types.Schema(type="STRING"),
+                                description="Liste d'étiquettes ou tags associés (ex: ['IA', 'Urgent', 'Jarvis'])"
+                            ),
+                        },
+                        required=["type_entree", "titre", "contenu"]
                     )
                 ),
             ]

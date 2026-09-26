@@ -861,6 +861,297 @@ async def dispatch_tool(
             )
         }
 
+    # ─── generer_fichier_tableur ──────────────────────────────────────────────
+    elif name == "generer_fichier_tableur":
+        nom_fichier = (args.get("nom_fichier") or "document.xlsx").strip()
+        if not nom_fichier.lower().endswith(".xlsx"):
+            nom_fichier += ".xlsx"
+        colonnes = args.get("colonnes") or []
+        lignes = args.get("lignes") or []
+        description = args.get("description") or ""
+
+        supervision_service.start_action(
+            "generer_fichier_tableur",
+            f"Tableur Excel : {nom_fichier}",
+            "generer_fichier_tableur",
+            f"Génération tableur '{nom_fichier}' ({len(colonnes)} colonnes, {len(lignes)} lignes)",
+            "n8n Community",
+            api_type="free",
+            api_label="Local n8n",
+            cost_est="0.00 $"
+        )
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({
+            "type": "jarvis_announcement",
+            "text": f"Génération du tableur Excel '{nom_fichier}' via n8n...",
+            "voice": False
+        }))
+        await websocket.send_text(json.dumps({
+            "type": "status",
+            "state": "document",
+            "msg": f"Génération Excel — {nom_fichier}...",
+            "task": f"Tableur : {nom_fichier}",
+            "engine": "n8n Community",
+            "model": "Spreadsheet Automation",
+            "api_type": "free",
+            "api_label": "Local n8n"
+        }))
+
+        _filename = nom_fichier
+        _cols = colonnes
+        _rows = lignes
+        _desc = description
+        _sess = session
+
+        async def _run_tableur_bg(_fn=_filename, _c=_cols, _r=_rows, _d=_desc, _s=_sess):
+            try:
+                from services.automation import executer_action_externe as n8n_exec
+                payload = {
+                    "nom_fichier": _fn,
+                    "colonnes": _c,
+                    "lignes": _r,
+                    "description": _d,
+                }
+                res = await n8n_exec(action_name="document-spreadsheet", parametres=payload)
+                status_res = res.get("status", "completed")
+                is_ok = (status_res == "success")
+                supervision_service.complete_action(
+                    "generer_fichier_tableur",
+                    status="completed" if is_ok else "error",
+                    summary=f"Excel {_fn} : {status_res}"
+                )
+                await broadcast_supervision()
+                if _s:
+                    if is_ok:
+                        download_url = f"/downloads/{_fn}"
+                        inject_text = (
+                            f"[TABLEUR EXCEL GÉNÉRÉ AVEC SUCCÈS] Le fichier Excel '{_fn}' a été créé avec succès par n8n. "
+                            f"Lien de téléchargement : {download_url}. "
+                            f"Informe calmement et brièvement Pierre avec ta voix Aoede que son tableur est prêt et accessible dans ses téléchargements."
+                        )
+                    else:
+                        err = res.get("error", "Erreur lors de la création du fichier")
+                        inject_text = (
+                            f"[GÉNÉRATION TABLEUR ÉCHEC] Impossible de créer le tableur '{_fn}' ({err}). "
+                            f"Informe Pierre avec ta voix Aoede d'un ton naturel et bienveillant."
+                        )
+                    try:
+                        await _s.send_client_content(
+                            turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_text)]),
+                            turn_complete=True
+                        )
+                    except Exception as inj_e:
+                        print(f"[Tableur BG] Injection Live error: {inj_e}")
+            except Exception as bg_err:
+                print(f"[Tableur BG] Erreur: {bg_err}")
+                supervision_service.complete_action("generer_fichier_tableur", status="error", summary=str(bg_err))
+                await broadcast_supervision()
+
+        asyncio.create_task(_run_tableur_bg())
+
+        return {
+            "status": "lance_en_arriere_plan",
+            "action": "generer_fichier_tableur",
+            "nom_fichier": nom_fichier,
+            "instruction_to_jarvis": (
+                f"La génération du tableur Excel '{nom_fichier}' est lancée via n8n en tâche de fond. "
+                f"Confirme immédiatement à Pierre avec ta voix Aoede d'un ton complice et naturel "
+                f"que tu prépares son fichier Excel '{nom_fichier}'."
+            )
+        }
+
+    # ─── generer_presentation ─────────────────────────────────────────────────
+    elif name == "generer_presentation":
+        titre = (args.get("titre") or "Présentation").strip()
+        theme = (args.get("theme") or "stark").strip()
+        slides = args.get("slides") or []
+
+        supervision_service.start_action(
+            "generer_presentation",
+            f"Présentation : {titre}",
+            "generer_presentation",
+            f"Création présentation '{titre}' ({len(slides)} slides, thème: {theme})",
+            "n8n Community",
+            api_type="free",
+            api_label="Local n8n",
+            cost_est="0.00 $"
+        )
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({
+            "type": "jarvis_announcement",
+            "text": f"Génération de la présentation '{titre}' via n8n...",
+            "voice": False
+        }))
+        await websocket.send_text(json.dumps({
+            "type": "status",
+            "state": "document",
+            "msg": f"Génération Présentation — {titre}...",
+            "task": f"Slides : {titre}",
+            "engine": "n8n Community",
+            "model": "Slides Automation",
+            "api_type": "free",
+            "api_label": "Local n8n"
+        }))
+
+        _titre = titre
+        _theme = theme
+        _slides = slides
+        _sess = session
+
+        async def _run_slides_bg(_t=_titre, _th=_theme, _sl=_slides, _s=_sess):
+            try:
+                from services.automation import executer_action_externe as n8n_exec
+                payload = {
+                    "titre": _t,
+                    "theme": _th,
+                    "slides": _sl,
+                }
+                res = await n8n_exec(action_name="document-slides", parametres=payload)
+                status_res = res.get("status", "completed")
+                is_ok = (status_res == "success")
+                supervision_service.complete_action(
+                    "generer_presentation",
+                    status="completed" if is_ok else "error",
+                    summary=f"Slides {_t} : {status_res}"
+                )
+                await broadcast_supervision()
+                if _s:
+                    clean_file_slug = "".join(c for c in _t if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_") or "presentation"
+                    download_url = f"/downloads/{clean_file_slug}.pptx"
+                    if is_ok:
+                        inject_text = (
+                            f"[PRÉSENTATION CRÉÉE AVEC SUCCÈS] La présentation '{_t}' ({len(_sl)} diapositives, style {_th}) a été générée via n8n. "
+                            f"Lien de téléchargement : {download_url}. "
+                            f"Annonce-le fièrement et naturellement à Pierre avec ta voix Aoede."
+                        )
+                    else:
+                        err = res.get("error", "Erreur lors de la création de la présentation")
+                        inject_text = (
+                            f"[GÉNÉRATION PRÉSENTATION ÉCHEC] Impossible de créer la présentation '{_t}' ({err}). "
+                            f"Informe Pierre avec ta voix Aoede."
+                        )
+                    try:
+                        await _s.send_client_content(
+                            turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_text)]),
+                            turn_complete=True
+                        )
+                    except Exception as inj_e:
+                        print(f"[Slides BG] Injection Live error: {inj_e}")
+            except Exception as bg_err:
+                print(f"[Slides BG] Erreur: {bg_err}")
+                supervision_service.complete_action("generer_presentation", status="error", summary=str(bg_err))
+                await broadcast_supervision()
+
+        asyncio.create_task(_run_slides_bg())
+
+        return {
+            "status": "lance_en_arriere_plan",
+            "action": "generer_presentation",
+            "titre": titre,
+            "slides_count": len(slides),
+            "instruction_to_jarvis": (
+                f"La création de la présentation '{titre}' ({len(slides)} slides) est lancée via n8n en tâche de fond. "
+                f"Confirme immédiatement à Pierre avec ta voix Aoede d'un ton complice et dynamique "
+                f"que tu prépares sa présentation '{titre}'."
+            )
+        }
+
+    # ─── notion_enregistrer ───────────────────────────────────────────────────
+    elif name == "notion_enregistrer":
+        type_entree = (args.get("type_entree") or "note").strip()
+        titre = (args.get("titre") or "Note rapide").strip()
+        contenu = (args.get("contenu") or "").strip()
+        tags = args.get("tags") or []
+
+        supervision_service.start_action(
+            "notion_enregistrer",
+            f"Notion : {titre}",
+            "notion_enregistrer",
+            f"Enregistrement Notion [{type_entree}] '{titre}'",
+            "n8n Community",
+            api_type="free",
+            api_label="Local n8n",
+            cost_est="0.00 $"
+        )
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({
+            "type": "jarvis_announcement",
+            "text": f"Enregistrement de l'entrée '{titre}' dans Notion...",
+            "voice": False
+        }))
+        await websocket.send_text(json.dumps({
+            "type": "status",
+            "state": "document",
+            "msg": f"Notion ({type_entree}) — {titre}...",
+            "task": f"Notion : {titre}",
+            "engine": "n8n Community",
+            "model": "Notion Automation",
+            "api_type": "free",
+            "api_label": "Local n8n"
+        }))
+
+        _te = type_entree
+        _titre = titre
+        _cont = contenu
+        _tags = tags
+        _sess = session
+
+        async def _run_notion_bg(_t_ent=_te, _t=_titre, _c=_cont, _tg=_tags, _s=_sess):
+            try:
+                from services.automation import executer_action_externe as n8n_exec
+                payload = {
+                    "type_entree": _t_ent,
+                    "titre": _t,
+                    "contenu": _c,
+                    "tags": _tg,
+                }
+                res = await n8n_exec(action_name="notion-entry", parametres=payload)
+                status_res = res.get("status", "completed")
+                is_ok = (status_res == "success")
+                supervision_service.complete_action(
+                    "notion_enregistrer",
+                    status="completed" if is_ok else "error",
+                    summary=f"Notion {_t_ent} {_t} : {status_res}"
+                )
+                await broadcast_supervision()
+                if _s:
+                    if is_ok:
+                        inject_text = (
+                            f"[ENTRÉE NOTION ENREGISTRÉE AVEC SUCCÈS] L'entrée '{_t}' (type: {_t_ent}) a bien été ajoutée dans l'espace Notion de Pierre. "
+                            f"Confirme-lui calmement et naturellement à voix haute avec ta voix Aoede que sa note est enregistrée."
+                        )
+                    else:
+                        err = res.get("error", "Erreur lors de l'enregistrement dans Notion")
+                        inject_text = (
+                            f"[ENREGISTREMENT NOTION ÉCHEC] Impossible d'enregistrer l'entrée '{_t}' dans Notion ({err}). "
+                            f"Informe Pierre avec ta voix Aoede."
+                        )
+                    try:
+                        await _s.send_client_content(
+                            turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_text)]),
+                            turn_complete=True
+                        )
+                    except Exception as inj_e:
+                        print(f"[Notion BG] Injection Live error: {inj_e}")
+            except Exception as bg_err:
+                print(f"[Notion BG] Erreur: {bg_err}")
+                supervision_service.complete_action("notion_enregistrer", status="error", summary=str(bg_err))
+                await broadcast_supervision()
+
+        asyncio.create_task(_run_notion_bg())
+
+        return {
+            "status": "lance_en_arriere_plan",
+            "action": "notion_enregistrer",
+            "type_entree": type_entree,
+            "titre": titre,
+            "instruction_to_jarvis": (
+                f"L'enregistrement de l'entrée '{titre}' ({type_entree}) dans Notion est lancé en tâche de fond via n8n. "
+                f"Confirme immédiatement à Pierre avec ta voix Aoede d'un ton complice et naturel "
+                f"que tu enregistres cela dans son Notion."
+            )
+        }
+
     # ─── Outil inconnu ─────────────────────────────────────────────────────────
     else:
         return {"status": "error", "message": f"Outil inconnu : {name}"}

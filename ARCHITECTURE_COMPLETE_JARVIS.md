@@ -330,15 +330,30 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
   - Énumération des fenêtres ouvertes sur le PC Windows (via `EnumWindows` sous Windows).
   - Détection et agrégation des erreurs consoles et exceptions Python (`ConsoleMonitor`) avec diagnostic automatisé et suggestions de réparation.
 
-### 7.8. Automatisation des Processus Externes (n8n Community)
-- **Fichiers** : `services/automation.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `docs/N8N_GUIDE.md`.
-- **Outil exposé** : `executer_action_externe`.
+### 7.8. Automatisation des Processus Externes & Pôle Documentaire (n8n Community)
+- **Fichiers** : `services/automation.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `docs/N8N_GUIDE.md`, `docs/n8n_workflows/documents_suite.json`.
+- **Outils exposés** : `executer_action_externe`, `generer_fichier_tableur`, `generer_presentation`, `notion_enregistrer`.
+- **Pôle Documentaire & Prise de Notes Intégré** :
+  1. **Génération de tableurs Excel (.xlsx) (`generer_fichier_tableur`)** :
+     - Convertit des listes JSON de données (comptabilité, budgets, benchmarks, listes de suivi) en classeurs Excel `.xlsx` propres.
+     - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/document-spreadsheet`.
+     - Nœuds n8n : Webhook -> Formater Données -> Spreadsheet File (binaire xlsx) -> Enregistrer dans `/home/opc/jarvis-core/downloads/` -> Respond to Webhook.
+     - Accès immédiat au fichier généré via le point de montage `/downloads/<nom_fichier>`.
+  2. **Génération de présentations Google Slides / PowerPoint (.pptx) (`generer_presentation`)** :
+     - Construit des présentations ordonnées avec diapositives, titres, puces et notes d'orateur selon le thème souhaité (`stark`, `dark`, `corporate`, `minimal`).
+     - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/document-slides`.
+     - Nœuds n8n : Webhook -> Préparer Présentation -> Google Slides (création) -> Finaliser Export PPTX -> Respond to Webhook.
+     - Lien de téléchargement mis à disposition dans `/downloads/<slug>.pptx`.
+  3. **Prise de notes et to-do Notion (`notion_enregistrer`)** :
+     - Ajoute des entrées structurées (notes rapides `note`, items de to-do list `todo`, fiches de veille `veille`, fiches projet `projet`) avec étiquettes dans Notion.
+     - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/notion-entry`.
+     - Nœuds n8n : Webhook -> Formater Entrée Notion -> Notion Database Page Create -> Respond to Webhook.
 - **Passerelle vers n8n & Function Calling Gemini Live** :
-  - **Déclaration formelle** : Intégré dans `core/tools/declarations.py` avec `behavior=types.Behavior.NON_BLOCKING`, prenant `action_name` (string requis) et `parametres` (object optionnel).
-  - **Exécution asynchrone non-bloquante** : Le dispatcheur (`core/tools/dispatcher.py`) renvoie instantanément `{"status": "action_n8n_lancee"}` pour que Jarvis confirme immédiatement à l'oral avec sa voix Aoede le déclenchement du workflow, puis exécute le webhook HTTP local (`/webhook/{action_name}`) en tâche de fond (`asyncio.create_task`).
-  - **Retour vocal final** : À la fin de l'action n8n, le résultat est injecté dans la session Gemini Live (`send_client_content`) pour restitution orale fluide si pertinent.
-  - Importation automatique de workflows JSON via la CLI Docker (`docker exec jarvis_n8n n8n import:workflow`) sans licence payante.
-  - Connecteurs prêts pour l'intégration de services tiers (Samsung Calendar, Notion, WhatsApp, domotique Home Assistant, etc.).
+  - **Déclaration formelle** : Intégrés dans `core/tools/declarations.py` avec `behavior=types.Behavior.NON_BLOCKING`.
+  - **Exécution asynchrone non-bloquante** : Le dispatcheur (`core/tools/dispatcher.py`) renvoie instantanément un accusé de réception pour que Jarvis confirme immédiatement à l'oral avec sa voix Aoede le lancement du travail, puis délègue la requête au webhook HTTP local en tâche de fond (`asyncio.create_task`).
+  - **Retour vocal final** : À la fin de l'action n8n, le résultat (lien de téléchargement dans `/downloads/` ou confirmation d'enregistrement) est injecté dans la session Gemini Live (`send_client_content`) pour restitution orale fluide en français naturel.
+  - **Résilience absolue** : Gestion systématique des exceptions (timeout 30s, erreurs de connexion, JSON malformé) évitant tout crash du canal vocal principal.
+  - Workflows n8n exportables et packagés dans `docs/n8n_workflows/documents_suite.json`.
 
 ---
 
@@ -373,6 +388,7 @@ Le serveur principal `App.py` est allégé (< 190 lignes) et instancie l'applica
 | **GET** | `/api/emails/inbox` | Lecture des e-mails reçus via IMAP | Token |
 | **GET** | `/api/emails/outbox` | Liste des courriels archivés dans le dossier sortant | Token |
 | **GET** | `/api/downloads` | Liste des fichiers téléchargés sur le serveur | Token |
+| **GET** | `/downloads/*` | Téléchargement direct des fichiers générés (tableurs .xlsx, présentations .pptx) | Ouvert |
 | **POST** | `/api/media/deezer/control` | Contrôle direct de Deezer (play, pause, next, volume) | Token |
 | **GET** | `/api/media/deezer/status` | Retourne l'état du lecteur Deezer (titre, artiste, pochette) | Token |
 | **GET** | `/api/media/deezer/userscript` | Fournit le script Tampermonkey pour le navigateur | Ouvert |
@@ -465,32 +481,6 @@ L'interface de Jarvis a été développée selon des standards graphiques d'insp
 3. **Exécution Asynchrone Non-Bloquante** : La capacité de Jarvis à répondre immédiatement à la voix tout en lançant des développements lourds en arrière-plan procure une expérience utilisateur d'une fluidité exceptionnelle.
 4. **Garde-Fous Économiques et de Sécurité** : Le principe d'impossibilité physique sur la clé payante et l'interdiction absolue de procéder au paiement automatique dans les paniers e-commerce rendent le système sûr et prévisible.
 
-### 10.2. Dette Technique & Points d'Attention
-1. **~~Monolithisme de `App.py`~~ [RÉSOLU]** :
-   - Le fichier principal totalisait initialement plus de **4 200 lignes de code**, regroupant à la fois les déclarations d'outils, la gestion des WebSockets, les routes REST, la configuration des middlewares et la logique métier.
-   - *Statut* : **Entièrement résolu**. `App.py` est ramené à < 190 lignes, servant uniquement de point d'entrée, d'orchestration de cycle de vie et d'assemblage des routeurs modulaires sous `routers/` et `core/`.
-
-2. **~~Couplage et Redondance des Couches Mémoires~~ [RÉSOLU]** :
-   - Coexistence de deux services mémoires distincts (`MemoryService` basé sur SQLite et `VectorMemoryService` basé sur PostgreSQL + Qdrant). Certaines informations de profil se trouvaient en double.
-   - *Statut* : **Entièrement résolu**. L'accès à la mémoire est unifié sous une façade unique (`UnifiedMemoryManager`) assurant la déduplication et la synchronisation asynchrone entre la base relationnelle et la base vectorielle.
-3. **~~Sécurité des Tokens d'Appareils~~ [RÉSOLU]** :
-   - Les tokens des appareils autorisés étaient initialement stockés en texte clair dans un fichier JSON plat (`authorized_devices.json`) sans signature cryptographique ni horodatage d'expiration strict.
-   - *Statut* : **Entièrement résolu**. Authentification migrée vers des tokens signés JWT (HS256) gérés par `services/auth_service.py` avec clé secrète forte `JWT_SECRET_KEY` (.env auto-générée), révocation ultra-rapide en cache Redis (`jarvis:revoked_tokens:{token_id}` et `{device_id}`) avec fallback mémoire local, tickets de pairage QR Code à usage unique avec TTL court (5 minutes) dans Redis, et migration transparente des sessions existantes sans déconnexion.
-4. **~~Intégration Complète du Module d'Automatisation (`services/automation.py`)~~ [RÉSOLU]** :
-   - Le module n8n est formellement raccordé au function calling Gemini Live (`core/tools/declarations.py` et `core/tools/dispatcher.py`) via l'outil `executer_action_externe(action_name, parametres)`.
-   - *Statut* : **Entièrement résolu**. Déclenchement non-bloquant avec réponse orale instantanée (`{"status": "action_n8n_lancee"}`), exécution du webhook n8n en tâche de fond (`asyncio.create_task`), et compte-rendu vocal fluide par Aoede dès complétion.
-5. **~~Gestion Headless du Navigateur sur VPS & Découplage PC Local~~ [RÉSOLU]** :
-   - Clarification et isolation du cycle de navigation entre le Cloud VPS et le PC Windows physique de Pierre.
-   - *Statut* : **Entièrement résolu**. Routage transparent via le flag `execution_target: Literal["vps_headless", "local_gui"]` dans `services/browser_service.py` : scraping, lecture d'articles, recherche DuckDuckGo et téléchargement d'EPUB sur Anna's Archive exécutés 100% en headless Playwright sur le VPS Cloud sans solliciter le PC local ; les sessions personnelles et la préparation de panier (`prepare_web_cart_or_checkout`) restant déléguées via WebSocket `/ws/local-agent` à `jarvis_local_agent.py` sur le PC de bureau.
-6. **~~Couverture de Tests Automatisés & Résilience CI/Offline~~ [RÉSOLU]** :
-   - Les tests initiaux (`tests/run_all_tests.py`) dépendaient lourdement du réseau externe, des navigateurs installés et des services physiques externes.
-   - *Statut* : **Entièrement résolu**. Mise en place d'une suite exhaustive de 59 tests unitaires sous `tests/unit/` (`pytest`, `pytest-asyncio`, `unittest.mock`) garantissant une isolation totale (zéro appel réseau réel, zéro coût d'API) :
-     - `test_cache_service.py` : Sérialisation, gestion du TTL, et basculement automatique sur la mémoire vive (`_memory_fallback`) lors de pannes Redis simulées.
-     - `test_unified_memory.py` : Déduplication des données profil, synchronisation asynchrone vectorielle Qdrant et repli gracieux sur SQLite textuel.
-     - `test_auth_jwt.py` : Génération, décodage, expiration et révocation instantanée des tokens JWT (HS256) avec blacklist et migration transparente des anciens tokens.
-     - `test_automation_n8n.py` : Appels HTTP webhooks n8n (réponses 200, gestion des erreurs 500 et timeouts via `httpx.AsyncClient` mocké) et import Docker CLI.
-     - `test_paid_key_gate.py` : Preuve formelle et exhaustive de l'impossibilité physique d'émettre des requêtes payantes quand le verrou `paid_key_authorized` est désactivé.
-     - `tests/conftest.py` & `pytest.ini` : Fixtures partagées (`TestClient`, mocks d'événements Gemini Live, simulation des clés API, garde-fou anti-réseau `guard_no_external_network` interdisant les sockets externes). Mode `asyncio_mode = auto`.
 
 ---
 
