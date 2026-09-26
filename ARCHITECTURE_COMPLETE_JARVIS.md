@@ -262,7 +262,11 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
 
 ### 7.2. Navigation Web Autonome & E-Commerce (Browser-Use / Playwright)
 - **Fichier** : `services/browser_service.py`.
-- **Outils exposés** : `search_web`, `run_browser_task`, `interact_web_page`, `prepare_web_cart_or_checkout`, `open_user_browser`, `set_browser_link`.
+- **Outils exposés** : `search_web`, `run_browser_task`, `interact_web_page`, `prepare_web_cart_or_checkout`, `open_user_browser`, `set_browser_link`, `download_ebook_annas_archive`.
+- **Routage Intelligent Hybride (VPS Headless vs PC Local GUI)** :
+  - Orchestré par le flag `execution_target: Literal["vps_headless", "local_gui"]` présent sur toutes les fonctions de navigation.
+  - **Mode Headless VPS (`vps_headless`)** : Les opérations légères (scraping de texte, lecture d'articles, vérification de liens, recherche DuckDuckGo, téléchargement d'EPUB sur Anna's Archive) s'exécutent en tâche de fond directement sur le serveur Cloud VPS via Playwright en mode 100% headless, sans réveiller le PC de Pierre.
+  - **Mode GUI PC Local (`local_gui`)** : Les opérations nécessitant une session connectée (Amazon, Fnac), un affichage visuel à l'écran, ou la validation d'un panier d'achat (`prepare_web_cart_or_checkout`) sont automatiquement déléguées au script `jarvis_local_agent.py` sur le PC Windows de Pierre via le canal WebSocket sécurisé `/ws/local-agent`.
 - **Capacités** :
   - **Recherche web enrichie** : Recherche DuckDuckGo avec extraction intelligente de deep links de transport (SNCF Connect, Trainline, Skyscanner, Booking).
   - **Agent autonome Vision (Browser-Use)** : Agent web autonome guidé par modèle vision (Gemini Flash Vision) capable de naviguer de manière indépendante sur des sites dynamiques, de remplir des formulaires complexes et de contourner les bannières de cookies.
@@ -327,10 +331,12 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
   - Détection et agrégation des erreurs consoles et exceptions Python (`ConsoleMonitor`) avec diagnostic automatisé et suggestions de réparation.
 
 ### 7.8. Automatisation des Processus Externes (n8n Community)
-- **Fichiers** : `services/automation.py`, `docs/N8N_GUIDE.md`.
+- **Fichiers** : `services/automation.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `docs/N8N_GUIDE.md`.
 - **Outil exposé** : `executer_action_externe`.
-- **Passerelle vers n8n** :
-  - Déclenchement de workflows n8n hébergés localement sur le port `5678` via webhooks HTTP directs (`/webhook/{action_name}`).
+- **Passerelle vers n8n & Function Calling Gemini Live** :
+  - **Déclaration formelle** : Intégré dans `core/tools/declarations.py` avec `behavior=types.Behavior.NON_BLOCKING`, prenant `action_name` (string requis) et `parametres` (object optionnel).
+  - **Exécution asynchrone non-bloquante** : Le dispatcheur (`core/tools/dispatcher.py`) renvoie instantanément `{"status": "action_n8n_lancee"}` pour que Jarvis confirme immédiatement à l'oral avec sa voix Aoede le déclenchement du workflow, puis exécute le webhook HTTP local (`/webhook/{action_name}`) en tâche de fond (`asyncio.create_task`).
+  - **Retour vocal final** : À la fin de l'action n8n, le résultat est injecté dans la session Gemini Live (`send_client_content`) pour restitution orale fluide si pertinent.
   - Importation automatique de workflows JSON via la CLI Docker (`docker exec jarvis_n8n n8n import:workflow`) sans licence payante.
   - Connecteurs prêts pour l'intégration de services tiers (Samsung Calendar, Notion, WhatsApp, domotique Home Assistant, etc.).
 
@@ -470,12 +476,12 @@ L'interface de Jarvis a été développée selon des standards graphiques d'insp
 3. **~~Sécurité des Tokens d'Appareils~~ [RÉSOLU]** :
    - Les tokens des appareils autorisés étaient initialement stockés en texte clair dans un fichier JSON plat (`authorized_devices.json`) sans signature cryptographique ni horodatage d'expiration strict.
    - *Statut* : **Entièrement résolu**. Authentification migrée vers des tokens signés JWT (HS256) gérés par `services/auth_service.py` avec clé secrète forte `JWT_SECRET_KEY` (.env auto-générée), révocation ultra-rapide en cache Redis (`jarvis:revoked_tokens:{token_id}` et `{device_id}`) avec fallback mémoire local, tickets de pairage QR Code à usage unique avec TTL court (5 minutes) dans Redis, et migration transparente des sessions existantes sans déconnexion.
-4. **Intégration Complète du Module d'Automatisation (`services/automation.py`)** :
-   - Le module de liaison avec n8n est entièrement codé et testé, mais n'est pas encore systématiquement injecté dans la liste des outils déclarés de `App.py` (`executer_action_externe`).
-   - *Piste d'amélioration* : Raccorder formellement l'outil n8n dans la boucle de function calling de Gemini Live.
-5. **Gestion Headless du Navigateur sur VPS** :
-   - Certaines tâches de scraping ou de recherche web dépendent de l'affichage local du PC de Pierre, alors qu'elles pourraient s'exécuter en conteneur headless directement sur le VPS sans réveiller le PC de bureau.
-   - *Piste d'amélioration* : Mettre en place une instance Playwright / Chromium headless isolée sur le VPS pour les tâches de lecture d'articles et de recherche, ne réservant le PC local que pour les applications réelles et la validation de panier.
+4. **~~Intégration Complète du Module d'Automatisation (`services/automation.py`)~~ [RÉSOLU]** :
+   - Le module n8n est formellement raccordé au function calling Gemini Live (`core/tools/declarations.py` et `core/tools/dispatcher.py`) via l'outil `executer_action_externe(action_name, parametres)`.
+   - *Statut* : **Entièrement résolu**. Déclenchement non-bloquant avec réponse orale instantanée (`{"status": "action_n8n_lancee"}`), exécution du webhook n8n en tâche de fond (`asyncio.create_task`), et compte-rendu vocal fluide par Aoede dès complétion.
+5. **~~Gestion Headless du Navigateur sur VPS & Découplage PC Local~~ [RÉSOLU]** :
+   - Clarification et isolation du cycle de navigation entre le Cloud VPS et le PC Windows physique de Pierre.
+   - *Statut* : **Entièrement résolu**. Routage transparent via le flag `execution_target: Literal["vps_headless", "local_gui"]` dans `services/browser_service.py` : scraping, lecture d'articles, recherche DuckDuckGo et téléchargement d'EPUB sur Anna's Archive exécutés 100% en headless Playwright sur le VPS Cloud sans solliciter le PC local ; les sessions personnelles et la préparation de panier (`prepare_web_cart_or_checkout`) restant déléguées via WebSocket `/ws/local-agent` à `jarvis_local_agent.py` sur le PC de bureau.
 6. **Couverture de Tests Automatisés** :
    - Les tests existants (`tests/run_all_tests.py`) exécutent des scénarios de bout en bout dépendants du réseau et des navigateurs installés, ce qui entraîne des échecs en environnement sandbox ou hors ligne.
    - *Piste d'amélioration* : Introduire une suite de tests unitaires avec mocks (via `pytest`, `pytest-asyncio` et `unittest.mock`) pour valider les composants sans dépendance réseau.

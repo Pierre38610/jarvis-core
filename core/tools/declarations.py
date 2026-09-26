@@ -414,6 +414,36 @@ def get_tools_list() -> list[types.Tool]:
                     ),
                     parameters=types.Schema(type="OBJECT", properties={})
                 ),
+                types.FunctionDeclaration(
+                    name="executer_action_externe",
+                    description=(
+                        "Déclenche un workflow d'automatisation externe n8n en arrière-plan pour exécuter des actions tierces : "
+                        "ajouter un événement au calendrier Samsung, créer une note Notion ou Obsidian, envoyer une notification Gotify, "
+                        "envoyer des emails ou messages, synchroniser des contacts, automatiser une tâche domotique, etc. "
+                        "Utilise systématiquement cet outil dès qu'une action sollicite un service tiers ou un workflow d'automatisation n8n."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "action_name": types.Schema(
+                                type="STRING",
+                                description=(
+                                    "Nom ou identifiant de l'action / webhook n8n à déclencher. "
+                                    "Exemples : 'samsung-calendar', 'notion-note', 'gotify-notify', 'send-email', 'obsidian-note'."
+                                )
+                            ),
+                            "parametres": types.Schema(
+                                type="OBJECT",
+                                description=(
+                                    "Paramètres libres optionnels extraits de la conversation vocale et transmis au workflow. "
+                                    "Exemple pour 'samsung-calendar' : {'titre': 'Dentiste', 'date': '2026-09-27', 'heure': '10:00', 'duree_minutes': 60}."
+                                )
+                            ),
+                        },
+                        required=["action_name"]
+                    )
+                ),
             ]
         )
     ]

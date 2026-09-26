@@ -11,7 +11,9 @@ import httpx
 import unicodedata
 from bs4 import BeautifulSoup
 from urllib.parse import unquote, quote_plus
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Literal
+
+ExecutionTarget = Literal["vps_headless", "local_gui"]
 
 import config
 from config import CHROME_PATH, STATIC_DIR, SCREENSHOT_PATH, PROFILE_DIR, GEMINI_API_KEY, GEMINI_API_KEY_PAID, GEMINI_API_KEY_FREE, BASE_DIR
@@ -209,8 +211,23 @@ def extract_transport_route(text: str) -> Dict[str, Any] | None:
 
     return None
 
-async def search_web(query: str, max_results: int = 5) -> Dict[str, Any]:
-    """Recherche web rapide avec détection automatique de liens directs profonds (trains, vols, etc.)"""
+async def search_web(
+    query: str,
+    max_results: int = 5,
+    execution_target: ExecutionTarget = "vps_headless"
+) -> Dict[str, Any]:
+    """Recherche web rapide avec détection automatique de liens directs profonds (trains, vols, etc.)
+    Mode 'vps_headless' (défaut) : exécuté directement sur le serveur VPS sans solliciter le PC local.
+    Mode 'local_gui' : délègue si nécessaire au PC local de Pierre via /ws/local-agent.
+    """
+    if execution_target == "local_gui":
+        try:
+            from services.local_agent_service import local_agent_service
+            if local_agent_service.is_connected():
+                return await local_agent_service.execute_command("search_web", timeout=15.0, query=query, max_results=max_results)
+        except Exception:
+            pass
+
     q = (query or "").strip()
     results: List[Dict[str, str]] = []
 
@@ -298,9 +315,9 @@ async def search_web(query: str, max_results: int = 5) -> Dict[str, Any]:
         except Exception:
             pass
 
-    # Repli Playwright si besoin
+    # Repli Playwright headless si besoin
     if not results:
-        return await _search_via_playwright(query, max_results)
+        return await _search_via_playwright(query, max_results, execution_target=execution_target)
 
     return {
         "query": query,
@@ -308,7 +325,11 @@ async def search_web(query: str, max_results: int = 5) -> Dict[str, Any]:
         "results": results
     }
 
-async def _search_via_playwright(query: str, max_results: int = 5) -> Dict[str, Any]:
+async def _search_via_playwright(
+    query: str,
+    max_results: int = 5,
+    execution_target: ExecutionTarget = "vps_headless"
+) -> Dict[str, Any]:
     """Recherche de secours via navigateur Playwright"""
     from playwright.async_api import async_playwright
     results = []
@@ -361,8 +382,23 @@ async def _search_via_playwright(query: str, max_results: int = 5) -> Dict[str, 
         "results": results
     }
 
-async def browse_page(url: str, wait_seconds: float = 2.0) -> Dict[str, Any]:
-    """Visite une page web, capture l'écran pour le HUD et extrait son texte."""
+async def browse_page(
+    url: str,
+    wait_seconds: float = 2.0,
+    execution_target: ExecutionTarget = "vps_headless"
+) -> Dict[str, Any]:
+    """Visite une page web, capture l'écran pour le HUD et extrait son texte.
+    Mode 'vps_headless' (défaut) : Playwright headless directement sur le serveur VPS.
+    Mode 'local_gui' : délègue à l'agent local de Pierre via /ws/local-agent.
+    """
+    if execution_target == "local_gui":
+        try:
+            from services.local_agent_service import local_agent_service
+            if local_agent_service.is_connected():
+                return await local_agent_service.execute_command("browse_page", timeout=25.0, url=url, wait_seconds=wait_seconds)
+        except Exception:
+            pass
+
     from playwright.async_api import async_playwright
     if not url.startswith("http://") and not url.startswith("https://"):
         url = "https://" + url
@@ -528,17 +564,33 @@ async def _attempt_browser_use(
         "screenshot": "/static/latest_screenshot.jpg"
     }
 
-async def run_browser_task(goal: str, url: str = "", confirmed_by_user: bool = False) -> Dict[str, Any]:
+async def run_browser_task(
+    goal: str,
+    url: str = "",
+    confirmed_by_user: bool = False,
+    execution_target: Optional[ExecutionTarget] = None
+) -> Dict[str, Any]:
     """Exécute une tâche concrète dans le navigateur avec l'agent autonome Browser-Use.
     Détecte automatiquement si la tâche nécessite une session connectée (Amazon, Google, etc.)
-    et utilise le profil Chrome persistant avec les sessions sauvegardées dans ce cas.
+    et orchestre le routage transparent entre 'vps_headless' (VPS Cloud) et 'local_gui' (PC local).
     """
     print(f"[Browser Task] Début de mission : '{goal}' (url: '{url}')")
 
-    # Détection automatique : la tâche nécessite-t-elle une session connectée ?
+    # Détection automatique de session connectée et routage transparent
     needs_auth = _detect_needs_auth(goal, url)
-    if needs_auth:
-        print(f"[Browser Task] Session connectée détectée — utilisation du profil Chrome persistant.")
+    effective_target: ExecutionTarget = execution_target if execution_target else ("local_gui" if needs_auth else "vps_headless")
+
+    if effective_target == "local_gui":
+        print(f"[Browser Task] Session connectée ou cible GUI requise (target: {effective_target}).")
+        try:
+            from services.local_agent_service import local_agent_service
+            if local_agent_service.is_connected():
+                print(f"[Browser Task] Délégation au PC local de Pierre via /ws/local-agent...")
+                return await local_agent_service.execute_command("run_browser_task", timeout=60.0, goal=goal, url=url)
+        except Exception as e:
+            print(f"[Browser Task] Erreur vérification local_agent: {e}")
+    else:
+        print(f"[Browser Task] Exécution en mode Headless VPS Cloud (target: {effective_target}).")
 
     # Résolution intelligente de lien profond (trains, transports, hôtels)
     route_info = extract_transport_route(goal or url)
@@ -754,7 +806,11 @@ async def _run_playwright_with_profile(goal: str, url: str = "") -> Dict[str, An
             "message": f"Erreur navigation authentifiée: {str(ex)}"
         }
 
-def open_browser_window(url: str = "https://www.google.com", load_extensions: bool = True) -> Dict[str, Any]:
+def open_browser_window(
+    url: str = "https://www.google.com",
+    load_extensions: bool = True,
+    execution_target: ExecutionTarget = "local_gui"
+) -> Dict[str, Any]:
     """Ouvre une vraie fenêtre Google Chrome visible à l'écran avec le profil connecté et les extensions chargées (Send to Kindle, etc.)."""
     import subprocess
     target = url.strip() if url else "https://www.google.com"
@@ -829,12 +885,32 @@ async def interact_web_page(
     selector: str = "",
     text_to_fill: str = "",
     actions_list: Optional[List[Dict[str, Any]]] = None,
-    wait_seconds: float = 2.0
+    wait_seconds: float = 2.0,
+    execution_target: ExecutionTarget = "vps_headless",
 ) -> Dict[str, Any]:
     """Lit ou interagit concrètement avec n'importe quelle page web via Playwright.
     Supporte la lecture structurée (champs de formulaire, boutons, texte)
     ainsi que l'exécution d'actions réelles (remplir des champs, cliquer sur des boutons, soumettre).
+    Mode 'vps_headless' (défaut) : exécuté via Playwright headless directement sur le VPS Cloud.
+    Mode 'local_gui' : délégué au script jarvis_local_agent.py sur le PC local de Pierre via /ws/local-agent.
     """
+    if execution_target == "local_gui":
+        try:
+            from services.local_agent_service import local_agent_service
+            if local_agent_service.is_connected():
+                return await local_agent_service.execute_command(
+                    "interact_web_page",
+                    timeout=30.0,
+                    url=url,
+                    action=action,
+                    selector=selector,
+                    text_to_fill=text_to_fill,
+                    actions_list=actions_list,
+                    wait_seconds=wait_seconds,
+                )
+        except Exception:
+            pass
+
     from playwright.async_api import async_playwright
     target_url = (url or "").strip()
     if not target_url.startswith("http://") and not target_url.startswith("https://"):
@@ -962,13 +1038,42 @@ async def prepare_web_cart_or_checkout(
     product_or_service: str,
     merchant_url: str = "",
     autofill_details: Optional[Dict[str, str]] = None,
-    open_when_ready: bool = True
+    open_when_ready: bool = True,
+    execution_target: ExecutionTarget = "local_gui",
+    _is_local_relay: bool = False
 ) -> Dict[str, Any]:
     """Recherche un produit ou service sur un site marchand, sélectionne la variante/pointure,
     l'ajoute au panier, navigue vers la page de commande, préremplit les coordonnées de Pierre
     (nom, prénom, adresse, email), S'ARRÊTE STRICTEMENT AVANT LE PAIEMENT,
     et ouvre automatiquement Google Chrome à l'écran avec la session connectée et le panier rempli.
+
+    Mode 'local_gui' (défaut) : délégué au script jarvis_local_agent.py sur le PC Windows de Pierre via /ws/local-agent
+    pour afficher le panier sur son écran physique avec ses profils et sessions connectées.
+    Mode 'vps_headless' : exécuté en mode headless sur le serveur VPS sans affichage physique.
     """
+    if execution_target == "local_gui" and not _is_local_relay:
+        try:
+            from services.local_agent_service import local_agent_service
+            if local_agent_service.is_connected():
+                print(f"[browser_service] Délégation de prepare_web_cart_or_checkout au PC local de Pierre via /ws/local-agent...")
+                return await local_agent_service.execute_command(
+                    "prepare_web_cart_or_checkout",
+                    timeout=120.0,
+                    product_or_service=product_or_service,
+                    merchant_url=merchant_url,
+                    autofill_details=autofill_details,
+                    open_when_ready=open_when_ready
+                )
+            elif sys.platform != "win32":
+                return {
+                    "status": "pc_offline",
+                    "message": (
+                        "L'ordinateur personnel de Pierre est actuellement éteint ou déconnecté du serveur VPS. "
+                        "Impossible de préparer le panier avec son profil connecté et d'ouvrir Chrome sur son écran physique."
+                    )
+                }
+        except Exception as exc:
+            print(f"[browser_service] Erreur vérification local_agent: {exc}")
     from playwright.async_api import async_playwright
     from services.memory_service import memory_service
 
@@ -1023,10 +1128,11 @@ async def prepare_web_cart_or_checkout(
                 "--disable-dev-shm-usage"
             ]
 
+            is_headless = (execution_target == "vps_headless")
             context = await p.chromium.launch_persistent_context(
                 user_data_dir=PROFILE_DIR,
                 executable_path=CHROME_PATH if os.path.exists(CHROME_PATH) else None,
-                headless=False,
+                headless=is_headless,
                 args=browser_args,
                 viewport={"width": 1280, "height": 850}
             )
@@ -1253,10 +1359,10 @@ async def prepare_web_cart_or_checkout(
     except Exception as ex:
         actions_log.append(f"Erreur d'exécution: {str(ex)}")
 
-    # J. Ouverture immédiate de Google Chrome en natif sur l'écran de Pierre
+    # J. Ouverture immédiate de Google Chrome en natif sur l'écran de Pierre (si local_gui)
     # Le Chrome ouvert réutilise PROFILE_DIR et retrouve instantanément le panier avec les articles dedans !
-    if open_when_ready and cart_url:
-        open_res = open_browser_window(cart_url)
+    if open_when_ready and cart_url and execution_target == "local_gui":
+        open_res = open_browser_window(cart_url, execution_target=execution_target)
         actions_log.append(f"Google Chrome ouvert à l'écran sur le panier ({open_res.get('status')}).")
 
     return {
@@ -1281,9 +1387,13 @@ async def prepare_web_cart_or_checkout(
 
 # ─── SERVICE SEND TO KINDLE & EXTENSIONS ──────────────────────────────────────
 
-async def extract_clean_article(url: str) -> Dict[str, Any]:
+async def extract_clean_article(
+    url: str,
+    execution_target: ExecutionTarget = "vps_headless"
+) -> Dict[str, Any]:
     """Extrait le contenu textuel et la structure épurée (mode lecture) d'un article web.
     Supprime les bannières, publicités, menus, traceurs et prépare un document lisible pour Kindle.
+    Mode 'vps_headless' (défaut) : extraction directe sur le serveur Cloud (Ubuntu VPS).
     """
     clean_url = (url or "").strip()
     if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
@@ -1827,5 +1937,21 @@ async def check_kindle_web_status() -> Dict[str, Any]:
     except Exception as ex:
         return {"status": "error", "logged_in": False, "message": str(ex)}
 
-
-
+async def download_ebook_annas_archive(
+    md5: str,
+    target_filename: Optional[str] = None,
+    timeout_sec: int = 120,
+    expected_lang: Optional[str] = None,
+    execution_target: ExecutionTarget = "vps_headless"
+) -> Dict[str, Any]:
+    """Télécharge un ePub authentique depuis Anna's Archive via le serveur partenaire.
+    Par défaut en mode 'vps_headless' : tourne via Playwright headless directement sur le serveur Cloud (Ubuntu VPS).
+    """
+    from services.download_service import download_from_annas_archive
+    return await download_from_annas_archive(
+        md5=md5,
+        target_filename=target_filename,
+        timeout_sec=timeout_sec,
+        expected_lang=expected_lang,
+        execution_target=execution_target
+    )

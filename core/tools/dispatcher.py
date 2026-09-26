@@ -775,6 +775,92 @@ async def dispatch_tool(
         res = await asyncio.to_thread(list_installed_chrome_extensions)
         return {"status": "completed", "result": res, "instruction_to_jarvis": f"{res.get('message', 'Extensions analysées.')} Résume oralement les extensions clés installées sur Chrome à Pierre (notamment Send to Kindle) avec ta voix Aoede."}
 
+    # ─── executer_action_externe ───────────────────────────────────────────────
+    elif name == "executer_action_externe":
+        action_name = (args.get("action_name") or args.get("action") or "").strip()
+        parametres = args.get("parametres") or {}
+
+        supervision_service.start_action(
+            "executer_action_externe",
+            f"Workflow n8n : {action_name}",
+            "executer_action_externe",
+            f"Action n8n : {action_name}",
+            "n8n Automation Engine",
+            api_type="free",
+            api_label="Local n8n",
+            cost_est="0.00 $"
+        )
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({
+            "type": "jarvis_announcement",
+            "text": f"Déclenchement du workflow n8n '{action_name}'...",
+            "voice": False
+        }))
+        await websocket.send_text(json.dumps({
+            "type": "status",
+            "state": "thinking",
+            "msg": f"Workflow n8n — {action_name}...",
+            "task": f"n8n : {action_name}",
+            "engine": "n8n Community",
+            "model": "Webhook Automation",
+            "api_type": "free",
+            "api_label": "Local n8n"
+        }))
+
+        _act = action_name
+        _params = parametres
+        _sess = session
+
+        async def _run_n8n_bg(_a=_act, _p=_params, _s=_sess):
+            try:
+                from services.automation import executer_action_externe as n8n_exec
+                res = await n8n_exec(action_name=_a, parametres=_p)
+                status_res = res.get("status", "completed")
+                is_ok = (status_res == "success")
+                supervision_service.complete_action(
+                    "executer_action_externe",
+                    status="completed" if is_ok else "error",
+                    summary=f"n8n {_a} : {status_res}"
+                )
+                await broadcast_supervision()
+                if _s:
+                    if is_ok:
+                        r_data = res.get("result", {})
+                        r_str = json.dumps(r_data, ensure_ascii=False)[:300] if isinstance(r_data, dict) else str(r_data)[:300]
+                        inject_text = (
+                            f"[ACTION N8N TERMINÉE] Le workflow '{_a}' s'est exécuté avec succès. "
+                            f"Résultat : {r_str}. Confirme brièvement à Pierre avec ta voix Aoede si pertinent."
+                        )
+                    else:
+                        err = res.get("error", "Erreur inconnue")
+                        inject_text = (
+                            f"[ACTION N8N ÉCHEC] Le workflow '{_a}' a rencontré une erreur ({err}). "
+                            f"Informe brièvement Pierre avec ta voix Aoede."
+                        )
+                    try:
+                        await _s.send_client_content(
+                            turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_text)]),
+                            turn_complete=True
+                        )
+                    except Exception as inj_e:
+                        print(f"[n8n BG] Injection Live error: {inj_e}")
+            except Exception as bg_err:
+                print(f"[n8n BG] Erreur: {bg_err}")
+                supervision_service.complete_action("executer_action_externe", status="error", summary=str(bg_err))
+                await broadcast_supervision()
+
+        asyncio.create_task(_run_n8n_bg())
+
+        return {
+            "status": "action_n8n_lancee",
+            "action_name": action_name,
+            "instruction_to_jarvis": (
+                f"L'action externe '{action_name}' est lancée via n8n en tâche de fond. "
+                f"Confirme immédiatement à Pierre avec ta voix Aoede d'un ton complice et naturel "
+                f"que tu déclenches l'action '{action_name}'."
+            )
+        }
+
     # ─── Outil inconnu ─────────────────────────────────────────────────────────
     else:
         return {"status": "error", "message": f"Outil inconnu : {name}"}

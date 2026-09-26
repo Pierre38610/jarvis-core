@@ -7,7 +7,7 @@ import os
 import re
 import shutil
 import httpx
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Literal
 from urllib.parse import urlparse, unquote
 
 from config import BASE_DIR, STATIC_DIR, CHROME_PATH, PROFILE_DIR
@@ -493,30 +493,33 @@ async def download_from_annas_archive(
     md5: str,
     target_filename: Optional[str] = None,
     timeout_sec: int = 120,
-    expected_lang: Optional[str] = None
+    expected_lang: Optional[str] = None,
+    execution_target: Literal["vps_headless", "local_gui"] = "vps_headless"
 ) -> Dict[str, Any]:
     """Télécharge un ePub authentique depuis Anna's Archive via le serveur partenaire avec compte à rebours.
     Valide l'intégrité de l'archive ePub et sa langue une fois le téléchargement terminé.
+    Mode 'vps_headless' (défaut) : Playwright headless directement sur le serveur Cloud VPS sans réveiller le PC local.
     """
     from playwright.async_api import async_playwright
     from services.browser_service import is_valid_epub
 
     slow_url = f"https://annas-archive.gl/slow_download/{md5}/0/0"
+    is_headless = (execution_target == "vps_headless")
     browser_args = [
         "--disable-blink-features=AutomationControlled",
         "--no-first-run",
         "--no-default-browser-check",
         "--no-sandbox",
         "--disable-dev-shm-usage",
-        "--window-size=1280,850",
-        "--window-position=-2000,-2000"
     ]
+    if not is_headless:
+        browser_args.extend(["--window-size=1280,850", "--window-position=-2000,-2000"])
 
     dl_url = None
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(
-                headless=False,
+                headless=is_headless,
                 executable_path=CHROME_PATH if os.path.exists(CHROME_PATH) else None,
                 args=browser_args
             )
@@ -646,10 +649,12 @@ async def search_and_download_ebook(
     confirmed_by_user: bool = False,
     send_to_reader: bool = True,
     ereader_email: Optional[str] = None,
-    lang: Optional[str] = None
+    lang: Optional[str] = None,
+    execution_target: Literal["vps_headless", "local_gui"] = "vps_headless"
 ) -> Dict[str, Any]:
     """Recherche un ebook (EPUB / PDF) en priorité sur Anna's Archive dans la langue exacte demandée (en/fr),
     demande confirmation orale puis le télécharge et l'envoie automatiquement sur la liseuse Kindle de Pierre.
+    Mode 'vps_headless' (défaut) : exécuté via Playwright headless directement sur le serveur Cloud (Ubuntu VPS).
     """
     from services.browser_service import is_valid_epub, search_web
 
@@ -665,7 +670,8 @@ async def search_and_download_ebook(
         dl_res = await download_from_annas_archive(
             md5,
             target_filename=target_filename,
-            expected_lang=target_lang
+            expected_lang=target_lang,
+            execution_target=execution_target
         )
         if dl_res.get("status") == "success" and send_to_reader:
             reader_res = await send_to_ereader(dl_res["filepath"], ereader_email=ereader_email)
@@ -721,7 +727,8 @@ async def search_and_download_ebook(
             dl_res = await download_from_annas_archive(
                 best_match["md5"],
                 target_filename=target_filename,
-                expected_lang=target_lang
+                expected_lang=target_lang,
+                execution_target=execution_target
             )
             # En cas d'inadéquation de langue sur le 1er résultat, tester les alternatives suivantes
             if dl_res.get("language_mismatch") and len(annas_results) > 1:
@@ -730,7 +737,8 @@ async def search_and_download_ebook(
                     alt_res = await download_from_annas_archive(
                         alt_match["md5"],
                         target_filename=target_filename,
-                        expected_lang=target_lang
+                        expected_lang=target_lang,
+                        execution_target=execution_target
                     )
                     if alt_res.get("status") == "success":
                         dl_res = alt_res

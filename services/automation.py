@@ -9,7 +9,7 @@ import asyncio
 import logging
 import tempfile
 import subprocess
-from typing import Any
+from typing import Any, Optional, Dict
 
 import httpx
 
@@ -57,49 +57,51 @@ async def trigger_webhook(action_name: str, payload: dict) -> dict:
 
 # ─── 2. Tool Call Gemini Live : executer_action_externe ──────────────────────
 
-async def executer_action_externe(action: str, parametres: dict) -> dict:
+async def executer_action_externe(
+    action: Optional[str] = None,
+    parametres: Optional[dict] = None,
+    action_name: Optional[str] = None
+) -> dict:
     """Tool Call exposé à Gemini Live.
 
     Permet à Jarvis d'appeler dynamiquement n'importe quel workflow n8n actif
     en lui passant les paramètres extraits de la conversation vocale.
 
     Args:
-        action:     Identifiant de l'action / chemin du webhook n8n (ex: "ajouter-evenement").
-        parametres: Dictionnaire libre de paramètres extraits par Gemini depuis la voix.
+        action:      Identifiant du workflow n8n (compatibilité rétroactive).
+        parametres:  Dictionnaire libre de paramètres extraits par Gemini (optionnel).
+        action_name: Identifiant canonique du workflow n8n (ex: "samsung-calendar", "ajouter-evenement").
 
     Returns:
         Réponse structurée du workflow n8n, ou dict d'erreur.
-
-    Example (Gemini function call):
-        {
-            "name": "executer_action_externe",
-            "parameters": {
-                "action": "samsung-calendar",
-                "parametres": {"titre": "Réunion", "date": "2026-09-26", "heure": "14:00"}
-            }
-        }
     """
+    effective_action = (action_name or action or "").strip()
+    effective_params = parametres if parametres is not None else {}
+
+    if not effective_action:
+        return {"status": "error", "error": "Paramètre 'action_name' manquant pour exécuter l'action externe."}
+
     try:
-        result = await trigger_webhook(action_name=action, payload=parametres)
-        logger.info("[automation] Résultat action '%s': %s", action, result)
-        return {"status": "success", "action": action, "result": result}
+        result = await trigger_webhook(action_name=effective_action, payload=effective_params)
+        logger.info("[automation] Résultat action '%s': %s", effective_action, result)
+        return {"status": "success", "action": effective_action, "result": result}
     except httpx.HTTPStatusError as exc:
-        logger.error("[automation] Erreur HTTP webhook '%s': %s", action, exc)
+        logger.error("[automation] Erreur HTTP webhook '%s': %s", effective_action, exc)
         return {
             "status": "error",
-            "action": action,
+            "action": effective_action,
             "error": f"Erreur HTTP {exc.response.status_code}: {exc.response.text[:200]}",
         }
     except httpx.TimeoutException:
-        logger.error("[automation] Timeout webhook '%s'", action)
+        logger.error("[automation] Timeout webhook '%s'", effective_action)
         return {
             "status": "error",
-            "action": action,
+            "action": effective_action,
             "error": f"Timeout : n8n n'a pas répondu en {_HTTP_TIMEOUT}s. Vérifiez que le workflow est actif.",
         }
     except Exception as exc:
-        logger.error("[automation] Erreur inattendue webhook '%s': %s", action, exc)
-        return {"status": "error", "action": action, "error": str(exc)}
+        logger.error("[automation] Erreur inattendue webhook '%s': %s", effective_action, exc)
+        return {"status": "error", "action": effective_action, "error": str(exc)}
 
 
 # ─── 3. Import de workflow via CLI n8n (Docker exec) ─────────────────────────
@@ -223,18 +225,18 @@ def export_workflow(workflow_id: str, output_path: str) -> bool:
 AUTOMATION_TOOL_DECLARATION = {
     "name": "executer_action_externe",
     "description": (
-        "Déclenche un workflow n8n pour exécuter une action externe : "
-        "ajouter un événement au calendrier Samsung, envoyer un email, créer une note Notion, "
-        "envoyer une notification Gotify, contrôler Deezer, rechercher sur YouTube, etc. "
-        "Utilise cette fonction dès qu'une action nécessite un service tiers."
+        "Déclenche un workflow n8n en arrière-plan pour exécuter une action externe : "
+        "ajouter un événement au calendrier Samsung, envoyer un email, créer une note Notion ou Obsidian, "
+        "envoyer une notification Gotify, synchroniser des contacts, domotique Home Assistant, etc. "
+        "Utilise cette fonction dès qu'une action nécessite un service tiers ou un workflow n8n."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "action": {
+            "action_name": {
                 "type": "string",
                 "description": (
-                    "Identifiant du workflow n8n à déclencher. "
+                    "Identifiant ou chemin de l'action / webhook n8n à déclencher. "
                     "Exemples : 'samsung-calendar', 'send-email', 'notion-note', "
                     "'gotify-notify', 'deezer-play', 'youtube-search', 'obsidian-note'."
                 ),
@@ -242,12 +244,12 @@ AUTOMATION_TOOL_DECLARATION = {
             "parametres": {
                 "type": "object",
                 "description": (
-                    "Paramètres libres extraits de la conversation vocale et transmis au workflow. "
+                    "Paramètres libres optionnels extraits de la conversation vocale et transmis au workflow. "
                     "Exemple pour 'samsung-calendar': "
                     '{"titre": "Réunion", "date": "2026-09-26", "heure": "14:00", "duree_minutes": 60}.'
                 ),
             },
         },
-        "required": ["action", "parametres"],
+        "required": ["action_name"],
     },
 }

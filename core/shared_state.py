@@ -228,6 +228,9 @@ def get_tool_metadata(name: str, args: dict = None) -> dict:
     elif name == "prepare_web_cart_or_checkout":
         p = args.get("product_or_service") or "Panier web"
         return {"state": "shopping", "msg": f"Préparation du panier : {p}", "task": f"Panier : {p}", "engine": "Playwright E-Commerce", "model": "Chrome Automation", "api_type": "free", "api_label": "Clé Gratuite"}
+    elif name == "executer_action_externe":
+        act = args.get("action_name") or args.get("action") or "Workflow"
+        return {"state": "thinking", "msg": f"Workflow n8n : {act}...", "task": f"n8n : {act}", "engine": "n8n Community", "model": "Workflow Automation", "api_type": "free", "api_label": "Local n8n"}
     elif name in ("check_console_errors", "get_system_status", "launch_application", "list_chrome_extensions"):
         return {"state": "system", "msg": "Diagnostic et maintenance système...", "task": "Diagnostic système", "engine": "OS Monitor", "model": "System Telemetry", "api_type": "free", "api_label": "Service Local"}
     else:

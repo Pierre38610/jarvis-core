@@ -328,6 +328,33 @@ async def agent_loop():
                             result = execute_media_action(params)
                         elif action == "deezer_action":
                             result = await execute_deezer_action(params)
+                        elif action == "prepare_web_cart_or_checkout":
+                            try:
+                                from services.browser_service import prepare_web_cart_or_checkout
+                                result = await prepare_web_cart_or_checkout(
+                                    product_or_service=params.get("product_or_service", ""),
+                                    merchant_url=params.get("merchant_url", ""),
+                                    autofill_details=params.get("autofill_details"),
+                                    open_when_ready=params.get("open_when_ready", True),
+                                    execution_target="local_gui",
+                                    _is_local_relay=True
+                                )
+                            except Exception as e:
+                                result = {"status": "error", "message": f"Erreur prepare_web_cart_or_checkout local : {e}"}
+                        elif action == "interact_web_page":
+                            try:
+                                from services.browser_service import interact_web_page
+                                result = await interact_web_page(
+                                    url=params.get("url", ""),
+                                    action=params.get("action", "read"),
+                                    selector=params.get("selector", ""),
+                                    text_to_fill=params.get("text_to_fill", ""),
+                                    actions_list=params.get("actions_list"),
+                                    wait_seconds=params.get("wait_seconds", 2.0),
+                                    execution_target="local_gui"
+                                )
+                            except Exception as e:
+                                result = {"status": "error", "message": f"Erreur interact_web_page local : {e}"}
                         elif action == "get_status":
                             result = get_local_metrics()
                         else:
