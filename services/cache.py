@@ -50,6 +50,8 @@ class CacheService:
         # Fallback mémoire local en mode dégradé (sans Redis)
         # Format: key -> (value, expire_at_timestamp_or_None)
         self._memory_fallback: Dict[str, tuple[Any, Optional[float]]] = {}
+        self._last_connect_attempt: float = 0.0
+        self._connect_retry_cooldown: float = 15.0  # Cooldown avant de retenter la connexion Redis si indisponible
 
     @property
     def is_connected(self) -> bool:
@@ -64,10 +66,18 @@ class CacheService:
         if self._client is not None and self._is_connected:
             return self._client
 
+        # Si un échec de connexion a eu lieu récemment, on bascule directement sur le fallback local
+        if time.time() - self._last_connect_attempt < self._connect_retry_cooldown:
+            return None
+
         async with self._lock:
             if self._client is not None and self._is_connected:
                 return self._client
 
+            if time.time() - self._last_connect_attempt < self._connect_retry_cooldown:
+                return None
+
+            self._last_connect_attempt = time.time()
             try:
                 self._client = aioredis.Redis(
                     host=self.host,
@@ -75,15 +85,15 @@ class CacheService:
                     password=self.password if self.password else None,
                     db=self.db,
                     decode_responses=True,
-                    socket_connect_timeout=2.0,
-                    socket_timeout=2.0,
-                    retry_on_timeout=True,
+                    socket_connect_timeout=0.5,
+                    socket_timeout=0.5,
+                    retry_on_timeout=False,
                 )
-                # Test de communication (ping)
-                await self._client.ping()
+                # Test de communication (ping) rapide avec timeout
+                await asyncio.wait_for(self._client.ping(), timeout=0.8)
                 self._is_connected = True
                 return self._client
-            except Exception as e:
+            except Exception:
                 self._is_connected = False
                 self._client = None
                 return None
@@ -250,6 +260,9 @@ class CacheService:
         if isinstance(res, dict):
             return res
         return None
+
+    # Alias pratique
+    get_device_status = get_device_presence
 
     async def get_all_devices_presence(self) -> Dict[str, Any]:
         """Retourne la liste et l'état de tous les appareils actuellement actifs."""

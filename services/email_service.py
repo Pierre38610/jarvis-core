@@ -562,9 +562,9 @@ def read_received_emails(
 
     try:
         if IMAP_SSL:
-            mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
+            mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT, timeout=3.0)
         else:
-            mail = imaplib.IMAP4(IMAP_HOST, IMAP_PORT)
+            mail = imaplib.IMAP4(IMAP_HOST, IMAP_PORT, timeout=3.0)
 
         mail.login(user, pwd)
         status, _ = mail.select(folder, readonly=True)

@@ -28,6 +28,8 @@ from services.email_service import send_email_async, read_received_emails_async
 from services.console_monitor import console_monitor
 from services.supervision_service import supervision_service
 from services.media_service import control_deezer, play_on_stremio
+from services.cache import cache_service
+from services.briefing_service import briefing_service
 
 from core.shared_state import (
     active_task_controller,
@@ -1152,6 +1154,293 @@ async def dispatch_tool(
             )
         }
 
+    # ─── agenda_gerer_evenement ───────────────────────────────────────────────
+    elif name == "agenda_gerer_evenement":
+        action = (args.get("action") or "consulter").strip().lower()
+        titre = (args.get("titre") or "Rendez-vous").strip()
+        date_debut = (args.get("date_debut") or "").strip()
+        date_fin = (args.get("date_fin") or date_debut).strip()
+        description = (args.get("description") or "").strip()
+
+        supervision_service.start_action(
+            "agenda_gerer_evenement",
+            f"Agenda ({action}) : {titre}",
+            "agenda_gerer_evenement",
+            f"Agenda Google/Samsung [{action}] '{titre}' ({date_debut})",
+            "n8n Community",
+            api_type="free",
+            api_label="Local n8n",
+            cost_est="0.00 $"
+        )
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({
+            "type": "jarvis_announcement",
+            "text": f"Mise à jour de l'agenda : {titre}...",
+            "voice": False
+        }))
+        await websocket.send_text(json.dumps({
+            "type": "status",
+            "state": "calendar",
+            "msg": f"Agenda ({action}) — {titre}...",
+            "task": f"Agenda : {titre}",
+            "engine": "n8n Community",
+            "model": "Google Calendar Sync",
+            "api_type": "free",
+            "api_label": "Local n8n"
+        }))
+
+        _act = action
+        _t = titre
+        _dd = date_debut
+        _df = date_fin
+        _desc = description
+        _sess = session
+
+        async def _run_agenda_bg(_a=_act, _tit=_t, _start=_dd, _end=_df, _d=_desc, _s=_sess):
+            try:
+                from services.automation import executer_action_externe as n8n_exec
+                payload = {
+                    "action": _a,
+                    "titre": _tit,
+                    "date_debut": _start,
+                    "date_fin": _end,
+                    "description": _d,
+                }
+                res = await n8n_exec(action_name="agenda-event", parametres=payload)
+                status_res = res.get("status", "completed")
+                is_ok = (status_res == "success")
+                supervision_service.complete_action(
+                    "agenda_gerer_evenement",
+                    status="completed" if is_ok else "error",
+                    summary=f"Agenda {_a} {_tit} : {status_res}"
+                )
+                await broadcast_supervision()
+                if _s:
+                    if is_ok:
+                        if _a == "creer":
+                            inject_text = (
+                                f"[ÉVÉNEMENT AJOUTÉ À L'AGENDA] Le rendez-vous '{_tit}' pour le {_start} a bien été inscrit dans ton agenda Google et Samsung. "
+                                f"Confirme-le brièvement et élégamment à Pierre avec ta voix Aoede."
+                            )
+                        elif _a == "decaler":
+                            inject_text = (
+                                f"[ÉVÉNEMENT DÉCALÉ AVEC SUCCÈS] Le rendez-vous '{_tit}' a été décalé au {_start}. "
+                                f"Confirme-le brièvement à Pierre avec ta voix Aoede."
+                            )
+                        elif _a == "supprimer":
+                            inject_text = (
+                                f"[ÉVÉNEMENT RETIRÉ DE L'AGENDA] L'événement '{_tit}' a été supprimé de ton agenda. "
+                                f"Confirme-le simplement à Pierre avec ta voix Aoede."
+                            )
+                        else:
+                            events_found = res.get("result", {}).get("events", [])
+                            nb = len(events_found) if isinstance(events_found, list) else 0
+                            inject_text = (
+                                f"[CONSULTATION AGENDA EFFECTUÉE] Consultation terminée : {nb} rendez-vous trouvés pour {_tit}. "
+                                f"Fais un retour oral naturel et concis à Pierre avec ta voix Aoede."
+                            )
+                    else:
+                        err = res.get("error", "Erreur de synchronisation agenda")
+                        inject_text = (
+                            f"[AGENDA SYNCHRO ÉCHEC] Impossible d'effectuer l'action '{_a}' pour '{_tit}' sur l'agenda ({err}). "
+                            f"Informe brièvement Pierre avec ta voix Aoede."
+                        )
+                    try:
+                        await _s.send_client_content(
+                            turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_text)]),
+                            turn_complete=True
+                        )
+                    except Exception as inj_e:
+                        print(f"[Agenda BG] Injection Live error: {inj_e}")
+            except Exception as bg_err:
+                print(f"[Agenda BG] Erreur: {bg_err}")
+                supervision_service.complete_action("agenda_gerer_evenement", status="error", summary=str(bg_err))
+                await broadcast_supervision()
+
+        asyncio.create_task(_run_agenda_bg())
+
+        return {
+            "status": "lance_en_arriere_plan",
+            "action": "agenda_gerer_evenement",
+            "action_demandee": action,
+            "titre": titre,
+            "date_debut": date_debut,
+            "instruction_to_jarvis": (
+                f"L'action d'agenda '{action}' pour '{titre}' ({date_debut}) est lancée en tâche de fond via n8n et Google Calendar. "
+                f"Confirme immédiatement à Pierre avec ta voix Aoede d'un ton concis et naturel que tu t'en occupes."
+            )
+        }
+
+    # ─── creer_rappel_push ───────────────────────────────────────────────────
+    elif name == "creer_rappel_push":
+        message = (args.get("message") or "Rappel").strip()
+        echeance = (args.get("echeance") or "dans 15 minutes").strip()
+        priorite = (args.get("priorite") or "normale").strip().lower()
+
+        supervision_service.start_action(
+            "creer_rappel_push",
+            f"Rappel : {message}",
+            "creer_rappel_push",
+            f"Rappel push smartphone '{message}' ({echeance}, {priorite})",
+            "n8n Community",
+            api_type="free",
+            api_label="Local n8n",
+            cost_est="0.00 $"
+        )
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({
+            "type": "jarvis_announcement",
+            "text": f"Programmation du rappel : {message} ({echeance})...",
+            "voice": False
+        }))
+        await websocket.send_text(json.dumps({
+            "type": "status",
+            "state": "reminder",
+            "msg": f"Rappel push ({echeance}) — {message}...",
+            "task": f"Rappel : {message}",
+            "engine": "n8n Community",
+            "model": "Push Notification",
+            "api_type": "free",
+            "api_label": "Local n8n"
+        }))
+
+        _msg = message
+        _ech = echeance
+        _prio = priorite
+        _sess = session
+
+        async def _run_reminder_bg(_m=_msg, _e=_ech, _p=_prio, _s=_sess):
+            try:
+                from services.automation import executer_action_externe as n8n_exec
+                payload = {
+                    "message": _m,
+                    "echeance": _e,
+                    "priorite": _p,
+                }
+                res = await n8n_exec(action_name="schedule-push-reminder", parametres=payload)
+                status_res = res.get("status", "completed")
+                is_ok = (status_res == "success")
+                supervision_service.complete_action(
+                    "creer_rappel_push",
+                    status="completed" if is_ok else "error",
+                    summary=f"Rappel '{_m}' ({_e}) : {status_res}"
+                )
+                await broadcast_supervision()
+                if _s:
+                    if is_ok:
+                        inject_text = (
+                            f"[RAPPEL PROGRAMMÉ AVEC SUCCÈS] Le rappel '{_m}' est enregistré pour {_e}. "
+                            f"La notification push sera envoyée sur ton smartphone au moment voulu. "
+                            f"Confirme brièvement et clairement à Pierre avec ta voix Aoede que le rappel est programmé."
+                        )
+                    else:
+                        err = res.get("error", "Erreur lors de la programmation du rappel")
+                        inject_text = (
+                            f"[RAPPEL PROGRAMMATION ÉCHEC] Impossible de programmer le rappel '{_m}' ({err}). "
+                            f"Informe Pierre avec ta voix Aoede."
+                        )
+                    try:
+                        await _s.send_client_content(
+                            turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_text)]),
+                            turn_complete=True
+                        )
+                    except Exception as inj_e:
+                        print(f"[Reminder BG] Injection Live error: {inj_e}")
+            except Exception as bg_err:
+                print(f"[Reminder BG] Erreur: {bg_err}")
+                supervision_service.complete_action("creer_rappel_push", status="error", summary=str(bg_err))
+                await broadcast_supervision()
+
+        asyncio.create_task(_run_reminder_bg())
+
+        return {
+            "status": "lance_en_arriere_plan",
+            "action": "creer_rappel_push",
+            "message": message,
+            "echeance": echeance,
+            "priorite": priorite,
+            "instruction_to_jarvis": (
+                f"Le rappel '{message}' pour {echeance} est pris en compte et transmis à n8n. "
+                f"Confirme immédiatement à Pierre avec ta voix Aoede de manière brève et naturelle "
+                f"que c'est bien noté et que tu as programmé son rappel."
+            )
+        }
+
+    # ─── demander_morning_briefing ───────────────────────────────────────────
+    elif name == "demander_morning_briefing":
+        force_refresh = bool(args.get("force_refresh", False))
+
+        supervision_service.start_action(
+            "demander_morning_briefing",
+            "Morning Briefing",
+            "demander_morning_briefing",
+            "Restitution ou compilation du Morning Briefing",
+            "Briefing Service / Redis",
+            api_type="free",
+            api_label="Local Service",
+            cost_est="0.00 $"
+        )
+        await broadcast_supervision()
+
+        # 1. Vérification clé Redis jarvis:briefing:today
+        cached = await cache_service.get("jarvis:briefing:today")
+        if cached and not force_refresh and isinstance(cached, dict) and cached.get("texte_oral"):
+            briefing_text = cached.get("texte_oral")
+            supervision_service.complete_action(
+                "demander_morning_briefing",
+                status="completed",
+                summary="Morning Briefing restitué instantanément depuis le cache Redis"
+            )
+            await broadcast_supervision()
+            return {
+                "status": "success",
+                "cached": True,
+                "briefing": briefing_text,
+                "instruction_to_jarvis": (
+                    f"Voici le Morning Briefing préparé pour Pierre : \"{briefing_text}\". "
+                    f"Restitue-le-lui immédiatement et intégralement à voix haute avec ta voix Aoede "
+                    f"avec élégance, assurance et zéro verbosité inutile."
+                )
+            }
+
+        # 2. Sinon déclencher la compilation immédiate
+        await websocket.send_text(json.dumps({
+            "type": "jarvis_announcement",
+            "text": "Compilation immédiate du Morning Briefing...",
+            "voice": False
+        }))
+        await websocket.send_text(json.dumps({
+            "type": "status",
+            "state": "briefing",
+            "msg": "Compilation du Morning Briefing...",
+            "task": "Morning Briefing",
+            "engine": "FastAPI / Redis",
+            "model": "Briefing Service",
+            "api_type": "free",
+            "api_label": "Local Service"
+        }))
+
+        briefing_data = await briefing_service.compiler_morning_briefing(force_refresh=True)
+        briefing_text = briefing_data.get("texte_oral", "")
+        supervision_service.complete_action(
+            "demander_morning_briefing",
+            status="completed",
+            summary="Morning Briefing compilé et mis en cache"
+        )
+        await broadcast_supervision()
+
+        return {
+            "status": "success",
+            "cached": False,
+            "briefing": briefing_text,
+            "instruction_to_jarvis": (
+                f"Voici le Morning Briefing fraîchement compilé pour Pierre : \"{briefing_text}\". "
+                f"Restitue-le-lui immédiatement et intégralement à voix haute avec ta voix Aoede "
+                f"d'un ton percutant et confiant digne de Stark Industries."
+            )
+        }
+
     # ─── Outil inconnu ─────────────────────────────────────────────────────────
     else:
         return {"status": "error", "message": f"Outil inconnu : {name}"}
+

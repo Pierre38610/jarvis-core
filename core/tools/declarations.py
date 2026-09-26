@@ -551,6 +551,90 @@ def get_tools_list() -> list[types.Tool]:
                         required=["type_entree", "titre", "contenu"]
                     )
                 ),
+                types.FunctionDeclaration(
+                    name="agenda_gerer_evenement",
+                    description=(
+                        "GESTION AGENDA SAMSUNG / GOOGLE CALENDAR : "
+                        "Créer, décaler, consulter ou supprimer des événements et rendez-vous dans l'agenda de Pierre "
+                        "(synchronisés nativement entre Google Calendar et l'application Samsung Calendar de son smartphone). "
+                        "L'opération s'exécute en arrière-plan via webhook n8n."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "action": types.Schema(
+                                type="STRING",
+                                description="Action sur l'agenda : 'creer' (ajouter un événement), 'consulter' (voir les rendez-vous), 'decaler' (modifier horaire/date), 'supprimer' (annuler)"
+                            ),
+                            "titre": types.Schema(
+                                type="STRING",
+                                description="Titre ou intitulé de l'événement / rendez-vous"
+                            ),
+                            "date_debut": types.Schema(
+                                type="STRING",
+                                description="Date et heure de début au format ISO ou clair (ex: '2026-09-26T14:30:00', 'demain 10h')"
+                            ),
+                            "date_fin": types.Schema(
+                                type="STRING",
+                                description="Date et heure de fin optionnelle (ex: '2026-09-26T15:30:00')"
+                            ),
+                            "description": types.Schema(
+                                type="STRING",
+                                description="Description détaillée, lieu ou notes pour l'événement (optionnel)"
+                            ),
+                        },
+                        required=["action", "titre", "date_debut"]
+                    )
+                ),
+                types.FunctionDeclaration(
+                    name="creer_rappel_push",
+                    description=(
+                        "CAPTURE VOCALE AVEC RAPPEL PUSH : "
+                        "Note un mémo oral instantané et programme un rappel push sur le smartphone de Pierre "
+                        "via n8n (Pushbullet / Web Push / Telegram Stark Bot) à une échéance ou un horaire précis."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "message": types.Schema(
+                                type="STRING",
+                                description="Message, texte du mémo ou rappel à notifier sur le smartphone"
+                            ),
+                            "echeance": types.Schema(
+                                type="STRING",
+                                description="Délai ou date/heure d'échéance du rappel (ex: 'dans 30 minutes', 'dans 2 heures', '18h30', '2026-09-26T19:00:00')"
+                            ),
+                            "priorite": types.Schema(
+                                type="STRING",
+                                description="Niveau de priorité du rappel : 'basse', 'normale', 'haute', 'urgente'. Par défaut 'normale'."
+                            ),
+                        },
+                        required=["message", "echeance"]
+                    )
+                ),
+                types.FunctionDeclaration(
+                    name="demander_morning_briefing",
+                    description=(
+                        "MORNING BRIEFING STARK INDUSTRIES : "
+                        "Restitue la routine matinale au ton Stark Industries (météo locale, rendez-vous du jour, "
+                        "e-mails urgents non lus et résumé des tâches). "
+                        "Interroge en priorité la clé Redis 'jarvis:briefing:today' préparée dès 7h00 pour un retour instantané sans latence, "
+                        "ou compile les données fraîches si nécessaire."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "force_refresh": types.Schema(
+                                type="BOOLEAN",
+                                description="Forcer la recompilation immédiate du briefing en temps réel au lieu d'utiliser le cache du jour (par défaut False)"
+                            ),
+                        }
+                    )
+                ),
             ]
         )
     ]
+

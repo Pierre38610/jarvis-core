@@ -231,6 +231,16 @@ def get_tool_metadata(name: str, args: dict = None) -> dict:
     elif name in ("executer_action_externe", "generer_fichier_tableur", "generer_presentation", "notion_enregistrer"):
         act = args.get("nom_fichier") or args.get("titre") or args.get("action_name") or args.get("action") or name
         return {"state": "document", "msg": f"Pôle Documentaire n8n : {act}...", "task": f"n8n : {act}", "engine": "n8n Community", "model": "Document Automation", "api_type": "free", "api_label": "Local n8n"}
+    elif name == "agenda_gerer_evenement":
+        t = args.get("titre") or "Événement"
+        act = args.get("action") or "Agenda"
+        return {"state": "calendar", "msg": f"Agenda ({act}) : {t}...", "task": f"Agenda : {t}", "engine": "n8n / Google Calendar", "model": "Samsung Sync", "api_type": "free", "api_label": "Local n8n"}
+    elif name == "creer_rappel_push":
+        m = args.get("message") or "Rappel"
+        ech = args.get("echeance") or ""
+        return {"state": "reminder", "msg": f"Rappel push ({ech}) : {m}...", "task": f"Rappel : {m}", "engine": "n8n Push", "model": "Push Notification", "api_type": "free", "api_label": "Local n8n"}
+    elif name == "demander_morning_briefing":
+        return {"state": "briefing", "msg": "Morning Briefing Stark...", "task": "Morning Briefing", "engine": "FastAPI / Redis", "model": "Briefing Protocol", "api_type": "free", "api_label": "Local Service"}
     elif name in ("check_console_errors", "get_system_status", "launch_application", "list_chrome_extensions"):
         return {"state": "system", "msg": "Diagnostic et maintenance système...", "task": "Diagnostic système", "engine": "OS Monitor", "model": "System Telemetry", "api_type": "free", "api_label": "Service Local"}
     else:

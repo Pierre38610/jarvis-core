@@ -20,7 +20,8 @@
    - 7.5. Suite de Communication & Messagerie (Email Stark / IMAP / Chat Multimodal)
    - 7.6. Système de Mémoire Hybride (SQLite / Vectorielle Qdrant / Fastembed)
    - 7.7. Télémétrie, Diagnostics & Supervision Système
-   - 7.8. Automatisation des Processus Externes (n8n Community)
+   - 7.8. Automatisation des Processus Externes & Pôle Documentaire (n8n Community)
+   - 7.9. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
 8. [Matrice des Endpoints API REST & Contrats WebSockets](#8-matrice-des-endpoints-api-rest--contrats-websockets)
 9. [Interface Utilisateur, PWA & HUD Mobile](#9-interface-utilisateur-pwa--hud-mobile)
 10. [Analyse Critique : Forces, Dette Technique & Pistes d'Amélioration](#10-analyse-critique--forces-dette-technique--pistes-damélioration)
@@ -355,6 +356,29 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
   - **Résilience absolue** : Gestion systématique des exceptions (timeout 30s, erreurs de connexion, JSON malformé) évitant tout crash du canal vocal principal.
   - Workflows n8n exportables et packagés dans `docs/n8n_workflows/documents_suite.json`.
 
+### 7.9. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
+- **Fichiers** : `services/briefing_service.py`, `routers/briefing.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `docs/n8n_workflows/time_and_briefing.json`.
+- **Outils exposés** : `agenda_gerer_evenement`, `creer_rappel_push`, `demander_morning_briefing`.
+- **Architecture & Fonctionnalités** :
+  1. **Agenda Samsung & Google Calendar (`agenda_gerer_evenement`)** :
+     - Création, décalage et consultation des événements synchronisés nativement entre Google Calendar et l'application Samsung Calendar du smartphone de Pierre.
+     - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/agenda-event`.
+     - Intégration directe avec le nœud officiel Google Calendar n8n avec synchronisation bidirectionnelle.
+  2. **Capture Vocale & Rappels Push Mobiles (`creer_rappel_push`)** :
+     - Prise de note orale instantanée et programmation d'un rappel push sur smartphone via n8n (Pushbullet / Web Push / Telegram Stark Bot).
+     - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/schedule-push-reminder`.
+     - Architecture n8n : Webhook -> Code (calcul du délai) -> Nœud Wait (jusqu'à échéance) -> Nœud Notification Push mobile.
+  3. **Morning Briefing Stark Industries (`demander_morning_briefing`)** :
+     - Routine quotidienne compilée à 7h00 (via Cron n8n ou sur demande) agrégeant :
+       * Météo locale en temps réel (Open-Meteo avec dégradation locale gracieuse).
+       * Rendez-vous du jour issus de l'agenda mis en cache.
+       * E-mails urgents non lus via IMAP Gmail (`services/email_service.py`).
+       * État de santé des systèmes et présence des périphériques (`CacheService` / `SystemService`).
+     - Résumé d'impact de 3-4 phrases courtes et percutantes au ton Stark Industries / Aoede.
+     - Mise en cache Redis sous `jarvis:briefing:today` (TTL 16 heures).
+     - Restitution vocale sans aucune latence au premier "Bonjour" de la journée.
+  - Workflows n8n packagés dans `docs/n8n_workflows/time_and_briefing.json`.
+
 ---
 
 ## 8. MATRICE DES ENDPOINTS API REST & CONTRATS WEBSOCKETS
@@ -367,6 +391,7 @@ Le serveur principal `App.py` est allégé (< 190 lignes) et instancie l'applica
 - **`routers/media.py`** : Endpoints Deezer Web Player (`/api/media/deezer/*`) et ponts multimédia.
 - **`routers/browser.py`** : Endpoints de navigation, extensions Chrome, Send to Kindle, téléchargements et gestion des emails (`/api/emails/*`, `/api/send-email`).
 - **`routers/supervision.py`** : Endpoints `/api/supervision/*` (overview, fenêtres ouvertes) et injection de directives/arrêts d'urgence (`/api/task/*`).
+- **`routers/briefing.py`** : Endpoints du Morning Briefing (`/api/briefing/*`) et de l'agenda synchronisé (`/api/agenda/*`).
 - **`routers/settings.py`** : Configuration dynamique (`/api/live-model`, `/api/settings/paid-key`, `/api/paid-consent`, `/api/tunnel-info`).
 - **`core/shared_state.py`** : État partagé, clients API Gemini, gestion des exceptions de quota, diffusion temps réel.
 - **`core/tools/declarations.py`** : Déclarations formelles des schémas d'outils Gemini Live Function Calling.
@@ -407,6 +432,9 @@ Le serveur principal `App.py` est allégé (< 190 lignes) et instancie l'applica
 | **GET/POST**| `/api/settings/paid-key` | État et verrouillage de l'encoche de clé payante | Token |
 | **POST** | `/api/paid-consent` | Approbation/refus d'une requête de coût payant | Token |
 | **GET** | `/api/local-agent/status` | Statut de connexion du PC local physique de Pierre | Token |
+| **POST** | `/api/briefing/compile` | Compilation et mise en cache du Morning Briefing (déclenché par cron n8n à 07:00) | Token |
+| **GET** | `/api/briefing/today` | Récupération instantanée du Morning Briefing compilé du jour | Token |
+| **GET** | `/api/agenda/today` | Consultation des rendez-vous d'agenda du jour mis en cache | Token |
 
 ### 8.2. Canaux WebSockets
 

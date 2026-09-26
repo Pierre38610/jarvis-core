@@ -22,7 +22,7 @@ N8N_CONTAINER_NAME = os.getenv("N8N_CONTAINER_NAME", "jarvis_n8n")
 
 _HTTP_TIMEOUT = 30.0  # secondes
 
-# Mapping canonique des actions documentaires vers leurs webhooks n8n
+# Mapping canonique des actions documentaires, d'agenda et de rappels vers leurs webhooks n8n
 ACTION_WEBHOOK_MAPPING = {
     "generer_fichier_tableur": "document-spreadsheet",
     "document-spreadsheet": "document-spreadsheet",
@@ -30,7 +30,12 @@ ACTION_WEBHOOK_MAPPING = {
     "document-slides": "document-slides",
     "notion_enregistrer": "notion-entry",
     "notion-entry": "notion-entry",
+    "agenda_gerer_evenement": "agenda-event",
+    "agenda-event": "agenda-event",
+    "creer_rappel_push": "schedule-push-reminder",
+    "schedule-push-reminder": "schedule-push-reminder",
 }
+
 
 
 # ─── 1. Déclenchement de workflow via Webhook ────────────────────────────────
@@ -103,6 +108,37 @@ def build_notion_payload(type_entree: str, titre: str, contenu: str, tags: Optio
     }
 
 
+def build_agenda_payload(
+    action: str,
+    titre: str,
+    date_debut: str,
+    date_fin: Optional[str] = None,
+    description: str = ""
+) -> dict:
+    """Construit et normalise le payload pour le webhook agenda-event (Google Calendar / Samsung)."""
+    return {
+        "action": (action or "consulter").strip().lower(),
+        "titre": (titre or "Événement").strip(),
+        "date_debut": (date_debut or "").strip(),
+        "date_fin": (date_fin or "").strip() or (date_debut or "").strip(),
+        "description": (description or "").strip(),
+        "calendar_id": "primary",
+        "user_email": "pierrecassagnettes@gmail.com",
+        "source": "jarvis-voice"
+    }
+
+
+def build_reminder_payload(message: str, echeance: str, priorite: str = "normale") -> dict:
+    """Construit et normalise le payload pour le webhook schedule-push-reminder."""
+    return {
+        "message": (message or "").strip(),
+        "echeance": (echeance or "").strip(),
+        "priorite": (priorite or "normale").strip().lower(),
+        "source": "jarvis-voice",
+        "device": "smartphone"
+    }
+
+
 async def executer_action_externe(
     action: Optional[str] = None,
     parametres: Optional[dict] = None,
@@ -128,7 +164,7 @@ async def executer_action_externe(
     effective_action = ACTION_WEBHOOK_MAPPING.get(raw_action, raw_action)
     effective_params = dict(parametres) if isinstance(parametres, dict) else {}
 
-    # Normalisation spécifique des payloads pour les actions documentaires connues
+    # Normalisation spécifique des payloads pour les actions documentaires, d'agenda et de rappel
     if effective_action == "document-spreadsheet":
         effective_params = build_spreadsheet_payload(
             nom_fichier=effective_params.get("nom_fichier", "tableur.xlsx"),
@@ -149,6 +185,21 @@ async def executer_action_externe(
             contenu=effective_params.get("contenu", ""),
             tags=effective_params.get("tags", [])
         )
+    elif effective_action == "agenda-event":
+        effective_params = build_agenda_payload(
+            action=effective_params.get("action", "consulter"),
+            titre=effective_params.get("titre", "Rendez-vous"),
+            date_debut=effective_params.get("date_debut", ""),
+            date_fin=effective_params.get("date_fin"),
+            description=effective_params.get("description", "")
+        )
+    elif effective_action == "schedule-push-reminder":
+        effective_params = build_reminder_payload(
+            message=effective_params.get("message", "Rappel"),
+            echeance=effective_params.get("echeance", ""),
+            priorite=effective_params.get("priorite", "normale")
+        )
+
 
     try:
         result = await trigger_webhook(action_name=effective_action, payload=effective_params)

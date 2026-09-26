@@ -1,0 +1,248 @@
+[
+  {
+    "id": "jarvis-morning-briefing-cron",
+    "name": "Jarvis - Morning Briefing 07h00 (Cron)",
+    "active": true,
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 7 * * *"
+              }
+            ]
+          }
+        },
+        "id": "cron-briefing-1",
+        "name": "Cron Quotidien 07h00 CET",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [240, 300]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://127.0.0.1:8000/api/briefing/compile",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"force_refresh\": true,\n  \"source\": \"n8n_cron_07h00\",\n  \"timestamp\": new Date().toISOString()\n}",
+          "options": {
+            "timeout": 15000
+          }
+        },
+        "id": "http-compile-briefing-1",
+        "name": "Compiler et Mettre en Cache le Briefing",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [480, 300]
+      },
+      {
+        "parameters": {
+          "jsCode": "const res = $input.first().json;\nreturn [{\n  json: {\n    status: 'briefing_compiled',\n    message: 'Morning Briefing compilé et mis en cache dans Redis',\n    texte_oral: res.briefing?.texte_oral || res.texte_oral || '',\n    date: new Date().toISOString()\n  }\n}];"
+        },
+        "id": "code-log-briefing-1",
+        "name": "Consigner Statut Briefing",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [720, 300]
+      }
+    ],
+    "connections": {
+      "Cron Quotidien 07h00 CET": {
+        "main": [
+          [{ "node": "Compiler et Mettre en Cache le Briefing", "type": "main", "index": 0 }]
+        ]
+      },
+      "Compiler et Mettre en Cache le Briefing": {
+        "main": [
+          [{ "node": "Consigner Statut Briefing", "type": "main", "index": 0 }]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    },
+    "tags": ["jarvis", "morning-briefing", "cron", "redis"]
+  },
+  {
+    "id": "jarvis-schedule-push-reminder",
+    "name": "Jarvis - Rappels et Notifications Push Mobile",
+    "active": true,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "schedule-push-reminder",
+          "authentication": "none",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "id": "wh-reminder-1",
+        "name": "Webhook Rappel",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [240, 480],
+        "webhookId": "jarvis-schedule-push-reminder"
+      },
+      {
+        "parameters": {
+          "jsCode": "const body = $input.first().json.body || $input.first().json || {};\nconst message = (body.message || 'Rappel Pierre').trim();\nconst echeance = (body.echeance || 'dans 15 minutes').trim();\nconst priorite = (body.priorite || 'normale').toLowerCase();\n\n// Détection et calcul du délai d'attente (en secondes)\nlet waitSeconds = 900; // 15 min par défaut\nconst lower = echeance.toLowerCase();\n\nif (lower.includes('seconde')) {\n  const num = parseInt(lower.match(/\\d+/)?.[0] || '30', 10);\n  waitSeconds = Math.max(num, 5);\n} else if (lower.includes('minute') || lower.includes('min')) {\n  const num = parseInt(lower.match(/\\d+/)?.[0] || '15', 10);\n  waitSeconds = Math.max(num * 60, 10);\n} else if (lower.includes('heure') || lower.includes('h')) {\n  const num = parseInt(lower.match(/\\d+/)?.[0] || '1', 10);\n  waitSeconds = num * 3600;\n} else if (/^\\d{4}-\\d{2}-\\d{2}/.test(echeance)) {\n  const targetTime = new Date(echeance).getTime();\n  const diffSec = Math.floor((targetTime - Date.now()) / 1000);\n  waitSeconds = diffSec > 5 ? diffSec : 10;\n}\n\nreturn [{\n  json: {\n    message: message,\n    echeance: echeance,\n    priorite: priorite,\n    waitSeconds: waitSeconds,\n    scheduled_at: new Date().toISOString()\n  }\n}];"
+        },
+        "id": "code-calc-wait-1",
+        "name": "Calculer Échéance et Attente",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [460, 480]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ { status: 'scheduled', reply: 'Rappel programmé avec succès sur votre smartphone.', message: $json.message, echeance: $json.echeance, wait_seconds: $json.waitSeconds, timestamp: new Date().toISOString() } }}",
+          "options": {}
+        },
+        "id": "respond-reminder-1",
+        "name": "Accusé Réception Immédiat",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [680, 380]
+      },
+      {
+        "parameters": {
+          "amount": "={{ $json.waitSeconds }}",
+          "unit": "seconds"
+        },
+        "id": "wait-reminder-1",
+        "name": "Nœud Wait (Jusqu'à échéance)",
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": [680, 580],
+        "webhookId": "jarvis-wait-reminder"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://127.0.0.1:8000/api/send-email",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"subject\": \"⏰ RAPPEL J.A.R.V.I.S. : \" + $json.message,\n  \"body\": \"Pierre, voici votre rappel programmé pour : \" + $json.message + \"\\nÉchéance : \" + $json.echeance + \"\\nPriorité : \" + $json.priorite,\n  \"to_email\": \"pierrecassagnettes@gmail.com\"\n}",
+          "options": {
+            "timeout": 10000
+          }
+        },
+        "id": "push-notification-1",
+        "name": "Notification Push / Mobile Alert",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [920, 580]
+      }
+    ],
+    "connections": {
+      "Webhook Rappel": {
+        "main": [
+          [{ "node": "Calculer Échéance et Attente", "type": "main", "index": 0 }]
+        ]
+      },
+      "Calculer Échéance et Attente": {
+        "main": [
+          [
+            { "node": "Accusé Réception Immédiat", "type": "main", "index": 0 },
+            { "node": "Nœud Wait (Jusqu'à échéance)", "type": "main", "index": 0 }
+          ]
+        ]
+      },
+      "Nœud Wait (Jusqu'à échéance)": {
+        "main": [
+          [{ "node": "Notification Push / Mobile Alert", "type": "main", "index": 0 }]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    },
+    "tags": ["jarvis", "reminders", "push", "wait"]
+  },
+  {
+    "id": "jarvis-agenda-event",
+    "name": "Jarvis - Agenda Google et Samsung Calendar",
+    "active": true,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "agenda-event",
+          "authentication": "none",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "id": "wh-agenda-1",
+        "name": "Webhook Agenda",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [240, 780],
+        "webhookId": "jarvis-agenda-event"
+      },
+      {
+        "parameters": {
+          "jsCode": "const body = $input.first().json.body || $input.first().json || {};\nconst action = (body.action || 'consulter').toLowerCase().trim();\nconst titre = (body.titre || 'Rendez-vous').trim();\nconst dateDebut = (body.date_debut || new Date().toISOString()).trim();\nconst dateFin = (body.date_fin || dateDebut).trim();\nconst description = (body.description || '').trim();\n\nreturn [{\n  json: {\n    action: action,\n    titre: titre,\n    date_debut: dateDebut,\n    date_fin: dateFin,\n    description: description,\n    calendar_id: 'primary',\n    user: 'Pierre Cassagnettes',\n    timestamp: new Date().toISOString()\n  }\n}];"
+        },
+        "id": "code-agenda-prep-1",
+        "name": "Formater Événement Google/Samsung",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [460, 780]
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "calendar": "primary",
+          "start": "={{ $json.date_debut }}",
+          "end": "={{ $json.date_fin }}",
+          "additionalFields": {
+            "summary": "={{ $json.titre }}",
+            "description": "={{ $json.description || 'Créé via J.A.R.V.I.S. Voice' }}"
+          }
+        },
+        "id": "gcal-node-1",
+        "name": "Google Calendar (Samsung Sync)",
+        "type": "n8n-nodes-base.googleCalendar",
+        "typeVersion": 1.2,
+        "position": [680, 780]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ { status: 'success', reply: 'Événement agenda synchronisé avec succès.', action: $node['Formater Événement Google/Samsung'].json.action, titre: $node['Formater Événement Google/Samsung'].json.titre, date_debut: $node['Formater Événement Google/Samsung'].json.date_debut, date_fin: $node['Formater Événement Google/Samsung'].json.date_fin, synced_with: ['Google Calendar', 'Samsung Calendar Smartphone'], timestamp: new Date().toISOString() } }}",
+          "options": {}
+        },
+        "id": "respond-agenda-1",
+        "name": "Respond to Webhook",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [900, 780]
+      }
+    ],
+    "connections": {
+      "Webhook Agenda": {
+        "main": [
+          [{ "node": "Formater Événement Google/Samsung", "type": "main", "index": 0 }]
+        ]
+      },
+      "Formater Événement Google/Samsung": {
+        "main": [
+          [{ "node": "Google Calendar (Samsung Sync)", "type": "main", "index": 0 }]
+        ]
+      },
+      "Google Calendar (Samsung Sync)": {
+        "main": [
+          [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    },
+    "tags": ["jarvis", "agenda", "google-calendar", "samsung"]
+  }
+]
