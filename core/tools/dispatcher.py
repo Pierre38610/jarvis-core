@@ -1630,33 +1630,6 @@ async def dispatch_tool(
         date_depart = args.get("date_depart", "")
         heure_souhaitee = args.get("heure_souhaitee")
         pays = args.get("pays", "auto")
-
-        supervision_service.start_action(
-            "rechercher_train",
-            "Recherche de Trains",
-            "rechercher_train",
-            f"Itinéraire {origine} → {destination} ({date_depart})",
-            "Transport Service / Playwright VPS",
-            api_type="free",
-            api_label="Headless VPS",
-            cost_est="0.00 $"
-        )
-        await broadcast_supervision()
-
-        # Annonce UI et changement d'état
-        await websocket.send_text(json.dumps({
-            "type": "jarvis_announcement",
-            "text": f"Recherche des trains entre {origine} et {destination} pour le {date_depart}...",
-            "voice": False
-        }))
-        await websocket.send_text(json.dumps({
-            "type": "status",
-            "state": "browsing",
-            "msg": f"Recherche trains {origine} → {destination}...",
-            "task": f"Itinéraire {origine} - {destination}",
-            "engine": "Transport Service",
-            "model": "Playwright VPS",
-            "api_type": "free",
         reserver_automatiquement = args.get("reserver_automatiquement", False)
 
         # Accusé de réception supervision
@@ -1672,11 +1645,16 @@ async def dispatch_tool(
         )
         await broadcast_supervision()
 
-        # Notification WebSocket HUD préliminaire
+        # Notification WebSocket HUD préliminaire & Annonce
         await websocket.send_text(json.dumps({
             "type": "audio_event",
             "event": "action_started",
             "action": "rechercher_train",
+            "voice": False
+        }))
+        await websocket.send_text(json.dumps({
+            "type": "jarvis_announcement",
+            "text": f"Recherche des trains entre {origine} et {destination} pour le {date_depart}...",
             "voice": False
         }))
         await websocket.send_text(json.dumps({
