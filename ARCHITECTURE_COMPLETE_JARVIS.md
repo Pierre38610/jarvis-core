@@ -366,9 +366,10 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
      - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/agenda-event`.
      - Intégration directe avec le nœud officiel Google Calendar n8n avec synchronisation bidirectionnelle.
   2. **Capture Vocale & Rappels Push Mobiles (`creer_rappel_push`)** :
-     - Prise de note orale instantanée et programmation d'un rappel push sur smartphone via n8n (Pushbullet / Web Push / Telegram Stark Bot).
-     - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/schedule-push-reminder`.
-     - Architecture n8n : Webhook -> Code (calcul du délai) -> Nœud Wait (jusqu'à échéance) -> Nœud Notification Push mobile.
+     - Prise de note orale instantanée et programmation d'un rappel push ou notification immédiate sur smartphone via le Stark Bot Telegram de Pierre.
+     - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/schedule-push-reminder` (liaison hôte 127.0.0.1).
+     - Architecture n8n : Webhook -> Code (calcul du délai d'attente : immédiat 1s si `maintenant`/`immédiat`, ou temporisé à échéance) -> Nœud Wait -> Nœud Telegram officiel Stark Bot (`chatId: 6849746502`).
+     - Paramètre `echeance` optionnel : valeur par défaut `maintenant` pour les notifications instantanées. Aliases de routage direct supportés (`telegram`, `telegram-notification`, `envoyer_notification_telegram`).
   3. **Morning Briefing Stark Industries (`demander_morning_briefing`)** :
      - Routine quotidienne compilée à 7h00 (via Cron n8n ou sur demande) agrégeant :
        * Météo locale en temps réel (Open-Meteo avec dégradation locale gracieuse).

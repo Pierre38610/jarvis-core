@@ -604,14 +604,14 @@ def get_tools_list() -> list[types.Tool]:
                             ),
                             "echeance": types.Schema(
                                 type="STRING",
-                                description="Délai ou date/heure d'échéance du rappel (ex: 'dans 30 minutes', 'dans 2 heures', '18h30', '2026-09-26T19:00:00')"
+                                description="Délai ou date/heure d'échéance du rappel ou de la notification (ex: 'maintenant' pour un envoi immédiat, 'dans 30 minutes', 'dans 2 heures', '18h30'). Par défaut 'maintenant'."
                             ),
                             "priorite": types.Schema(
                                 type="STRING",
                                 description="Niveau de priorité du rappel : 'basse', 'normale', 'haute', 'urgente'. Par défaut 'normale'."
                             ),
                         },
-                        required=["message", "echeance"]
+                        required=["message"]
                     )
                 ),
                 types.FunctionDeclaration(

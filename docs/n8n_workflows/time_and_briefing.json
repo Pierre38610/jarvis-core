@@ -1,8 +1,12 @@
 [
   {
+    "updatedAt": "2026-09-26T10:56:49.000Z",
+    "createdAt": "2026-09-26T10:55:48.407Z",
     "id": "jarvis-morning-briefing-cron",
     "name": "Jarvis - Morning Briefing 07h00 (Cron)",
+    "description": null,
     "active": true,
+    "isArchived": false,
     "nodes": [
       {
         "parameters": {
@@ -19,7 +23,10 @@
         "name": "Cron Quotidien 07h00 CET",
         "type": "n8n-nodes-base.scheduleTrigger",
         "typeVersion": 1.2,
-        "position": [240, 300]
+        "position": [
+          240,
+          300
+        ]
       },
       {
         "parameters": {
@@ -36,7 +43,10 @@
         "name": "Compiler et Mettre en Cache le Briefing",
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
-        "position": [480, 300]
+        "position": [
+          480,
+          300
+        ]
       },
       {
         "parameters": {
@@ -46,36 +56,87 @@
         "name": "Consigner Statut Briefing",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
-        "position": [720, 300]
+        "position": [
+          720,
+          300
+        ]
       }
     ],
     "connections": {
       "Cron Quotidien 07h00 CET": {
         "main": [
-          [{ "node": "Compiler et Mettre en Cache le Briefing", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Compiler et Mettre en Cache le Briefing",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Compiler et Mettre en Cache le Briefing": {
         "main": [
-          [{ "node": "Consigner Statut Briefing", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Consigner Statut Briefing",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       }
     },
     "settings": {
       "executionOrder": "v1"
     },
-    "tags": []
+    "staticData": null,
+    "meta": null,
+    "nodeGroups": [],
+    "pinData": null,
+    "versionId": "c2a8e191-3593-4d87-8b9e-1136d5e88cce",
+    "activeVersionId": "c2a8e191-3593-4d87-8b9e-1136d5e88cce",
+    "versionCounter": 1,
+    "triggerCount": 1,
+    "sourceWorkflowId": null,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-09-26T10:55:48.411Z",
+        "createdAt": "2026-09-26T10:55:48.411Z",
+        "role": "workflow:owner",
+        "workflowId": "jarvis-morning-briefing-cron",
+        "projectId": "BMHJMwSJhLAho1y8",
+        "project": {
+          "updatedAt": "2026-09-26T12:22:19.857Z",
+          "createdAt": "2026-09-25T22:00:41.852Z",
+          "id": "BMHJMwSJhLAho1y8",
+          "name": "PIERRE CASSAGNETTES <pierrecassagnettes@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "bdb4096e-115c-43bc-8c59-b27c349aeed4"
+        }
+      }
+    ],
+    "versionMetadata": {
+      "name": null,
+      "description": null
+    }
   },
   {
+    "updatedAt": "2026-09-26T13:13:17.000Z",
+    "createdAt": "2026-09-26T10:55:48.414Z",
     "id": "jarvis-schedule-push-reminder",
     "name": "Jarvis - Rappels et Notifications Push Mobile",
+    "description": null,
     "active": true,
+    "isArchived": false,
     "nodes": [
       {
         "parameters": {
           "httpMethod": "POST",
           "path": "schedule-push-reminder",
-          "authentication": "none",
           "responseMode": "responseNode",
           "options": {}
         },
@@ -83,18 +144,24 @@
         "name": "Webhook Rappel",
         "type": "n8n-nodes-base.webhook",
         "typeVersion": 2,
-        "position": [240, 480],
+        "position": [
+          240,
+          480
+        ],
         "webhookId": "jarvis-schedule-push-reminder"
       },
       {
         "parameters": {
-          "jsCode": "const body = $input.first().json.body || $input.first().json || {};\nconst message = (body.message || 'Rappel Pierre').trim();\nconst echeance = (body.echeance || 'dans 15 minutes').trim();\nconst priorite = (body.priorite || 'normale').toLowerCase();\n\n// Détection et calcul du délai d'attente (en secondes)\nlet waitSeconds = 900; // 15 min par défaut\nconst lower = echeance.toLowerCase();\n\nif (lower.includes('seconde')) {\n  const num = parseInt(lower.match(/\\d+/)?.[0] || '30', 10);\n  waitSeconds = Math.max(num, 5);\n} else if (lower.includes('minute') || lower.includes('min')) {\n  const num = parseInt(lower.match(/\\d+/)?.[0] || '15', 10);\n  waitSeconds = Math.max(num * 60, 10);\n} else if (lower.includes('heure') || lower.includes('h')) {\n  const num = parseInt(lower.match(/\\d+/)?.[0] || '1', 10);\n  waitSeconds = num * 3600;\n} else if (/^\\d{4}-\\d{2}-\\d{2}/.test(echeance)) {\n  const targetTime = new Date(echeance).getTime();\n  const diffSec = Math.floor((targetTime - Date.now()) / 1000);\n  waitSeconds = diffSec > 5 ? diffSec : 10;\n}\n\nreturn [{\n  json: {\n    message: message,\n    echeance: echeance,\n    priorite: priorite,\n    waitSeconds: waitSeconds,\n    scheduled_at: new Date().toISOString()\n  }\n}];"
+          "jsCode": "const body = $input.first().json.body || $input.first().json || {};\nconst message = (body.message || body.text || body.contenu || 'Rappel Pierre').trim();\nconst echeance = (body.echeance || 'maintenant').trim();\nconst priorite = (body.priorite || 'normale').toLowerCase();\n\n// Détection et calcul du délai d'attente (en secondes)\nlet waitSeconds = 1;\nconst lower = echeance.toLowerCase();\n\nif (lower.includes('maintenant') || lower.includes('immédiat') || lower.includes('tout de suite') || lower.includes('direct') || lower === '0' || lower === '0s') {\n  waitSeconds = 1;\n} else if (lower.includes('seconde')) {\n  const num = parseInt(lower.match(/\\d+/)?.[0] || '10', 10);\n  waitSeconds = Math.max(num, 1);\n} else if (lower.includes('minute') || lower.includes('min')) {\n  const num = parseInt(lower.match(/\\d+/)?.[0] || '15', 10);\n  waitSeconds = Math.max(num * 60, 5);\n} else if (lower.includes('heure') || lower.includes('h')) {\n  const num = parseInt(lower.match(/\\d+/)?.[0] || '1', 10);\n  waitSeconds = num * 3600;\n} else if (/^\\d{4}-\\d{2}-\\d{2}/.test(echeance)) {\n  const targetTime = new Date(echeance).getTime();\n  const diffSec = Math.floor((targetTime - Date.now()) / 1000);\n  waitSeconds = diffSec > 1 ? diffSec : 1;\n} else {\n  waitSeconds = 1;\n}\n\nreturn [{\n  json: {\n    message: message,\n    echeance: echeance,\n    priorite: priorite,\n    waitSeconds: waitSeconds,\n    scheduled_at: new Date().toISOString()\n  }\n}];"
         },
         "id": "code-calc-wait-1",
         "name": "Calculer Échéance et Attente",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
-        "position": [460, 480]
+        "position": [
+          464,
+          480
+        ]
       },
       {
         "parameters": {
@@ -106,73 +173,142 @@
         "name": "Accusé Réception Immédiat",
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1,
-        "position": [680, 380]
+        "position": [
+          688,
+          384
+        ]
       },
       {
         "parameters": {
-          "amount": "={{ $json.waitSeconds }}",
-          "unit": "seconds"
+          "amount": "={{ $json.waitSeconds }}"
         },
         "id": "wait-reminder-1",
         "name": "Nœud Wait (Jusqu'à échéance)",
         "type": "n8n-nodes-base.wait",
         "typeVersion": 1.1,
-        "position": [680, 580],
+        "position": [
+          688,
+          592
+        ],
         "webhookId": "jarvis-wait-reminder"
       },
       {
         "parameters": {
-          "method": "POST",
-          "url": "http://127.0.0.1:8000/api/send-email",
-          "sendBody": true,
-          "specifyBody": "json",
-          "jsonBody": "={\n  \"subject\": \"⏰ RAPPEL J.A.R.V.I.S. : \" + $json.message,\n  \"body\": \"Pierre, voici votre rappel programmé pour : \" + $json.message + \"\\nÉchéance : \" + $json.echeance + \"\\nPriorité : \" + $json.priorite,\n  \"to_email\": \"pierrecassagnettes@gmail.com\"\n}",
-          "options": {
-            "timeout": 10000
-          }
+          "chatId": "6849746502",
+          "text": "==⏰ RAPPEL J.A.R.V.I.S.\n\n{{ $('Calculer Échéance et Attente').item.json.message }}\n\nPriorité : {{ $('Calculer Échéance et Attente').item.json.priorite }}\n",
+          "additionalFields": {}
         },
-        "id": "push-notification-1",
-        "name": "Notification Push / Mobile Alert",
-        "type": "n8n-nodes-base.httpRequest",
-        "typeVersion": 4.2,
-        "position": [920, 580]
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          912,
+          592
+        ],
+        "id": "50c10402-8b4c-45c2-b7b9-5230eaf7208c",
+        "name": "Send a text message",
+        "webhookId": "b62a987c-ff46-472f-8419-57466a5c1c52",
+        "credentials": {
+          "telegramApi": {
+            "id": "06k1CjNOoEqe5HiJ",
+            "name": "Telegram account"
+          }
+        }
       }
     ],
     "connections": {
       "Webhook Rappel": {
         "main": [
-          [{ "node": "Calculer Échéance et Attente", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Calculer Échéance et Attente",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Calculer Échéance et Attente": {
         "main": [
           [
-            { "node": "Accusé Réception Immédiat", "type": "main", "index": 0 },
-            { "node": "Nœud Wait (Jusqu'à échéance)", "type": "main", "index": 0 }
+            {
+              "node": "Accusé Réception Immédiat",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Nœud Wait (Jusqu'à échéance)",
+              "type": "main",
+              "index": 0
+            }
           ]
         ]
       },
       "Nœud Wait (Jusqu'à échéance)": {
         "main": [
-          [{ "node": "Notification Push / Mobile Alert", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Send a text message",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       }
     },
     "settings": {
-      "executionOrder": "v1"
+      "executionOrder": "v1",
+      "binaryMode": "separate"
     },
-    "tags": []
+    "staticData": null,
+    "meta": {
+      "templateCredsSetupCompleted": true
+    },
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "5704c94c-5bf8-49f8-ae43-5b57da656a26",
+    "activeVersionId": "5704c94c-5bf8-49f8-ae43-5b57da656a26",
+    "versionCounter": 8,
+    "triggerCount": 1,
+    "sourceWorkflowId": null,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-09-26T10:55:48.416Z",
+        "createdAt": "2026-09-26T10:55:48.416Z",
+        "role": "workflow:owner",
+        "workflowId": "jarvis-schedule-push-reminder",
+        "projectId": "BMHJMwSJhLAho1y8",
+        "project": {
+          "updatedAt": "2026-09-26T12:22:19.857Z",
+          "createdAt": "2026-09-25T22:00:41.852Z",
+          "id": "BMHJMwSJhLAho1y8",
+          "name": "PIERRE CASSAGNETTES <pierrecassagnettes@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "bdb4096e-115c-43bc-8c59-b27c349aeed4"
+        }
+      }
+    ],
+    "versionMetadata": {
+      "name": null,
+      "description": null
+    }
   },
   {
+    "updatedAt": "2026-09-26T12:41:31.410Z",
+    "createdAt": "2026-09-26T10:55:48.418Z",
     "id": "jarvis-agenda-event",
     "name": "Jarvis - Agenda Google et Samsung Calendar",
+    "description": null,
     "active": true,
+    "isArchived": false,
     "nodes": [
       {
         "parameters": {
           "httpMethod": "POST",
           "path": "agenda-event",
-          "authentication": "none",
           "responseMode": "responseNode",
           "options": {}
         },
@@ -180,7 +316,10 @@
         "name": "Webhook Agenda",
         "type": "n8n-nodes-base.webhook",
         "typeVersion": 2,
-        "position": [240, 780],
+        "position": [
+          240,
+          784
+        ],
         "webhookId": "jarvis-agenda-event"
       },
       {
@@ -191,24 +330,35 @@
         "name": "Formater Événement Google/Samsung",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
-        "position": [460, 780]
+        "position": [
+          464,
+          784
+        ]
       },
       {
         "parameters": {
-          "operation": "create",
           "calendar": "primary",
           "start": "={{ $json.date_debut }}",
           "end": "={{ $json.date_fin }}",
           "additionalFields": {
-            "summary": "={{ $json.titre }}",
-            "description": "={{ $json.description || 'Créé via J.A.R.V.I.S. Voice' }}"
+            "description": "={{ $json.description || 'Créé via J.A.R.V.I.S. Voice' }}",
+            "summary": "={{ $json.titre }}"
           }
         },
         "id": "gcal-node-1",
         "name": "Google Calendar (Samsung Sync)",
         "type": "n8n-nodes-base.googleCalendar",
         "typeVersion": 1.2,
-        "position": [680, 780]
+        "position": [
+          688,
+          784
+        ],
+        "credentials": {
+          "googleCalendarOAuth2Api": {
+            "id": "Bgv4YuZMS7micOmX",
+            "name": "Google Calendar account"
+          }
+        }
       },
       {
         "parameters": {
@@ -220,29 +370,86 @@
         "name": "Respond to Webhook",
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1,
-        "position": [900, 780]
+        "position": [
+          912,
+          784
+        ]
       }
     ],
     "connections": {
       "Webhook Agenda": {
         "main": [
-          [{ "node": "Formater Événement Google/Samsung", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Formater Événement Google/Samsung",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Formater Événement Google/Samsung": {
         "main": [
-          [{ "node": "Google Calendar (Samsung Sync)", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Google Calendar (Samsung Sync)",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Google Calendar (Samsung Sync)": {
         "main": [
-          [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Respond to Webhook",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       }
     },
     "settings": {
-      "executionOrder": "v1"
+      "executionOrder": "v1",
+      "binaryMode": "separate"
     },
-    "tags": []
+    "staticData": null,
+    "meta": {
+      "templateCredsSetupCompleted": true
+    },
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "bc102384-4d3d-438e-9d4c-f3f5cb942dc4",
+    "activeVersionId": "ba06ad3e-846c-48b2-8260-3ab19ad869bc",
+    "versionCounter": 2,
+    "triggerCount": 1,
+    "sourceWorkflowId": null,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-09-26T10:55:48.420Z",
+        "createdAt": "2026-09-26T10:55:48.420Z",
+        "role": "workflow:owner",
+        "workflowId": "jarvis-agenda-event",
+        "projectId": "BMHJMwSJhLAho1y8",
+        "project": {
+          "updatedAt": "2026-09-26T12:22:19.857Z",
+          "createdAt": "2026-09-25T22:00:41.852Z",
+          "id": "BMHJMwSJhLAho1y8",
+          "name": "PIERRE CASSAGNETTES <pierrecassagnettes@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "bdb4096e-115c-43bc-8c59-b27c349aeed4"
+        }
+      }
+    ],
+    "versionMetadata": {
+      "name": null,
+      "description": null
+    }
   }
 ]

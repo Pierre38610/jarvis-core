@@ -77,8 +77,8 @@ env_path = '/home/opc/jarvis-core/.env'
 keys_to_set = {{
     'N8N_ENCRYPTION_KEY': '{encryption_key}',
     'N8N_WEBHOOK_SECRET': '{webhook_secret}',
-    'N8N_WEBHOOK_URL': 'http://n8n:5678/',
-    'N8N_BASE_URL': 'http://n8n:5678',
+    'N8N_WEBHOOK_URL': 'http://127.0.0.1:5678/',
+    'N8N_BASE_URL': 'http://127.0.0.1:5678',
     'N8N_CONTAINER_NAME': 'jarvis_n8n'
 }}
 lines = []

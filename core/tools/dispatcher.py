@@ -1274,8 +1274,8 @@ async def dispatch_tool(
 
     # ─── creer_rappel_push ───────────────────────────────────────────────────
     elif name == "creer_rappel_push":
-        message = (args.get("message") or "Rappel").strip()
-        echeance = (args.get("echeance") or "dans 15 minutes").strip()
+        message = (args.get("message") or args.get("text") or "Rappel").strip()
+        echeance = (args.get("echeance") or "maintenant").strip()
         priorite = (args.get("priorite") or "normale").strip().lower()
 
         supervision_service.start_action(

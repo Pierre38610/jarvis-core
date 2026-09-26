@@ -34,6 +34,9 @@ ACTION_WEBHOOK_MAPPING = {
     "agenda-event": "agenda-event",
     "creer_rappel_push": "schedule-push-reminder",
     "schedule-push-reminder": "schedule-push-reminder",
+    "telegram": "schedule-push-reminder",
+    "telegram-notification": "schedule-push-reminder",
+    "envoyer_notification_telegram": "schedule-push-reminder",
     "surveiller_train": "train-monitoring",
     "train-monitoring": "train-monitoring",
 }
@@ -130,11 +133,11 @@ def build_agenda_payload(
     }
 
 
-def build_reminder_payload(message: str, echeance: str, priorite: str = "normale") -> dict:
-    """Construit et normalise le payload pour le webhook schedule-push-reminder."""
+def build_reminder_payload(message: str, echeance: str = "maintenant", priorite: str = "normale") -> dict:
+    """Construit et normalise le payload pour le webhook schedule-push-reminder (Telegram / push)."""
     return {
-        "message": (message or "").strip(),
-        "echeance": (echeance or "").strip(),
+        "message": (message or "Rappel").strip(),
+        "echeance": (echeance or "maintenant").strip(),
         "priorite": (priorite or "normale").strip().lower(),
         "source": "jarvis-voice",
         "device": "smartphone"
@@ -216,9 +219,16 @@ async def executer_action_externe(
             description=effective_params.get("description", "")
         )
     elif effective_action == "schedule-push-reminder":
+        raw_msg = (
+            effective_params.get("message")
+            or effective_params.get("text")
+            or effective_params.get("contenu")
+            or "Rappel"
+        )
+        raw_ech = effective_params.get("echeance") or "maintenant"
         effective_params = build_reminder_payload(
-            message=effective_params.get("message", "Rappel"),
-            echeance=effective_params.get("echeance", ""),
+            message=raw_msg,
+            echeance=raw_ech,
             priorite=effective_params.get("priorite", "normale")
         )
     elif effective_action == "train-monitoring":
