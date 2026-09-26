@@ -86,6 +86,7 @@ services:
       - "127.0.0.1:5678:5678"   # Interface web + Webhooks (accès via tunnel SSH ou sous-domaine)
     volumes:
       - n8n_data:/home/node/.n8n
+      - /home/opc/jarvis-core/downloads:/home/opc/jarvis-core/downloads
     environment:
       - GENERIC_TIMEZONE=Europe/Paris
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}

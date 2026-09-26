@@ -144,7 +144,7 @@ Le script `sync_deploy.py` (ou `sync_deploy.bat`) assure un cycle de mise en pro
 | **Redis 7** | `redis:alpine` | `127.0.0.1:6379` | Cache clé/valeur haute vitesse, TTL, Heartbeat présence des devices, Pub/Sub temps réel. |
 | **PostgreSQL 16** | `postgres:16-alpine` | `127.0.0.1:5432` | Persistance relationnelle des conversations et des métadonnées mémoires (schéma `schema.sql`). |
 | **Qdrant** | `qdrant/qdrant:latest` | `127.0.0.1:6333` | Moteur vectoriel de recherche sémantique (RAG) avec distance cosinus. |
-| **n8n** | `n8nio/n8n:latest` | `127.0.0.1:5678` | Moteur d'automatisation no-code Community Edition, déclenché par webhooks locaux. |
+| **n8n** | `n8nio/n8n:latest` | `127.0.0.1:5678` | Moteur d'automatisation no-code Community Edition, déclenché par webhooks locaux (montage volume partagé `/home/opc/jarvis-core/downloads` pour génération directe de fichiers). |
 
 *Règle de sécurité stricte : tous les conteneurs Docker sont isolés et bindés exclusivement sur `127.0.0.1`. Aucun port n'est accessible publiquement sur internet.*
 

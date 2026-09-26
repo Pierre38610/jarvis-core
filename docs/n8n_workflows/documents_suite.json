@@ -94,7 +94,7 @@
     "settings": {
       "executionOrder": "v1"
     },
-    "tags": ["jarvis", "documents", "excel"]
+    "tags": []
   },
   {
     "id": "jarvis-doc-slides",
@@ -185,7 +185,7 @@
     "settings": {
       "executionOrder": "v1"
     },
-    "tags": ["jarvis", "documents", "slides"]
+    "tags": []
   },
   {
     "id": "jarvis-notion-entry",
@@ -279,6 +279,6 @@
     "settings": {
       "executionOrder": "v1"
     },
-    "tags": ["jarvis", "notion", "notes", "todo"]
+    "tags": []
   }
 ]

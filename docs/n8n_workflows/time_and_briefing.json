@@ -64,7 +64,7 @@
     "settings": {
       "executionOrder": "v1"
     },
-    "tags": ["jarvis", "morning-briefing", "cron", "redis"]
+    "tags": []
   },
   {
     "id": "jarvis-schedule-push-reminder",
@@ -161,7 +161,7 @@
     "settings": {
       "executionOrder": "v1"
     },
-    "tags": ["jarvis", "reminders", "push", "wait"]
+    "tags": []
   },
   {
     "id": "jarvis-agenda-event",
@@ -243,6 +243,6 @@
     "settings": {
       "executionOrder": "v1"
     },
-    "tags": ["jarvis", "agenda", "google-calendar", "samsung"]
+    "tags": []
   }
 ]
