@@ -416,7 +416,7 @@ async def dispatch_tool(
                     f"Détaille les résultats à Pierre avec ta voix Aoede de façon fluide."
                 )
                 try:
-                    await safe_send_live_client_content(current_sess, result_msg)
+                    await safe_send_live_client_content(_sess, result_msg)
                 except Exception as inj_err:
                     print(f"[Browser BG] Erreur injection résultats: {inj_err}")
             except Exception as e:
@@ -424,7 +424,7 @@ async def dispatch_tool(
                 supervision_service.complete_action("browser_task", status="error", summary=str(e))
                 await broadcast_supervision()
                 try:
-                    await safe_send_live_client_content(current_sess, f"[ÉCHEC NAVIGATION] La navigation sur '{_g}' a échoué ({e}). Informe Pierre brièvement.")
+                    await safe_send_live_client_content(_sess, f"[ÉCHEC NAVIGATION] La navigation sur '{_g}' a échoué ({e}). Informe Pierre brièvement.")
                 except Exception:
                     pass
             finally:

@@ -11,6 +11,7 @@ import uuid
 import smtplib
 import asyncio
 import mimetypes
+import logging
 from datetime import datetime
 import imaplib
 import email
@@ -18,6 +19,8 @@ from email.header import decode_header
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid, parsedate_to_datetime
 from typing import List, Dict, Any, Optional
+
+logger = logging.getLogger("jarvis.email_service")
 
 from config import (
     BASE_DIR,
