@@ -88,15 +88,24 @@ async def dispatch_tool(
     # ─── ask_deep_reasoning (Moteur Antigravity CLI VPS - Avatar Code Violet) ───
     elif name == "ask_deep_reasoning":
         question = args.get("question", "")
-        model_choice = args.get("model") or "gemini-3.1-pro-high"
+        model_choice = args.get("model")
+        intensite_reflexion = args.get("intensite_reflexion")
         is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
-        _, model_label = resolve_antigravity_model(model_choice)
+
+        from google_antigravity import resolve_cognitive_tier
+        cog_cfg = resolve_cognitive_tier(
+            query=question,
+            user_preference=model_choice,
+            intensite_reflexion=intensite_reflexion
+        )
+        effective_model_arg = model_choice or cog_cfg.cli_model_arg
+        _, model_label = resolve_antigravity_model(effective_model_arg)
 
         # 1. Vérification de l'accord explicite préalable de Pierre
         if not is_confirmed:
-            reason = f"Mobilisation des agents Antigravity CLI sur le VPS ({model_label}) : '{question[:80]}'"
+            reason = f"Mobilisation des agents Antigravity CLI sur le VPS ({model_label}, {cog_cfg.description}) : '{question[:80]}'"
             supervision_service.start_action(
-                "deep_reasoning", "Agents Antigravity CLI", "ask_deep_reasoning",
+                "deep_reasoning", f"Antigravity ({cog_cfg.description})", "ask_deep_reasoning",
                 question, model_label, api_type="free", api_label="VPS Oracle",
                 cost_est="0.00 $"
             )
@@ -107,11 +116,12 @@ async def dispatch_tool(
                 "requires_paid_consent": False,
                 "action": "ask_deep_reasoning",
                 "model": model_label,
+                "cognitive_tier": cog_cfg.tier,
                 "reason": reason,
                 "instruction_to_jarvis": (
-                    f"RÈGLE D'INITIATIVE ET DE CONFIRMATION OBLIGATOIRE : Tu as l'initiative de proposer nos agents Antigravity CLI sur le VPS pour analyser cette problématique complexe, "
+                    f"RÈGLE D'INITIATIVE ET DE CONFIRMATION OBLIGATOIRE : Tu as l'initiative de proposer nos agents Antigravity CLI sur le VPS pour analyser cette problématique ({cog_cfg.description}), "
                     f"mais tu DOIS TOUJOURS demander confirmation à Pierre avant de l'exécuter. "
-                    f"Demande-lui directement à voix haute avec ta voix Aoede : 'Pierre, pour analyser cette question en profondeur avec nos agents Antigravity CLI sur le VPS, m'autorises-tu à lancer cette réflexion ?'. "
+                    f"Demande-lui directement à voix haute avec ta voix Aoede : 'Pierre, pour analyser cette question avec nos agents Antigravity sur le VPS ({cog_cfg.description}), m'autorises-tu à lancer cette réflexion ?'. "
                     f"Attends sa confirmation orale avant de relancer l'outil avec confirmed_by_user=True."
                 )
             }
@@ -122,26 +132,28 @@ async def dispatch_tool(
         active_task_controller["info"]["model"] = model_label
 
         supervision_service.start_action(
-            "deep_reasoning", "Agents Antigravity CLI", "ask_deep_reasoning",
+            "deep_reasoning", f"Antigravity ({cog_cfg.description})", "ask_deep_reasoning",
             question, model_label, api_type="free", api_label="VPS Oracle",
             cost_est="0.00 $"
         )
         await broadcast_supervision()
+        announcement_text = cog_cfg.voice_pitch or f"Mobilisation des agents Antigravity CLI avec {model_label}."
         await websocket.send_text(json.dumps({
             "type": "jarvis_announcement",
-            "text": f"Mobilisation des agents Antigravity CLI avec {model_label}.",
+            "text": announcement_text,
             "voice": False
         }))
         # Révêtement immédiat de l'avatar violet de code (coding) pour Antigravity CLI VPS
         await websocket.send_text(json.dumps({
             "type": "status", "state": "coding",
-            "msg": "JARVIS mobilise Antigravity CLI (VPS)...", "task": question,
+            "msg": f"JARVIS mobilise Antigravity ({cog_cfg.description})...", "task": question,
             "engine": "Antigravity CLI (VPS)", "model": model_label,
             "api_type": "free", "api_label": "VPS Oracle"
         }))
 
         _q_bg = question
-        _mc_bg = model_choice
+        _mc_bg = effective_model_arg
+        _ir_bg = intensite_reflexion
         _ml_bg = model_label
         _ws_bg = websocket
         _sess_bg = session
@@ -170,12 +182,13 @@ async def dispatch_tool(
                 except Exception as inj_err:
                     print(f"[Reasoning Progress Injection] {inj_err}")
 
-        async def _run_deep_reasoning_bg(_q=_q_bg, _mc=_mc_bg, _ml=_ml_bg, _ws=_ws_bg, _sess=_sess_bg):
+        async def _run_deep_reasoning_bg(_q=_q_bg, _mc=_mc_bg, _ir=_ir_bg, _ml=_ml_bg, _ws=_ws_bg, _sess=_sess_bg):
             from google_antigravity import AntigravityQuotaExhaustedError
             try:
                 res = await run_deep_reasoning(
                     _q, model_choice=_mc, confirmed_by_user=True,
-                    on_progress=on_reasoning_progress, directive_queue=active_task_controller["queue"]
+                    on_progress=on_reasoning_progress, directive_queue=active_task_controller["queue"],
+                    intensite_reflexion=_ir
                 )
             except AntigravityQuotaExhaustedError:
                 res = {

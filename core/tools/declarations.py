@@ -57,6 +57,16 @@ def get_tools_list() -> list[types.Tool]:
                                 "'claude-3-opus' ou 'claude-3-7-sonnet' (pour analyse conceptuelle pointue), "
                                 "ou 'gemini-3.8-flash-high' (pour investigation rapide)."
                             )),
+                            "intensite_reflexion": types.Schema(
+                                type="STRING",
+                                description=(
+                                    "Intensité cognitive et palier de réflexion Antigravity CLI souhaité : "
+                                    "'rapide' (Tier 1 : Gemini 3.8 Flash low, 1-3s, économique, tâches simples), "
+                                    "'tactique' (Tier 2 : Gemini 3.8 Flash high, quelques secondes, analyse logique poussée et préservation de quota), "
+                                    "'approfondie' (Tier 3 : Gemini 3.1 Pro high, analyse de fond, haute ingénierie)."
+                                ),
+                                enum=["rapide", "tactique", "approfondie"]
+                            ),
                             "confirmed_by_user": types.Schema(type="BOOLEAN", description="Mettre à True UNIQUEMENT après que Pierre a explicitement donné son accord oral suite à ta proposition. Par défaut False."),
                         },
                         required=["question"]

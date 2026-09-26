@@ -11,7 +11,16 @@ from google import genai
 from google.genai import types
 import config
 from config import GEMINI_API_KEY_FREE, GEMINI_API_KEY_PAID, HAS_PAID_API_KEY, WORKSPACE_DIR
-from google_antigravity import AntigravityAgent, resolve_antigravity_model, AntigravityQuotaExhaustedError
+from google_antigravity import (
+    AntigravityAgent,
+    resolve_antigravity_model,
+    AntigravityQuotaExhaustedError,
+    CognitiveConfig,
+    resolve_cognitive_tier,
+    COGNITIVE_TIER_1,
+    COGNITIVE_TIER_2,
+    COGNITIVE_TIER_3
+)
 from services.console_monitor import console_monitor
 
 # Clients Gemini : clé GRATUITE prioritaire, clé PAYANTE en repli (conditionnée à l'encoche utilisateur)
@@ -113,7 +122,8 @@ class AutonomousReasoningEngine:
         timeout_seconds: int = 300,
         on_progress: Any = None,
         directive_queue: Any = None,
-        model: str = "gemini-3.1-pro-high"
+        model: str = "gemini-3.1-pro-high",
+        allow_quota_fallback: bool = True
     ) -> Dict[str, Any]:
         """Exécute l'investigation complète en 3 étapes et enregistre l'artefact sur disque."""
         import re
@@ -140,8 +150,51 @@ class AutonomousReasoningEngine:
                 else:
                     await on_progress(p_info)
 
-        # Exécution de l'investigation
-        task_result = await agent.run_cli_task_stream(prompt, on_progress=_relay_progress, directive_queue=directive_queue)
+        # Exécution de l'investigation avec résilience quota et bascule gracieuse automatique
+        try:
+            task_result = await agent.run_cli_task_stream(prompt, on_progress=_relay_progress, directive_queue=directive_queue)
+        except AntigravityQuotaExhaustedError as quota_err:
+            is_heavy = any(k in str(model).lower() for k in ["3.1", "pro", "opus", "sonnet"])
+            if is_heavy and allow_quota_fallback:
+                fallback_msg = (
+                    "Pierre, le quota 5h sur 3.1 Pro est atteint. "
+                    "J'ai automatiquement basculé l'agent sur 3.8 Flash en réflexion renforcée pour finaliser la tâche sans blocage."
+                )
+                print(f"[Reasoning Engine] {fallback_msg}")
+                try:
+                    from services.supervision_service import supervision_service
+                    supervision_service.record_event(
+                        "QUOTA_FALLBACK",
+                        f"Quota 5h saturé sur {model}. Bascule automatique vers Tier 2 (Gemini 3.8 Flash High)."
+                    )
+                except Exception:
+                    pass
+                console_monitor.record_error(
+                    "Antigravity CLI",
+                    f"Quota 5h saturé sur {model}. Rétrogradation automatique vers Gemini 3.8 Flash (High).",
+                    level="WARNING"
+                )
+                if on_progress:
+                    await on_progress({
+                        "step": "quota_fallback",
+                        "text": fallback_msg,
+                        "fallback_used": True,
+                        "new_model": "Gemini 3.8 Flash (High)"
+                    })
+                try:
+                    from services.briefing_service import briefing_service
+                    asyncio.create_task(briefing_service.send_telegram_alert(
+                        message=f"⚠️ *Alerte Quota Antigravity*\n{fallback_msg}\n*Objectif* : {goal[:60]}",
+                        chat_id="6849746502"
+                    ))
+                except Exception:
+                    pass
+
+                # Relance immédiate sur Gemini 3.8 Flash High (Tier 2)
+                agent_fallback = AntigravityAgent(workspace=self.workspace, model="gemini-3.8-flash-high", api_key=effective_key)
+                task_result = await agent_fallback.run_cli_task_stream(prompt, on_progress=_relay_progress, directive_queue=directive_queue)
+            else:
+                raise
 
         if task_result.status == "cancelled":
             return {"status": "cancelled", "summary": "Investigation interrompue par l'utilisateur.", "artifact_path": None}
@@ -246,7 +299,9 @@ async def run_deep_reasoning(
     engine: str = "auto",
     confirmed_by_user: bool = False,
     on_progress: Any = None,
-    directive_queue: Any = None
+    directive_queue: Any = None,
+    intensite_reflexion: Optional[str] = None,
+    mission_type: Optional[str] = None
 ) -> Dict[str, Any]:
     """Routage intelligent de la réflexion approfondie (Système 2) :
     RÈGLE ABSOLUE D'INITIATIVE ET CONFIRMATION (Pierre Cassagnettes) :
@@ -255,8 +310,15 @@ async def run_deep_reasoning(
     - MAIS Jarvis doit TOUJOURS demander confirmation à Pierre avant de lancer l'exécution !
     - Si confirmed_by_user=False, l'outil renvoie 'requires_user_confirmation' avec instruction claire pour Aoede.
     - Dès que Pierre confirme à l'oral ou via l'écran, la réflexion multi-agents est engagée.
+    - Intègre le routage dynamique en 3 tiers et le repli automatique sur quota 429.
     """
-    chosen_model = model_choice or "gemini-3.1-pro-high"
+    cog_cfg = resolve_cognitive_tier(
+        mission_type=mission_type,
+        query=question,
+        user_preference=model_choice,
+        intensite_reflexion=intensite_reflexion
+    )
+    chosen_model = model_choice or cog_cfg.cli_model_arg
 
     # Vérification clé payante si modèle lourd et encoche décochée
     is_heavy_model = any(k in chosen_model.lower() for k in ["pro", "claude", "sonnet", "opus"])
@@ -277,6 +339,7 @@ async def run_deep_reasoning(
             "requires_checkbox": True,
             "action": "ask_deep_reasoning",
             "model": chosen_model,
+            "cognitive_tier": cog_cfg.tier,
             "reason": f"Le modèle {chosen_model} nécessite la clé payante qui est actuellement verrouillée.",
             "estimated_cost": cost_str,
             "message": prompt_msg,
@@ -285,29 +348,31 @@ async def run_deep_reasoning(
 
     # Vérification de l'accord utilisateur préalable
     if not confirmed_by_user:
-        reason = f"Investigation approfondie multi-agents via Antigravity ({chosen_model}) pour : '{question[:80]}'"
+        reason = f"Investigation approfondie multi-agents via Antigravity ({chosen_model}, {cog_cfg.description}) pour : '{question[:80]}'"
         return {
             "status": "requires_user_confirmation",
             "requires_paid_consent": False,
             "action": "ask_deep_reasoning",
             "model": chosen_model,
+            "cognitive_tier": cog_cfg.tier,
             "reason": reason,
             "estimated_cost": "0.00 $ (Session Google AI Pro)",
             "instruction_to_jarvis": (
-                f"RÈGLE D'INITIATIVE ET DE CONFIRMATION OBLIGATOIRE : Cette tâche nécessite une réflexion approfondie multi-agents via Antigravity. "
+                f"RÈGLE D'INITIATIVE ET DE CONFIRMATION OBLIGATOIRE : Cette tâche nécessite une réflexion approfondie multi-agents via Antigravity ({cog_cfg.description}). "
                 f"Tu as l'initiative de proposer cette analyse experte, mais tu DOIS IMPÉRATIVEMENT demander l'accord oral de Pierre avant de l'exécuter. "
-                f"Demande-lui directement et naturellement avec ta voix Aoede : 'Pierre, pour analyser cette question en profondeur avec notre moteur multi-agents Antigravity, m'autorises-tu à lancer cette réflexion ?'. "
+                f"Demande-lui directement et naturellement avec ta voix Aoede : 'Pierre, pour analyser cette question avec nos agents Antigravity sur le VPS ({cog_cfg.description}), m'autorises-tu à lancer cette réflexion ?'. "
                 f"Dès que Pierre valide à l'oral ('oui', 'vas-y', 'lance', 'd'accord'), réinvoque immédiatement 'ask_deep_reasoning' avec confirmed_by_user=True."
             )
         }
 
     # Pierre a confirmé : engagement du moteur multi-agents autonome
-    print(f"[Reasoning Service] Accord confirmé. Lancement de AutonomousReasoningEngine avec {chosen_model}...")
+    print(f"[Reasoning Service] Accord confirmé. Lancement de AutonomousReasoningEngine ({cog_cfg.description}) avec {chosen_model}...")
     try:
         inv_res = await reasoning_engine.run_autonomous_investigation(
             goal=question,
-            context={"mode": "deep_reasoning"},
+            context={"mode": "deep_reasoning", "tier": cog_cfg.tier},
             required_artifact="markdown_report",
+            timeout_seconds=cog_cfg.timeout_seconds,
             on_progress=on_progress,
             directive_queue=directive_queue,
             model=chosen_model
@@ -315,6 +380,7 @@ async def run_deep_reasoning(
         return {
             "source": "Antigravity CLI (VPS)",
             "model_label": inv_res.get("model_used", chosen_model),
+            "cognitive_tier": cog_cfg.tier,
             "status": inv_res.get("status", "completed"),
             "summary": inv_res.get("summary", ""),
             "full_text": inv_res.get("full_output", ""),

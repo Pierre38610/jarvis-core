@@ -32,7 +32,7 @@ from typing import Dict, Any, List, Optional, Literal, Tuple
 
 import config
 from config import BASE_DIR, WORKSPACE_DIR, GEMINI_API_KEY_FREE, GEMINI_API_KEY_PAID
-from google_antigravity import AntigravityAgent, AntigravityQuotaExhaustedError
+from google_antigravity import AntigravityAgent, AntigravityQuotaExhaustedError, resolve_cognitive_tier, CognitiveConfig
 from services.supervision_service import supervision_service
 from services.console_monitor import console_monitor
 from services.briefing_service import briefing_service
@@ -272,16 +272,24 @@ class AgenticDispatcher:
         mission_type: MissionType,
         goal: str,
         context: Optional[Dict[str, Any]] = None,
-        model: str = "gemini-3.1-pro-high",
+        model: Optional[str] = None,
         notify_voice: bool = True,
         notify_telegram: bool = True,
         output_filename: Optional[str] = None
     ) -> Dict[str, Any]:
         """Lance une mission de délibération Système 2 en arrière-plan non-bloquant
         et configure les alertes multicanales pour la restitution finale.
+        Routage dynamique en 3 tiers et résilience quota-aware.
         """
         mission_id = f"{mission_type}_{int(time.time())}"
         start_time = time.time()
+
+        cog_cfg = resolve_cognitive_tier(
+            mission_type=mission_type,
+            query=goal,
+            user_preference=model
+        )
+        effective_model = model or cog_cfg.cli_model_arg
 
         prompt, default_filename = self._build_domain_prompt(mission_type, goal, context)
         effective_filename = output_filename or default_filename
@@ -293,11 +301,12 @@ class AgenticDispatcher:
             "goal": goal,
             "status": "running",
             "step": "Phase 1 : Prospection & Cadrage",
-            "details": f"Mobilisation des agents Antigravity CLI sur le VPS pour {mission_type}",
+            "details": f"Mobilisation Antigravity CLI ({cog_cfg.description}) pour {mission_type}",
             "started_at": start_time,
             "artifact_path": artifact_path,
             "artifact_filename": effective_filename,
-            "model": model,
+            "model": effective_model,
+            "tier": cog_cfg.tier
         }
         self._active_missions[mission_id] = mission_state
 
@@ -319,7 +328,7 @@ class AgenticDispatcher:
             f"{label} : {goal[:40]}",
             f"agentic_{mission_type}",
             goal,
-            "Antigravity CLI (VPS)",
+            f"Antigravity ({cog_cfg.description})",
             api_type="free",
             api_label="Google AI Pro VPS",
             cost_est="0.00 $"
@@ -330,18 +339,19 @@ class AgenticDispatcher:
         ws = active_task_controller.get("websocket")
         if ws:
             try:
+                announcement_txt = cog_cfg.voice_pitch or f"Agent Antigravity mobilisé pour {label.lower()} : {goal[:45]}..."
                 await ws.send_text(json.dumps({
                     "type": "jarvis_announcement",
-                    "text": f"Agent Antigravity mobilisé pour {label.lower()} : {goal[:45]}...",
+                    "text": announcement_txt,
                     "voice": False
                 }))
                 await ws.send_text(json.dumps({
                     "type": "status",
                     "state": "thinking",
-                    "msg": f"{label} en cours...",
+                    "msg": f"{label} en cours ({cog_cfg.description})...",
                     "task": goal[:40],
                     "engine": "Antigravity CLI (VPS)",
-                    "model": "Gemini 3.1 Pro High"
+                    "model": effective_model
                 }))
             except Exception:
                 pass
@@ -350,7 +360,7 @@ class AgenticDispatcher:
         async def _run_mission_background():
             try:
                 effective_key = config.get_effective_paid_key() if config.is_paid_key_authorized() else GEMINI_API_KEY_FREE
-                agent = AntigravityAgent(workspace=WORKSPACE_DIR, model=model, api_key=effective_key)
+                agent = AntigravityAgent(workspace=WORKSPACE_DIR, model=effective_model, api_key=effective_key)
                 active_task_controller["agent_instance"] = agent
 
                 async def _on_cli_progress(p_info: Dict[str, Any]):
@@ -360,11 +370,48 @@ class AgenticDispatcher:
                     supervision_service.update_action_progress(mission_id, step_name, txt)
                     await broadcast_supervision()
 
-                task_result = await agent.run_cli_task_stream(
-                    prompt,
-                    on_progress=_on_cli_progress,
-                    directive_queue=active_task_controller.get("queue")
-                )
+                try:
+                    task_result = await agent.run_cli_task_stream(
+                        prompt,
+                        on_progress=_on_cli_progress,
+                        directive_queue=active_task_controller.get("queue")
+                    )
+                except AntigravityQuotaExhaustedError:
+                    is_heavy = any(k in effective_model.lower() for k in ["3.1", "pro", "opus", "sonnet"])
+                    if is_heavy:
+                        fallback_msg = (
+                            "Pierre, le quota 5h sur 3.1 Pro est atteint. "
+                            "J'ai automatiquement basculé l'agent sur 3.8 Flash en réflexion renforcée pour finaliser la tâche sans blocage."
+                        )
+                        logger.warning(f"[AgenticDispatcher] {fallback_msg}")
+                        supervision_service.record_event(
+                            "QUOTA_FALLBACK",
+                            f"Mission {mission_type} : bascule automatique vers Tier 2 (Gemini 3.8 Flash High)"
+                        )
+                        supervision_service.update_action_progress(mission_id, "quota_fallback", fallback_msg)
+                        await broadcast_supervision()
+                        if notify_voice:
+                            live_sess = active_task_controller.get("live_session")
+                            if live_sess:
+                                await safe_send_live_client_content(live_sess, f"[ALERTE QUOTA ANTIGRAVITY] {fallback_msg}")
+                        try:
+                            await briefing_service.send_telegram_alert(
+                                message=f"⚠️ *Alerte Quota Antigravity*\n{fallback_msg}\n*Mission* : {label} ({goal[:50]})",
+                                chat_id="6849746502"
+                            )
+                        except Exception:
+                            pass
+
+                        # Relance immédiate avec 3.8 Flash High
+                        fallback_agent = AntigravityAgent(workspace=WORKSPACE_DIR, model="gemini-3.8-flash-high", api_key=effective_key)
+                        active_task_controller["agent_instance"] = fallback_agent
+                        task_result = await fallback_agent.run_cli_task_stream(
+                            prompt,
+                            on_progress=_on_cli_progress,
+                            directive_queue=active_task_controller.get("queue")
+                        )
+                    else:
+                        raise
 
                 if task_result.status == "cancelled":
                     mission_state["status"] = "cancelled"

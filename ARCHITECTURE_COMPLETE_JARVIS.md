@@ -9,7 +9,7 @@
 1. [Vue d'Ensemble & Philosophie du Projet](#1-vue-densemble--philosophie-du-projet)
 2. [Topologie d'Infrastructure & Déploiement Hybride](#2-topologie-dinfrastructure--déploiement-hybride)
 3. [Stack Logicielle & Persistance des Données](#3-stack-logicielle--persistance-des-données)
-4. [Gouvernance des Modèles IA & Verrou Économique Physique](#4-gouvernance-des-modèles-ia--verrou-économique-physique)
+4. [Gouvernance des Modèles IA, Verrou Économique & Routage Cognitif en 3 Tiers](#4-gouvernance-des-modèles-ia--verrou-économique-physique)
 5. [Le Moteur Vocal Temps Réel (Gemini Live Audio)](#5-le-moteur-vocal-temps-réel-gemini-live-audio)
 6. [L'Agent Relais Local PC Windows (`jarvis_local_agent`)](#6-lagent-relais-local-pc-windows-jarvis_local_agent)
 7. [Catalogue Exhaustif des Services & Outils (Function Calling)](#7-catalogue-exhaustif-des-services--outils-function-calling)
@@ -206,6 +206,28 @@ Le système applique un protocole de sécurité financière strict pour éviter 
    > *"Pierre, pour analyser cette architecture avec Gemini 3.1 Pro, j'ai besoin de mobiliser la clé payante (~0.03 $). M'autorises-tu à continuer ?"*
 3. **Détection d'Épuisement de Quotas (429 / ResourceExhausted)** :
    Si la clé gratuite sature, le système ne bascule JAMAIS en douce sur la clé payante. Il prévient Pierre et attend son arbitrage.
+
+### 4.3. Routage Cognitif Dynamique en 3 Paliers (Tiers) & Résilience Quota Antigravity CLI
+Pour concilier puissance délibérative, zéro latence sur les requêtes simples et préservation stricte du quota glissant de 5 heures Google AI Pro, Antigravity CLI intègre un routeur cognitif en 3 paliers (`CognitiveConfig`) :
+
+| Palier (Tier) | Modèle Résolu | Réflexion (Thinking) | Cibles Principales & Cas d'Usage | Latence Typique | Impact Quota 5h |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **TIER 1 — Rapidité & Économie** | `gemini-3.8-flash` | `low` (ou minimal) | `doc_sync`, `book_curation`, `email_simple`, `log_check`, diagnostics routine | 1 à 3 secondes | Négligeable (0 % Pro) |
+| **TIER 2 — Raisonnement Tactique** | `gemini-3.8-flash` | `high` (renforcé) | `transport_optimizer`, `spreadsheet_modeler`, `email_analysis`, `memory_consolidation`, requêtes libres par défaut | 4 à 10 secondes | Nul sur le quota 3.1 Pro |
+| **TIER 3 — Délibération Système 2** | `gemini-3.1-pro` | `high` (délibératif) | `deep_research` multi-sources, `system_healing` critique, `code_refactoring`, concurrence asynchrone | 20 à 60 secondes | Consommation mesurée sur Pro |
+
+#### Mécanismes d'Arbitrage Ordonnés
+1. **Surcharge Explicite (Overriding)** : Si l'utilisateur exprime une consigne de vitesse/modèle ("*Fais une passe rapide avec Flash*", "*Prends tout ton temps et réfléchis au maximum*") ou passe le paramètre `intensite_reflexion` (`rapide` -> T1, `tactique` -> T2, `approfondie` -> T3) dans `ask_deep_reasoning`, ce choix prévaut immédiatement.
+2. **Table de Correspondance Statique par `mission_type`** : Résolution automatique selon le type de mission (`doc_sync`, `transport_optimizer`, `deep_research`...).
+3. **Heuristique de Complexité pour Requêtes Libres** : Analyse du prompt, taille (> 600 chars), présence de blocs de code ou logs, et mots-clés d'intensité technique (`architecture`, `benchmark`, `audit`, `refactor`, `race condition`). En l'absence de complexité avérée, le routeur applique **par défaut le TIER 2** (`gemini-3.8-flash-high`) plutôt que le Tier 3, évitant ainsi l'épuisement prématuré du quota Pro.
+
+#### Protocole de Résilience & Dégradation Gracieuse Quota-Aware (429)
+En cas de saturation du quota 5h sur `gemini-3.1-pro` :
+1. **Interception Immédiate** : Détection de l'exception `AntigravityQuotaExhaustedError` ou code HTTP 429 / `ResourceExhausted`.
+2. **Fallback Transparent Instantané** : Relance automatique de la tâche sur le TIER 2 (`gemini-3.8-flash` avec thinking `high`) sans annulation de la mission.
+3. **Notification Proactive Multicanale** : Enregistrement de l'incident dans `SupervisionService` et alerte vocale/Telegram sans interruption de service :
+   > *"Pierre, le quota 5h sur 3.1 Pro est atteint. J'ai automatiquement basculé l'agent sur 3.8 Flash en réflexion renforcée pour finaliser la tâche sans blocage."*
+4. **Zéro Échec Critique** : Aucune tâche ne s'interrompt brutalement sur quota tant que le palier Flash reste opérationnel.
 
 ---
 
@@ -497,6 +519,11 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
   6. **Briefing Matinal Stratégique Prédictif (`morning_briefing`)** : déclenchement à 6h45 pour une véritable préparation de mission croisant l'agenda, les documents récents, l'historique des contacts, les retards de transport temps réel (Trafikverket / SNCF) et une veille ciblée sur l'actualité IA de pointe.
   7. **Consolidation Nocturne de la Mémoire (`memory_consolidation`)** : routine d'assainissement nocturne, détection de faits contradictoires ou obsolètes, fusion des représentations vectorielles dans Qdrant et Postgres, et structuration des liens logiques dans le Knowledge Graph.
   8. **Synchronisation Continue de la Documentation (`doc_sync`)** : comparaison continue entre le code réel des routeurs/services et `ARCHITECTURE_COMPLETE_JARVIS.md`, avec mise à jour autonome de la documentation dès qu'un endpoint ou une capacité évolue.
+  9. **Routage Cognitif Dynamique en 3 Tiers & Résilience Quota 429** : chaque mission résout son intensité cognitive via `resolve_cognitive_tier` :
+     - **TIER 1 (Flash low, 1-3s)** : `doc_sync`, `book_curation`, `email_simple`, `log_check`.
+     - **TIER 2 (Flash high, 4-10s)** : `transport_optimizer`, `spreadsheet_modeler`, `email_drafting`, `memory_consolidation`, requêtes libres standard.
+     - **TIER 3 (Pro high, 20-60s)** : `system_healing`, `deep_research`, `code_refactoring`.
+     - **Bascule Quota-Aware (429)** : bascule transparente instantanée de Tier 3 vers Tier 2 (`gemini-3.8-flash-high`) avec notification vocale Aoede et alerte Telegram sans blocage de mission.
 
 ---
 

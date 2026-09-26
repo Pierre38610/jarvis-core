@@ -47,3 +47,5 @@ downloads/
 pytest-cache-files-*/
 tests/_test_scratch/
 my-project/
+
+artifacts/

@@ -325,6 +325,21 @@ class SupervisionService:
                 if not still_running:
                     self._active_tools[tool]["active"] = False
 
+    def record_event(self, event_type: str, detail: str) -> Dict[str, Any]:
+        """Enregistre un événement système ou un incident dans la supervision."""
+        now = datetime.now()
+        event_data = {
+            "type": event_type,
+            "detail": detail,
+            "timestamp": now.strftime("%H:%M:%S"),
+            "epoch": time.time()
+        }
+        if not hasattr(self, "_events"):
+            self._events = []
+        self._events.insert(0, event_data)
+        self._events = self._events[:20]
+        return event_data
+
     def track_browser_window(self, url: str, title: str = "Google Chrome"):
         """Enregistre une fenêtre ou un onglet ouvert par Jarvis."""
         now = datetime.now().strftime("%H:%M:%S")

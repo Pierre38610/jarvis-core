@@ -448,11 +448,40 @@ class DeepResearchService:
                 supervision_service.update_action_progress("deep_research", step_name, txt)
                 await broadcast_supervision()
 
-            task_result = await agent.run_cli_task_stream(
-                investigation_prompt,
-                on_progress=_on_cli_progress,
-                directive_queue=active_task_controller.get("queue")
-            )
+            try:
+                task_result = await agent.run_cli_task_stream(
+                    investigation_prompt,
+                    on_progress=_on_cli_progress,
+                    directive_queue=active_task_controller.get("queue")
+                )
+            except AntigravityQuotaExhaustedError:
+                fallback_msg = (
+                    "Pierre, le quota 5h sur 3.1 Pro est atteint. "
+                    "J'ai automatiquement basculé l'agent sur 3.8 Flash en réflexion renforcée pour finaliser la tâche sans blocage."
+                )
+                logger.warning(f"[DeepResearch] {fallback_msg}")
+                supervision_service.record_event("QUOTA_FALLBACK", "Deep Research : bascule automatique vers Tier 2 (Gemini 3.8 Flash High)")
+                supervision_service.update_action_progress("deep_research", "quota_fallback", fallback_msg)
+                await broadcast_supervision()
+                live_sess = active_task_controller.get("live_session")
+                if live_sess:
+                    await safe_send_live_client_content(live_sess, f"[ALERTE QUOTA ANTIGRAVITY] {fallback_msg}")
+                try:
+                    await briefing_service.send_telegram_alert(
+                        message=f"⚠️ *Alerte Quota Antigravity*\n{fallback_msg}\n*Sujet* : {sujet[:60]}",
+                        chat_id="6849746502"
+                    )
+                except Exception:
+                    pass
+
+                # Relance immédiate sur Gemini 3.8 Flash High
+                fb_agent = AntigravityAgent(workspace=WORKSPACE_DIR, model="gemini-3.8-flash-high", api_key=effective_key)
+                active_task_controller["agent_instance"] = fb_agent
+                task_result = await fb_agent.run_cli_task_stream(
+                    investigation_prompt,
+                    on_progress=_on_cli_progress,
+                    directive_queue=active_task_controller.get("queue")
+                )
 
             # Gestion de l'interruption utilisateur
             if task_result.status == "cancelled":
