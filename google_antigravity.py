@@ -199,7 +199,10 @@ class AntigravityAgent:
             try:
                 self.cli_process.terminate()
             except Exception:
-                pass
+                try:
+                    self.cli_process.kill()
+                except Exception:
+                    pass
         print(f"[Antigravity] Ordre de cancellation transmis à l'agent ({self.model_label}).")
 
     async def run_task(self, instruction: str) -> TaskResult:
@@ -226,7 +229,14 @@ class AntigravityAgent:
                 env["GOOGLE_API_KEY"] = self.api_key
                 
             import shutil
-            binary = "agy" if shutil.which("agy") else "antigravity-cli"
+            binary = None
+            for cand in ["agy", "antigravity-cli", "/home/opc/.local/bin/agy", "/usr/local/bin/antigravity-cli", "/usr/bin/antigravity-cli"]:
+                if shutil.which(cand) or (os.path.isabs(cand) and os.path.exists(cand) and os.access(cand, os.X_OK)):
+                    binary = cand
+                    break
+            if not binary:
+                binary = "agy"
+
             cmd = [
                 binary,
                 "-p", instruction,
@@ -236,7 +246,6 @@ class AntigravityAgent:
             if self.requested_model:
                 cmd.extend(["--model", self.requested_model])
 
-            
             self.cli_process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -259,11 +268,16 @@ class AntigravityAgent:
                             stderr_output.append(line_str)
                             # Détection de quota 429
                             if any(k in line_str.lower() for k in ["429", "quota", "resource_exhausted", "quotaexceeded"]):
+                                if self.cli_process:
+                                    try:
+                                        self.cli_process.terminate()
+                                    except Exception:
+                                        pass
                                 raise AntigravityQuotaExhaustedError("Quota 5h épuisé sur Antigravity CLI.")
                         else:
                             stdout_output.append(line_str)
                             if on_progress:
-                                await on_progress({"step": "thought", "text": line_str[:100]})
+                                await on_progress({"step": "thought", "text": line_str[:120]})
                                 
             await asyncio.gather(
                 read_stream(self.cli_process.stdout, False),

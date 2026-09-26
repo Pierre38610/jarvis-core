@@ -284,40 +284,204 @@ async def dispatch_tool(
     # ─── ask_deep_reasoning ────────────────────────────────────────────────────
     elif name == "ask_deep_reasoning":
         question = args.get("question", "")
-        engine = args.get("engine") or "auto"
-        model_choice = args.get("model")
-        is_confirmed = (bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))) and config.is_paid_key_authorized()
+        model_choice = args.get("model") or "gemini-3.1-pro-high"
+        is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
+        _, model_label = resolve_antigravity_model(model_choice)
 
-        if engine == "antigravity" or (model_choice and any(k in model_choice.lower() for k in ["pro", "claude", "sonnet", "opus"])):
-            _, initial_label = resolve_antigravity_model(model_choice or "gemini-3.1-pro-high")
-            initial_engine = "Antigravity IDE"
-            initial_api_type = "paid" if config.is_paid_key_authorized() else "free"
-            initial_api_label = "Clé Payante" if config.is_paid_key_authorized() else "Clé Gratuite (Verrouillée)"
-        else:
-            initial_label = "Gemini 3.8 Flash (Thinking)"
-            initial_engine = "Google API"
-            initial_api_type = "free"
-            initial_api_label = "Clé Gratuite"
+        # 1. Vérification de l'accord explicite préalable de Pierre
+        if not is_confirmed:
+            reason = f"Investigation approfondie multi-agents via Antigravity ({model_label}) : '{question[:80]}'"
+            supervision_service.start_action(
+                "deep_reasoning", "Raisonnement Approfondi", "ask_deep_reasoning",
+                question, model_label, api_type="free", api_label="Session Pro",
+                cost_est="0.00 $"
+            )
+            supervision_service.complete_action("deep_reasoning", status="pending_confirmation", summary=reason)
+            await broadcast_supervision()
+            return {
+                "status": "requires_user_confirmation",
+                "requires_paid_consent": False,
+                "action": "ask_deep_reasoning",
+                "model": model_label,
+                "reason": reason,
+                "instruction_to_jarvis": (
+                    f"RÈGLE D'INITIATIVE ET DE CONFIRMATION OBLIGATOIRE : Tu as l'initiative de proposer Antigravity pour analyser cette problématique complexe, "
+                    f"mais tu DOIS TOUJOURS demander confirmation à Pierre avant de l'exécuter. "
+                    f"Demande-lui directement à voix haute avec ta voix Aoede : 'Pierre, pour analyser cette question en profondeur avec notre moteur multi-agents Antigravity, m'autorises-tu à lancer cette réflexion ?'. "
+                    f"Attends sa confirmation orale avant de relancer l'outil avec confirmed_by_user=True."
+                )
+            }
 
-        supervision_service.start_action("deep_reasoning", "Raisonnement Approfondi", "ask_deep_reasoning", question, initial_label, api_type=initial_api_type, api_label=initial_api_label, cost_est=estimate_tool_cost(name, args)[1])
+        # 2. Confirmation accordée : lancement asynchrone non-bloquant
+        active_task_controller["info"]["running"] = True
+        active_task_controller["info"]["task"] = question
+        active_task_controller["info"]["model"] = model_label
+
+        supervision_service.start_action(
+            "deep_reasoning", "Raisonnement Approfondi", "ask_deep_reasoning",
+            question, model_label, api_type="free", api_label="Session Pro",
+            cost_est="0.00 $"
+        )
         await broadcast_supervision()
-        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Engagement des protocoles de réflexion approfondie avec {initial_label}.", "voice": False}))
-        await websocket.send_text(json.dumps({"type": "status", "state": "thinking", "msg": "Réflexion approfondie en cours...", "task": question, "engine": initial_engine, "model": initial_label, "api_type": initial_api_type, "api_label": initial_api_label}))
-        res = await run_deep_reasoning(question, model_choice=model_choice, engine=engine, confirmed_by_user=is_confirmed)
+        await websocket.send_text(json.dumps({
+            "type": "jarvis_announcement",
+            "text": f"Engagement des protocoles de réflexion approfondie avec {model_label}.",
+            "voice": False
+        }))
+        await websocket.send_text(json.dumps({
+            "type": "status", "state": "thinking",
+            "msg": "JARVIS engage la réflexion approfondie...", "task": question,
+            "engine": "Antigravity DeepThinkingEngine", "model": model_label,
+            "api_type": "free", "api_label": "Session Pro"
+        }))
 
-        if res.get("status") == "requires_user_confirmation":
-            active_task_controller["paid_consent_modal_open"] = True
-            supervision_service.complete_action("deep_reasoning", status="pending_confirmation", summary=res.get("reason", ""))
+        _q_bg = question
+        _mc_bg = model_choice
+        _ml_bg = model_label
+        _ws_bg = websocket
+        _sess_bg = session
+
+        async def on_reasoning_progress(p_info, _ws_orig=_ws_bg, _ml=_ml_bg):
+            step = p_info.get("step", "progress")
+            text = p_info.get("text", "")
+            active_ws = active_task_controller.get("websocket") or _ws_orig
+            active_sess = active_task_controller.get("live_session")
+            supervision_service.update_action_progress("deep_reasoning", step, text, model=_ml)
             await broadcast_supervision()
-            await websocket.send_text(json.dumps({"type": "paid_consent_request", "action": "ask_deep_reasoning", "reason": res.get("reason", ""), "cost": res.get("estimated_cost", "~0.03 $"), "model": res.get("model", "Gemini Pro / Claude")}))
-            return {"status": "requires_user_confirmation", "reason": res.get("reason", ""), "estimated_cost": res.get("estimated_cost", "~0.03 $"), "instruction_to_jarvis": res.get("instruction_to_jarvis", "")}
-        else:
-            actual_key_label = res.get("key_used", initial_api_label)
-            actual_api_type = "free" if "gratuite" in actual_key_label.lower() else "paid"
-            supervision_service.complete_action("deep_reasoning", status="completed", summary=res.get("summary", "")[:250], model=res.get("model_label", initial_label))
+            if active_ws:
+                try:
+                    await active_ws.send_text(json.dumps({
+                        "type": "task_progress_oral", "step": step, "text": text,
+                        "engine": "Antigravity DeepThinkingEngine", "model": _ml
+                    }))
+                except Exception:
+                    pass
+            if active_sess and text and step in ("prospector", "critic", "synthesis", "complete"):
+                try:
+                    await active_sess.send_client_content(
+                        turns=types.Content(role="user", parts=[types.Part.from_text(
+                            text=f"[MISE À JOUR DE LA RÉFLEXION APPROFONDIE - à dire brièvement à Pierre] {text}"
+                        )]),
+                        turn_complete=True
+                    )
+                except Exception as inj_err:
+                    print(f"[Reasoning Progress Injection] {inj_err}")
+
+        async def _run_deep_reasoning_bg(_q=_q_bg, _mc=_mc_bg, _ml=_ml_bg, _ws=_ws_bg, _sess=_sess_bg):
+            from google_antigravity import AntigravityQuotaExhaustedError
+            try:
+                res = await run_deep_reasoning(
+                    _q, model_choice=_mc, confirmed_by_user=True,
+                    on_progress=on_reasoning_progress, directive_queue=active_task_controller["queue"]
+                )
+            except AntigravityQuotaExhaustedError:
+                res = {
+                    "status": "quota_exhausted",
+                    "summary": "Quota de session de 5 heures atteint sur Antigravity.",
+                    "model_label": _ml
+                }
+            except asyncio.CancelledError:
+                res = {"status": "cancelled", "summary": "Réflexion interrompue par l'utilisateur.", "model_label": _ml}
+            except Exception as bg_err:
+                res = {"status": "error", "summary": str(bg_err), "model_label": _ml}
+            finally:
+                active_task_controller["info"]["running"] = False
+                active_task_controller["reasoning_bg_task"] = None
+
+            current_ws = active_task_controller.get("websocket") or _ws
+            current_sess = active_task_controller.get("live_session") or _sess
+            status = res.get("status")
+
+            if status == "cancelled":
+                supervision_service.complete_action("deep_reasoning", status="cancelled", summary="Réflexion arrêtée à votre demande")
+                await broadcast_supervision()
+                if current_ws:
+                    try:
+                        await current_ws.send_text(json.dumps({"type": "task_cancelled", "reason": "Arrêt demandé", "message": "Réflexion immédiatement interrompue."}))
+                        await current_ws.send_text(json.dumps({"type": "status", "state": "idle", "msg": "En veille active", "engine": "Google API Live", "model": live_display_label}))
+                    except Exception:
+                        pass
+                if current_sess:
+                    try:
+                        await current_sess.send_client_content(
+                            turns=types.Content(role="user", parts=[types.Part.from_text(text="[RÉFLEXION ARRÊTÉE] La réflexion a été interrompue suite à la demande de Pierre. Confirme-lui brièvement que tout est arrêté.")]),
+                            turn_complete=True
+                        )
+                    except Exception:
+                        pass
+                return
+
+            elif status == "quota_exhausted":
+                supervision_service.complete_action("deep_reasoning", status="error", summary="Quota 5h Antigravity saturé")
+                await broadcast_supervision()
+                if current_sess:
+                    try:
+                        await current_sess.send_client_content(
+                            turns=types.Content(role="user", parts=[types.Part.from_text(
+                                text="[ALERTE QUOTA 5H ANTIGRAVITY] Le quota de session de 5 heures d'Antigravity est momentanément saturé. Informe Pierre calmement avec ta voix Aoede et propose-lui soit d'attendre le renouvellement de la session, soit de répondre avec le moteur Google standard."
+                            )]),
+                            turn_complete=True
+                        )
+                    except Exception:
+                        pass
+                return
+
+            is_error = status == "error"
+            supervision_service.complete_action(
+                "deep_reasoning",
+                status="error" if is_error else "completed",
+                summary=res.get("summary", "")[:250],
+                model=res.get("model_label", _ml)
+            )
             await broadcast_supervision()
-            await websocket.send_text(json.dumps({"type": "status", "state": "thinking", "msg": "Analyse terminée, formulation de la synthèse...", "task": question, "engine": res.get("source", initial_engine), "model": res.get("model_label", initial_label), "api_type": actual_api_type, "api_label": actual_key_label}))
-            return {"status": "completed", "engine_used": res.get("source", initial_engine), "model_used": res.get("model_label", initial_label), "result": res, "instruction_to_jarvis": f"La réflexion avec {res.get('model_label', initial_label)} ({res.get('source', initial_engine)}) est achevée. Présente la synthèse et les conclusions avec clarté et éloquence avec ta voix Aoede."}
+
+            if current_ws:
+                try:
+                    await current_ws.send_text(json.dumps({
+                        "type": "task_completed", "is_error": is_error,
+                        "status": "error" if is_error else "completed",
+                        "summary": res.get("summary", ""),
+                        "artifact_path": res.get("artifact_path"),
+                        "engine": "Antigravity DeepThinkingEngine", "model": res.get("model_label", _ml)
+                    }))
+                    await current_ws.send_text(json.dumps({
+                        "type": "status", "state": "idle", "msg": "En veille active",
+                        "engine": "Google API Live", "model": live_display_label
+                    }))
+                except Exception:
+                    pass
+
+            if current_sess:
+                if is_error:
+                    msg = f"[ERREUR RÉFLEXION] Une anomalie s'est produite lors de l'investigation : {res.get('summary', '')[:200]}. Explique brièvement à Pierre ce qui s'est produit."
+                else:
+                    msg = (
+                        f"[RÉFLEXION APPROFONDIE TERMINÉE] L'investigation multi-agents est achevée avec succès. "
+                        f"Voici la synthèse percutante prête pour la parole : {res.get('summary', '')}. "
+                        f"Un artefact détaillé a été sauvegardé ({res.get('artifact_filename', 'rapport')}). "
+                        f"Présente la synthèse et les conclusions majeures à Pierre avec ta voix Aoede avec franchise, précision et éloquence."
+                    )
+                try:
+                    await current_sess.send_client_content(
+                        turns=types.Content(role="user", parts=[types.Part.from_text(text=msg)]),
+                        turn_complete=True
+                    )
+                except Exception as notify_err:
+                    print(f"[Reasoning Notification Err] {notify_err}")
+
+        bg_reasoning = asyncio.create_task(_run_deep_reasoning_bg())
+        active_task_controller["reasoning_bg_task"] = bg_reasoning
+
+        return {
+            "status": "launched_in_background",
+            "model_used": model_label,
+            "engine": "Antigravity DeepThinkingEngine",
+            "instruction_to_jarvis": (
+                f"L'analyse approfondie multi-agents avec {model_label} est lancée en arrière-plan pour : '{question}'. "
+                f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, complice et direct que sa demande est prise en compte et que tu lances l'investigation approfondie avec Antigravity. "
+                f"Tu restes 100% disponible pour continuer à échanger avec lui pendant l'analyse."
+            )
+        }
 
     # ─── search_web ────────────────────────────────────────────────────────────
     elif name == "search_web":

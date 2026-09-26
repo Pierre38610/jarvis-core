@@ -68,24 +68,26 @@ def get_tools_list() -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="ask_deep_reasoning",
                     description=(
-                        "Sollicite un moteur de réflexion approfondie (Thinking) pour les analyses philosophiques, scientifiques, stratégiques complexes, "
-                        "les calculs avancés ou les synthèses intellectuelles exigeantes. "
-                        "Permet d'utiliser l'API rapide (Thinking gratuit) ou de déléguer à Antigravity IDE avec un grand modèle (Pro 3.1 ou Claude Opus/Sonnet) "
-                        "quand le modèle de base de l'API en thinking n'est pas suffisant."
+                        "MOTEUR DE RÉFLEXION APPROFONDIE UNIVERSEL (SYSTÈME 2 / MULTI-AGENTS ANTIGRAVITY) : "
+                        "Sollicite l'orchestrateur d'investigation multi-agents autonome (DeepThinkingEngine) pour les analyses stratégiques, "
+                        "techniques, comparatives, scientifiques, les audits de code ou les synthèses documentaires poussées. "
+                        "RÈGLE D'INITIATIVE ET DE CONFIRMATION OBLIGATOIRE : Tu as l'initiative de proposer ce moteur dès qu'une tâche est complexe, "
+                        "MAIS TU DOIS TOUJOURS DEMANDER CONFIRMATION À PIERRE AVANT DE L'EXÉCUTER. "
+                        "Si confirmed_by_user est False (valeur par défaut), l'outil te fournira la consigne orale à énoncer pour demander son accord. "
+                        "Dès que Pierre valide à l'oral ('oui', 'vas-y', 'lance', 'd'accord'), réinvoque immédiatement 'ask_deep_reasoning' avec confirmed_by_user=True."
                     ),
+                    behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "question": types.Schema(type="STRING", description="La question ou problématique complexe à analyser en profondeur"),
-                            "engine": types.Schema(type="STRING", description=(
-                                "Moteur d'exécution : 'google_api' pour le modèle Thinking de l'API (rapide, sans frais), "
-                                "ou 'antigravity' pour déléguer à Antigravity IDE quand la tâche demande une puissance de calcul et de réflexion maximale."
-                            )),
+                            "question": types.Schema(type="STRING", description="La problématique, sujet d'investigation, question stratégique ou benchmark à traiter en profondeur"),
                             "model": types.Schema(type="STRING", description=(
-                                "Modèle à utiliser si Antigravity est choisi : "
-                                "'gemini-3.1-pro-high', 'gemini-3.1-pro-medium', 'claude-3-opus', 'claude-3-7-sonnet', ou 'gemini-3.8-flash-high'."
+                                "Modèle à mobiliser selon la complexité : "
+                                "'gemini-3.1-pro-high' (par défaut, pour synthèse et analyse de référence), "
+                                "'claude-3-opus' ou 'claude-3-7-sonnet' (pour analyse conceptuelle pointue), "
+                                "ou 'gemini-3.8-flash-high' (pour investigation rapide)."
                             )),
-                            "confirmed_by_user": types.Schema(type="BOOLEAN", description="Mettre à True UNIQUEMENT après que Pierre a explicitement donné son accord oral suite à ta demande expliquant le besoin et le coût estimé. Par défaut False."),
+                            "confirmed_by_user": types.Schema(type="BOOLEAN", description="Mettre à True UNIQUEMENT après que Pierre a explicitement donné son accord oral suite à ta proposition. Par défaut False."),
                         },
                         required=["question"]
                     )

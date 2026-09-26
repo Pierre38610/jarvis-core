@@ -247,21 +247,24 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
 
 ## 7. CATALOGUE EXHAUSTIF DES SERVICES & OUTILS (FUNCTION CALLING)
 
-### 7.1. Agent Autonome d'Ingénierie Logicielle (Antigravity IDE)
-- **Fichiers** : `google_antigravity.py`, `services/reasoning_service.py`.
+### 7.1. Agent Autonome d'Ingénierie Logicielle & Moteur de Réflexion Approfondie (DeepThinkingEngine / Antigravity)
+- **Fichiers** : `google_antigravity.py`, `services/reasoning_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`.
 - **Outils exposés** : `run_antigravity_task`, `guide_active_task`, `stop_current_action`, `ask_deep_reasoning`.
-- **Moteur sous-jacent** : SDK Google Antigravity officiel avec agent outillé (`google.antigravity.Agent`).
-- **Capacités** :
-  - Création et modification chirurgicale de code source dans l'espace de travail `my-project`.
-  - Inspection de fichiers (`view_file`), listing de répertoires (`list_dir`), recherche textuelle (`grep_search`).
-  - Exécution de commandes shell réelles dans le terminal (compilation, tests, exécution de scripts).
-- **Sélecteur Dynamique de Modèles** :
-  - `gemini-3.8-flash-high/medium/low` : Modèle de développement standard rapide et économique.
-  - `gemini-3.1-pro-preview` : Modèle d'ingénierie complexe, logique algorithmique avancée.
-  - `claude-3-7-sonnet` / `claude-3-opus` : Résolus via Gemini 3.1 Pro haute réflexion pour l'architecture de précision.
-- **Contrôle en direct** :
-  - **Directives injectées en continu** : Possibilité de parler à Jarvis pendant qu'il code pour affiner l'instruction sans redémarrer (`active_task_controller["queue"]`).
-  - **Arrêt d'urgence** : Interruption physique immédiate du thread de développement sur consigne orale (*"stop"*, *"arrête de coder"*).
+- **Moteur sous-jacent** : Harnais officiel Google Antigravity CLI (`agy` / `antigravity-cli` v1.2.11) couplé à `google.antigravity.Agent` et la classe centrale `AutonomousReasoningEngine`.
+- **Architecture Multi-Agents Délibérative (Système 2 en 3 Phases)** :
+  1. **Sous-agent Prospecteur / Web & Sources** : Collecte des faits historiques, métriques vérifiées, données techniques et sources contradictoires.
+  2. **Sous-agent Analyste / Critique** : Élimination méthodique des hallucinations, confrontation des chiffres clés et validation de la structure logique.
+  3. **Sous-agent Synthèse & Production d'Artefact** : Rédaction isolée du livrable dans le format strict demandé (`slides_schema`, `markdown_report`, `code_patch`, `json_benchmark`) et persistance automatique sur disque dans le répertoire `/artifacts/`.
+- **Gouvernance de Session & Quotas 5 Heures** :
+  - **Authentification Cloud Zéro-Coût** : Sur le VPS Oracle Cloud ARM64 (`aarch64`), le CLI s'exécute directement adossé au jeton OAuth2 de session de Pierre (`/home/opc/.gemini/antigravity-cli/antigravity-oauth-token`, compte Google AI Pro), ne générant aucun surcoût d'API.
+  - **Interception du Quota 5h (429 / Rate Limit)** : Détection continue des saturations de session dans les flux `stderr` et levée propre de `AntigravityQuotaExhaustedError`, relayée vocalement à Pierre par Aoede pour arbitrage (bascule API ou temporisation).
+- **Règle Fondamentale d'Initiative & Double Consentement Oral** :
+  - Jarvis a l'initiative proactive de proposer le moteur Antigravity pour toute tâche complexe (architecture, benchmark, refactoring, analyse stratégique).
+  - **Garde-fou inviolable** : Jarvis **DOIT TOUJOURS DEMANDER CONFIRMATION** à Pierre avant d'exécuter la réflexion approfondie (*"Pierre, pour analyser cette question en profondeur avec notre moteur multi-agents Antigravity, m'autorises-tu à lancer cette réflexion ?"*).
+  - L'exécution n'est engagée qu'après accord oral ou validation écran (`confirmed_by_user=True`).
+- **Protocole Vocal Immédiat & Non-Bloquant (< 300 ms)** :
+  - Le dispatcheur renvoie instantanément un accusé de réception préliminaire (`launched_in_background`), permettant à Aoede de confirmer oralement l'engagement du moteur sans aucune latence perçue.
+  - La réflexion tourne en arrière-plan (`asyncio.create_task`), notifie les étapes dans `supervision_service` ("Phase 1 : Prospecteur...", "Phase 2 : Analyse critique...", "Phase 3 : Synthèse..."), et injecte la synthèse vocale finale dans le flux Live.
 
 ### 7.2. Navigation Web Autonome & E-Commerce (Browser-Use / Playwright)
 - **Fichier** : `services/browser_service.py`.
@@ -346,7 +349,7 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
      - Nœuds n8n : Webhook -> Formater Données -> Spreadsheet File (binaire xlsx) -> Enregistrer dans `/home/opc/jarvis-core/downloads/` -> Respond to Webhook.
      - Accès immédiat au fichier généré via le point de montage `/downloads/<nom_fichier>`.
   2. **Génération de présentations Google Slides Expertes & Esthétiques (`generer_presentation`, `services/slides_service.py`)** :
-     - **Moteur de recherche approfondie (`SlidesService`)** : Plutôt que de créer un deck vide ou précipité, le service élabore un plan rigoureux, agrège des faits historiques et chiffres vérifiés (ex: Bitcoin : 21M de limite, SHA-256/PoW, halving avril 2024 à 3.125 BTC, ETF spot, Lightning Network, réserve de valeur), et trie les éléments d'impact.
+     - **Moteur d'investigation multi-agents (`AutonomousReasoningEngine`)** : Plutôt que de créer un deck vide ou précipité, le service s'appuie désormais sur le moteur délibératif universel (`required_artifact="slides_schema"`). Ce dernier active les sous-agents Prospecteur (chiffres vérifiés, faits historiques), Critique (élimination des hallucinations et validation de cohérence) et Synthèse pour générer un plan directeur exhaustif (5 à 8 diapositives) sauvegardé dans `/artifacts/`.
      - **Design moderne 16:9 & Thèmes colorimétriques** : Cartes graphiques, typographies hiérarchisées, pastilles métriques (`key_metric`), séparateurs visuels et notes d'orateur complètes avec palette adaptée (`bitcoin`/`gold`, `stark`, `corporate`, `cyber`, `dark`).
      - **Spécification stricte Google Slides API v1** : Utilisation exclusive du type de forme officiel `ROUND_RECTANGLE` (remplaçant le type invalide `ROUNDED_RECTANGLE`) évitant tout rejet HTTP 400 du batchUpdate.
      - **Élimination de la diapositive blanche par défaut** : La requête Google Slides `batchUpdate` génère les nouvelles diapositives enrichies puis supprime l'éventuelle diapositive vierge initiale ("Cliquez ici pour ajouter un titre").
@@ -573,7 +576,11 @@ L'interface de Jarvis a été développée selon des standards graphiques d'insp
 2. **Hybridation Cloud / Edge Réussie** : La séparation claire entre le serveur Cloud (pensée, mémoire, routage) et l'agent local Windows (mains physiques, applications locales, audio) offre le meilleur des deux mondes.
 3. **Exécution Asynchrone Non-Bloquante** : La capacité de Jarvis à répondre immédiatement à la voix tout en lançant des développements lourds en arrière-plan procure une expérience utilisateur d'une fluidité exceptionnelle.
 4. **Garde-Fous Économiques et de Sécurité** : Le principe d'impossibilité physique sur la clé payante et l'interdiction absolue de procéder au paiement automatique dans les paniers e-commerce rendent le système sûr et prévisible.
-
+5. **Raisonnement Délibératif Système 2 & Multi-Agents Universel (`DeepThinkingEngine`)** :
+   - Découplage de la réflexion approfondie en 3 phases spécialisées (Prospecteur, Critique, Synthèse) utilisable de façon transverse pour le code, la recherche stratégique, les Google Slides et les benchmarks techniques.
+   - Génération décorrélée des artefacts isolés sauvegardés dans `/artifacts/` sans pollution de mémoire vive.
+   - Interception robuste du quota 5h Antigravity CLI avec bascule propre et annonce vocale Aoede.
+   - Règle d'initiative avec confirmation obligatoire garantissant que Jarvis propose la réflexion approfondie pour les tâches lourdes sans jamais engager de traitement imprévu sans validation de Pierre.
 
 ---
 

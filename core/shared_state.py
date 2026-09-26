@@ -67,6 +67,7 @@ active_task_controller: dict = {
     "bg_task": None,             # asyncio.Task du développement en arrière-plan
     "browser_bg_task": None,     # asyncio.Task de navigation autonome
     "search_bg_task": None,      # asyncio.Task de recherche web
+    "reasoning_bg_task": None,   # asyncio.Task de réflexion approfondie universelle
     "agent_instance": None,      # Instance active d'AntigravityAgent si applicable
     "paid_consent_given": False, # Clé payante verrouillée par défaut (demande orale requise)
     "paid_live_approved": False, # Accord vocal payant par défaut verrouillé
@@ -150,7 +151,7 @@ async def stop_active_task(source: str = "user", reason: str = "Arrêt demandé 
             print(f"[Task Stop] Erreur cancel agent: {e}")
 
     # 3. Annulation des tâches asyncio de fond
-    for task_key in ["bg_task", "browser_bg_task", "search_bg_task"]:
+    for task_key in ["bg_task", "browser_bg_task", "search_bg_task", "reasoning_bg_task"]:
         task = active_task_controller.get(task_key)
         if task and not task.done():
             task.cancel()
