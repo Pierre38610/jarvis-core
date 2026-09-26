@@ -14,6 +14,11 @@ from services.console_monitor import console_monitor
 import config
 from config import GEMINI_API_KEY_PAID, GEMINI_API_KEY_FREE
 
+class AntigravityQuotaExhaustedError(Exception):
+    """Levée quand le quota 5h est atteint sur l'API Antigravity CLI."""
+    pass
+
+
 class TaskResult:
     def __init__(self, summary: str = "", status: str = "completed", model_label: str = "Gemini 3.8 Flash (Medium)", error_type: str | None = None):
         self.summary = summary
@@ -146,6 +151,7 @@ class AntigravityAgent:
         else:
             self.api_key = api_key or config.get_effective_paid_key() or GEMINI_API_KEY_FREE
         self.is_cancelled = False
+        self.cli_process = None
 
         if "policies" not in kwargs:
             kwargs["policies"] = [policy.allow_all()]
@@ -189,10 +195,112 @@ class AntigravityAgent:
     def cancel(self):
         """Déclenche l'interruption immédiate de l'agent Antigravity."""
         self.is_cancelled = True
+        if self.cli_process:
+            try:
+                self.cli_process.terminate()
+            except Exception:
+                pass
         print(f"[Antigravity] Ordre de cancellation transmis à l'agent ({self.model_label}).")
 
     async def run_task(self, instruction: str) -> TaskResult:
         return await self.run_task_stream(instruction)
+
+    async def run_cli_task_stream(
+        self,
+        instruction: str,
+        on_progress: Any = None,
+        directive_queue: asyncio.Queue | None = None
+    ) -> TaskResult:
+        """Exécute la tâche en appelant directement le binaire antigravity-cli sur le système via subprocess."""
+        if self.is_cancelled:
+            return TaskResult(summary="Développement arrêté à la demande de l'utilisateur.", status="cancelled", model_label=self.model_label)
+        
+        try:
+            print(f"[Antigravity CLI] Lancement de antigravity-cli pour {self.model_label} : {instruction[:60]}...")
+            if on_progress:
+                await on_progress({"step": "start", "text": f"Lancement de la réflexion approfondie via Antigravity CLI avec {self.model_label}."})
+            
+            env = os.environ.copy()
+            if self.api_key:
+                env["GEMINI_API_KEY"] = self.api_key
+                env["GOOGLE_API_KEY"] = self.api_key
+                
+            cmd = [
+                "antigravity-cli",
+                "--format", "markdown",
+                "--model", self.requested_model or "gemini-3.1-pro-high",
+                "--workspace", self.workspace,
+                instruction
+            ]
+            
+            self.cli_process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+                cwd=self.workspace
+            )
+            
+            stdout_output = []
+            stderr_output = []
+            
+            async def read_stream(stream, is_stderr=False):
+                while True:
+                    line = await stream.readline()
+                    if not line:
+                        break
+                    line_str = line.decode('utf-8', errors='replace').strip()
+                    if line_str:
+                        if is_stderr:
+                            stderr_output.append(line_str)
+                            # Détection de quota 429
+                            if any(k in line_str.lower() for k in ["429", "quota", "resource_exhausted", "quotaexceeded"]):
+                                raise AntigravityQuotaExhaustedError("Quota 5h épuisé sur Antigravity CLI.")
+                        else:
+                            stdout_output.append(line_str)
+                            if on_progress:
+                                await on_progress({"step": "thought", "text": line_str[:100]})
+                                
+            await asyncio.gather(
+                read_stream(self.cli_process.stdout, False),
+                read_stream(self.cli_process.stderr, True)
+            )
+            
+            await self.cli_process.wait()
+            
+            if self.is_cancelled:
+                raise asyncio.CancelledError("Arrêt demandé par l'utilisateur.")
+                
+            if self.cli_process.returncode != 0:
+                err_text = "\n".join(stderr_output)
+                if "429" in err_text or "quota" in err_text.lower():
+                    raise AntigravityQuotaExhaustedError("Quota 5h épuisé sur Antigravity CLI.")
+                raise RuntimeError(f"Erreur Antigravity CLI (code {self.cli_process.returncode}): {err_text}")
+                
+            summary = "\n".join(stdout_output)
+            if not summary:
+                summary = "Tâche Antigravity CLI terminée."
+                
+            if on_progress:
+                await on_progress({"step": "complete", "text": "Le raisonnement est achevé avec succès."})
+                
+            return TaskResult(summary=summary, status="completed", model_label=self.model_label)
+            
+        except AntigravityQuotaExhaustedError:
+            raise
+        except asyncio.CancelledError:
+            print(f"[Antigravity CLI] Tâche annulée avec succès ({self.model_label}).")
+            return TaskResult(summary="Développement interrompu à la demande de l'utilisateur.", status="cancelled", model_label=self.model_label)
+        except Exception as e:
+            if isinstance(e, AntigravityQuotaExhaustedError):
+                raise
+            err_msg = str(e)
+            print(f"[Antigravity CLI] Exception d'exécution ({self.model_label}): {err_msg}")
+            console_monitor.record_error(source=f"Antigravity CLI ({self.model_label})", message=err_msg, level="ERROR")
+            if any(k in err_msg.lower() for k in ["429", "quota", "resource_exhausted"]):
+                raise AntigravityQuotaExhaustedError("Quota 5h épuisé sur Antigravity CLI.")
+            
+            return TaskResult(summary=f"Erreur d'exécution Antigravity CLI ({self.model_label}): {err_msg}", status="error", model_label=self.model_label, error_type="error")
 
     async def run_task_stream(
         self,

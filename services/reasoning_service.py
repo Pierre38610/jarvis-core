@@ -240,6 +240,29 @@ async def run_antigravity_task(
             "key_used": key_label
         }
 
+async def run_deep_research_cli(instruction: str, model: str = "gemini-3.1-pro-high", on_progress: Any = None) -> Dict[str, Any]:
+    """Exécute une tâche d'investigation documentaire via Antigravity CLI en capturant les flux."""
+    if not config.is_paid_key_authorized():
+        # Nécessite la clé payante pour le deep reasoning
+        return {
+            "status": "requires_user_confirmation",
+            "requires_paid_consent": True,
+            "requires_checkbox": True,
+            "action": "generer_presentation",
+            "reason": "La recherche approfondie requiert la clé payante qui est verrouillée.",
+            "estimated_cost": "~0.03 $",
+            "instruction_to_jarvis": "Demande à Pierre de cocher l'autorisation de la clé payante."
+        }
+    
+    agent = AntigravityAgent(workspace=WORKSPACE_DIR, model=model, api_key=GEMINI_API_KEY_PAID)
+    result = await agent.run_cli_task_stream(instruction, on_progress=on_progress)
+    return {
+        "status": result.status,
+        "summary": result.summary,
+        "model_label": result.model_label,
+        "error_type": getattr(result, "error_type", None)
+    }
+
 async def run_deep_reasoning(question: str, model_choice: str | None = None, engine: str = "auto", confirmed_by_user: bool = False) -> Dict[str, Any]:
     """Routage intelligent de la réflexion complexe :
     1. Si un grand modèle Antigravity (Pro/Claude) est demandé :

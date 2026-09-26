@@ -1053,7 +1053,7 @@ async def dispatch_tool(
 
                 # Si les slides n'étaient pas spécifiées ou incomplètes, le moteur produit la recherche experte
                 if not _sl or len(_sl) < 2:
-                    gen_titre, gen_sub, gen_slides = slides_service.generate_deep_research_slides(
+                    gen_titre, gen_sub, gen_slides = await slides_service.generate_deep_research_slides(
                         sujet=_sjt, titre=_tit, theme=_thm
                     )
                     effective_titre = gen_titre
@@ -1164,6 +1164,26 @@ async def dispatch_tool(
                 slides_service._current_task["active"] = False
                 supervision_service.complete_action("generer_presentation", status="error", summary=str(bg_err))
                 await broadcast_supervision()
+                if _s:
+                    from google_antigravity import AntigravityQuotaExhaustedError
+                    if isinstance(bg_err, AntigravityQuotaExhaustedError) or "Quota 5h" in str(bg_err):
+                        inject_text = (
+                            "[QUOTA ÉPUISÉ] Le quota 5h de l'API Antigravity est atteint pour la recherche approfondie. "
+                            "Explique immédiatement à Pierre à l'oral avec ta voix Aoede que le quota gratuit de réflexion "
+                            "est épuisé, et demande-lui directement s'il t'autorise à basculer sur la clé payante pour terminer la présentation."
+                        )
+                    else:
+                        inject_text = (
+                            f"[PRÉSENTATION GOOGLE SLIDES ÉCHEC] Impossible de créer la présentation '{effective_titre}' ({bg_err}). "
+                            f"Informe brièvement Pierre avec ta voix Aoede."
+                        )
+                    try:
+                        await _s.send_client_content(
+                            turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_text)]),
+                            turn_complete=True
+                        )
+                    except Exception as inj_e:
+                        print(f"[Slides BG] Erreur injection Live: {inj_e}")
 
         asyncio.create_task(_run_slides_bg())
 
