@@ -137,6 +137,37 @@ def execute_open_browser(url: str, load_extensions: bool = True) -> Dict[str, An
         }
 
 
+def execute_open_browsers(urls: list, load_extensions: bool = True) -> Dict[str, Any]:
+    """Ouvre plusieurs URLs directement dans des onglets Google Chrome sur l'écran Windows."""
+    clean_urls = []
+    for u in urls:
+        target = (u or "").strip()
+        if target:
+            if not target.startswith("http://") and not target.startswith("https://"):
+                target = "https://" + target
+            clean_urls.append(target)
+
+    if not clean_urls:
+        clean_urls = ["https://www.google.com"]
+
+    try:
+        if CHROME_PATH and os.path.exists(CHROME_PATH):
+            subprocess.Popen([CHROME_PATH, *clean_urls], shell=False)
+        else:
+            for target in clean_urls:
+                webbrowser.open_new_tab(target)
+        return {
+            "status": "success",
+            "urls": clean_urls,
+            "message": f"{len(clean_urls)} onglet(s) de réservation ouvert(s) avec succès dans Google Chrome."
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Impossible d'ouvrir le navigateur pour les onglets : {e}"
+        }
+
+
 def execute_local_app(app_name: str) -> Dict[str, Any]:
     """Lance une application sur l'écran Windows."""
     name_clean = (app_name or "").strip().lower()
@@ -329,14 +360,16 @@ async def agent_loop():
                         elif action == "deezer_action":
                             result = await execute_deezer_action(params)
                         elif action == "prepare_train_checkout":
-                            url = params.get("url", "")
+                            urls = params.get("urls") or ([params.get("url")] if params.get("url") else [])
                             operateur = params.get("operateur", "sncf")
-                            open_res = execute_open_browser(url, load_extensions=True)
+                            open_res = execute_open_browsers(urls, load_extensions=True)
+                            n_trains = len(urls)
+                            label_trains = f"{n_trains} billets de train ({operateur.upper()})" if n_trains > 1 else f"Trajet {operateur.upper()}"
                             result = {
                                 "status": open_res.get("status", "success"),
                                 "operateur": operateur,
-                                "url": url,
-                                "message": f"Trajet {operateur.upper()} ouvert dans Chrome sur votre écran Windows. Coordonnées prêtes, choix des places et paiement manuel en attente."
+                                "urls": urls,
+                                "message": f"{label_trains} ouvert(s) dans Chrome sur votre écran Windows. Vos trajets sont préremplis, il ne vous reste plus qu'à sélectionner vos places/couchettes et finaliser l'achat en toute sécurité."
                             }
                         elif action == "prepare_web_cart_or_checkout":
                             try:

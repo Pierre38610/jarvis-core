@@ -25,6 +25,7 @@ class TrainSearchRequest(BaseModel):
     date_depart: str
     heure_souhaitee: Optional[str] = None
     pays: str = "auto"
+    reserver_automatiquement: bool = False
 
 
 class TrainMonitorRequest(BaseModel):
@@ -46,7 +47,9 @@ class TrainAlertPayload(BaseModel):
 
 class TrainReserveLocalRequest(BaseModel):
     operateur: str
-    url_trajet: str
+    url_trajet: Optional[str] = None
+    urls_trajets: Optional[list] = None
+    description_trajet: Optional[str] = None
 
 
 @router.post("/search")
@@ -57,7 +60,8 @@ async def search_train_endpoint(req: TrainSearchRequest):
         destination=req.destination,
         date_depart=req.date_depart,
         heure_souhaitee=req.heure_souhaitee,
-        pays=req.pays
+        pays=req.pays,
+        reserver_automatiquement=req.reserver_automatiquement
     )
 
 
@@ -145,5 +149,7 @@ async def reserve_train_local_endpoint(req: TrainReserveLocalRequest):
     """Déclenche la préparation de réservation sur le PC physique de Pierre via jarvis_local_agent."""
     return await transport_service.reserver_billet_train_local(
         operateur=req.operateur,
-        url_trajet=req.url_trajet
+        url_trajet=req.url_trajet,
+        urls_trajets=req.urls_trajets,
+        description_trajet=req.description_trajet
     )

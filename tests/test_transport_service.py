@@ -138,6 +138,68 @@ class TestTransportService(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Évaluer Retard et Perturbation", node_names)
         self.assertIn("Alerter Jarvis Webhook (Voix & Push)", node_names)
 
+    def test_detect_multi_segment_route_arctic(self):
+        """Vérifie la décomposition automatique d'un trajet long vers le Nord de la Suède (Malmö -> Kiruna)."""
+        multi = transport_service.detect_multi_segment_route("Malmö", "Kiruna", "2026-09-28", "09:00", "SE")
+        self.assertIsNotNone(multi, "Le trajet Malmö -> Kiruna doit déclencher la décomposition multi-segments")
+        self.assertEqual(len(multi["segments"]), 2, "Le voyage doit comporter 2 segments distincts")
+
+        # Segment 1 : Train à grande vitesse vers Stockholm
+        seg1 = multi["segments"][0]
+        self.assertEqual(seg1["segment_index"], 1)
+        self.assertIn("SJ Snabbtåg", seg1["type_train"])
+        self.assertEqual(seg1["destination"], "Stockholm Central")
+        self.assertNotIn(".html", seg1["url_reservation"])
+
+        # Segment 2 : Train de nuit couchette vers Kiruna
+        seg2 = multi["segments"][1]
+        self.assertEqual(seg2["segment_index"], 2)
+        self.assertIn("Nattåg", seg2["type_train"])
+        self.assertEqual(seg2["destination"], "Kiruna")
+        self.assertEqual(seg2["origine"], "Stockholm Central")
+
+        # Escale et URLs de réservation
+        self.assertEqual(multi["escale"]["gare"], "Stockholm Central")
+        self.assertEqual(len(multi["booking_urls"]), 2)
+        for url in multi["booking_urls"]:
+            self.assertTrue(url.startswith("https://www.sj.se/en"))
+            self.assertNotIn("/sok-resa.html", url)
+
+    async def test_rechercher_itineraires_multi_segment(self):
+        """Vérifie que rechercher_itineraires renvoie les informations multi-billets pour le Nord de la Suède."""
+        res = await transport_service.rechercher_itineraires(
+            "Malmö", "nord de la suède", "la semaine prochaine"
+        )
+        self.assertEqual(res["status"], "success")
+        self.assertTrue(res.get("is_multi_segment"))
+        self.assertIn("segments", res)
+        self.assertIn("booking_urls", res)
+        self.assertEqual(len(res["booking_urls"]), 2)
+        self.assertEqual(res["hub"], "Stockholm Central")
+
+    async def test_reserver_billet_train_local_multi_urls(self):
+        """Vérifie que reserver_billet_train_local transmet une liste de plusieurs URLs au local-agent."""
+        from services.local_agent_service import local_agent_service
+        with patch.object(local_agent_service, "is_connected", return_value=True), \
+             patch.object(local_agent_service, "execute_command", new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = {"status": "success", "action": "prepare_train_checkout"}
+            urls = [
+                "https://www.sj.se/en?from=Malm%C3%B6&to=Stockholm",
+                "https://www.sj.se/en/travel-info/sj-night-train.html",
+            ]
+            res = await transport_service.reserver_billet_train_local(
+                operateur="sj",
+                url_trajet=urls[0],
+                urls_trajets=urls,
+                description_trajet="Enchaînement 2 trains Malmö -> Kiruna"
+            )
+            self.assertEqual(res["status"], "success")
+            mock_exec.assert_called_once()
+            call_kwargs = mock_exec.call_args[1]
+            self.assertEqual(call_kwargs["urls"], urls)
+            self.assertEqual(call_kwargs["operateur"], "sj")
+
 
 if __name__ == "__main__":
     unittest.main()
+

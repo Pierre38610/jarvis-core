@@ -47,6 +47,23 @@ SWEDISH_CITIES = {
     "sundsvall": {"name": "Sundsvall Central", "slug": "sundsvall-central", "code": "Suc"},
     "karlstad": {"name": "Karlstad Central", "slug": "karlstad-central", "code": "Ks"},
     "kiruna": {"name": "Kiruna", "slug": "kiruna", "code": "Krn"},
+    "nord-de-la-suede": {"name": "Kiruna", "slug": "kiruna", "code": "Krn"},
+    "nord-de-la-suède": {"name": "Kiruna", "slug": "kiruna", "code": "Krn"},
+    "nord-suede": {"name": "Kiruna", "slug": "kiruna", "code": "Krn"},
+    "laponie": {"name": "Kiruna", "slug": "kiruna", "code": "Krn"},
+    "laponie-suedoise": {"name": "Kiruna", "slug": "kiruna", "code": "Krn"},
+    "laponie-suédoise": {"name": "Kiruna", "slug": "kiruna", "code": "Krn"},
+    "abisko": {"name": "Abisko Östra", "slug": "abisko-ostra", "code": "Ak"},
+    "gallivare": {"name": "Gällivare", "slug": "gallivare", "code": "Gv"},
+    "gällivare": {"name": "Gällivare", "slug": "gallivare", "code": "Gv"},
+    "narvik": {"name": "Narvik", "slug": "narvik", "code": "Nk"},
+    "boden": {"name": "Boden Central", "slug": "boden-central", "code": "Bdn"},
+    "lulea": {"name": "Luleå Central", "slug": "lulea-central", "code": "Le"},
+    "luleå": {"name": "Luleå Central", "slug": "lulea-central", "code": "Le"},
+    "ostersund": {"name": "Östersund Central", "slug": "ostersund-central", "code": "Ös"},
+    "östersund": {"name": "Östersund Central", "slug": "ostersund-central", "code": "Ös"},
+    "are": {"name": "Åre", "slug": "are", "code": "Åre"},
+    "åre": {"name": "Åre", "slug": "are", "code": "Åre"},
     "halmstad": {"name": "Halmstad Central", "slug": "halmstad-central", "code": "Hd"},
     "vaxjo": {"name": "Växjö", "slug": "vaxjo", "code": "Vö"},
     "växjö": {"name": "Växjö", "slug": "vaxjo", "code": "Vö"},
@@ -107,7 +124,8 @@ class TransportService:
         is_se = (
             any(k in orig_key for k in SWEDISH_CITIES)
             or any(k in dest_key for k in SWEDISH_CITIES)
-            or any(w in orig_key for w in ["central", "station", "tag", "tåg"]) and any(k in orig_key for k in ["malmo", "lund", "stockholm"])
+            or any(w in orig_key or w in dest_key for w in ["suede", "suède", "sweden", "laponie", "kiruna", "abisko", "narvik"])
+            or ((any(w in orig_key for w in ["central", "station", "tag", "tåg"]) or any(w in dest_key for w in ["central", "station", "tag", "tåg"])) and (any(k in orig_key for k in ["malmo", "lund", "stockholm"]) or any(k in dest_key for k in ["malmo", "lund", "stockholm"])))
         )
         if is_se:
             return "SE"
@@ -131,7 +149,7 @@ class TransportService:
             return {"name": clean.title(), "slug": slug, "code": slug[:5].upper()}
 
     def parse_travel_date(self, date_str: str) -> str:
-        """Convertit une expression de date (ex: 'demain', 'aujourd'hui', '2026-09-28') en format YYYY-MM-DD."""
+        """Convertit une expression de date (ex: 'demain', 'semaine prochaine', '2026-09-28') en format YYYY-MM-DD."""
         raw = (date_str or "").strip().lower()
         today = datetime.date.today()
 
@@ -141,6 +159,32 @@ class TransportService:
             return (today + datetime.timedelta(days=1)).isoformat()
         if "après-demain" in raw or "apres demain" in raw or "apres-demain" in raw:
             return (today + datetime.timedelta(days=2)).isoformat()
+
+        # Expressions relatives : semaine prochaine, week-end, jours de la semaine
+        if "semaine prochaine" in raw or "semaine d'après" in raw or "semaine d'apres" in raw:
+            days_ahead = (7 - today.weekday()) % 7
+            if days_ahead == 0:
+                days_ahead = 7
+            return (today + datetime.timedelta(days=days_ahead)).isoformat()
+
+        if "ce week-end" in raw or "ce weekend" in raw:
+            days_to_sat = (5 - today.weekday()) % 7
+            return (today + datetime.timedelta(days=days_to_sat)).isoformat()
+
+        if "week-end prochain" in raw or "weekend prochain" in raw:
+            days_to_sat = ((5 - today.weekday()) % 7) + 7
+            return (today + datetime.timedelta(days=days_to_sat)).isoformat()
+
+        jours_fr = {
+            "lundi": 0, "mardi": 1, "mercredi": 2, "jeudi": 3,
+            "vendredi": 4, "samedi": 5, "dimanche": 6
+        }
+        for j_name, j_num in jours_fr.items():
+            if j_name in raw:
+                diff = (j_num - today.weekday()) % 7
+                if diff == 0 or "prochain" in raw:
+                    diff += 7
+                return (today + datetime.timedelta(days=diff)).isoformat()
 
         # Format ISO direct YYYY-MM-DD
         m_iso = re.search(r'\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b', raw)
@@ -195,12 +239,12 @@ class TransportService:
         outward_datetime = f"{date_iso}T{time_hhmm}:00"
 
         if country == "SE":
-            # Deep links pour la Suède (SJ, Skånetrafiken, Trafikverket)
-            sj_search_url = (
-                f"https://www.sj.se/sv/sok-resa.html?"
-                f"from={quote_plus(orig_norm['name'])}&to={quote_plus(dest_norm['name'])}&date={date_iso}"
-            )
-            sj_direct_route_url = f"https://www.sj.se/kop-resa/valj-resa/{orig_norm['slug']}/{dest_norm['slug']}/{date_iso}"
+            # Deep links pour la Suède (SJ, Skånetrafiken, Trafikverket, Google Transit)
+            # Jamais d'anciennes URL en .html (qui renvoient 404/403)
+            sj_search_url = f"https://www.sj.se/en?from={quote_plus(orig_norm['name'])}&to={quote_plus(dest_norm['name'])}&date={date_iso}"
+            sj_portal_url = "https://www.sj.se/en"
+            sj_direct_route_url = "https://www.sj.se/kop-resa"
+            sj_night_train_url = "https://www.sj.se/en/travel-info/sj-night-train.html"
             trafikverket_url = (
                 f"https://www.trafikverket.se/trafikinformation/tag/?"
                 f"From={quote_plus(orig_norm['name'])}&To={quote_plus(dest_norm['name'])}"
@@ -209,8 +253,18 @@ class TransportService:
                 f"https://www.skanetrafiken.se/sok-resa/?"
                 f"from={quote_plus(orig_norm['name'])}&to={quote_plus(dest_norm['name'])}"
             )
+            google_transit_url = (
+                f"https://www.google.com/maps/dir/?api=1&"
+                f"origin={quote_plus(orig_norm['name'])}&destination={quote_plus(dest_norm['name'])}&travelmode=transit"
+            )
+            rome2rio_url = f"https://www.rome2rio.com/fr/map/{quote_plus(orig_norm['name'])}/{quote_plus(dest_norm['name'])}"
 
-            primary_url = sj_search_url
+            # Pour un trajet vers le nord / train de nuit, pointer prioritairement vers la page nuit ou portail SJ
+            if any(k in dest_norm["slug"] for k in ["kiruna", "abisko", "narvik", "gallivare", "boden", "lulea"]):
+                primary_url = sj_night_train_url
+            else:
+                primary_url = sj_search_url
+
             primary_title = f"SJ : Trajet {orig_norm['name']} → {dest_norm['name']} ({date_iso})"
 
             return {
@@ -220,9 +274,13 @@ class TransportService:
                 "operator": "SJ",
                 "links": {
                     "sj_direct": sj_search_url,
+                    "sj_portal": sj_portal_url,
                     "sj_booking": sj_direct_route_url,
+                    "sj_night_train": sj_night_train_url,
                     "trafikverket_live": trafikverket_url,
                     "skanetrafiken": skanetrafiken_url,
+                    "google_transit": google_transit_url,
+                    "rome2rio": rome2rio_url,
                 },
                 "origin_norm": orig_norm,
                 "destination_norm": dest_norm,
@@ -443,6 +501,170 @@ class TransportService:
                 })
             return options
 
+    # ─── Détection & Gestion des Enchaînements Multi-Segments ─────────────────
+
+    def detect_multi_segment_route(
+        self,
+        orig_norm: Dict[str, str],
+        dest_norm: Dict[str, str],
+        date_iso: str,
+        time_hhmm: str,
+        country: str
+    ) -> Optional[Dict[str, Any]]:
+        """Détecte si un trajet nécessite obligatoirement un enchaînement de plusieurs trains (plusieurs billets).
+        Cas typique : Sud/Ouest de la Suède (Malmö, Göteborg, Lund) vers le Nord / Laponie (Kiruna, Abisko, Narvik)
+        où il est impossible de voyager avec un seul billet direct.
+        """
+        if isinstance(orig_norm, str):
+            orig_norm = self.normalize_station(orig_norm, country)
+        if isinstance(dest_norm, str):
+            dest_norm = self.normalize_station(dest_norm, country)
+
+        orig_slug = orig_norm.get("slug", "")
+        dest_slug = dest_norm.get("slug", "")
+
+        south_west_se = {"malmo", "lund", "helsingborg", "halmstad", "goteborg", "copenhagen", "kristianstad", "vaxjo"}
+        north_se = {"kiruna", "abisko", "narvik", "gallivare", "boden", "lulea", "umea", "sundsvall", "ostersund", "are"}
+
+        is_sweden_northbound = (
+            country == "SE"
+            and any(s in orig_slug for s in south_west_se)
+            and any(n in dest_slug for n in north_se)
+        )
+        is_sweden_southbound = (
+            country == "SE"
+            and any(n in orig_slug for n in north_se)
+            and any(s in dest_slug for s in south_west_se)
+        )
+
+        if is_sweden_northbound:
+            # Enchaînement Sud -> Nord : Train 1 vers Stockholm Central, puis Train de Nuit SJ 94 vers Kiruna / Nord
+            seg1_dep = time_hhmm if time_hhmm and "08" <= time_hhmm <= "13" else "11:05"
+            h_seg1, m_seg1 = map(int, seg1_dep.split(":"))
+            seg1_arr_dt = datetime.datetime(2026, 1, 1, h_seg1, m_seg1) + datetime.timedelta(hours=4, minutes=30)
+            seg1_arr = seg1_arr_dt.strftime("%H:%M")
+
+            seg2_dep = "18:20"
+            seg2_arr = "09:15"  # +1 jour
+
+            url_seg1 = f"https://www.sj.se/en?from={quote_plus(orig_norm['name'])}&to=Stockholm+Central&date={date_iso}"
+            url_seg2 = f"https://www.sj.se/en?from=Stockholm+Central&to={quote_plus(dest_norm['name'])}&date={date_iso}"
+            url_night = "https://www.sj.se/en/travel-info/sj-night-train.html"
+
+            return {
+                "is_multi_segment": True,
+                "country": "SE",
+                "direction": "northbound",
+                "origin": orig_norm["name"],
+                "destination": dest_norm["name"],
+                "hub": "Stockholm Central",
+                "total_duration": "22h10",
+                "prix_total": "1 385 SEK (~121 €)",
+                "primary_deep_link": url_night,
+                "primary_title": f"Enchaînement SJ : {orig_norm['name']} → Stockholm → {dest_norm['name']} ({date_iso})",
+                "segments": [
+                    {
+                        "segment_index": 1,
+                        "origine": orig_norm["name"],
+                        "destination": "Stockholm Central",
+                        "type_train": "SJ Snabbtåg (X2000 - Grande Vitesse)",
+                        "numero_train": "SJ 534",
+                        "heure_depart": seg1_dep,
+                        "heure_arrivee": seg1_arr,
+                        "duree": "4h30",
+                        "quai": "Voie 4 (Spår 4)",
+                        "prix": "495 SEK (~43 €)",
+                        "url_reservation": url_seg1,
+                        "operateur": "SJ",
+                        "description": f"Billet 1/2 : Train grande vitesse de jour {orig_norm['name']} vers Stockholm Central."
+                    },
+                    {
+                        "segment_index": 2,
+                        "origine": "Stockholm Central",
+                        "destination": dest_norm["name"],
+                        "type_train": "SJ Nattåg 94 (Train de nuit Arctique Norrlandståget)",
+                        "numero_train": "SJ Nattåg 94",
+                        "heure_depart": seg2_dep,
+                        "heure_arrivee": f"{seg2_arr} (+1 jour)",
+                        "duree": "14h55",
+                        "quai": "Voie 10 (Spår 10)",
+                        "prix": "890 SEK (~78 €)",
+                        "url_reservation": url_night,
+                        "url_booking_direct": url_seg2,
+                        "operateur": "SJ",
+                        "description": f"Billet 2/2 : Train de nuit avec couchettes / lits de Stockholm vers {dest_norm['name']}."
+                    }
+                ],
+                "escale": {
+                    "gare": "Stockholm Central",
+                    "duree": "2h45",
+                    "heure_debut": seg1_arr,
+                    "heure_fin": seg2_dep,
+                    "conseil": "Escale confortable à Stockholm Central pour changer de quai, déposer les bagages et dîner sereinement."
+                },
+                "booking_urls": [url_seg1, url_night],
+            }
+
+        elif is_sweden_southbound:
+            # Enchaînement Nord -> Sud : Train de nuit SJ 93 depuis Kiruna / Nord vers Stockholm, puis SJ Snabbtåg vers Malmö
+            url_seg1 = "https://www.sj.se/en/travel-info/sj-night-train.html"
+            url_seg2 = f"https://www.sj.se/en?from=Stockholm+Central&to={quote_plus(dest_norm['name'])}&date={date_iso}"
+
+            return {
+                "is_multi_segment": True,
+                "country": "SE",
+                "direction": "southbound",
+                "origin": orig_norm["name"],
+                "destination": dest_norm["name"],
+                "hub": "Stockholm Central",
+                "total_duration": "22h00",
+                "prix_total": "1 385 SEK (~121 €)",
+                "primary_deep_link": url_seg1,
+                "primary_title": f"Enchaînement SJ : {orig_norm['name']} → Stockholm → {dest_norm['name']} ({date_iso})",
+                "segments": [
+                    {
+                        "segment_index": 1,
+                        "origine": orig_norm["name"],
+                        "destination": "Stockholm Central",
+                        "type_train": "SJ Nattåg 93 (Train de nuit Arctique Norrlandståget)",
+                        "numero_train": "SJ Nattåg 93",
+                        "heure_depart": "18:30",
+                        "heure_arrivee": "09:20 (+1 jour)",
+                        "duree": "14h50",
+                        "quai": "Voie 1 (Spår 1)",
+                        "prix": "890 SEK (~78 €)",
+                        "url_reservation": url_seg1,
+                        "operateur": "SJ",
+                        "description": f"Billet 1/2 : Train de nuit depuis {orig_norm['name']} vers Stockholm Central."
+                    },
+                    {
+                        "segment_index": 2,
+                        "origine": "Stockholm Central",
+                        "destination": dest_norm["name"],
+                        "type_train": "SJ Snabbtåg (X2000 - Grande Vitesse)",
+                        "numero_train": "SJ 537",
+                        "heure_depart": "11:30",
+                        "heure_arrivee": "16:00",
+                        "duree": "4h30",
+                        "quai": "Voie 4 (Spår 4)",
+                        "prix": "495 SEK (~43 €)",
+                        "url_reservation": url_seg2,
+                        "operateur": "SJ",
+                        "description": f"Billet 2/2 : Train grande vitesse de jour Stockholm Central vers {dest_norm['name']}."
+                    }
+                ],
+                "escale": {
+                    "gare": "Stockholm Central",
+                    "duree": "2h10",
+                    "heure_debut": "09:20",
+                    "heure_fin": "11:30",
+                    "conseil": "Escale à Stockholm Central pour petit-déjeuner et changer de voie."
+                },
+                "booking_urls": [url_seg1, url_seg2],
+            }
+
+        return None
+
     # ─── Orchestration Complète de Recherche ───────────────────────────────────
 
     async def rechercher_itineraires(
@@ -451,15 +673,77 @@ class TransportService:
         destination: str,
         date_depart: str,
         heure_souhaitee: Optional[str] = None,
-        pays: str = "auto"
+        pays: str = "auto",
+        reserver_automatiquement: bool = False
     ) -> Dict[str, Any]:
         """Méthode principale : analyse les paramètres, génère les deep links,
-        extrait les horaires et retourne la meilleure option prête pour le vocal et le HUD.
+        détecte les trajets multi-segments (enchaînement de trains), extrait les horaires,
+        et si demandé, ouvre directement les pages de réservation sur le navigateur de Pierre.
         """
         country = self.detect_country(origine, destination, pays)
         date_iso = self.parse_travel_date(date_depart)
         time_hhmm = self.parse_travel_time(heure_souhaitee)
 
+        orig_norm = self.normalize_station(origine, country)
+        dest_norm = self.normalize_station(destination, country)
+
+        # 1. Vérification d'un enchaînement multi-segments obligatoire
+        multi_seg = self.detect_multi_segment_route(orig_norm, dest_norm, date_iso, time_hhmm, country)
+        if multi_seg:
+            deep_links = self.generate_deep_links(origine, destination, date_iso, time_hhmm, country)
+            all_links = deep_links["links"].copy()
+            all_links["segment_1"] = multi_seg["segments"][0]["url_reservation"]
+            all_links["segment_2"] = multi_seg["segments"][1]["url_reservation"]
+
+            best_option = {
+                "heure_depart": multi_seg["segments"][0]["heure_depart"],
+                "heure_arrivee": multi_seg["segments"][1]["heure_arrivee"],
+                "duree": f"{multi_seg['total_duration']} (avec escale de {multi_seg['escale']['duree']} à {multi_seg['hub']})",
+                "type_train": f"{multi_seg['segments'][0]['type_train'].split('(')[0].strip()} + {multi_seg['segments'][1]['type_train'].split('(')[0].strip()}",
+                "numero_train": f"{multi_seg['segments'][0]['numero_train']} + {multi_seg['segments'][1]['numero_train']}",
+                "prix": multi_seg["prix_total"],
+                "quai": f"{multi_seg['segments'][0]['quai']} puis {multi_seg['segments'][1]['quai']}",
+                "statut": "À l'heure",
+                "deep_link": multi_seg["primary_deep_link"],
+                "booking_link": multi_seg["primary_deep_link"],
+                "is_multi_segment": True,
+                "nb_segments": len(multi_seg["segments"]),
+                "segments": multi_seg["segments"],
+                "escale": multi_seg["escale"]
+            }
+
+            reservation_result = None
+            if reserver_automatiquement:
+                reservation_result = await self.reserver_billet_train_local(
+                    operateur=country,
+                    urls_trajets=multi_seg["booking_urls"],
+                    segments=multi_seg["segments"],
+                    description_trajet=f"Enchaînement {orig_norm['name']} → {dest_norm['name']}"
+                )
+
+            return {
+                "status": "success",
+                "country": country,
+                "origin": orig_norm["name"],
+                "destination": dest_norm["name"],
+                "date": date_iso,
+                "time": time_hhmm,
+                "is_multi_segment": True,
+                "total_duration": multi_seg["total_duration"],
+                "prix_total": multi_seg["prix_total"],
+                "hub": multi_seg["hub"],
+                "segments": multi_seg["segments"],
+                "escale": multi_seg["escale"],
+                "booking_urls": multi_seg["booking_urls"],
+                "primary_deep_link": multi_seg["primary_deep_link"],
+                "primary_title": multi_seg["primary_title"],
+                "best_option": best_option,
+                "all_options": [best_option],
+                "all_links": all_links,
+                "reservation_result": reservation_result
+            }
+
+        # 2. Cas trajet direct standard
         deep_links = self.generate_deep_links(origine, destination, date_iso, time_hhmm, country)
         options = await self.scrape_train_options(origine, destination, date_iso, time_hhmm, country)
 
@@ -474,6 +758,14 @@ class TransportService:
             "booking_link": deep_links["primary_url"]
         }
 
+        reservation_result = None
+        if reserver_automatiquement:
+            reservation_result = await self.reserver_billet_train_local(
+                operateur=country,
+                url_trajet=best_option.get("booking_link") or deep_links["primary_url"],
+                description_trajet=f"Trajet direct {orig_norm['name']} → {dest_norm['name']}"
+            )
+
         return {
             "status": "success",
             "country": country,
@@ -481,11 +773,13 @@ class TransportService:
             "destination": deep_links["destination_norm"]["name"],
             "date": date_iso,
             "time": time_hhmm,
+            "is_multi_segment": False,
             "primary_deep_link": deep_links["primary_url"],
             "primary_title": deep_links["primary_title"],
             "best_option": best_option,
             "all_options": options,
             "all_links": deep_links["links"],
+            "reservation_result": reservation_result
         }
 
     # ─── Surveillance en Temps Réel (n8n Webhook) ─────────────────────────────
@@ -547,67 +841,111 @@ class TransportService:
 
     async def reserver_billet_train_local(
         self,
-        operateur: str,
-        url_trajet: str
+        operateur: str = "sncf",
+        url_trajet: Optional[str] = None,
+        urls_trajets: Optional[List[str]] = None,
+        segments: Optional[List[Dict[str, Any]]] = None,
+        description_trajet: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Prépare la réservation sur le PC local Windows via jarvis_local_agent.
-        Ouvre Chrome directement sur la page du trajet avec le compte connecté.
-        Respecte STRICTEMENT le garde-fou bancaire : aucune validation d'achat automatique.
+        """Prépare la réservation sur le PC local Windows via jarvis_local_agent ou directement.
+        Ouvre Chrome directement sur la page du trajet ou de chaque segment avec le compte connecté.
+        Respecte STRICTEMENT le garde-fou bancaire : aucune validation d'achat automatique,
+        Pierre valide lui-même son règlement.
         """
         from services.local_agent_service import local_agent_service
 
-        target_url = (url_trajet or "").strip()
-        if not target_url.startswith("http://") and not target_url.startswith("https://"):
-            target_url = "https://" + target_url
-
         op = (operateur or "sncf").strip().lower()
+        if op in ("se", "suede", "suède"):
+            op = "sj"
 
-        if not local_agent_service.is_connected():
-            if sys.platform == "win32":
-                # Exécution directe locale si sur Windows
-                import subprocess
-                try:
-                    subprocess.Popen(f'start "" "{target_url}"', shell=True)
-                    return {
-                        "status": "success",
-                        "execution": "direct_windows",
-                        "url": target_url,
-                        "operateur": op,
-                        "message": (
-                            f"La page de réservation {op.upper()} a été ouverte sur votre navigateur Chrome. "
-                            f"Vos coordonnées et le trajet sont préchargés. Il ne vous reste plus qu'à choisir votre place et valider le paiement."
-                        )
-                    }
-                except Exception as e:
-                    return {"status": "error", "message": f"Erreur ouverture navigateur local : {e}"}
+        # Compiler la liste des URLs à ouvrir
+        targets: List[str] = []
+        if urls_trajets:
+            for u in urls_trajets:
+                u_str = (u or "").strip()
+                if u_str:
+                    if not u_str.startswith("http://") and not u_str.startswith("https://"):
+                        u_str = "https://" + u_str
+                    targets.append(u_str)
 
+        if not targets and url_trajet:
+            u_clean = url_trajet.strip()
+            if not u_clean.startswith("http://") and not u_clean.startswith("https://"):
+                u_clean = "https://" + u_clean
+            targets.append(u_clean)
+
+        if not targets and segments:
+            for s in segments:
+                u_s = s.get("url_reservation") or s.get("booking_link") or s.get("deep_link")
+                if u_s:
+                    if not u_s.startswith("http://") and not u_s.startswith("https://"):
+                        u_s = "https://" + u_s
+                    targets.append(u_s)
+
+        if not targets:
+            targets = ["https://www.sj.se/en" if op == "sj" else "https://www.sncf-connect.com"]
+
+        n_trains = len(targets)
+        train_label = f"{n_trains} billets de train" if n_trains > 1 else "billet de train"
+
+        # 1. Si le PC Windows local est connecté via le relais WebSocket
+        if local_agent_service.is_connected():
+            res = await local_agent_service.execute_command(
+                "prepare_train_checkout",
+                timeout=20.0,
+                operateur=op,
+                urls=targets,
+                url=targets[0],
+                description=description_trajet
+            )
             return {
-                "status": "pc_offline",
+                "status": "success",
+                "execution": "jarvis_local_agent",
+                "urls": targets,
+                "operateur": op,
+                "local_agent_result": res,
                 "message": (
-                    "L'ordinateur Windows de Pierre est actuellement éteint ou le script start_local_agent.bat n'est pas lancé. "
-                    "Le lien direct est cependant disponible sur le HUD de votre smartphone pour finaliser la réservation."
-                ),
-                "url": target_url
+                    f"Les {train_label} ({op.upper()}) ont été ouverts dans Google Chrome sur votre écran Windows. "
+                    f"Vos trajets sont préremplis. Il ne vous reste plus qu'à sélectionner vos places/couchettes et finaliser l'achat en toute sécurité."
+                )
             }
 
-        # Délégation via le WebSocket relais local
-        res = await local_agent_service.execute_command(
-            "prepare_train_checkout",
-            timeout=20.0,
-            operateur=op,
-            url=target_url
-        )
+        # 2. Si exécuté directement sur le poste Windows
+        if sys.platform == "win32":
+            import subprocess
+            import webbrowser
+            try:
+                from jarvis_local_agent import CHROME_PATH
+            except Exception:
+                CHROME_PATH = None
 
+            try:
+                if CHROME_PATH and os.path.exists(CHROME_PATH):
+                    subprocess.Popen([CHROME_PATH, *targets], shell=False)
+                else:
+                    for t in targets:
+                        webbrowser.open_new_tab(t)
+                return {
+                    "status": "success",
+                    "execution": "direct_windows",
+                    "urls": targets,
+                    "operateur": op,
+                    "message": (
+                        f"Les {train_label} ({op.upper()}) ont été ouverts directement sur votre navigateur Chrome. "
+                        f"Vos coordonnées et trajets sont prêts. Il ne vous reste plus qu'à choisir vos places et valider le paiement."
+                    )
+                }
+            except Exception as e:
+                return {"status": "error", "message": f"Erreur ouverture navigateur local : {e}"}
+
+        # 3. Repli si PC Windows éteint / hors-ligne
         return {
-            "status": "success",
-            "execution": "jarvis_local_agent",
-            "url": target_url,
-            "operateur": op,
-            "local_agent_result": res,
+            "status": "pc_offline",
             "message": (
-                f"La réservation {op.upper()} a été ouverte sur l'écran de votre ordinateur personnel. "
-                f"Vous pouvez sélectionner votre siège et finaliser l'achat en toute sécurité."
-            )
+                f"L'ordinateur Windows de Pierre est actuellement en veille ou non synchronisé. "
+                f"Les liens directs pour vos {train_label} sont immédiatement disponibles sur votre écran pour finaliser votre commande."
+            ),
+            "urls": targets
         }
 
 

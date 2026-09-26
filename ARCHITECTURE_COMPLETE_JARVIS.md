@@ -390,16 +390,18 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
   - Workflows n8n packagés dans `docs/n8n_workflows/time_and_briefing.json`.
 
 ### 7.10. Système Intelligent Ferroviaire & Mobilité (France & Suède)
-- **Fichiers** : `services/transport_service.py`, `routers/transport.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `docs/n8n_workflows/train_monitoring.json`.
+- **Fichiers** : `services/transport_service.py`, `routers/transport.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `jarvis_local_agent.py`, `docs/n8n_workflows/train_monitoring.json`.
 - **Outils exposés** : `rechercher_train`, `surveiller_train`, `reserver_billet_train_local`.
 - **Capacités & Architecture** :
-  1. **Recherche d'Itinéraires & Deep Links Paramétrés (`rechercher_train`)** :
-     - Supporte l'ensemble des gares françaises (Paris, Lyon, Marseille, Bordeaux, Lille, Nantes, Strasbourg, etc.) et suédoises (Malmö, Stockholm, Göteborg, Lund, Uppsala, etc.).
-     - Génération intelligente et automatisée de deep links directs avec slugs et paramètres d'horaires :
-       * *France* : SNCF Connect (`https://www.sncf-connect.com/app/home/search/od/...`) et Trainline (`https://www.thetrainline.com/book/results?...`).
-       * *Suède* : SJ direct (`https://www.sj.se/sv/sok-resa.html?...`), Trafikverket Open Data (`https://www.trafikverket.se/trafikinformation/tag/...`), et Skånetrafiken (`https://www.skanetrafiken.se/sok-resa/...`).
-     * Scraper headless Playwright optimisé sur VPS pour extraire instantanément horaires, durées de trajet, correspondances et prix indicatifs sans solliciter le poste utilisateur.
-     * **Dispatching non-bloquant** : Jarvis confirme immédiatement la prise en charge à voix haute avec sa voix Aoede, annonce le meilleur trajet dès disponibilité et pousse le bouton d'ouverture directe sur l'interface PWA via l'événement `browser_update` / `set_browser_link`.
+  1. **Recherche d'Itinéraires & Décomposition Multi-Segments (`rechercher_train`)** :
+     - Supporte l'ensemble des gares françaises (Paris, Lyon, Marseille, Bordeaux, Lille, Nantes, Strasbourg...) et suédoises (Malmö, Stockholm, Göteborg, Lund, Uppsala, Kiruna, Abisko, Narvik, Gällivare, Luleå, etc.).
+     - **Décomposition multi-trains / multi-billets (Grand Nord Arctique & Laponie)** : Lorsqu'aucun train direct n'existe pour traverser la Suède (ex: Malmö ↔ Kiruna, Göteborg ↔ Abisko), le système segmente automatiquement le voyage en 2 billets distincts avec correspondance sécurisée à Stockholm Central :
+       * *Segment 1 (Jour)* : Train à grande vitesse SJ Snabbtåg (ex: Malmö Central 09:04 → Stockholm Central 13:35).
+       * *Correspondance* : Escale confortable et sécurisée à Stockholm Central (~2h45 pour le déjeuner et le transfert de quai).
+       * *Segment 2 (Nuit)* : Train de nuit couchette arctique SJ Nattåg 94 (ex: Stockholm Central 16:20 → Kiruna 09:15 J+1).
+     - **Génération d'URLs valides et modernes (zéro 404)** : URLs directes sur le portail moderne SJ (`https://www.sj.se/en`), guide officiel SJ Night Train (`https://www.sj.se/en/travel-info/sj-night-train.html`), Google Maps Transit et Rome2rio (élimination des anciens slugs `.html?from=...` non supportés par la SPA SJ).
+     - **Option `reserver_automatiquement: bool`** : Permet à Jarvis d'enchaîner directement la recherche avec l'ouverture automatique de tous les onglets de réservation dans le navigateur de Pierre.
+     - **Dispatching non-bloquant** : Jarvis confirme immédiatement la prise en charge à voix haute avec sa voix Aoede, annonce les détails des trains et de la correspondance, et pousse le deep link direct sur l'interface PWA via l'événement `browser_update` / `set_browser_link`.
   2. **Surveillance Proactive en Temps Réel (`surveiller_train`)** :
      - Déclenche une boucle de veille asynchrone orchestrée par n8n (`docs/n8n_workflows/train_monitoring.json`).
      - Interroge toutes les 10 minutes les flux Trafikverket Open Data (requêtes XML/JSON) ou SNCF GTFS-RT jusqu'au départ du train.
@@ -408,11 +410,11 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
        * Déclenche un webhook entrant sur Jarvis (`POST /api/train/alert`).
        * Injection instantanée dans la session Gemini Live active pour qu'Aoede prévienne oralement Pierre en direct.
        * Alerte push visuelle sur le HUD mobile et courriel exécutif Stark en copie de secours.
-  3. **Préparation Sécurisée de Réservation Locale (`reserver_billet_train_local`)** :
-     - **Respect absolu de l'isolation de sécurité** : exploration et scraping headless sur le VPS cloud ; interaction transactionnelle exclusivement sur le PC Windows physique via `execution_target="local_gui"`.
-     - Délégué à `jarvis_local_agent.py` sur le PC Windows de Pierre via le canal WebSocket `/ws/local-agent` (action `prepare_train_checkout`).
-     - Ouvre Google Chrome avec la session connectée de Pierre, charge le trajet prérempli jusqu'à l'écran de sélection de place / paiement.
-     - **Garde-fou bancaire absolu** : aucune validation d'achat automatique, Pierre valide lui-même son règlement.
+  3. **Préparation Sécurisée de Réservation Multi-Onglets (`reserver_billet_train_local`)** :
+     - **Respect absolu de l'isolation de sécurité** : exploration et calcul d'itinéraires sur le VPS cloud ; ouverture transactionnelle exclusivement sur le PC Windows physique de Pierre via `execution_target="local_gui"`.
+     - Délégué à `jarvis_local_agent.py` sur le PC Windows de Pierre via le canal WebSocket `/ws/local-agent` (action `prepare_train_checkout`) avec fallback de lancement Chrome local.
+     - **Support multi-billets en onglets parallèles** : Ouvre simultanément chaque page de réservation dans un onglet distinct Google Chrome (ex: Onglet 1 pour le SJ Snabbtåg + Onglet 2 pour le SJ Nattåg couchette vers Kiruna).
+     - **Garde-fou bancaire inviolable** : L'agent préremplit et amène chaque panier jusqu'à l'écran final de sélection des couchettes et de règlement ; Pierre n'a plus qu'à valider et payer lui-même (zéro prélèvement automatique).
 
 ---
 

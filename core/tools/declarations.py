@@ -671,11 +671,13 @@ def get_tools_list() -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="rechercher_train",
                     description=(
-                        "RECHERCHE D'ITINÉRAIRES & BILLETS DE TRAIN (FRANCE & SUÈDE) : "
-                        "Recherche les horaires, tarifs indicatifs et génère les deep links directs de réservation "
-                        "pour un trajet ferroviaire en France (SNCF Connect, Trainline) ou en Suède (SJ, Trafikverket, Skånetrafiken). "
-                        "Supporte les gares françaises (Paris, Lyon, Marseille, Bordeaux, etc.) et suédoises (Malmö, Stockholm, Göteborg, Lund, etc.). "
-                        "Jarvis annonce le meilleur départ oralement et affiche le lien direct sur le HUD mobile (set_browser_link)."
+                        "RECHERCHE D'ITINÉRAIRES & ENCHAÎNEMENTS FERROVIAIRES (FRANCE & SUÈDE) : "
+                        "Recherche les horaires, tarifs indicatifs et génère les liens valides de réservation "
+                        "pour un trajet direct OU un enchaînement de plusieurs trains nécessitant plusieurs billets "
+                        "(ex: Suède du Sud comme Malmö vers Kiruna / Laponie via Stockholm en train grande vitesse + train de nuit). "
+                        "Supporte les gares françaises (Paris, Lyon, Marseille, etc.) et suédoises (Malmö, Stockholm, Kiruna, etc.). "
+                        "Si Pierre demande de réserver, prendre ou ouvrir les billets, positionne 'reserver_automatiquement' à True pour "
+                        "ouvrir immédiatement toutes les pages de réservation sur son navigateur Chrome pour qu'il n'ait plus qu'à payer."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -683,23 +685,27 @@ def get_tools_list() -> list[types.Tool]:
                         properties={
                             "origine": types.Schema(
                                 type="STRING",
-                                description="Gare ou ville de départ (ex: 'Paris', 'Lyon Part-Dieu', 'Malmö Central', 'Stockholm')"
+                                description="Gare ou ville de départ (ex: 'Malmö Central', 'Stockholm', 'Paris', 'Lyon')"
                             ),
                             "destination": types.Schema(
                                 type="STRING",
-                                description="Gare ou ville d'arrivée (ex: 'Marseille', 'Bordeaux', 'Stockholm Central', 'Göteborg', 'Lund')"
+                                description="Gare ou région d'arrivée (ex: 'Kiruna', 'Abisko', 'Nord de la Suède', 'Stockholm Central', 'Marseille')"
                             ),
                             "date_depart": types.Schema(
                                 type="STRING",
-                                description="Date du voyage au format AAAA-MM-JJ ou clair (ex: '2026-09-28', 'demain', 'vendredi')"
+                                description="Date du voyage au format AAAA-MM-JJ ou clair (ex: '2026-09-28', 'demain', 'la semaine prochaine')"
                             ),
                             "heure_souhaitee": types.Schema(
                                 type="STRING",
-                                description="Heure ou moment de départ souhaité (ex: '14:00', '14h', 'matin', 'soir'). Optionnel."
+                                description="Heure ou moment de départ souhaité (ex: '11:00', '14h', 'matin', 'soir'). Optionnel."
                             ),
                             "pays": types.Schema(
                                 type="STRING",
-                                description="Réseau ferroviaire : 'auto' (détection automatique par ville), 'france' (ou 'fr'), 'suede' (ou 'se'). Par défaut 'auto'."
+                                description="Réseau ferroviaire : 'auto' (détection automatique par ville), 'suede' (ou 'se'), 'france' (ou 'fr'). Par défaut 'auto'."
+                            ),
+                            "reserver_automatiquement": types.Schema(
+                                type="BOOLEAN",
+                                description="Si True (ou si Pierre souhaite réserver/acheter ou ouvrir les billets sur son navigateur), ouvre automatiquement les pages de réservation de chaque train sur le navigateur de son ordinateur pour qu'il n'ait plus qu'à payer."
                             ),
                         },
                         required=["origine", "destination", "date_depart"]
@@ -737,23 +743,32 @@ def get_tools_list() -> list[types.Tool]:
                     name="reserver_billet_train_local",
                     description=(
                         "RÉSERVATION & PANIER SUR PC LOCAL WINDOWS : "
-                        "Sur demande de réservation ou d'achat d'un billet, ouvre la session Google Chrome sur le PC physique de Pierre "
-                        "via jarvis_local_agent pour préremplir le trajet jusqu'à l'écran de paiement. "
-                        "Respect absolu du garde-fou bancaire : aucune validation d'achat automatique, Pierre valide lui-même."
+                        "Sur demande de réservation ou d'achat d'un ou plusieurs billets, ouvre la session Google Chrome sur le PC physique de Pierre "
+                        "via jarvis_local_agent pour ouvrir la page du trajet ou de chaque segment (enchaînement de trains) jusqu'à l'écran de paiement. "
+                        "Respect absolu du garde-fou bancaire : aucune validation d'achat automatique, Pierre valide lui-même son règlement."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
                             "operateur": types.Schema(
                                 type="STRING",
-                                description="Opérateur ou plateforme : 'sncf', 'trainline', 'sj', 'skanetrafiken'"
+                                description="Opérateur ou plateforme : 'sj', 'sncf', 'trainline', 'skanetrafiken'"
                             ),
                             "url_trajet": types.Schema(
                                 type="STRING",
-                                description="URL directe ou deep link du trajet à ouvrir sur le Chrome local de Pierre"
+                                description="URL directe ou deep link d'un trajet unique à ouvrir sur le Chrome local de Pierre"
+                            ),
+                            "urls_trajets": types.Schema(
+                                type="ARRAY",
+                                items=types.Schema(type="STRING"),
+                                description="Liste d'URLs des différents trains à ouvrir dans des onglets Chrome distincts (pour un enchaînement de plusieurs billets)"
+                            ),
+                            "description_trajet": types.Schema(
+                                type="STRING",
+                                description="Description concise du trajet ou de l'enchaînement (ex: 'Malmö → Stockholm → Kiruna')"
                             ),
                         },
-                        required=["operateur", "url_trajet"]
+                        required=["operateur"]
                     )
                 ),
                 types.FunctionDeclaration(

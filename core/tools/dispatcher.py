@@ -1657,29 +1657,67 @@ async def dispatch_tool(
             "engine": "Transport Service",
             "model": "Playwright VPS",
             "api_type": "free",
+        reserver_automatiquement = args.get("reserver_automatiquement", False)
+
+        # Accusé de réception supervision
+        supervision_service.start_action(
+            "rechercher_train",
+            "Recherche Ferroviaire",
+            "rechercher_train",
+            f"Trajet {origine} → {destination} ({date_depart})",
+            "SNCF / Trainline / SJ",
+            api_type="free",
+            api_label="Headless VPS",
+            cost_est="0.00 $"
+        )
+        await broadcast_supervision()
+
+        # Notification WebSocket HUD préliminaire
+        await websocket.send_text(json.dumps({
+            "type": "audio_event",
+            "event": "action_started",
+            "action": "rechercher_train",
+            "voice": False
+        }))
+        await websocket.send_text(json.dumps({
+            "type": "status",
+            "state": "browsing",
+            "msg": f"Recherche trains {origine} → {destination}...",
+            "task": f"Itinéraire {origine} - {destination}",
+            "engine": "Transport Service",
+            "model": "Playwright VPS",
+            "api_type": "free",
             "api_label": "Headless VPS"
         }))
 
         # Exécution non-bloquante en arrière-plan
-        async def _run_train_search_bg(_orig=origine, _dest=destination, _date=date_depart, _heure=heure_souhaitee, _pays=pays, _ws=websocket, _sess=session):
+        async def _run_train_search_bg(_orig=origine, _dest=destination, _date=date_depart, _heure=heure_souhaitee, _pays=pays, _reserver=reserver_automatiquement, _ws=websocket, _sess=session):
             try:
                 res = await transport_service.rechercher_itineraires(
                     origine=_orig,
                     destination=_dest,
                     date_depart=_date,
                     heure_souhaitee=_heure,
-                    pays=_pays
+                    pays=_pays,
+                    reserver_automatiquement=_reserver
                 )
                 best = res.get("best_option", {})
                 primary_link = res.get("primary_deep_link", "")
                 link_title = res.get("primary_title") or f"Train {_orig} → {_dest}"
+                is_multi = res.get("is_multi_segment", False)
 
                 # 1. Mise à jour Supervision
                 supervision_service.track_browser_window(primary_link, link_title)
-                summary_text = (
-                    f"Train {best.get('type_train', 'SNCF/SJ')} : départ {best.get('heure_depart', '')} "
-                    f"→ arrivée {best.get('heure_arrivee', '')} ({best.get('duree', '')}) - {best.get('prix', '')}"
-                )
+                if is_multi:
+                    summary_text = (
+                        f"Enchaînement {best.get('type_train', 'SJ')} ({res.get('total_duration', '')}) : "
+                        f"départ {best.get('heure_depart', '')} → arrivée {best.get('heure_arrivee', '')} - {res.get('prix_total', '')}"
+                    )
+                else:
+                    summary_text = (
+                        f"Train {best.get('type_train', 'SNCF/SJ')} : départ {best.get('heure_depart', '')} "
+                        f"→ arrivée {best.get('heure_arrivee', '')} ({best.get('duree', '')}) - {best.get('prix', '')}"
+                    )
                 supervision_service.complete_action("rechercher_train", status="completed", summary=summary_text)
                 await broadcast_supervision()
 
@@ -1715,15 +1753,38 @@ async def dispatch_tool(
                 # 3. Restitution orale par Aoede dans la session Live
                 current_sess = active_task_controller.get("live_session") or _sess
                 if current_sess:
-                    track_txt = f" au départ de la {best.get('quai')}" if best.get("quai") else ""
-                    oral_msg = (
-                        f"[RÉSULTAT DE LA RECHERCHE DE TRAIN - À ANNONCER CHALEUREUSEMENT À PIERRE AVEC TA VOIX AOEDE] "
-                        f"Pour ton trajet de {res.get('origin', _orig)} vers {res.get('destination', _dest)} le {res.get('date', _date)}, "
-                        f"j'ai un excellent départ à {best.get('heure_depart')} en {best.get('type_train')}{track_txt}, "
-                        f"arrivée prévue à {best.get('heure_arrivee')} pour {best.get('duree')} de trajet. "
-                        f"Prix indicatif : {best.get('prix')}. "
-                        f"J'ai directement affiché le bouton de réservation avec le lien direct sur ton écran."
-                    )
+                    if is_multi:
+                        segs = res.get("segments", [])
+                        seg1 = segs[0] if len(segs) > 0 else {}
+                        seg2 = segs[1] if len(segs) > 1 else {}
+                        esc = res.get("escale", {})
+                        booked_txt = (
+                            "J'ai ouvert directement les pages de réservation de tes deux trains sur ton navigateur Chrome : "
+                            "les gares et dates sont préremplies, tu n'as plus qu'à choisir tes places ou couchettes et régler !"
+                            if _reserver else
+                            "J'ai affiché l'enchaînement complet avec le lien de réservation directement sur ton écran."
+                        )
+                        oral_msg = (
+                            f"[RÉSULTAT DE L'ENCHAÎNEMENT DE TRAINS - À ANNONCER CHALEUREUSEMENT À PIERRE AVEC TA VOIX AOEDE] "
+                            f"Pierre, pour rejoindre {res.get('destination', _dest)} depuis {res.get('origin', _orig)} le {res.get('date', _date)}, "
+                            f"il est impossible de faire le trajet avec un seul billet car il n'existe pas de train direct. "
+                            f"Voici l'enchaînement idéal de 2 trains : "
+                            f"D'abord le train à grande vitesse {seg1.get('type_train', 'SJ Snabbtåg')} au départ de {seg1.get('origine')} à {seg1.get('heure_depart')} pour arriver à {seg1.get('destination')} à {seg1.get('heure_arrivee')}. "
+                            f"Ensuite une escale de {esc.get('duree', '2h45')} à {esc.get('gare', 'Stockholm Central')} pour déjeuner ou changer de voie. "
+                            f"Puis le train de nuit {seg2.get('type_train', 'SJ Nattåg')} au départ de {seg2.get('origine')} à {seg2.get('heure_depart')} avec arrivée demain matin à {seg2.get('heure_arrivee')} en couchette. "
+                            f"Durée totale de {res.get('total_duration', '22h10')}, tarif indicatif de {res.get('prix_total', '1385 SEK')}. "
+                            f"{booked_txt}"
+                        )
+                    else:
+                        track_txt = f" au départ de la {best.get('quai')}" if best.get("quai") else ""
+                        oral_msg = (
+                            f"[RÉSULTAT DE LA RECHERCHE DE TRAIN - À ANNONCER CHALEUREUSEMENT À PIERRE AVEC TA VOIX AOEDE] "
+                            f"Pour ton trajet de {res.get('origin', _orig)} vers {res.get('destination', _dest)} le {res.get('date', _date)}, "
+                            f"j'ai un excellent départ à {best.get('heure_depart')} en {best.get('type_train')}{track_txt}, "
+                            f"arrivée prévue à {best.get('heure_arrivee')} pour {best.get('duree')} de trajet. "
+                            f"Prix indicatif : {best.get('prix')}. "
+                            f"J'ai directement affiché le bouton de réservation avec le lien direct sur ton écran."
+                        )
                     try:
                         await current_sess.send_client_content(
                             turns=types.Content(role="user", parts=[types.Part.from_text(text=oral_msg)]),
@@ -1739,16 +1800,18 @@ async def dispatch_tool(
 
         asyncio.create_task(_run_train_search_bg())
 
+        msg_intro = "je recherche les trains et t'ouvre la réservation sur ton écran" if reserver_automatiquement else "je recherche les départs et les prix"
         return {
             "status": "lance_en_arriere_plan",
             "action": "rechercher_train",
             "origine": origine,
             "destination": destination,
             "date_depart": date_depart,
+            "reserver_automatiquement": reserver_automatiquement,
             "instruction_to_jarvis": (
                 f"La recherche de trains entre {origine} et {destination} pour le {date_depart} est lancée en arrière-plan. "
                 f"Confirme immédiatement à Pierre avec ta voix Aoede en une phrase concise et complice "
-                f"que tu recherches les départs et les prix."
+                f"que {msg_intro}."
             )
         }
 
@@ -1799,12 +1862,15 @@ async def dispatch_tool(
     elif name == "reserver_billet_train_local":
         operateur = args.get("operateur", "sncf")
         url_trajet = args.get("url_trajet", "")
+        urls_trajets = args.get("urls_trajets", [])
+        desc = args.get("description_trajet", "")
 
+        n_trains = len(urls_trajets) if urls_trajets else 1
         supervision_service.start_action(
             "reserver_billet_train_local",
             "Réservation Train Locale",
             "reserver_billet_train_local",
-            f"Ouverture session {operateur.upper()} sur PC Windows",
+            f"Ouverture session {operateur.upper()} ({n_trains} billet(s)) sur PC Windows",
             "jarvis_local_agent",
             api_type="free",
             api_label="Local Windows GUI",
@@ -1814,7 +1880,9 @@ async def dispatch_tool(
 
         res_local = await transport_service.reserver_billet_train_local(
             operateur=operateur,
-            url_trajet=url_trajet
+            url_trajet=url_trajet,
+            urls_trajets=urls_trajets,
+            description_trajet=desc
         )
 
         supervision_service.complete_action(
@@ -1824,14 +1892,16 @@ async def dispatch_tool(
         )
         await broadcast_supervision()
 
+        train_phrase = f"les {n_trains} billets de train de l'enchaînement" if n_trains > 1 else f"la page de réservation {operateur.upper()}"
         return {
             "status": res_local.get("status", "success"),
             "operateur": operateur,
             "url_trajet": url_trajet,
+            "urls_trajets": urls_trajets,
             "message": res_local.get("message", ""),
             "instruction_to_jarvis": (
-                f"La page de réservation {operateur.upper()} a été ouverte sur le PC de Pierre. "
-                f"Confirme-lui avec ta voix Aoede que le trajet est prérempli sur son écran et qu'il n'a plus qu'à choisir sa place "
+                f"{train_phrase.capitalize()} ont été ouverts dans Chrome sur le PC de Pierre. "
+                f"Confirme-lui avec ta voix Aoede que ses trajets sont prêts sur son écran et qu'il n'a plus qu'à choisir ses places "
                 f"et procéder au paiement en toute sécurité."
             )
         }
