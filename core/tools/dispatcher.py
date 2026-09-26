@@ -534,17 +534,105 @@ async def dispatch_tool(
         subject = args.get("subject", "Rapport J.A.R.V.I.S.")
         body = args.get("body", "")
         to_email = args.get("to_email") or config.DEFAULT_RECIPIENT_EMAIL
-        attachments = args.get("attachments") or []
-        include_screenshot = bool(args.get("include_latest_screenshot", False))
+
+        # Récupération résiliente des pièces jointes sous tous les alias possibles
+        raw_attachments = (
+            args.get("attachments")
+            or args.get("attachment")
+            or args.get("files")
+            or args.get("file")
+            or args.get("file_path")
+            or args.get("filepath")
+            or args.get("document")
+            or args.get("documents")
+            or args.get("filename")
+            or args.get("filenames")
+            or []
+        )
+
+        # Détection contextuelle si aucun fichier n'a été passé mais que le sujet/corps mentionne une pièce jointe
+        if not raw_attachments:
+            combined_text = f"{subject} {body}".lower()
+            trigger_words = ["pièce jointe", "pièce-jointe", "ci-joint", "joint à ce", "voici l'ebook", "voici votre ebook", "voici le document", "en pièce jointe", "voici le tableur"]
+            if any(w in combined_text for w in trigger_words):
+                raw_attachments = ["latest"]
+
+        include_screenshot = bool(
+            args.get("include_latest_screenshot")
+            or args.get("include_screenshot")
+            or args.get("screenshot", False)
+        )
+
         supervision_service.start_action("send_email", "Expédition E-mail", "send_email", f"Sujet : {subject} -> {to_email}", "SMTP Stark Protocol", api_type="free", api_label="Service Local", cost_est="0.00 $")
         await broadcast_supervision()
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Préparation de l'e-mail pour {to_email}.", "voice": False}))
         await websocket.send_text(json.dumps({"type": "status", "state": "emailing", "msg": "Expédition d'e-mail en cours...", "task": subject, "engine": "Google API", "model": "Stark Email Protocol", "api_type": "free", "api_label": "Service Local"}))
-        res = await send_email_async(subject=subject, body=body, to_email=to_email, attachments=attachments, include_screenshot=include_screenshot, is_html_report=True)
-        supervision_service.complete_action("send_email", status="completed" if res.get("status") in ("sent", "saved") else "error", summary=res.get("message", f"E-mail traité pour {to_email}"))
+
+        res = await send_email_async(
+            subject=subject,
+            body=body,
+            to_email=to_email,
+            attachments=raw_attachments,
+            include_screenshot=include_screenshot,
+            is_html_report=True
+        )
+
+        st = res.get("status")
+        if st == "attachment_not_found":
+            missing = res.get("missing_attachments", [])
+            missing_str = ", ".join(missing) if missing else "demandé"
+            supervision_service.complete_action("send_email", status="error", summary=f"Pièce jointe introuvable : {missing_str}")
+            await broadcast_supervision()
+            await websocket.send_text(json.dumps({
+                "type": "email_sent",
+                "status": "error",
+                "subject": subject,
+                "recipient": to_email,
+                "attachments_count": 0,
+                "message": f"Pièce jointe introuvable : {missing_str}"
+            }))
+            instruction = (
+                f"ATTENTION : Le document '{missing_str}' que Pierre a demandé de joindre est INTROUVABLE dans le système. "
+                f"L'e-mail N'A PAS été expédié pour éviter d'envoyer un courriel vide sans pièce jointe. "
+                f"Informe immédiatement et clairement Pierre avec ta voix Aoede que le document est introuvable, et demande-lui son nom exact ou son emplacement."
+            )
+            return {
+                "status": "error",
+                "error": "attachment_not_found",
+                "result": res,
+                "instruction_to_jarvis": instruction
+            }
+
+        supervision_service.complete_action("send_email", status="completed" if st in ("sent", "saved", "archived_in_outbox") else "error", summary=res.get("message", f"E-mail traité pour {to_email}"))
         await broadcast_supervision()
-        await websocket.send_text(json.dumps({"type": "email_sent", "status": res.get("status"), "subject": subject, "recipient": to_email, "attachments_count": res.get("attachments_count", 0), "message": res.get("message", "")}))
-        return {"status": "completed", "result": res, "instruction_to_jarvis": f"L'e-mail avec pour sujet '{subject}' destiné à {to_email} est expédié ({res.get('message', '')}). Confirme-le directement et simplement à Pierre avec ta voix Aoede."}
+
+        att_count = res.get("attachments_count", 0)
+        att_names = ", ".join(res.get("attachments", []))
+
+        await websocket.send_text(json.dumps({
+            "type": "email_sent",
+            "status": res.get("status"),
+            "subject": subject,
+            "recipient": to_email,
+            "attachments_count": att_count,
+            "attachments": res.get("attachments", []),
+            "message": res.get("message", "")
+        }))
+
+        if att_count > 0:
+            instruction = (
+                f"L'e-mail avec pour sujet '{subject}' destiné à {to_email} a été expédié avec succès "
+                f"avec la pièce jointe suivante : {att_names}. "
+                f"Confirme-le directement et chaleureusement à Pierre avec ta voix Aoede en précisant que le document '{att_names}' est bien en pièce jointe."
+            )
+        else:
+            instruction = f"L'e-mail avec pour sujet '{subject}' destiné à {to_email} est expédié ({res.get('message', '')}). Confirme-le directement et simplement à Pierre avec ta voix Aoede."
+
+        return {
+            "status": "completed",
+            "result": res,
+            "instruction_to_jarvis": instruction
+        }
 
     # ─── read_emails ───────────────────────────────────────────────────────────
     elif name == "read_emails":

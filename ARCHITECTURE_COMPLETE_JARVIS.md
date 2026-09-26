@@ -317,9 +317,12 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
 ### 7.5. Suite de Communication & Messagerie (Email Stark / IMAP / Chat Multimodal)
 - **Fichiers** : `services/email_service.py`, `services/chat_service.py`.
 - **Outils exposés** : `send_email`, `read_emails`, API `/api/chat/*`.
-- **Envoi d'E-mails (SMTP)** :
+- **Envoi d'E-mails (SMTP & Smart Attachment Pipeline)** :
   - Génération de rapports HTML élégants au format **Stark Industries Executive Report** (palette sombre, typographie soignée, badges d'état).
-  - Support des pièces jointes locales et inclusion automatique de la dernière capture d'écran système.
+  - **Moteur de Résolution Universelle des Pièces Jointes (`resolve_attachment_path`)** : Résolution automatique et résiliente des documents (PDF, ebooks EPUB, tableurs Excel XLSX, documents Word, etc.) depuis `downloads/`, `downloads/ebooks/`, `static/`, `artifacts/`, `my-project/`, les dossiers système Windows (`Downloads`, `Documents`, `Desktop`) ou via URLs distantes.
+  - **Support des requêtes floues et mots-clés temporels** : Capacité de cibler des fichiers par nom partiel, titre sans extension ou mots-clés (`'latest'`, `'dernier'`, `'dernier_ebook'`).
+  - **Relais Fichier Hybride PC-VPS (`fetch_file`)** : Si le serveur VPS doit envoyer une pièce jointe située sur le PC Windows de Pierre, l'agent local `jarvis_local_agent` extrait le fichier et le transmet de façon sécurisée (base64) pour inclusion immédiate dans le courriel.
+  - **Garde-fou anti-mail vide** : Si une pièce jointe est expressément demandée par Pierre mais introuvable, l'envoi d'un courriel vide est strictement bloqué (`attachment_not_found`) et Jarvis en informe vocalement Pierre pour lui demander l'emplacement exact.
   - Archivage local systématique de tous les courriels émis dans `outbox_emails/`.
 - **Lecture d'E-mails (IMAP Gmail)** :
   - Connexion SSL sécurisée à la boîte de réception de Pierre (`pierrecassagnettes@gmail.com`).

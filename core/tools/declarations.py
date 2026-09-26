@@ -218,7 +218,8 @@ def get_tools_list() -> list[types.Tool]:
                     description=(
                         "Envoie un courriel à Pierre Cassagnettes (pierrecassagnettes@gmail.com) ou au destinataire externe demandé. "
                         "Pour Pierre Cassagnettes : utilise le format officiel exécutif Stark Industries (rapport, synthèse, capture d'écran). "
-                        "Pour toute autre adresse : aucun message prédéfini ni habillage n'est ajouté, tu rédiges intégralement le mail de A à Z."
+                        "Pour toute autre adresse : aucun message prédéfini ni habillage n'est ajouté, tu rédiges intégralement le mail de A à Z. "
+                        "Pour joindre des documents (PDF, tableur Excel, ebook ePub, rapport, fichier texte, etc.) : renseigne impérativement 'attachments' avec le nom ou chemin du fichier."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
@@ -226,7 +227,15 @@ def get_tools_list() -> list[types.Tool]:
                             "subject": types.Schema(type="STRING", description="L'objet de l'e-mail"),
                             "body": types.Schema(type="STRING", description="Le contenu du message rédigé par l'agent de A à Z"),
                             "to_email": types.Schema(type="STRING", description="Adresse destinataire. Par défaut: pierrecassagnettes@gmail.com"),
-                            "attachments": types.Schema(type="ARRAY", items=types.Schema(type="STRING"), description="Liste optionnelle de chemins absolus de fichiers locaux à joindre"),
+                            "attachments": types.Schema(
+                                type="ARRAY",
+                                items=types.Schema(type="STRING"),
+                                description=(
+                                    "Liste des fichiers ou documents à joindre en pièce jointe (ex: ['rapport.pdf'], ['Second Foundation.epub'], ['tableur.xlsx'], ou chemin complet). "
+                                    "Tu peux simplement donner le nom du fichier, du livre ou du document, ou 'dernier' pour le dernier fichier téléchargé. "
+                                    "Jarvis se charge de localiser automatiquement le document dans les téléchargements et sur le système."
+                                )
+                            ),
                             "include_latest_screenshot": types.Schema(type="BOOLEAN", description="Mettre à True pour joindre automatiquement une capture d'écran du système ou du navigateur"),
                         },
                         required=["subject"]

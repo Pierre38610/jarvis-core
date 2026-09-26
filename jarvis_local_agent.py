@@ -500,6 +500,75 @@ async def execute_deezer_action(params: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
+def execute_fetch_file(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Recherche et extrait un fichier local sur le PC Windows pour le transmettre au serveur Cloud (encodé en base64)."""
+    target = (params.get("filepath") or params.get("filename") or "").strip()
+    if not target:
+        return {"status": "error", "message": "Nom de fichier ou chemin vide."}
+
+    import base64
+    candidate = None
+    if os.path.exists(target) and os.path.isfile(target):
+        candidate = os.path.abspath(target)
+    else:
+        clean_name = os.path.basename(target).lower()
+        search_dirs = [
+            os.path.expandvars(r"%USERPROFILE%\Downloads"),
+            os.path.expandvars(r"%USERPROFILE%\Documents"),
+            os.path.expandvars(r"%USERPROFILE%\Desktop"),
+            os.path.join(BASE_DIR, "downloads"),
+            os.path.join(BASE_DIR, "downloads", "ebooks"),
+        ]
+        for sdir in search_dirs:
+            if not os.path.exists(sdir):
+                continue
+            direct = os.path.join(sdir, os.path.basename(target))
+            if os.path.exists(direct) and os.path.isfile(direct):
+                candidate = direct
+                break
+            for fname in os.listdir(sdir):
+                fpath = os.path.join(sdir, fname)
+                if os.path.isfile(fpath) and fname.lower() == clean_name:
+                    candidate = fpath
+                    break
+            if candidate:
+                break
+
+        if not candidate:
+            for sdir in search_dirs:
+                if not os.path.exists(sdir):
+                    continue
+                for fname in os.listdir(sdir):
+                    fpath = os.path.join(sdir, fname)
+                    if os.path.isfile(fpath) and clean_name in fname.lower():
+                        candidate = fpath
+                        break
+                if candidate:
+                    break
+
+    if not candidate or not os.path.isfile(candidate):
+        return {"status": "error", "message": f"Fichier '{target}' introuvable sur le PC Windows."}
+
+    st = os.stat(candidate)
+    if st.st_size > 25 * 1024 * 1024:
+        return {"status": "error", "message": f"Fichier trop volumineux ({round(st.st_size / (1024*1024), 1)} Mo > 25 Mo max pour pièce jointe)."}
+
+    try:
+        with open(candidate, "rb") as f:
+            file_bytes = f.read()
+
+        return {
+            "status": "success",
+            "filename": os.path.basename(candidate),
+            "filepath": candidate,
+            "size_bytes": len(file_bytes),
+            "file_b64": base64.b64encode(file_bytes).decode("ascii"),
+            "message": f"Fichier '{os.path.basename(candidate)}' ({len(file_bytes)} octets) lu avec succès sur le PC."
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"Erreur lecture fichier PC : {e}"}
+
+
 async def send_telemetry_loop(ws):
     """Envoie l'état matériel du PC et l'état Deezer toutes les 30 secondes au serveur."""
     try:
@@ -628,6 +697,8 @@ async def agent_loop():
                             )
                         elif action == "get_status":
                             result = get_local_metrics()
+                        elif action == "fetch_file":
+                            result = execute_fetch_file(params)
                         else:
                             result = {"status": "error", "message": f"Action inconnue : {action}"}
 

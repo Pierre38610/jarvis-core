@@ -20,6 +20,9 @@ from email.utils import formatdate, make_msgid, parsedate_to_datetime
 from typing import List, Dict, Any, Optional
 
 from config import (
+    BASE_DIR,
+    WORKSPACE_DIR,
+    CHAT_UPLOADS_DIR,
     DEFAULT_RECIPIENT_EMAIL,
     SMTP_HOST,
     SMTP_PORT,
@@ -34,6 +37,25 @@ from config import (
     IMAP_PORT,
     IMAP_SSL
 )
+
+# Enregistrement des types MIME enrichis (ePub, Office, etc.)
+mimetypes.init()
+mimetypes.add_type("application/epub+zip", ".epub")
+mimetypes.add_type("application/x-mobipocket-ebook", ".mobi")
+mimetypes.add_type("application/vnd.amazon.ebook", ".azw3")
+mimetypes.add_type("application/pdf", ".pdf")
+mimetypes.add_type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx")
+mimetypes.add_type("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx")
+mimetypes.add_type("application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx")
+mimetypes.add_type("text/csv", ".csv")
+mimetypes.add_type("application/json", ".json")
+mimetypes.add_type("image/webp", ".webp")
+mimetypes.add_type("text/markdown", ".md")
+
+DOWNLOADS_DIR = os.path.join(BASE_DIR, "downloads")
+EBOOKS_DIR = os.path.join(DOWNLOADS_DIR, "ebooks")
+os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+os.makedirs(EBOOKS_DIR, exist_ok=True)
 
 
 def _format_markdown_to_html(text: str) -> str:
@@ -207,35 +229,289 @@ def capture_current_screen() -> Optional[str]:
         return None
 
 
+def resolve_attachment_path(att_input: Any) -> Optional[str]:
+    """Résout de façon intelligente et exhaustive un chemin ou un nom de pièce jointe.
+    
+    Prend en compte :
+    - Chemins absolus ou relatifs existants
+    - Noms simples ou partiels dans downloads/, downloads/ebooks/, static/, chat/, etc.
+    - Mots-clés ('latest', 'dernier', 'dernier_ebook') pour récupérer le dernier fichier créé
+    - URLs http/https (téléchargement temporaire automatique)
+    - Correspondance insensible à la casse et par mots-clés
+    - Relais PC Windows local si le serveur tourne sur VPS et que le PC est connecté
+    """
+    if not att_input:
+        return None
+
+    # Extraction si l'élément est un dictionnaire
+    if isinstance(att_input, dict):
+        att_input = att_input.get("path") or att_input.get("filepath") or att_input.get("filename") or att_input.get("file") or att_input.get("name")
+        if not att_input:
+            return None
+
+    import re
+    from urllib.parse import unquote
+
+    att_clean = str(att_input).strip().strip("'\"")
+    if att_clean.startswith("file://"):
+        att_clean = att_clean[7:].lstrip("/")
+        if sys.platform == "win32" and len(att_clean) > 2 and att_clean[1] == ":":
+            pass
+        else:
+            att_clean = "/" + att_clean
+
+    if not att_clean:
+        return None
+
+    # 1. Vérification si chemin d'accès direct valide
+    if os.path.exists(att_clean) and os.path.isfile(att_clean):
+        return os.path.abspath(att_clean)
+
+    direct_base = os.path.join(BASE_DIR, att_clean)
+    if os.path.exists(direct_base) and os.path.isfile(direct_base):
+        return os.path.abspath(direct_base)
+
+    # 2. Gestion des URLs distantes ou locales (/downloads/...)
+    if att_clean.startswith("http://") or att_clean.startswith("https://"):
+        if "/downloads/" in att_clean:
+            remainder = att_clean.split("/downloads/", 1)[1].split("?")[0]
+            candidate = os.path.join(DOWNLOADS_DIR, unquote(remainder))
+            if os.path.exists(candidate) and os.path.isfile(candidate):
+                return os.path.abspath(candidate)
+        try:
+            import httpx
+            with httpx.Client(timeout=20.0, follow_redirects=True) as client:
+                resp = client.get(att_clean)
+                if resp.status_code == 200 and resp.content:
+                    url_name = os.path.basename(att_clean.split("?")[0]) or "document_joint.bin"
+                    save_path = os.path.join(DOWNLOADS_DIR, url_name)
+                    with open(save_path, "wb") as f_dl:
+                        f_dl.write(resp.content)
+                    return os.path.abspath(save_path)
+        except Exception as url_err:
+            print(f"[Email Service] Erreur téléchargement pièce jointe URL {att_clean} : {url_err}")
+
+    # 3. Normalisation des préfixes virtuels (/downloads/, /static/)
+    norm_att = att_clean.replace("\\", "/")
+    if norm_att.startswith("/downloads/") or norm_att.startswith("downloads/"):
+        rel_part = norm_att.split("downloads/", 1)[1]
+        c = os.path.join(DOWNLOADS_DIR, rel_part)
+        if os.path.exists(c) and os.path.isfile(c):
+            return os.path.abspath(c)
+
+    if norm_att.startswith("/static/") or norm_att.startswith("static/"):
+        rel_part = norm_att.split("static/", 1)[1]
+        c = os.path.join(STATIC_DIR, rel_part)
+        if os.path.exists(c) and os.path.isfile(c):
+            return os.path.abspath(c)
+
+    # 4. Dossiers standards de prospection
+    search_dirs = [
+        DOWNLOADS_DIR,
+        EBOOKS_DIR,
+        STATIC_DIR,
+        CHAT_UPLOADS_DIR,
+        WORKSPACE_DIR,
+        EMAIL_OUTBOX_DIR,
+        os.path.join(BASE_DIR, "artifacts"),
+        os.path.expanduser("~/Downloads"),
+        os.path.expanduser("~/Documents"),
+        os.path.expanduser("~/Desktop"),
+    ]
+
+    base_name = os.path.basename(att_clean)
+    for sdir in search_dirs:
+        if not os.path.exists(sdir):
+            continue
+        for candidate_path in (os.path.join(sdir, att_clean), os.path.join(sdir, base_name)):
+            if os.path.exists(candidate_path) and os.path.isfile(candidate_path):
+                # Récupération de la casse réelle sur le système de fichiers
+                try:
+                    c_dir = os.path.dirname(candidate_path)
+                    c_base_l = os.path.basename(candidate_path).lower()
+                    for f in os.listdir(c_dir):
+                        if f.lower() == c_base_l:
+                            return os.path.abspath(os.path.join(c_dir, f))
+                except Exception:
+                    pass
+                return os.path.abspath(candidate_path)
+
+    # 5. Gestion des mots-clés temporels ('latest', 'dernier', 'dernier_ebook')
+    att_lower = att_clean.lower()
+    if att_lower in ("latest", "dernier", "recent", "dernier_fichier", "dernier_document", "dernier_telechargement", "last", "fichier", "document"):
+        recent_candidates = []
+        for root_dir in (DOWNLOADS_DIR, EBOOKS_DIR, CHAT_UPLOADS_DIR):
+            if not os.path.exists(root_dir):
+                continue
+            for root, _, files in os.walk(root_dir):
+                for f in files:
+                    fp = os.path.join(root, f)
+                    if os.path.isfile(fp) and not f.startswith("."):
+                        try:
+                            recent_candidates.append((fp, os.path.getmtime(fp)))
+                        except Exception:
+                            pass
+        if recent_candidates:
+            recent_candidates.sort(key=lambda x: x[1], reverse=True)
+            return os.path.abspath(recent_candidates[0][0])
+
+    if att_lower in ("dernier_ebook", "latest_ebook", "ebook", "livre"):
+        recent_ebooks = []
+        if os.path.exists(EBOOKS_DIR):
+            for f in os.listdir(EBOOKS_DIR):
+                fp = os.path.join(EBOOKS_DIR, f)
+                if os.path.isfile(fp) and f.lower().endswith((".epub", ".pdf", ".mobi", ".azw3")):
+                    try:
+                        recent_ebooks.append((fp, os.path.getmtime(fp)))
+                    except Exception:
+                        pass
+        if recent_ebooks:
+            recent_ebooks.sort(key=lambda x: x[1], reverse=True)
+            return os.path.abspath(recent_ebooks[0][0])
+
+    # 6. Correspondance insensible à la casse
+    target_clean = base_name.lower()
+    for sdir in search_dirs:
+        if not os.path.exists(sdir):
+            continue
+        try:
+            for fname in os.listdir(sdir):
+                fpath = os.path.join(sdir, fname)
+                if os.path.isfile(fpath) and fname.lower() == target_clean:
+                    return os.path.abspath(fpath)
+        except Exception:
+            pass
+
+    # 7. Correspondance avec ajout d'extensions courantes si omise
+    common_exts = (".pdf", ".epub", ".xlsx", ".docx", ".pptx", ".txt", ".csv", ".json", ".png", ".jpg", ".jpeg", ".html", ".zip")
+    if not any(target_clean.endswith(ext) for ext in common_exts):
+        for sdir in search_dirs:
+            if not os.path.exists(sdir):
+                continue
+            try:
+                for fname in os.listdir(sdir):
+                    fpath = os.path.join(sdir, fname)
+                    if os.path.isfile(fpath):
+                        fn_l = fname.lower()
+                        for ext in common_exts:
+                            if fn_l == f"{target_clean}{ext}":
+                                return os.path.abspath(fpath)
+            except Exception:
+                pass
+
+    # 8. Correspondance sémantique / sous-chaîne (ex: 'Second Foundation' pour 'Second_Foundation_Isaac_Asimov.epub')
+    target_tokens = [t for t in re.split(r'[\s_\-\.]+', target_clean) if len(t) > 2]
+    matched_candidates = []
+    for sdir in search_dirs:
+        if not os.path.exists(sdir):
+            continue
+        try:
+            for fname in os.listdir(sdir):
+                fpath = os.path.join(sdir, fname)
+                if os.path.isfile(fpath) and not fname.startswith("."):
+                    fn_l = fname.lower()
+                    if target_clean in fn_l:
+                        try:
+                            matched_candidates.append((fpath, os.path.getmtime(fpath)))
+                        except Exception:
+                            matched_candidates.append((fpath, 0))
+                    elif target_tokens and all(token in fn_l for token in target_tokens):
+                        try:
+                            matched_candidates.append((fpath, os.path.getmtime(fpath)))
+                        except Exception:
+                            matched_candidates.append((fpath, 0))
+        except Exception:
+            pass
+
+    if matched_candidates:
+        matched_candidates.sort(key=lambda x: x[1], reverse=True)
+        return os.path.abspath(matched_candidates[0][0])
+
+    # 9. Repli agent local PC si connecté (extraction à distance depuis le PC de bureau)
+    try:
+        from services.local_agent_service import local_agent_service, is_pc_connected
+        if is_pc_connected():
+            fetch_res = local_agent_service.execute_command_sync(
+                "fetch_file",
+                timeout=8.0,
+                filename=att_clean,
+                filepath=att_clean
+            )
+            if isinstance(fetch_res, dict) and fetch_res.get("status") == "success" and fetch_res.get("file_b64"):
+                import base64
+                pc_dir = os.path.join(DOWNLOADS_DIR, "from_pc")
+                os.makedirs(pc_dir, exist_ok=True)
+                out_name = fetch_res.get("filename") or base_name
+                out_path = os.path.join(pc_dir, out_name)
+                with open(out_path, "wb") as f_out:
+                    f_out.write(base64.b64decode(fetch_res["file_b64"]))
+                print(f"[Email Service] Fichier '{out_name}' transféré avec succès depuis le PC Windows local vers le serveur.")
+                return os.path.abspath(out_path)
+    except Exception as pc_err:
+        print(f"[Email Service] Tentative fetch_file PC ignorée : {pc_err}")
+
+    return None
+
+
 def send_email(
     subject: str,
     body: str,
     to_email: Optional[str] = None,
-    attachments: Optional[List[str]] = None,
+    attachments: Optional[Any] = None,
     include_screenshot: bool = False,
     is_html_report: bool = True
 ) -> Dict[str, Any]:
-    """Prépare et expédie un courriel avec gestion automatique du fallback et archivage outbox.
+    """Prépare et expédie un courriel avec résolution intelligente des pièces jointes et archivage outbox.
     
     Args:
         subject: Sujet de l'e-mail
         body: Contenu textuel ou rapport markdown
         to_email: Adresse du destinataire (défaut: pierrecassagnettes@gmail.com)
-        attachments: Liste optionnelle de chemins de fichiers existants
+        attachments: Chemin, nom de fichier ou liste de documents à joindre
         include_screenshot: Si True, prend/joint une capture visuelle
         is_html_report: Si True, formate en HTML Stark Industries
     """
     recipient = (to_email or DEFAULT_RECIPIENT_EMAIL).strip()
     if not recipient:
         recipient = "pierrecassagnettes@gmail.com"
-        
-    resolved_attachments: List[str] = []
+
+    # 1. Normalisation résiliente de la liste des pièces jointes demandées
+    requested_attachments: List[str] = []
     if attachments:
-        for att in attachments:
-            if isinstance(att, str) and os.path.exists(att):
-                resolved_attachments.append(os.path.abspath(att))
-            else:
-                print(f"[Email Service] Fichier joint introuvable ignoré: {att}")
+        if isinstance(attachments, str):
+            att_str = attachments.strip()
+            if att_str.startswith("[") and att_str.endswith("]"):
+                try:
+                    parsed = json.loads(att_str)
+                    if isinstance(parsed, list):
+                        requested_attachments = [str(x) for x in parsed if x]
+                except Exception:
+                    requested_attachments = [att_str]
+            elif "," in att_str:
+                requested_attachments = [x.strip() for x in att_str.split(",") if x.strip()]
+            elif att_str:
+                requested_attachments = [att_str]
+        elif isinstance(attachments, (list, tuple, set)):
+            for item in attachments:
+                if isinstance(item, dict):
+                    v = item.get("path") or item.get("filename") or item.get("name") or item.get("file")
+                    if v:
+                        requested_attachments.append(str(v).strip())
+                elif item:
+                    requested_attachments.append(str(item).strip())
+
+    # 2. Résolution active des fichiers sur le système
+    resolved_attachments: List[str] = []
+    missing_attachments: List[str] = []
+
+    for req_att in requested_attachments:
+        found_path = resolve_attachment_path(req_att)
+        if found_path and os.path.exists(found_path):
+            if found_path not in resolved_attachments:
+                resolved_attachments.append(found_path)
+        else:
+            missing_attachments.append(req_att)
+            print(f"[Email Service] Fichier joint introuvable ignoré: {req_att}")
 
     # Prise en compte de la capture d'écran
     screenshot_file = None
@@ -244,6 +520,23 @@ def send_email(
         if screenshot_file and os.path.exists(screenshot_file):
             if screenshot_file not in resolved_attachments:
                 resolved_attachments.append(screenshot_file)
+
+    # GARDE-FOU ESSENTIEL : Si l'utilisateur ou l'agent a demandé des pièces jointes mais qu'aucune n'a pu être résolue
+    if requested_attachments and not resolved_attachments:
+        missing_str = ", ".join(missing_attachments)
+        err_msg = (
+            f"Échec de l'envoi : la pièce jointe demandée ('{missing_str}') est introuvable sur le disque et dans les dossiers de téléchargements. "
+            f"L'e-mail n'a pas été envoyé pour éviter de transmettre un courriel sans pièce jointe."
+        )
+        print(f"[Email Service] {err_msg}")
+        return {
+            "status": "attachment_not_found",
+            "recipient": recipient,
+            "subject": subject,
+            "attachments_count": 0,
+            "missing_attachments": missing_attachments,
+            "message": err_msg
+        }
 
     # Noms de fichiers pour l'affichage
     att_basenames = [os.path.basename(p) for p in resolved_attachments]
