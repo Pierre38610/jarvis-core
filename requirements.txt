@@ -18,3 +18,8 @@ fastembed>=0.3.0
 qdrant-client>=1.9.0
 # Accès asynchrone PostgreSQL
 asyncpg>=0.29.0
+
+# ── Tests & QA Unitaires / Intégration (Mocks & CI) ──────────────────────────
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+

@@ -482,9 +482,15 @@ L'interface de Jarvis a été développée selon des standards graphiques d'insp
 5. **~~Gestion Headless du Navigateur sur VPS & Découplage PC Local~~ [RÉSOLU]** :
    - Clarification et isolation du cycle de navigation entre le Cloud VPS et le PC Windows physique de Pierre.
    - *Statut* : **Entièrement résolu**. Routage transparent via le flag `execution_target: Literal["vps_headless", "local_gui"]` dans `services/browser_service.py` : scraping, lecture d'articles, recherche DuckDuckGo et téléchargement d'EPUB sur Anna's Archive exécutés 100% en headless Playwright sur le VPS Cloud sans solliciter le PC local ; les sessions personnelles et la préparation de panier (`prepare_web_cart_or_checkout`) restant déléguées via WebSocket `/ws/local-agent` à `jarvis_local_agent.py` sur le PC de bureau.
-6. **Couverture de Tests Automatisés** :
-   - Les tests existants (`tests/run_all_tests.py`) exécutent des scénarios de bout en bout dépendants du réseau et des navigateurs installés, ce qui entraîne des échecs en environnement sandbox ou hors ligne.
-   - *Piste d'amélioration* : Introduire une suite de tests unitaires avec mocks (via `pytest`, `pytest-asyncio` et `unittest.mock`) pour valider les composants sans dépendance réseau.
+6. **~~Couverture de Tests Automatisés & Résilience CI/Offline~~ [RÉSOLU]** :
+   - Les tests initiaux (`tests/run_all_tests.py`) dépendaient lourdement du réseau externe, des navigateurs installés et des services physiques externes.
+   - *Statut* : **Entièrement résolu**. Mise en place d'une suite exhaustive de 59 tests unitaires sous `tests/unit/` (`pytest`, `pytest-asyncio`, `unittest.mock`) garantissant une isolation totale (zéro appel réseau réel, zéro coût d'API) :
+     - `test_cache_service.py` : Sérialisation, gestion du TTL, et basculement automatique sur la mémoire vive (`_memory_fallback`) lors de pannes Redis simulées.
+     - `test_unified_memory.py` : Déduplication des données profil, synchronisation asynchrone vectorielle Qdrant et repli gracieux sur SQLite textuel.
+     - `test_auth_jwt.py` : Génération, décodage, expiration et révocation instantanée des tokens JWT (HS256) avec blacklist et migration transparente des anciens tokens.
+     - `test_automation_n8n.py` : Appels HTTP webhooks n8n (réponses 200, gestion des erreurs 500 et timeouts via `httpx.AsyncClient` mocké) et import Docker CLI.
+     - `test_paid_key_gate.py` : Preuve formelle et exhaustive de l'impossibilité physique d'émettre des requêtes payantes quand le verrou `paid_key_authorized` est désactivé.
+     - `tests/conftest.py` & `pytest.ini` : Fixtures partagées (`TestClient`, mocks d'événements Gemini Live, simulation des clés API, garde-fou anti-réseau `guard_no_external_network` interdisant les sockets externes). Mode `asyncio_mode = auto`.
 
 ---
 
