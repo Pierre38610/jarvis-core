@@ -270,6 +270,39 @@ class BriefingService:
         """Retourne le briefing du jour depuis le cache ou le génère immédiatement."""
         return await self.compiler_morning_briefing(force_refresh=force_refresh)
 
+    async def send_telegram_alert(
+        self,
+        message: str,
+        chat_id: str = "6849746502",
+        echeance: str = "maintenant",
+        priorite: str = "haute"
+    ) -> Dict[str, Any]:
+        """Envoie une notification push / message sur le Stark Bot Telegram de Pierre (chatId: 6849746502)."""
+        logger.info(f"[BriefingService] Envoi push Telegram (chatId: {chat_id}) : {message[:80]}...")
+        try:
+            from services.automation import trigger_webhook
+            payload = {
+                "message": message,
+                "text": message,
+                "chatId": chat_id,
+                "chat_id": chat_id,
+                "echeance": echeance,
+                "priorite": priorite,
+                "source": "jarvis-deep-research",
+                "device": "smartphone"
+            }
+            res = await trigger_webhook("schedule-push-reminder", payload)
+            logger.info(f"[BriefingService] Push Telegram transmis avec succès : {res}")
+            return {"status": "success", "result": res}
+        except Exception as e:
+            logger.error(f"[BriefingService] Erreur lors de l'envoi de l'alerte Telegram: {e}")
+            return {"status": "error", "error": str(e)}
+
+    async def send_telegram_notification(self, message: str, chat_id: str = "6849746502") -> Dict[str, Any]:
+        """Alias pratique pour send_telegram_alert."""
+        return await self.send_telegram_alert(message, chat_id=chat_id)
+
 
 # Singleton
 briefing_service = BriefingService()
+

@@ -63,6 +63,33 @@ def get_tools_list() -> list[types.Tool]:
                     )
                 ),
                 types.FunctionDeclaration(
+                    name="lancer_mission_deep_research",
+                    description=(
+                        "Déclenche une recherche de fond approfondie et autonome (5 à 10 minutes) sur un sujet complexe "
+                        "(stage, analyse sectorielle, benchmark de labos ou d'entreprises). "
+                        "Rédige un rapport Markdown exhaustif dans /artifacts/ et génère une présentation Google Slides via n8n."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "sujet": types.Schema(
+                                type="STRING",
+                                description="Le sujet exhaustif de la recherche (ex: 'Laboratoires de recherche et entreprises en IA/Deep Learning pour un stage de 6 mois')."
+                            ),
+                            "criteres_particuliers": types.Schema(
+                                type="STRING",
+                                description="Précisions géographiques, technologiques ou contraintes particulières."
+                            ),
+                            "generer_slides": types.Schema(
+                                type="BOOLEAN",
+                                description="Détermine si une présentation Google Slides doit être compilée (par défaut True)."
+                            ),
+                        },
+                        required=["sujet"]
+                    )
+                ),
+                types.FunctionDeclaration(
                     name="search_web",
                     description="Effectue une recherche rapide sur Internet pour obtenir des informations récentes, des faits, des prix ou des liens.",
                     parameters=types.Schema(type="OBJECT", properties={"query": types.Schema(type="STRING", description="La requête de recherche web précise")}, required=["query"])

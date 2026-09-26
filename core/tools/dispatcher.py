@@ -32,6 +32,7 @@ from services.media_service import control_deezer, play_on_stremio
 from services.cache import cache_service
 from services.briefing_service import briefing_service
 from services.transport_service import transport_service
+from services.deep_research_service import deep_research_service
 
 from core.shared_state import (
     active_task_controller,
@@ -278,6 +279,27 @@ async def dispatch_tool(
                 f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, complice et direct que sa demande est prise en compte et que tu lances l'investigation approfondie avec Antigravity. "
                 f"Tu restes 100% disponible pour continuer à échanger avec lui pendant l'analyse."
             )
+        }
+
+    # ─── lancer_mission_deep_research ──────────────────────────────────────────
+    elif name == "lancer_mission_deep_research":
+        sujet = args.get("sujet", "")
+        criteres = args.get("criteres_particuliers", "")
+        generer_slides = bool(args.get("generer_slides", True))
+
+        deep_task = asyncio.create_task(
+            deep_research_service.executer_mission_complete(
+                sujet=sujet,
+                criteres=criteres,
+                generer_slides=generer_slides
+            )
+        )
+        active_task_controller["deep_research_task"] = deep_task
+
+        return {
+            "status": "launched_in_background",
+            "action": "deep_research",
+            "message": "Mission de Deep Research initiée en arrière-plan. Investigation multi-sources en cours."
         }
 
     # ─── search_web ────────────────────────────────────────────────────────────
@@ -1223,7 +1245,12 @@ async def dispatch_tool(
     elif name == "get_active_task_status":
         from services.slides_service import slides_service
 
-        task_info = slides_service.get_current_task()
+        task_info = deep_research_service.get_current_task()
+        task_type_label = "deep_research"
+        if not task_info.get("active"):
+            task_info = slides_service.get_current_task()
+            task_type_label = "presentation_slides"
+
         supervision_overview = supervision_service.get_full_overview()
         active_actions = supervision_overview.get("active_actions", [])
 
@@ -1235,7 +1262,7 @@ async def dispatch_tool(
             return {
                 "status": "completed",
                 "has_active_task": True,
-                "task_type": "presentation_slides",
+                "task_type": task_type_label,
                 "topic": task_info.get("topic"),
                 "step": step,
                 "details": details,
