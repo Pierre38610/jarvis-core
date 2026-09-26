@@ -68,13 +68,12 @@ def get_tools_list() -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="ask_deep_reasoning",
                     description=(
-                        "MOTEUR DE RÉFLEXION APPROFONDIE UNIVERSEL (SYSTÈME 2 / MULTI-AGENTS ANTIGRAVITY) : "
-                        "Sollicite l'orchestrateur d'investigation multi-agents autonome (DeepThinkingEngine) pour les analyses stratégiques, "
-                        "techniques, comparatives, scientifiques, les audits de code ou les synthèses documentaires poussées. "
-                        "RÈGLE D'INITIATIVE ET DE CONFIRMATION OBLIGATOIRE : Tu as l'initiative de proposer ce moteur dès qu'une tâche est complexe, "
-                        "MAIS TU DOIS TOUJOURS DEMANDER CONFIRMATION À PIERRE AVANT DE L'EXÉCUTER. "
-                        "Si confirmed_by_user est False (valeur par défaut), l'outil te fournira la consigne orale à énoncer pour demander son accord. "
-                        "Dès que Pierre valide à l'oral ('oui', 'vas-y', 'lance', 'd'accord'), réinvoque immédiatement 'ask_deep_reasoning' avec confirmed_by_user=True."
+                        "MOTEUR DE RÉFLEXION APPROFONDIE UNIVERSEL (SYSTÈME 2 / MULTI-AGENTS ANTIGRAVITY CLI) : "
+                        "Mobilise le pipeline d'agents autonomes Antigravity CLI (Prospecteur, Analyste critique, Synthèse & Artefact) "
+                        "pour toute tâche complexe, recherche approfondie, analyse comparative, benchmark ou audit technique. "
+                        "PRISE D'INITIATIVE MAXIMALE : À la moindre tâche un peu complexe ou recherche fouillée, propose immédiatement à Pierre de mobiliser les agents Antigravity CLI. "
+                        "Si Pierre n'a pas encore validé, appelle cet outil avec confirmed_by_user=False pour obtenir la proposition orale pour Aoede. "
+                        "Si Pierre a validé ou a directement ordonné d'utiliser Antigravity / recherche approfondie dès son instruction, appelle cet outil avec confirmed_by_user=True."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(

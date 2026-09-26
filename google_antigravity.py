@@ -138,6 +138,56 @@ def is_stop_directive(text: str) -> bool:
             return True
     return False
 
+def resolve_cli_model_args(model_name: str | None) -> list[str]:
+    """Résout les arguments de modèle pour le binaire agy CLI (avec modèle et effort valides)."""
+    if not model_name:
+        return ["--model", "gemini-3.1-pro-high"]
+    
+    m = model_name.lower().strip()
+    
+    # Claude models
+    if "opus" in m:
+        return ["--model", "claude-opus-4-6-thinking"]
+    if "sonnet" in m or "claude" in m:
+        return ["--model", "claude-sonnet-4-6"]
+        
+    # GPT-OSS
+    if "gpt" in m or "oss" in m:
+        return ["--model", "gpt-oss-120b-medium"]
+        
+    # Gemini 3.1 Pro
+    if "3.1" in m or "pro" in m:
+        if "low" in m:
+            return ["--model", "gemini-3.1-pro-low"]
+        return ["--model", "gemini-3.1-pro-high"]
+        
+    # Gemini 3.7 Flash
+    if "3.7" in m:
+        if "low" in m:
+            return ["--model", "gemini-3.7-flash-low"]
+        if "med" in m or "medium" in m:
+            return ["--model", "gemini-3.7-flash-medium"]
+        return ["--model", "gemini-3.7-flash-high"]
+        
+    # Gemini 3.6 Flash
+    if "3.6" in m:
+        if "low" in m:
+            return ["--model", "gemini-3.6-flash-low"]
+        if "med" in m or "medium" in m:
+            return ["--model", "gemini-3.6-flash-medium"]
+        return ["--model", "gemini-3.6-flash-high"]
+        
+    # Gemini 3.8 Flash (défaut flash)
+    if "3.8" in m or "flash" in m:
+        if "low" in m:
+            return ["--model", "gemini-3.8-flash-low"]
+        if "med" in m or "medium" in m:
+            return ["--model", "gemini-3.8-flash-medium"]
+        return ["--model", "gemini-3.8-flash-high"]
+        
+    # Fallback générique
+    return ["--model", "gemini-3.1-pro-high"]
+
 class AntigravityAgent:
     """Agent Antigravity prêt pour l'exécution asynchrone de tâches avec choix dynamique du modèle."""
 
@@ -234,8 +284,10 @@ class AntigravityAgent:
                 if shutil.which(cand) or (os.path.isabs(cand) and os.path.exists(cand) and os.access(cand, os.X_OK)):
                     binary = cand
                     break
-            if not binary:
-                binary = "agy"
+
+            if not binary or not (shutil.which(binary) or (os.path.isabs(binary) and os.path.exists(binary))):
+                print(f"[Antigravity CLI] Binaire agy non présent dans le PATH. Bascule transparente vers Agent Python SDK...")
+                return await self.run_task_stream(instruction, on_progress=on_progress, directive_queue=directive_queue)
 
             cmd = [
                 binary,
@@ -243,16 +295,19 @@ class AntigravityAgent:
                 "--dangerously-skip-permissions",
                 "--output-format", "text"
             ]
-            if self.requested_model:
-                cmd.extend(["--model", self.requested_model])
+            cmd.extend(resolve_cli_model_args(self.requested_model))
 
-            self.cli_process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env,
-                cwd=self.workspace
-            )
+            try:
+                self.cli_process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=env,
+                    cwd=self.workspace
+                )
+            except FileNotFoundError:
+                print(f"[Antigravity CLI] Fichier binaire introuvable à l'exécution. Bascule vers Agent Python SDK...")
+                return await self.run_task_stream(instruction, on_progress=on_progress, directive_queue=directive_queue)
             
             stdout_output = []
             stderr_output = []

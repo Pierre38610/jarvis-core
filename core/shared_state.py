@@ -263,7 +263,9 @@ def get_tool_metadata(name: str, args: dict = None) -> dict:
         return {"state": "coding", "msg": "JARVIS développe via Antigravity...", "task": instr, "engine": "Antigravity IDE", "model": m_label, "api_type": "paid", "api_label": "Clé Payante"}
     elif name == "ask_deep_reasoning":
         q = args.get("question") or "Analyse approfondie..."
-        return {"state": "thinking", "msg": "Réflexion approfondie en cours...", "task": q, "engine": "Google API", "model": "Gemini Thinking", "api_type": "free", "api_label": "Clé Gratuite"}
+        model_choice = args.get("model") or "gemini-3.1-pro-high"
+        _, m_label = resolve_antigravity_model(model_choice)
+        return {"state": "thinking", "msg": "Réflexion approfondie Antigravity...", "task": q, "engine": "Antigravity DeepThinkingEngine", "model": m_label, "api_type": "free", "api_label": "Session Pro"}
     elif name in ("search_web", "run_browser_task", "interact_web_page", "open_user_browser"):
         q = args.get("query") or args.get("goal") or args.get("url") or "Navigation internet"
         return {"state": "browsing", "msg": f"Navigation Web : {q}", "task": q, "engine": "Playwright / DuckDuckGo", "model": "Browser Engine", "api_type": "free", "api_label": "Clé Gratuite"}

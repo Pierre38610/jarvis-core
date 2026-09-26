@@ -5,6 +5,7 @@ Stratégie de clé : clé GRATUITE en priorité, repli automatique sur clé PAYA
 """
 
 import os
+import json
 import asyncio
 from typing import Dict, Any, Optional
 from google import genai
@@ -12,6 +13,7 @@ from google.genai import types
 import config
 from config import GEMINI_API_KEY_FREE, GEMINI_API_KEY_PAID, HAS_PAID_API_KEY, WORKSPACE_DIR
 from google_antigravity import AntigravityAgent, resolve_antigravity_model, AntigravityQuotaExhaustedError
+from services.console_monitor import console_monitor
 
 # Clients Gemini : clé GRATUITE prioritaire, clé PAYANTE en repli (conditionnée à l'encoche utilisateur)
 client_paid = genai.Client(api_key=GEMINI_API_KEY_PAID) if GEMINI_API_KEY_PAID else None
@@ -224,7 +226,6 @@ async def run_antigravity_task(
             }
 
         print(f"[Reasoning Service] Erreur Antigravity: {e}")
-        from services.console_monitor import console_monitor
         console_monitor.record_error(
             source="Reasoning Service",
             message=str(e),
@@ -357,6 +358,15 @@ class AutonomousReasoningEngine:
         if task_result.status == "cancelled":
             return {"status": "cancelled", "summary": "Investigation interrompue par l'utilisateur.", "artifact_path": None}
 
+        if task_result.status == "error":
+            return {
+                "status": "error",
+                "summary": task_result.summary,
+                "full_output": task_result.summary,
+                "artifact_path": None,
+                "model_used": task_result.model_label
+            }
+
         raw_output = task_result.summary or ""
 
         # Détermination de l'extension et sauvegarde de l'artefact sur disque
@@ -459,6 +469,31 @@ async def run_deep_reasoning(
     - Dès que Pierre confirme à l'oral ou via l'écran, la réflexion multi-agents est engagée.
     """
     chosen_model = model_choice or "gemini-3.1-pro-high"
+
+    # Vérification clé payante si modèle lourd et encoche décochée
+    is_heavy_model = any(k in chosen_model.lower() for k in ["pro", "claude", "sonnet", "opus"])
+    if is_heavy_model and not config.is_paid_key_authorized():
+        cost_str = "~0.03 $"
+        if "opus" in chosen_model.lower():
+            cost_str = "~0.10 $"
+        elif any(k in chosen_model.lower() for k in ["sonnet", "claude"]):
+            cost_str = "~0.05 $"
+        prompt_msg = (
+            f"ATTENTION : Le modèle {chosen_model} nécessite la clé payante ({cost_str}), mais l'encoche d'autorisation de la clé payante est actuellement décochée dans l'application. "
+            f"RÈGLE STRICTE ET ABSOLUE : Tu es dans l'impossibilité physique de faire des requêtes sur la clé payante tant que l'encoche n'est pas cochée par Pierre. "
+            f"Demande à Pierre à l'oral avec ta voix Aoede : 'Pierre, pour réaliser cette tâche avec {chosen_model}, j'ai besoin de la clé payante. Peux-tu cocher l'encoche d'autorisation de la clé payante dans l'application ?'."
+        )
+        return {
+            "status": "requires_user_confirmation",
+            "requires_paid_consent": True,
+            "requires_checkbox": True,
+            "action": "ask_deep_reasoning",
+            "model": chosen_model,
+            "reason": f"Le modèle {chosen_model} nécessite la clé payante qui est actuellement verrouillée.",
+            "estimated_cost": cost_str,
+            "message": prompt_msg,
+            "instruction_to_jarvis": prompt_msg
+        }
 
     # Vérification de l'accord utilisateur préalable
     if not confirmed_by_user:

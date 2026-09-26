@@ -16,6 +16,15 @@ from services.reasoning_service import (
     ARTIFACTS_DIR
 )
 from google_antigravity import TaskResult, AntigravityQuotaExhaustedError
+import config
+
+
+@pytest.fixture(autouse=True)
+def ensure_paid_key_authorized():
+    orig = config.is_paid_key_authorized()
+    config.set_paid_key_authorized(True)
+    yield
+    config.set_paid_key_authorized(orig)
 
 
 @pytest.mark.asyncio
