@@ -377,7 +377,7 @@ class SlidesService:
         requests.append({
             "createShape": {
                 "objectId": badge_id,
-                "shapeType": "ROUNDED_RECTANGLE",
+                "shapeType": "ROUND_RECTANGLE",
                 "elementProperties": {
                     "pageObjectId": cover_slide_id,
                     "size": {"width": {"magnitude": 260, "unit": "PT"}, "height": {"magnitude": 26, "unit": "PT"}},
@@ -671,7 +671,7 @@ class SlidesService:
                 requests.append({
                     "createShape": {
                         "objectId": left_card_id,
-                        "shapeType": "ROUNDED_RECTANGLE",
+                        "shapeType": "ROUND_RECTANGLE",
                         "elementProperties": {
                             "pageObjectId": slide_id,
                             "size": {"width": {"magnitude": 420, "unit": "PT"}, "height": {"magnitude": 255, "unit": "PT"}},
@@ -716,7 +716,7 @@ class SlidesService:
                 requests.append({
                     "createShape": {
                         "objectId": right_card_id,
-                        "shapeType": "ROUNDED_RECTANGLE",
+                        "shapeType": "ROUND_RECTANGLE",
                         "elementProperties": {
                             "pageObjectId": slide_id,
                             "size": {"width": {"magnitude": 200, "unit": "PT"}, "height": {"magnitude": 255, "unit": "PT"}},
@@ -767,7 +767,7 @@ class SlidesService:
                 requests.append({
                     "createShape": {
                         "objectId": main_card_id,
-                        "shapeType": "ROUNDED_RECTANGLE",
+                        "shapeType": "ROUND_RECTANGLE",
                         "elementProperties": {
                             "pageObjectId": slide_id,
                             "size": {"width": {"magnitude": 640, "unit": "PT"}, "height": {"magnitude": 255, "unit": "PT"}},

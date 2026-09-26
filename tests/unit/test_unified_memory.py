@@ -226,3 +226,53 @@ class TestUnifiedMemoryContextPrompt:
 
             assert "UTILISATEUR PRINCIPAL : Pierre" in prompt
             assert "CONTEXTE SQLITE LOCAL" in prompt
+
+
+@pytest.mark.asyncio
+class TestVectorMemoryServiceQdrantCompat:
+    """Vérifie la compatibilité de VectorMemoryService avec les versions récentes de QdrantClient (query_points)."""
+
+    async def test_search_relevant_memories_with_query_points(self):
+        from services.memory import VectorMemoryService
+        vms = VectorMemoryService()
+        vms._embed_model = MagicMock()
+        vms._embed_model.embed.return_value = [[0.1] * 384]
+
+        # Mock QdrantClient avec query_points (qdrant-client >= 1.10)
+        mock_qdrant = MagicMock(spec=["query_points"])
+        mock_point = MagicMock()
+        mock_point.id = "uuid-1234"
+        mock_point.payload = {"content": "Bitcoin rareté absolue", "category": "fait", "created_at": "2026-09-26T14:00:00"}
+        mock_point.score = 0.95
+
+        mock_resp = MagicMock()
+        mock_resp.points = [mock_point]
+        mock_qdrant.query_points.return_value = mock_resp
+        vms._qdrant = mock_qdrant
+
+        results = await vms.search_relevant_memories("Bitcoin", limit=5)
+        assert len(results) == 1
+        assert results[0]["content"] == "Bitcoin rareté absolue"
+        assert results[0]["score"] == 0.95
+        assert results[0]["id"] == "uuid-1234"
+
+    async def test_search_relevant_memories_with_legacy_search(self):
+        from services.memory import VectorMemoryService
+        vms = VectorMemoryService()
+        vms._embed_model = MagicMock()
+        vms._embed_model.embed.return_value = [[0.1] * 384]
+
+        # Mock QdrantClient legacy avec search
+        mock_qdrant = MagicMock(spec=["search"])
+        mock_scored = MagicMock()
+        mock_scored.id = "uuid-legacy"
+        mock_scored.payload = {"content": "Souvenir legacy", "category": "fait", "created_at": "2026-09-26T14:00:00"}
+        mock_scored.score = 0.88
+        mock_qdrant.search.return_value = [mock_scored]
+        vms._qdrant = mock_qdrant
+
+        results = await vms.search_relevant_memories("Legacy", limit=5)
+        assert len(results) == 1
+        assert results[0]["content"] == "Souvenir legacy"
+        assert results[0]["score"] == 0.88
+

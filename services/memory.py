@@ -163,7 +163,10 @@ class VectorMemoryService:
             return None
         try:
             vectors = list(self._embed_model.embed([text]))
-            return vectors[0].tolist() if vectors else None
+            if not vectors:
+                return None
+            vec = vectors[0]
+            return vec.tolist() if hasattr(vec, "tolist") else list(vec)
         except Exception as e:
             logger.error(f"[Memory] Erreur embedding : {e}")
             return None
@@ -303,22 +306,34 @@ class VectorMemoryService:
                                 match=qdrant_models.MatchValue(value=category_filter),
                             )]
                         )
-                    results = await asyncio.to_thread(
-                        self._qdrant.search,
-                        collection_name=QDRANT_COLLECTION,
-                        query_vector=vector,
-                        limit=limit,
-                        score_threshold=score_threshold,
-                        query_filter=search_filter,
-                        with_payload=True,
-                    )
+                    if hasattr(self._qdrant, "query_points"):
+                        query_resp = await asyncio.to_thread(
+                            self._qdrant.query_points,
+                            collection_name=QDRANT_COLLECTION,
+                            query=vector,
+                            limit=limit,
+                            score_threshold=score_threshold,
+                            query_filter=search_filter,
+                            with_payload=True,
+                        )
+                        results = getattr(query_resp, "points", query_resp)
+                    else:
+                        results = await asyncio.to_thread(
+                            self._qdrant.search,
+                            collection_name=QDRANT_COLLECTION,
+                            query_vector=vector,
+                            limit=limit,
+                            score_threshold=score_threshold,
+                            query_filter=search_filter,
+                            with_payload=True,
+                        )
                     return [
                         {
                             "id":         str(r.id),
-                            "content":    r.payload.get("content", ""),
-                            "category":   r.payload.get("category", "fait"),
-                            "score":      round(r.score, 3),
-                            "created_at": r.payload.get("created_at", ""),
+                            "content":    (r.payload or {}).get("content", ""),
+                            "category":   (r.payload or {}).get("category", "fait"),
+                            "score":      round(r.score, 3) if r.score is not None else None,
+                            "created_at": (r.payload or {}).get("created_at", ""),
                         }
                         for r in results
                     ]

@@ -324,6 +324,9 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
 - **Fichiers** : `services/unified_memory.py` (Façade), `services/memory_service.py` (SQLite), `services/memory.py` (Vectoriel).
 - **Outils exposés** : `remember_user_fact`, `recall_user_memories`, `memoriser_information`.
 - **Façade Unifiée (`UnifiedMemoryManager`)** : Orchestration transparente avec déduplication des données de profil immuables dans SQLite, et double indexation asynchrone non-bloquante pour la recherche sémantique (Qdrant) avec dégradation gracieuse (fallback SQLite textuel).
+- **Compatibilité Moteur Vectoriel Qdrant & Embeddings** :
+  - Support natif des versions modernes de `qdrant-client` (>= 1.10.0) via `query_points(...)` (extraction de `points` de type `ScoredPoint`) et rétrocompatibilité automatique sur l'ancienne méthode `.search(...)`.
+  - Résilience de conversion vectorielle (`_embed`) gérant à la fois les tableaux générateurs (`numpy.ndarray.tolist()`) et les structures itérables Python natives.
 
 ### 7.7. Télémétrie, Diagnostics & Supervision Système
 - **Fichiers** : `services/system_service.py`, `services/supervision_service.py`, `services/console_monitor.py`.
@@ -345,8 +348,9 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
   2. **Génération de présentations Google Slides Expertes & Esthétiques (`generer_presentation`, `services/slides_service.py`)** :
      - **Moteur de recherche approfondie (`SlidesService`)** : Plutôt que de créer un deck vide ou précipité, le service élabore un plan rigoureux, agrège des faits historiques et chiffres vérifiés (ex: Bitcoin : 21M de limite, SHA-256/PoW, halving avril 2024 à 3.125 BTC, ETF spot, Lightning Network, réserve de valeur), et trie les éléments d'impact.
      - **Design moderne 16:9 & Thèmes colorimétriques** : Cartes graphiques, typographies hiérarchisées, pastilles métriques (`key_metric`), séparateurs visuels et notes d'orateur complètes avec palette adaptée (`bitcoin`/`gold`, `stark`, `corporate`, `cyber`, `dark`).
+     - **Spécification stricte Google Slides API v1** : Utilisation exclusive du type de forme officiel `ROUND_RECTANGLE` (remplaçant le type invalide `ROUNDED_RECTANGLE`) évitant tout rejet HTTP 400 du batchUpdate.
      - **Élimination de la diapositive blanche par défaut** : La requête Google Slides `batchUpdate` génère les nouvelles diapositives enrichies puis supprime l'éventuelle diapositive vierge initiale ("Cliquez ici pour ajouter un titre").
-     - **Pipeline n8n hybride** : Création initiale de la présentation Google Slides, injection par l'API REST `batchUpdate` des diapositives stylisées et export optionnel au format PPTX.
+     - **Pipeline n8n 2.x hybride & OAuth2** : Création initiale de la présentation Google Slides, transmission sécurisée du jeton OAuth2 (`googleSlidesOAuth2Api`) dans le nœud HTTP Request n8n avec payload sérialisé `JSON.stringify({ requests: $json.requests })`, et vérification stricte du dispatcheur Jarvis (`batch_applied`) garantissant que la présentation est réellement remplie avant confirmation vocale et affichage du lien HUD.
   3. **Prise de notes et to-do Notion (`notion_enregistrer`)** :
      - Ajoute des entrées structurées (notes rapides `note`, items de to-do list `todo`, fiches de veille `veille`, fiches projet `projet`) avec étiquettes dans Notion.
      - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/notion-entry`.

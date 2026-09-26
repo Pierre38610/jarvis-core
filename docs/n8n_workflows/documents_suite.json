@@ -135,7 +135,13 @@
         "name": "Google Slides",
         "type": "n8n-nodes-base.googleSlides",
         "typeVersion": 2,
-        "position": [680, 300]
+        "position": [680, 300],
+        "credentials": {
+          "googleSlidesOAuth2Api": {
+            "id": "xSgbXFJicBHr21iE",
+            "name": "Google Slides account"
+          }
+        }
       },
       {
         "parameters": {
@@ -155,7 +161,7 @@
           "nodeCredentialType": "googleSlidesOAuth2Api",
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ { requests: $json.requests } }}",
+          "jsonBody": "={{ JSON.stringify({ requests: $json.requests }) }}",
           "options": {}
         },
         "id": "http-slides-batch-1",
@@ -163,11 +169,17 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [1120, 300],
-        "continueOnFail": true
+        "continueOnFail": true,
+        "credentials": {
+          "googleSlidesOAuth2Api": {
+            "id": "xSgbXFJicBHr21iE",
+            "name": "Google Slides account"
+          }
+        }
       },
       {
         "parameters": {
-          "jsCode": "const prepData = $node['Préparer Requêtes Batch Slides'].json;\nconst httpResult = $input.first().json;\n\nconst hasError = httpResult && (httpResult.error !== undefined || (httpResult.statusCode && httpResult.statusCode >= 400));\n\nreturn [{\n  json: {\n    status: 'success',\n    reply: 'La présentation Google Slides ' + prepData.titre + ' a été créée et mise en page avec succès (' + prepData.slides_count + ' diapositives).',\n    titre: prepData.titre,\n    theme: prepData.theme,\n    slides_count: prepData.slides_count,\n    presentation_id: prepData.presentation_id,\n    presentation_url: prepData.presentation_url,\n    download_url: prepData.download_url,\n    filename: prepData.filename,\n    batch_applied: !hasError,\n    timestamp: new Date().toISOString()\n  }\n}];"
+          "jsCode": "const prepData = $node['Préparer Requêtes Batch Slides'].json;\nconst httpResult = $input.first().json;\n\nconst hasError = httpResult && (httpResult.error !== undefined || (httpResult.statusCode && httpResult.statusCode >= 400));\n\nreturn [{\n  json: {\n    status: hasError ? 'error' : 'success',\n    reply: hasError ? ('Erreur Google Slides: ' + JSON.stringify(httpResult.error || httpResult)) : ('La présentation Google Slides ' + prepData.titre + ' a été créée et mise en page avec succès (' + prepData.slides_count + ' diapositives).'),\n    titre: prepData.titre,\n    theme: prepData.theme,\n    slides_count: prepData.slides_count,\n    presentation_id: prepData.presentation_id,\n    presentation_url: prepData.presentation_url,\n    download_url: prepData.download_url,\n    filename: prepData.filename,\n    batch_applied: !hasError,\n    batch_result: hasError ? (httpResult.error || httpResult) : { replies_count: (httpResult.replies || []).length },\n    timestamp: new Date().toISOString()\n  }\n}];"
         },
         "id": "code-slides-export-1",
         "name": "Finaliser Export Slides",

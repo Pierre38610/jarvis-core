@@ -116,6 +116,9 @@ class TestGoogleSlidesBatchRequests:
                 h = size["height"]["magnitude"]
                 x = transform["translateX"]
                 y = transform["translateY"]
+                shape_type = r["createShape"]["shapeType"]
+                assert shape_type in ("RECTANGLE", "ROUND_RECTANGLE", "TEXT_BOX"), f"shapeType invalide pour Google Slides API: {shape_type}"
+                assert shape_type != "ROUNDED_RECTANGLE"
                 assert x + w <= 720, f"Shape déborde horizontalement : {x} + {w} > 720"
                 assert y + h <= 405, f"Shape déborde verticalement : {y} + {h} > 405"
 

@@ -1095,9 +1095,10 @@ async def dispatch_tool(
                 )
                 res = await n8n_exec(action_name="document-slides", parametres=payload)
                 status_res = res.get("status", "completed")
-                is_ok = (status_res == "success")
-
                 raw_result = res.get("result", {})
+                batch_applied = raw_result.get("batch_applied", True)
+                is_ok = (status_res == "success") and (batch_applied is not False) and (raw_result.get("status") != "error")
+
                 presentation_url = (
                     raw_result.get("presentation_url")
                     or (f"https://docs.google.com/presentation/d/{raw_result.get('presentation_id')}" if raw_result.get("presentation_id") else "")
@@ -1110,7 +1111,7 @@ async def dispatch_tool(
                 supervision_service.complete_action(
                     "generer_presentation",
                     status="completed" if is_ok else "error",
-                    summary=f"Présentation '{effective_titre}' créée ({len(effective_slides)} slides, style {_thm})"
+                    summary=f"Présentation '{effective_titre}' créée ({len(effective_slides)} slides, style {_thm})" if is_ok else f"Échec création présentation: {res.get('error') or raw_result.get('reply') or 'Erreur Slides'}"
                 )
                 await broadcast_supervision()
 
