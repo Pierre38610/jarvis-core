@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketDisconnected
@@ -165,9 +166,18 @@ async def voice_channel(websocket: WebSocket):
                         raise WebSocketDisconnect(code=1000)
 
                     if "bytes" in msg and msg["bytes"]:
-                        # Ne pas saturer Gemini Live d'audio entrant pendant qu'il parle
-                        # pour préserver la fluidité sonore et éviter tout barge-in/coupure intempestive
-                        if not speaking_state["active"]:
+                        # Ne pas saturer Gemini Live d'audio entrant pendant qu'il parle ou restitue du son
+                        # ni pendant l'exécution ou le retour d'un outil pour éviter tout barge-in/coupure intempestive
+                        now = time.time()
+                        is_speaking_or_cooldown = (
+                            speaking_state["active"]
+                            or active_task_controller.get("speaking_active", False)
+                            or now < active_task_controller.get("estimated_speech_end", 0.0) + 0.25
+                            or active_task_controller.get("client_speaking", False)
+                            or active_task_controller.get("awaiting_tool_response", False)
+                            or now < active_task_controller.get("tool_response_cooldown", 0.0)
+                        )
+                        if not is_speaking_or_cooldown:
                             await session.send_realtime_input(
                                 audio=types.Blob(data=msg["bytes"], mime_type="audio/pcm;rate=16000")
                             )
@@ -177,7 +187,16 @@ async def voice_channel(websocket: WebSocket):
                             payload = json.loads(msg["text"])
                             p_type = payload.get("type", "")
 
-                            if p_type == "live_directive":
+                            if p_type == "speech_started":
+                                active_task_controller["client_speaking"] = True
+
+                            elif p_type == "speech_ended":
+                                active_task_controller["client_speaking"] = False
+                                active_task_controller["speaking_active"] = False
+                                active_task_controller["estimated_speech_end"] = 0.0
+                                speaking_state["active"] = False
+
+                            elif p_type == "live_directive":
                                 dir_text = payload.get("directive", "").strip()
                                 if dir_text:
                                     if is_stop_directive(dir_text):
@@ -406,6 +425,9 @@ async def voice_channel(websocket: WebSocket):
                                 user_speech_buffer = ""
                                 is_speaking_state = False
                                 speaking_state["active"] = False
+                                active_task_controller["speaking_active"] = False
+                                active_task_controller["estimated_speech_end"] = 0.0
+                                active_task_controller["client_speaking"] = False
                                 await websocket.send_text(json.dumps({"type": "interrupted"}))
 
                             # Transcription voix utilisateur
@@ -499,6 +521,12 @@ async def voice_channel(websocket: WebSocket):
                                         }))
                                     elif part.inline_data and part.inline_data.data:
                                         speaking_state["active"] = True
+                                        active_task_controller["speaking_active"] = True
+                                        chunk_dur = len(part.inline_data.data) / (24000 * 2)
+                                        now = time.time()
+                                        active_task_controller["estimated_speech_end"] = max(
+                                            active_task_controller.get("estimated_speech_end", 0.0), now
+                                        ) + chunk_dur
                                         if not is_speaking_state:
                                             is_speaking_state = True
                                             supervision_service.update_voice_state("speaking", model=active_live_model, is_paid=is_paid_live)
@@ -529,6 +557,7 @@ async def voice_channel(websocket: WebSocket):
                                 user_speech_buffer = ""
                                 is_speaking_state = False
                                 speaking_state["active"] = False
+                                active_task_controller["speaking_active"] = False
                                 supervision_service.update_voice_state("idle", model=active_live_model, is_paid=is_paid_live)
                                 await broadcast_supervision()
                                 await websocket.send_text(json.dumps({"type": "turn_complete"}))
@@ -568,6 +597,7 @@ async def voice_channel(websocket: WebSocket):
                                     "api_label": t_meta.get("api_label", "Service Local"),
                                 }))
 
+                                active_task_controller["awaiting_tool_response"] = True
                                 # Dispatch vers le module métier
                                 tool_resp = await dispatch_tool(
                                     name=name,
@@ -588,6 +618,8 @@ async def voice_channel(websocket: WebSocket):
                                         )
                                     ]
                                 )
+                                active_task_controller["awaiting_tool_response"] = False
+                                active_task_controller["tool_response_cooldown"] = time.time() + 1.8
 
                                 # Signal de fin d'outil au frontend
                                 await websocket.send_text(json.dumps({

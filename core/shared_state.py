@@ -9,6 +9,7 @@ os.environ["no_proxy"] = "127.0.0.1,localhost,::1,0.0.0.0"
 
 import asyncio
 import json
+import time
 
 from google import genai
 from google.genai import types
@@ -72,8 +73,54 @@ active_task_controller: dict = {
     "paid_consent_given": False, # Clé payante verrouillée par défaut (demande orale requise)
     "paid_live_approved": False, # Accord vocal payant par défaut verrouillé
     "paid_consent_modal_open": False,
-    "paid_consent_event": None   # asyncio.Event pour attendre la confirmation
+    "paid_consent_event": None,  # asyncio.Event pour attendre la confirmation
+    "speaking_active": False,    # True pendant l'émission de chunks audio par le modèle
+    "estimated_speech_end": 0.0, # Timestamp estimé de fin de restitution audio dans les enceintes
+    "client_speaking": False,    # True tant que le navigateur joue le flux sonore
+    "awaiting_tool_response": False, # True pendant l'exécution d'un outil
+    "tool_response_cooldown": 0.0,   # Période de grâce après send_tool_response
 }
+
+
+async def wait_until_speech_finished(timeout: float = 12.0) -> None:
+    """
+    Attend que J.A.R.V.I.S. ait réellement fini de prononcer sa phrase en cours
+    avant d'injecter une nouvelle interaction dans la session Gemini Live.
+    Évite absolument toute coupure de parole intempestive en pleine phrase.
+    """
+    start = time.time()
+    while time.time() - start < timeout:
+        now = time.time()
+        speaking = (
+            active_task_controller.get("speaking_active", False)
+            or now < active_task_controller.get("estimated_speech_end", 0.0) + 0.35
+            or active_task_controller.get("client_speaking", False)
+        )
+        if not speaking:
+            break
+        await asyncio.sleep(0.12)
+    # Pause naturelle de respiration humaine (200ms) avant de commencer la réplique suivante
+    await asyncio.sleep(0.2)
+
+
+async def safe_send_live_client_content(session, text: str, wait_if_speaking: bool = True) -> bool:
+    """
+    Injecte un message client dans la session Live en s'assurant que J.A.R.V.I.S.
+    ne se coupe pas la parole si elle est en train de parler.
+    """
+    if not session:
+        return False
+    if wait_if_speaking:
+        await wait_until_speech_finished()
+    try:
+        await session.send_client_content(
+            turns=types.Content(role="user", parts=[types.Part.from_text(text=text)]),
+            turn_complete=True
+        )
+        return True
+    except Exception as e:
+        print(f"[Safe Live Injection] Erreur: {e}")
+        return False
 
 
 async def broadcast_supervision():

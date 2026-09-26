@@ -38,6 +38,7 @@ from core.shared_state import (
     broadcast_supervision,
     stop_active_task,
     estimate_tool_cost,
+    safe_send_live_client_content,
 )
 
 
@@ -122,13 +123,21 @@ async def dispatch_tool(
                     }))
                 except Exception:
                     pass
-            if active_sess and text and step in ("tool", "planning", "adaptation", "thought", "fix", "complete", "fallback"):
+            now = time.time()
+            last_spoken_p = active_task_controller.get("_last_progress_spoken", 0.0)
+            is_speaking = (
+                active_task_controller.get("speaking_active", False)
+                or now < active_task_controller.get("estimated_speech_end", 0.0) + 0.35
+                or active_task_controller.get("client_speaking", False)
+            )
+            # Ne parler à la voix que sur les jalons clés, espacés d'au moins 12 secondes, et sans couper la parole en cours
+            if active_sess and text and (step in ("planning", "adaptation")) and not is_speaking and (now - last_spoken_p > 12.0):
+                active_task_controller["_last_progress_spoken"] = now
                 try:
-                    await active_sess.send_client_content(
-                        turns=types.Content(role="user", parts=[types.Part.from_text(
-                            text=f"[MISE À JOUR DU DÉVELOPPEMENT EN COURS - à dire à voix haute à Pierre en une phrase courte et naturelle] {text}"
-                        )]),
-                        turn_complete=True
+                    await safe_send_live_client_content(
+                        active_sess,
+                        f"[MISE À JOUR DU DÉVELOPPEMENT EN COURS - à dire à voix haute à Pierre en une phrase courte et naturelle] {text}",
+                        wait_if_speaking=False
                     )
                 except Exception as inj_err:
                     print(f"[Progress Injection] {inj_err}")
@@ -161,9 +170,9 @@ async def dispatch_tool(
                         pass
                 if current_sess:
                     try:
-                        await current_sess.send_client_content(
-                            turns=types.Content(role="user", parts=[types.Part.from_text(text=f"[ACCORD PAYANT REQUIS POUR CODER] {res.get('instruction_to_jarvis', '')}")]),
-                            turn_complete=True
+                        await safe_send_live_client_content(
+                            current_sess,
+                            f"[ACCORD PAYANT REQUIS POUR CODER] {res.get('instruction_to_jarvis', '')}"
                         )
                     except Exception as e:
                         print(f"[BG Task] Erreur notification consent: {e}")
@@ -180,9 +189,9 @@ async def dispatch_tool(
                         pass
                 if current_sess:
                     try:
-                        await current_sess.send_client_content(
-                            turns=types.Content(role="user", parts=[types.Part.from_text(text="[DÉVELOPPEMENT ARRÊTÉ] Le développement a été interrompu suite à la demande de Pierre. Confirme-lui brièvement à la voix que tout est arrêté.")]),
-                            turn_complete=True
+                        await safe_send_live_client_content(
+                            current_sess,
+                            "[DÉVELOPPEMENT ARRÊTÉ] Le développement a été interrompu suite à la demande de Pierre. Confirme-lui brièvement à la voix que tout est arrêté."
                         )
                     except Exception:
                         pass
@@ -245,10 +254,7 @@ async def dispatch_tool(
                         f"Résultat : {res.get('summary', 'Tâche exécutée avec succès.')[:400]}"
                     )
                 try:
-                    await current_sess.send_client_content(
-                        turns=types.Content(role="user", parts=[types.Part.from_text(text=completion_msg)]),
-                        turn_complete=True
-                    )
+                    await safe_send_live_client_content(current_sess, completion_msg)
                 except Exception as notify_err:
                     print(f"[BG Task] Erreur notification fin : {notify_err}")
 
@@ -258,7 +264,7 @@ async def dispatch_tool(
             "status": "launched_in_background", "model_used": model_label, "engine": "Antigravity IDE",
             "instruction_to_jarvis": (
                 f"Le développement avec {model_label} est lancé en arrière-plan pour : '{instruction}'. "
-                f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, complice et direct que sa demande est bien prise en compte et que tu lances le développement avec Antigravity. "
+                f"Confirme brièvement et naturellement à Pierre avec ta voix Aoede que tu mobilises Antigravity pour cette tâche. "
                 f"Tu restes ensuite 100% disponible pour échanger normalement avec lui d'égal à égal pendant que le code s'exécute."
             )
         }
@@ -358,11 +364,9 @@ async def dispatch_tool(
                     pass
             if active_sess and text and step in ("prospector", "critic", "synthesis", "complete"):
                 try:
-                    await active_sess.send_client_content(
-                        turns=types.Content(role="user", parts=[types.Part.from_text(
-                            text=f"[MISE À JOUR DE LA RÉFLEXION APPROFONDIE - à dire brièvement à Pierre] {text}"
-                        )]),
-                        turn_complete=True
+                    await safe_send_live_client_content(
+                        active_sess,
+                        f"[MISE À JOUR DE LA RÉFLEXION APPROFONDIE - à dire brièvement à Pierre] {text}"
                     )
                 except Exception as inj_err:
                     print(f"[Reasoning Progress Injection] {inj_err}")
@@ -403,9 +407,9 @@ async def dispatch_tool(
                         pass
                 if current_sess:
                     try:
-                        await current_sess.send_client_content(
-                            turns=types.Content(role="user", parts=[types.Part.from_text(text="[RÉFLEXION ARRÊTÉE] La réflexion a été interrompue suite à la demande de Pierre. Confirme-lui brièvement que tout est arrêté.")]),
-                            turn_complete=True
+                        await safe_send_live_client_content(
+                            current_sess,
+                            "[RÉFLEXION ARRÊTÉE] La réflexion a été interrompue suite à la demande de Pierre. Confirme-lui brièvement que tout est arrêté."
                         )
                     except Exception:
                         pass
@@ -416,11 +420,9 @@ async def dispatch_tool(
                 await broadcast_supervision()
                 if current_sess:
                     try:
-                        await current_sess.send_client_content(
-                            turns=types.Content(role="user", parts=[types.Part.from_text(
-                                text="[ALERTE QUOTA 5H ANTIGRAVITY] Le quota de session de 5 heures d'Antigravity est momentanément saturé. Informe Pierre calmement avec ta voix Aoede et propose-lui soit d'attendre le renouvellement de la session, soit de répondre avec le moteur Google standard."
-                            )]),
-                            turn_complete=True
+                        await safe_send_live_client_content(
+                            current_sess,
+                            "[ALERTE QUOTA 5H ANTIGRAVITY] Le quota de session de 5 heures d'Antigravity est momentanément saturé. Informe Pierre calmement avec ta voix Aoede et propose-lui soit d'attendre le renouvellement de la session, soit de répondre avec le moteur Google standard."
                         )
                     except Exception:
                         pass
@@ -462,10 +464,7 @@ async def dispatch_tool(
                         f"Présente la synthèse et les conclusions majeures à Pierre avec ta voix Aoede avec franchise, précision et éloquence."
                     )
                 try:
-                    await current_sess.send_client_content(
-                        turns=types.Content(role="user", parts=[types.Part.from_text(text=msg)]),
-                        turn_complete=True
-                    )
+                    await safe_send_live_client_content(current_sess, msg)
                 except Exception as notify_err:
                     print(f"[Reasoning Notification Err] {notify_err}")
 
@@ -485,62 +484,44 @@ async def dispatch_tool(
 
     # ─── search_web ────────────────────────────────────────────────────────────
     elif name == "search_web":
-        query = args.get("query", "")
+        query = args.get("query", "").strip()
         supervision_service.start_action("search_web", "Recherche Internet", "search_web", query, "Playwright / DuckDuckGo", api_type="free", api_label="Clé Gratuite", cost_est="0.00 $")
         await broadcast_supervision()
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Recherche sur Internet : {query}", "voice": False}))
         await websocket.send_text(json.dumps({"type": "status", "state": "browsing", "msg": "Recherche sur Internet...", "task": query, "engine": "Clé Gratuite", "model": "DuckDuckGo / Playwright", "api_type": "free", "api_label": "Clé Gratuite"}))
 
-        _query_bg = query
-        _sess_bg = session
-        _ws_bg = websocket
-
-        async def _run_search_bg(_q=_query_bg, _sess=_sess_bg, _ws=_ws_bg):
+        try:
+            res = await search_web(query)
+            best_url = "https://www.google.com"
+            best_title = query
+            if res.get("results"):
+                first = res["results"][0]
+                best_url = first.get("url", "")
+                best_title = first.get("title", query)
+            supervision_service.complete_action("search_web", status="completed", summary=f"Résultats pour {best_title}")
+            supervision_service.track_browser_window(best_url, best_title)
+            await broadcast_supervision()
             try:
-                await asyncio.sleep(0.05)
-                res = await search_web(_q)
-                best_url = "https://www.google.com"
-                best_title = _q
-                if res.get("results"):
-                    first = res["results"][0]
-                    best_url = first.get("url", "")
-                    best_title = first.get("title", _q)
-                supervision_service.complete_action("search_web", status="completed", summary=f"Résultats pour {best_title}")
-                supervision_service.track_browser_window(best_url, best_title)
-                await broadcast_supervision()
-                try:
-                    await _ws.send_text(json.dumps({"type": "browser_update", "url": best_url, "title": best_title, "screenshot": "/static/latest_screenshot.jpg"}))
-                    await _ws.send_text(json.dumps({"type": "status", "state": "idle", "msg": "En veille active", "engine": "Google API Live", "model": live_display_label, "api_type": "paid" if is_paid_live else "free", "api_label": "Clé Payante" if is_paid_live else "Clé Gratuite"}))
-                except Exception:
-                    pass
-                result_msg = (
-                    f"[RÉSULTATS DE RECHERCHE DISPONIBLES] La recherche sur '{_q}' est terminée. "
-                    f"Le lien principal est {best_url}. "
-                    f"Voici les résultats : {json.dumps(res.get('results', [])[:3], ensure_ascii=False)[:800]}. "
-                    f"Présente maintenant les résultats pertinents à Pierre avec ta voix Aoede de façon fluide et naturelle."
-                )
-                try:
-                    await _sess.send_client_content(turns=types.Content(role="user", parts=[types.Part.from_text(text=result_msg)]), turn_complete=True)
-                except Exception as inj_err:
-                    print(f"[Search BG] Erreur injection résultats: {inj_err}")
-            except Exception as e:
-                print(f"[Search BG] Erreur: {e}")
-                supervision_service.complete_action("search_web", status="error", summary=str(e))
-                await broadcast_supervision()
-                try:
-                    await _sess.send_client_content(turns=types.Content(role="user", parts=[types.Part.from_text(text=f"[ÉCHEC RECHERCHE] La recherche sur '{_q}' a échoué ({e}). Informe Pierre brièvement.")]), turn_complete=True)
-                except Exception:
-                    pass
+                await websocket.send_text(json.dumps({"type": "browser_update", "url": best_url, "title": best_title, "screenshot": "/static/latest_screenshot.jpg"}))
+                await websocket.send_text(json.dumps({"type": "status", "state": "idle", "msg": "En veille active", "engine": "Google API Live", "model": live_display_label, "api_type": "paid" if is_paid_live else "free", "api_label": "Clé Payante" if is_paid_live else "Clé Gratuite"}))
+            except Exception:
+                pass
 
-        asyncio.create_task(_run_search_bg())
-        return {
-            "status": "searching_in_background", "query": query,
-            "instruction_to_jarvis": (
-                f"La recherche sur '{query}' est lancée en arrière-plan. "
-                f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, direct et complice que ta demande est bien prise en compte et que tu lances la recherche sur le web. "
-                f"Tu lui présenteras les résultats dès qu'ils arrivent."
-            )
-        }
+            return {
+                "status": "completed",
+                "query": query,
+                "best_url": best_url,
+                "results": res.get("results", [])[:3],
+                "instruction_to_jarvis": "Présente directement les éléments de réponse pertinents à Pierre avec ta voix Aoede de façon concise, vivante et naturelle."
+            }
+        except Exception as e:
+            supervision_service.complete_action("search_web", status="error", summary=str(e))
+            await broadcast_supervision()
+            return {
+                "status": "error",
+                "error": str(e),
+                "instruction_to_jarvis": f"La recherche sur '{query}' a rencontré un souci ({e}). Informe brièvement Pierre avec ta voix Aoede."
+            }
 
     # ─── run_browser_task ──────────────────────────────────────────────────────
     elif name == "run_browser_task":
@@ -574,7 +555,10 @@ async def dispatch_tool(
                             pass
                     if _sess:
                         try:
-                            await _sess.send_client_content(turns=types.Content(role="user", parts=[types.Part.from_text(text=f"[ACCORD PAYANT REQUIS POUR NAVIGUER] {res.get('instruction_to_jarvis', '')}")]), turn_complete=True)
+                            await safe_send_live_client_content(
+                                _sess,
+                                f"[ACCORD PAYANT REQUIS POUR NAVIGUER] {res.get('instruction_to_jarvis', '')}"
+                            )
                         except Exception:
                             pass
                     return
@@ -597,7 +581,7 @@ async def dispatch_tool(
                     f"Détaille les résultats à Pierre avec ta voix Aoede de façon fluide."
                 )
                 try:
-                    await _sess.send_client_content(turns=types.Content(role="user", parts=[types.Part.from_text(text=result_msg)]), turn_complete=True)
+                    await safe_send_live_client_content(current_sess, result_msg)
                 except Exception as inj_err:
                     print(f"[Browser BG] Erreur injection résultats: {inj_err}")
             except Exception as e:
@@ -605,7 +589,7 @@ async def dispatch_tool(
                 supervision_service.complete_action("browser_task", status="error", summary=str(e))
                 await broadcast_supervision()
                 try:
-                    await _sess.send_client_content(turns=types.Content(role="user", parts=[types.Part.from_text(text=f"[ÉCHEC NAVIGATION] La navigation sur '{_g}' a échoué ({e}). Informe Pierre brièvement.")]), turn_complete=True)
+                    await safe_send_live_client_content(current_sess, f"[ÉCHEC NAVIGATION] La navigation sur '{_g}' a échoué ({e}). Informe Pierre brièvement.")
                 except Exception:
                     pass
             finally:
@@ -617,8 +601,7 @@ async def dispatch_tool(
         return {
             "status": "launched_in_background", "goal": goal,
             "instruction_to_jarvis": (
-                f"{speech_intro} Dis immédiatement à Pierre avec ta voix Aoede d'un ton direct et complice que tu lances la navigation sur le web. "
-                f"Tu lui présenteras les résultats dès que la mission est accomplie."
+                f"{speech_intro} Dis brièvement à Pierre avec ta voix Aoede que tu démarres la navigation sur le web."
             )
         }
 
@@ -633,7 +616,7 @@ async def dispatch_tool(
             res = await asyncio.to_thread(open_browser_window, target_url)
         supervision_service.track_browser_window(target_url, "Google Chrome")
         await broadcast_supervision()
-        return {"status": "completed", "result": res, "instruction_to_jarvis": f"La fenêtre Chrome est ouverte sur {target_url}. Dis directement à Pierre d'un ton complice et naturel que sa demande est bien prise en compte et que tu lui affiches la page."}
+        return {"status": "completed", "result": res, "instruction_to_jarvis": f"La fenêtre Chrome est ouverte sur {target_url}. Confirme simplement et naturellement à Pierre avec ta voix Aoede que la page est affichée à l'écran."}
 
     # ─── remember_user_fact ────────────────────────────────────────────────────
     elif name == "remember_user_fact":
@@ -711,7 +694,7 @@ async def dispatch_tool(
         res = await control_deezer(action=action, query=query, item_type=item_type, volume=volume, enable=enable)
         supervision_service.complete_action("play_music_deezer", status=res.get("status", "completed"), summary=res.get("message", "Deezer contrôlé avec succès"))
         await broadcast_supervision()
-        return {"status": res.get("status", "completed"), "result": res, "instruction_to_jarvis": f"{res.get('message', 'Action Deezer exécutée.')} Confirme brièvement et naturellement à Pierre d'un ton complice que sa demande musicale est prise en compte."}
+        return {"status": res.get("status", "completed"), "result": res, "instruction_to_jarvis": f"{res.get('message', 'Action Deezer exécutée.')} Confirme brièvement et naturellement à Pierre avec ta voix Aoede."}
 
     # ─── play_video_stremio ────────────────────────────────────────────────────
     elif name == "play_video_stremio":
@@ -722,37 +705,29 @@ async def dispatch_tool(
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Recherche de '{title}' sur Stremio...", "voice": False}))
         await websocket.send_text(json.dumps({"type": "status", "state": "media", "msg": f"Stremio — Recherche de '{title}'...", "task": title, "engine": "Local", "model": "Stremio + Cinemeta", "api_type": "free", "api_label": "Local"}))
 
-        _title_bg = title
-        _ct_bg = content_type
-        _sess_stremio = session
-        _ws_stremio = websocket
-
-        async def _run_stremio_bg(_t=_title_bg, _ct=_ct_bg, _sess=_sess_stremio, _ws=_ws_stremio):
-            try:
-                res = await play_on_stremio(_t, _ct)
-                supervision_service.complete_action("play_video_stremio", status=res.get("status", "launched"), summary=res.get("message", f"Stremio lancé sur {_t}"))
-                await broadcast_supervision()
-                stream = res.get("stream_info", {})
-                size_msg = (f" Le stream 1080p fait {stream['size_gb']} Go." if stream.get("found") and stream.get("size_gb") else "")
-                found_t = res.get("found_title", _t)
-                year = res.get("year", "")
-                rating = res.get("imdb_rating", "")
-                rating_msg = f" Note IMDb : {rating}." if rating else ""
-                inject_msg = f"[STREMIO LANCÉ] Stremio est ouvert sur '{found_t}' ({year}).{rating_msg}{size_msg} Dis à Pierre d'un ton complice et enthousiaste que tu as trouvé et lancé '{found_t}' sur Stremio."
-                try:
-                    await _sess.send_client_content(turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_msg)]), turn_complete=True)
-                except Exception:
-                    pass
-            except Exception as e:
-                supervision_service.complete_action("play_video_stremio", status="error", summary=str(e))
-                await broadcast_supervision()
-                try:
-                    await _sess.send_client_content(turns=types.Content(role="user", parts=[types.Part.from_text(text=f"[STREMIO ERREUR] Impossible de lancer '{_t}' : {e}. Informe Pierre brièvement.")]), turn_complete=True)
-                except Exception:
-                    pass
-
-        asyncio.create_task(_run_stremio_bg())
-        return {"status": "searching_in_background", "title": title, "instruction_to_jarvis": f"La recherche de '{title}' sur Stremio est lancée en arrière-plan. Dis immédiatement à Pierre avec ta voix Aoede d'un ton enthousiaste et complice que tu cherches '{title}' sur Stremio et que tu vas le lancer directement."}
+        try:
+            res = await play_on_stremio(title, content_type)
+            supervision_service.complete_action("play_video_stremio", status=res.get("status", "launched"), summary=res.get("message", f"Stremio lancé sur {title}"))
+            await broadcast_supervision()
+            stream = res.get("stream_info", {})
+            size_msg = (f" Le stream 1080p fait {stream['size_gb']} Go." if stream.get("found") and stream.get("size_gb") else "")
+            found_t = res.get("found_title", title)
+            year = res.get("year", "")
+            return {
+                "status": "completed",
+                "title": found_t,
+                "year": year,
+                "result": res,
+                "instruction_to_jarvis": f"Stremio est ouvert sur '{found_t}' ({year}).{size_msg} Confirme directement et chaleureusement à Pierre que la vidéo est lancée."
+            }
+        except Exception as e:
+            supervision_service.complete_action("play_video_stremio", status="error", summary=str(e))
+            await broadcast_supervision()
+            return {
+                "status": "error",
+                "error": str(e),
+                "instruction_to_jarvis": f"Impossible de lancer '{title}' sur Stremio ({e}). Informe brièvement Pierre avec ta voix Aoede."
+            }
 
     # ─── send_email ────────────────────────────────────────────────────────────
     elif name == "send_email":
@@ -769,7 +744,7 @@ async def dispatch_tool(
         supervision_service.complete_action("send_email", status="completed" if res.get("status") in ("sent", "saved") else "error", summary=res.get("message", f"E-mail traité pour {to_email}"))
         await broadcast_supervision()
         await websocket.send_text(json.dumps({"type": "email_sent", "status": res.get("status"), "subject": subject, "recipient": to_email, "attachments_count": res.get("attachments_count", 0), "message": res.get("message", "")}))
-        return {"status": "completed", "result": res, "instruction_to_jarvis": f"L'e-mail avec pour sujet '{subject}' destiné à {to_email} a été traité ({res.get('message', '')}). Confirme verbalement d'égal à égal à Pierre avec ta voix Aoede que sa demande a bien été prise en compte et que l'e-mail est expédié."}
+        return {"status": "completed", "result": res, "instruction_to_jarvis": f"L'e-mail avec pour sujet '{subject}' destiné à {to_email} est expédié ({res.get('message', '')}). Confirme-le directement et simplement à Pierre avec ta voix Aoede."}
 
     # ─── read_emails ───────────────────────────────────────────────────────────
     elif name == "read_emails":
@@ -845,7 +820,7 @@ async def dispatch_tool(
             supervision_service.track_browser_window(res.get("cart_url"), f"Panier : {product_or_service}")
         await broadcast_supervision()
         await websocket.send_text(json.dumps({"type": "browser_update", "url": res.get("cart_url", merchant_url), "title": f"Panier : {product_or_service}", "screenshot": "/static/latest_screenshot.jpg"}))
-        return {"status": res.get("status"), "cart_url": res.get("cart_url"), "prefilled_fields": res.get("prefilled_fields", []), "browser_opened": res.get("browser_opened", True), "result_message": res.get("message", ""), "instruction_to_jarvis": f"Le panier pour '{product_or_service}' est prêt et les coordonnées de Pierre sont préremplies sur son écran. Dis directement à Pierre avec ta voix Aoede d'un ton complice et naturel que sa demande a bien été prise en compte, que le panier est ouvert à l'écran et qu'il n'a plus qu'à régler et valider sa commande."}
+        return {"status": res.get("status"), "cart_url": res.get("cart_url"), "prefilled_fields": res.get("prefilled_fields", []), "browser_opened": res.get("browser_opened", True), "result_message": res.get("message", ""), "instruction_to_jarvis": f"Le panier pour '{product_or_service}' est prêt et les coordonnées de Pierre sont préremplies sur son écran. Dis à Pierre avec ta voix Aoede que le panier est ouvert à l'écran et qu'il n'a plus qu'à régler et valider sa commande."}
 
     # ─── download_file ─────────────────────────────────────────────────────────
     elif name == "download_file":
@@ -866,7 +841,7 @@ async def dispatch_tool(
             supervision_service.complete_action("download_file", status=res.get("status", "completed"), summary=f"{res.get('filename')} ({res.get('size')})")
             await broadcast_supervision()
             await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Téléchargement terminé : {res.get('filename')} ({res.get('size')})", "voice": False}))
-            return {"status": res.get("status"), "filename": res.get("filename"), "filepath": res.get("filepath"), "size": res.get("size"), "message": res.get("message"), "instruction_to_jarvis": f"Le fichier '{res.get('filename')}' ({res.get('size')}) a été téléchargé avec succès sur l'ordinateur. Confirme verbalement d'égal à égal à Pierre avec ta voix Aoede que sa demande a bien été prise en compte et que le fichier est prêt."}
+            return {"status": res.get("status"), "filename": res.get("filename"), "filepath": res.get("filepath"), "size": res.get("size"), "message": res.get("message"), "instruction_to_jarvis": f"Le fichier '{res.get('filename')}' ({res.get('size')}) a été téléchargé avec succès sur l'ordinateur. Confirme verbalement à Pierre avec ta voix Aoede que le fichier est prêt."}
 
     # ─── send_to_ereader ───────────────────────────────────────────────────────
     elif name == "send_to_ereader":
@@ -1006,10 +981,7 @@ async def dispatch_tool(
                             f"Informe brièvement Pierre avec ta voix Aoede."
                         )
                     try:
-                        await _s.send_client_content(
-                            turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_text)]),
-                            turn_complete=True
-                        )
+                        await safe_send_live_client_content(_s, inject_text)
                     except Exception as inj_e:
                         print(f"[n8n BG] Injection Live error: {inj_e}")
             except Exception as bg_err:
@@ -1104,10 +1076,7 @@ async def dispatch_tool(
                             f"Informe Pierre avec ta voix Aoede d'un ton naturel et bienveillant."
                         )
                     try:
-                        await _s.send_client_content(
-                            turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_text)]),
-                            turn_complete=True
-                        )
+                        await safe_send_live_client_content(_s, inject_text)
                     except Exception as inj_e:
                         print(f"[Tableur BG] Injection Live error: {inj_e}")
             except Exception as bg_err:
@@ -1316,10 +1285,7 @@ async def dispatch_tool(
                             f"Informe brièvement Pierre avec ta voix Aoede."
                         )
                     try:
-                        await _s.send_client_content(
-                            turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_text)]),
-                            turn_complete=True
-                        )
+                        await safe_send_live_client_content(_s, inject_text)
                     except Exception as inj_e:
                         print(f"[Slides BG] Erreur injection Live: {inj_e}")
 
@@ -1342,10 +1308,7 @@ async def dispatch_tool(
                             f"Informe brièvement Pierre avec ta voix Aoede."
                         )
                     try:
-                        await _s.send_client_content(
-                            turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_text)]),
-                            turn_complete=True
-                        )
+                        await safe_send_live_client_content(_s, inject_text)
                     except Exception as inj_e:
                         print(f"[Slides BG] Erreur injection Live: {inj_e}")
 
@@ -1496,10 +1459,7 @@ async def dispatch_tool(
                             f"Informe Pierre avec ta voix Aoede."
                         )
                     try:
-                        await _s.send_client_content(
-                            turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_text)]),
-                            turn_complete=True
-                        )
+                        await safe_send_live_client_content(_s, inject_text)
                     except Exception as inj_e:
                         print(f"[Notion BG] Injection Live error: {inj_e}")
             except Exception as bg_err:
@@ -1556,87 +1516,42 @@ async def dispatch_tool(
             "api_label": "Local n8n"
         }))
 
-        _act = action
-        _t = titre
-        _dd = date_debut
-        _df = date_fin
-        _desc = description
-        _sess = session
-
-        async def _run_agenda_bg(_a=_act, _tit=_t, _start=_dd, _end=_df, _d=_desc, _s=_sess):
-            try:
-                from services.automation import executer_action_externe as n8n_exec
-                payload = {
-                    "action": _a,
-                    "titre": _tit,
-                    "date_debut": _start,
-                    "date_fin": _end,
-                    "description": _d,
-                }
-                res = await n8n_exec(action_name="agenda-event", parametres=payload)
-                status_res = res.get("status", "completed")
-                is_ok = (status_res == "success")
-                supervision_service.complete_action(
-                    "agenda_gerer_evenement",
-                    status="completed" if is_ok else "error",
-                    summary=f"Agenda {_a} {_tit} : {status_res}"
-                )
-                await broadcast_supervision()
-                if _s:
-                    if is_ok:
-                        if _a == "creer":
-                            inject_text = (
-                                f"[ÉVÉNEMENT AJOUTÉ À L'AGENDA] Le rendez-vous '{_tit}' pour le {_start} a bien été inscrit dans ton agenda Google et Samsung. "
-                                f"Confirme-le brièvement et élégamment à Pierre avec ta voix Aoede."
-                            )
-                        elif _a == "decaler":
-                            inject_text = (
-                                f"[ÉVÉNEMENT DÉCALÉ AVEC SUCCÈS] Le rendez-vous '{_tit}' a été décalé au {_start}. "
-                                f"Confirme-le brièvement à Pierre avec ta voix Aoede."
-                            )
-                        elif _a == "supprimer":
-                            inject_text = (
-                                f"[ÉVÉNEMENT RETIRÉ DE L'AGENDA] L'événement '{_tit}' a été supprimé de ton agenda. "
-                                f"Confirme-le simplement à Pierre avec ta voix Aoede."
-                            )
-                        else:
-                            events_found = res.get("result", {}).get("events", [])
-                            nb = len(events_found) if isinstance(events_found, list) else 0
-                            inject_text = (
-                                f"[CONSULTATION AGENDA EFFECTUÉE] Consultation terminée : {nb} rendez-vous trouvés pour {_tit}. "
-                                f"Fais un retour oral naturel et concis à Pierre avec ta voix Aoede."
-                            )
-                    else:
-                        err = res.get("error", "Erreur de synchronisation agenda")
-                        inject_text = (
-                            f"[AGENDA SYNCHRO ÉCHEC] Impossible d'effectuer l'action '{_a}' pour '{_tit}' sur l'agenda ({err}). "
-                            f"Informe brièvement Pierre avec ta voix Aoede."
-                        )
-                    try:
-                        await _s.send_client_content(
-                            turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_text)]),
-                            turn_complete=True
-                        )
-                    except Exception as inj_e:
-                        print(f"[Agenda BG] Injection Live error: {inj_e}")
-            except Exception as bg_err:
-                print(f"[Agenda BG] Erreur: {bg_err}")
-                supervision_service.complete_action("agenda_gerer_evenement", status="error", summary=str(bg_err))
-                await broadcast_supervision()
-
-        asyncio.create_task(_run_agenda_bg())
-
-        return {
-            "status": "lance_en_arriere_plan",
-            "action": "agenda_gerer_evenement",
-            "action_demandee": action,
+        from services.automation import executer_action_externe as n8n_exec
+        payload = {
+            "action": action,
             "titre": titre,
             "date_debut": date_debut,
-            "instruction_to_jarvis": (
-                f"L'action d'agenda '{action}' pour '{titre}' ({date_debut}) est lancée en tâche de fond via n8n et Google Calendar. "
-                f"Confirme immédiatement à Pierre avec ta voix Aoede d'un ton concis et naturel que tu t'en occupes."
-            )
+            "date_fin": date_fin,
+            "description": description,
         }
+        try:
+            res = await n8n_exec(action_name="agenda-event", parametres=payload)
+            status_res = res.get("status", "completed")
+            is_ok = (status_res == "success")
+            supervision_service.complete_action(
+                "agenda_gerer_evenement",
+                status="completed" if is_ok else "error",
+                summary=f"Agenda {action} {titre} : {status_res}"
+            )
+            await broadcast_supervision()
+            if is_ok:
+                if action == "creer":
+                    instruction = f"Le rendez-vous '{titre}' pour le {date_debut} est inscrit dans l'agenda. Confirme-le directement et simplement à Pierre avec ta voix Aoede."
+                elif action == "decaler":
+                    instruction = f"Le rendez-vous '{titre}' est décalé au {date_debut}. Confirme-le directement à Pierre avec ta voix Aoede."
+                elif action == "supprimer":
+                    instruction = f"L'événement '{titre}' a été supprimé de l'agenda. Confirme-le simplement à Pierre avec ta voix Aoede."
+                else:
+                    events_found = res.get("result", {}).get("events", [])
+                    instruction = f"Voici les événements trouvés : {events_found}. Présente-les naturellement et clairement à Pierre avec ta voix Aoede."
+                return {"status": "completed", "result": res, "instruction_to_jarvis": instruction}
+            else:
+                err = res.get("error", "Erreur agenda")
+                return {"status": "error", "error": err, "instruction_to_jarvis": f"Impossible d'effectuer l'action d'agenda ({err}). Informe brièvement Pierre avec ta voix Aoede."}
+        except Exception as e:
+            supervision_service.complete_action("agenda_gerer_evenement", status="error", summary=str(e))
+            await broadcast_supervision()
+            return {"status": "error", "error": str(e), "instruction_to_jarvis": f"Erreur lors de l'accès à l'agenda ({e}). Informe Pierre brièvement."}
 
     # ─── creer_rappel_push ───────────────────────────────────────────────────
     elif name == "creer_rappel_push":
@@ -1671,67 +1586,36 @@ async def dispatch_tool(
             "api_label": "Local n8n"
         }))
 
-        _msg = message
-        _ech = echeance
-        _prio = priorite
-        _sess = session
-
-        async def _run_reminder_bg(_m=_msg, _e=_ech, _p=_prio, _s=_sess):
-            try:
-                from services.automation import executer_action_externe as n8n_exec
-                payload = {
-                    "message": _m,
-                    "echeance": _e,
-                    "priorite": _p,
-                }
-                res = await n8n_exec(action_name="schedule-push-reminder", parametres=payload)
-                status_res = res.get("status", "completed")
-                is_ok = (status_res == "success")
-                supervision_service.complete_action(
-                    "creer_rappel_push",
-                    status="completed" if is_ok else "error",
-                    summary=f"Rappel '{_m}' ({_e}) : {status_res}"
-                )
-                await broadcast_supervision()
-                if _s:
-                    if is_ok:
-                        inject_text = (
-                            f"[RAPPEL PROGRAMMÉ AVEC SUCCÈS] Le rappel '{_m}' est enregistré pour {_e}. "
-                            f"La notification push sera envoyée sur ton smartphone au moment voulu. "
-                            f"Confirme brièvement et clairement à Pierre avec ta voix Aoede que le rappel est programmé."
-                        )
-                    else:
-                        err = res.get("error", "Erreur lors de la programmation du rappel")
-                        inject_text = (
-                            f"[RAPPEL PROGRAMMATION ÉCHEC] Impossible de programmer le rappel '{_m}' ({err}). "
-                            f"Informe Pierre avec ta voix Aoede."
-                        )
-                    try:
-                        await _s.send_client_content(
-                            turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_text)]),
-                            turn_complete=True
-                        )
-                    except Exception as inj_e:
-                        print(f"[Reminder BG] Injection Live error: {inj_e}")
-            except Exception as bg_err:
-                print(f"[Reminder BG] Erreur: {bg_err}")
-                supervision_service.complete_action("creer_rappel_push", status="error", summary=str(bg_err))
-                await broadcast_supervision()
-
-        asyncio.create_task(_run_reminder_bg())
-
-        return {
-            "status": "lance_en_arriere_plan",
-            "action": "creer_rappel_push",
-            "message": message,
-            "echeance": echeance,
-            "priorite": priorite,
-            "instruction_to_jarvis": (
-                f"Le rappel '{message}' pour {echeance} est pris en compte et transmis à n8n. "
-                f"Confirme immédiatement à Pierre avec ta voix Aoede de manière brève et naturelle "
-                f"que c'est bien noté et que tu as programmé son rappel."
+        try:
+            from services.automation import executer_action_externe as n8n_exec
+            payload = {
+                "message": message,
+                "echeance": echeance,
+                "priorite": priorite,
+            }
+            res = await n8n_exec(action_name="schedule-push-reminder", parametres=payload)
+            status_res = res.get("status", "completed")
+            is_ok = (status_res == "success")
+            supervision_service.complete_action(
+                "creer_rappel_push",
+                status="completed" if is_ok else "error",
+                summary=f"Rappel '{message}' ({echeance}) : {status_res}"
             )
-        }
+            await broadcast_supervision()
+            if is_ok:
+                return {
+                    "status": "completed",
+                    "message": message,
+                    "echeance": echeance,
+                    "instruction_to_jarvis": f"Le rappel '{message}' est programmé pour {echeance}. Confirme-le directement et simplement à Pierre avec ta voix Aoede."
+                }
+            else:
+                err = res.get("error", "Erreur rappel")
+                return {"status": "error", "error": err, "instruction_to_jarvis": f"Impossible de programmer le rappel ({err}). Informe brièvement Pierre avec ta voix Aoede."}
+        except Exception as e:
+            supervision_service.complete_action("creer_rappel_push", status="error", summary=str(e))
+            await broadcast_supervision()
+            return {"status": "error", "error": str(e), "instruction_to_jarvis": f"Erreur lors de la programmation du rappel ({e}). Informe Pierre brièvement."}
 
     # ─── demander_morning_briefing ───────────────────────────────────────────
     elif name == "demander_morning_briefing":
@@ -1852,129 +1736,92 @@ async def dispatch_tool(
             "api_label": "Headless VPS"
         }))
 
-        # Exécution non-bloquante en arrière-plan
-        async def _run_train_search_bg(_orig=origine, _dest=destination, _date=date_depart, _heure=heure_souhaitee, _pays=pays, _reserver=reserver_automatiquement, _ws=websocket, _sess=session):
+        res = await transport_service.rechercher_itineraires(
+            origine=origine,
+            destination=destination,
+            date_depart=date_depart,
+            heure_souhaitee=heure_souhaitee,
+            pays=pays,
+            reserver_automatiquement=reserver_automatiquement
+        )
+        best = res.get("best_option", {})
+        primary_link = res.get("primary_deep_link", "")
+        link_title = res.get("primary_title") or f"Train {origine} → {destination}"
+        is_multi = res.get("is_multi_segment", False)
+
+        supervision_service.track_browser_window(primary_link, link_title)
+        if is_multi:
+            summary_text = (
+                f"Enchaînement {best.get('type_train', 'SJ')} ({res.get('total_duration', '')}) : "
+                f"départ {best.get('heure_depart', '')} → arrivée {best.get('heure_arrivee', '')} - {res.get('prix_total', '')}"
+            )
+        else:
+            summary_text = (
+                f"Train {best.get('type_train', 'SNCF/SJ')} : départ {best.get('heure_depart', '')} "
+                f"→ arrivée {best.get('heure_arrivee', '')} ({best.get('duree', '')}) - {best.get('prix', '')}"
+            )
+        supervision_service.complete_action("rechercher_train", status="completed", summary=summary_text)
+        await broadcast_supervision()
+
+        current_ws = active_task_controller.get("websocket") or websocket
+        if current_ws:
             try:
-                res = await transport_service.rechercher_itineraires(
-                    origine=_orig,
-                    destination=_dest,
-                    date_depart=_date,
-                    heure_souhaitee=_heure,
-                    pays=_pays,
-                    reserver_automatiquement=_reserver
-                )
-                best = res.get("best_option", {})
-                primary_link = res.get("primary_deep_link", "")
-                link_title = res.get("primary_title") or f"Train {_orig} → {_dest}"
-                is_multi = res.get("is_multi_segment", False)
+                await current_ws.send_text(json.dumps({
+                    "type": "browser_update",
+                    "url": primary_link,
+                    "title": link_title,
+                    "screenshot": "/static/latest_screenshot.jpg"
+                }))
+                await current_ws.send_text(json.dumps({
+                    "type": "task_completed",
+                    "is_error": False,
+                    "status": "completed",
+                    "summary": summary_text,
+                    "engine": "Transport Service",
+                    "model": "Playwright VPS"
+                }))
+            except Exception:
+                pass
 
-                # 1. Mise à jour Supervision
-                supervision_service.track_browser_window(primary_link, link_title)
-                if is_multi:
-                    summary_text = (
-                        f"Enchaînement {best.get('type_train', 'SJ')} ({res.get('total_duration', '')}) : "
-                        f"départ {best.get('heure_depart', '')} → arrivée {best.get('heure_arrivee', '')} - {res.get('prix_total', '')}"
-                    )
-                else:
-                    summary_text = (
-                        f"Train {best.get('type_train', 'SNCF/SJ')} : départ {best.get('heure_depart', '')} "
-                        f"→ arrivée {best.get('heure_arrivee', '')} ({best.get('duree', '')}) - {best.get('prix', '')}"
-                    )
-                supervision_service.complete_action("rechercher_train", status="completed", summary=summary_text)
-                await broadcast_supervision()
+        if is_multi:
+            segs = res.get("segments", [])
+            seg1 = segs[0] if len(segs) > 0 else {}
+            seg2 = segs[1] if len(segs) > 1 else {}
+            esc = res.get("escale", {})
+            booked_txt = (
+                "J'ai ouvert directement les pages de réservation de tes deux trains sur ton navigateur : "
+                "les gares et dates sont préremplies."
+                if reserver_automatiquement else
+                "J'ai affiché l'enchaînement avec les liens de réservation directement sur ton écran."
+            )
+            instruction = (
+                f"Pour le voyage de {origine} vers {destination} le {date_depart} : "
+                f"Il n'existe pas de liaison directe. Annonce naturellement l'enchaînement des 2 trains : "
+                f"1) {seg1.get('type_train', 'SJ')} de {seg1.get('origine')} ({seg1.get('heure_depart')}) à {seg1.get('destination')} ({seg1.get('heure_arrivee')}), "
+                f"2) escale de {esc.get('duree', '2h45')} à {esc.get('gare', 'Stockholm Central')}, "
+                f"3) train {seg2.get('type_train', 'SJ')} de {seg2.get('origine')} ({seg2.get('heure_depart')}) avec arrivée demain à {seg2.get('heure_arrivee')}. "
+                f"Durée totale {res.get('total_duration', '')}, prix {res.get('prix_total', '')}. {booked_txt} "
+                f"Fais une seule annonce fluide avec ta voix Aoede sans répétition."
+            )
+        else:
+            track_txt = f" au départ de la {best.get('quai')}" if best.get("quai") else ""
+            instruction = (
+                f"Pour le trajet {origine} → {destination} le {date_depart} : "
+                f"départ à {best.get('heure_depart')} en {best.get('type_train')}{track_txt}, "
+                f"arrivée à {best.get('heure_arrivee')} (durée {best.get('duree')}), prix {best.get('prix')}. "
+                f"Le lien direct est affiché sur ton écran. "
+                f"Annonce-le naturellement et directement à Pierre avec ta voix Aoede en une seule fois sans phrases redondantes."
+            )
 
-                # 2. Mise à jour HUD Mobile PWA (set_browser_link / browser_update)
-                current_ws = active_task_controller.get("websocket") or _ws
-                if current_ws:
-                    try:
-                        await current_ws.send_text(json.dumps({
-                            "type": "browser_update",
-                            "url": primary_link,
-                            "title": link_title,
-                            "screenshot": "/static/latest_screenshot.jpg"
-                        }))
-                        await current_ws.send_text(json.dumps({
-                            "type": "task_completed",
-                            "is_error": False,
-                            "status": "completed",
-                            "summary": summary_text,
-                            "engine": "Transport Service",
-                            "model": "Playwright VPS"
-                        }))
-                        await current_ws.send_text(json.dumps({
-                            "type": "status",
-                            "state": "idle",
-                            "msg": "En veille active",
-                            "detail": "Prêt pour vos ordres",
-                            "engine": "Google API Live",
-                            "model": live_display_label
-                        }))
-                    except Exception:
-                        pass
-
-                # 3. Restitution orale par Aoede dans la session Live
-                current_sess = active_task_controller.get("live_session") or _sess
-                if current_sess:
-                    if is_multi:
-                        segs = res.get("segments", [])
-                        seg1 = segs[0] if len(segs) > 0 else {}
-                        seg2 = segs[1] if len(segs) > 1 else {}
-                        esc = res.get("escale", {})
-                        booked_txt = (
-                            "J'ai ouvert directement les pages de réservation de tes deux trains sur ton navigateur Chrome : "
-                            "les gares et dates sont préremplies, tu n'as plus qu'à choisir tes places ou couchettes et régler !"
-                            if _reserver else
-                            "J'ai affiché l'enchaînement complet avec le lien de réservation directement sur ton écran."
-                        )
-                        oral_msg = (
-                            f"[RÉSULTAT DE L'ENCHAÎNEMENT DE TRAINS - À ANNONCER CHALEUREUSEMENT À PIERRE AVEC TA VOIX AOEDE] "
-                            f"Pierre, pour rejoindre {res.get('destination', _dest)} depuis {res.get('origin', _orig)} le {res.get('date', _date)}, "
-                            f"il est impossible de faire le trajet avec un seul billet car il n'existe pas de train direct. "
-                            f"Voici l'enchaînement idéal de 2 trains : "
-                            f"D'abord le train à grande vitesse {seg1.get('type_train', 'SJ Snabbtåg')} au départ de {seg1.get('origine')} à {seg1.get('heure_depart')} pour arriver à {seg1.get('destination')} à {seg1.get('heure_arrivee')}. "
-                            f"Ensuite une escale de {esc.get('duree', '2h45')} à {esc.get('gare', 'Stockholm Central')} pour déjeuner ou changer de voie. "
-                            f"Puis le train de nuit {seg2.get('type_train', 'SJ Nattåg')} au départ de {seg2.get('origine')} à {seg2.get('heure_depart')} avec arrivée demain matin à {seg2.get('heure_arrivee')} en couchette. "
-                            f"Durée totale de {res.get('total_duration', '22h10')}, tarif indicatif de {res.get('prix_total', '1385 SEK')}. "
-                            f"{booked_txt}"
-                        )
-                    else:
-                        track_txt = f" au départ de la {best.get('quai')}" if best.get("quai") else ""
-                        oral_msg = (
-                            f"[RÉSULTAT DE LA RECHERCHE DE TRAIN - À ANNONCER CHALEUREUSEMENT À PIERRE AVEC TA VOIX AOEDE] "
-                            f"Pour ton trajet de {res.get('origin', _orig)} vers {res.get('destination', _dest)} le {res.get('date', _date)}, "
-                            f"j'ai un excellent départ à {best.get('heure_depart')} en {best.get('type_train')}{track_txt}, "
-                            f"arrivée prévue à {best.get('heure_arrivee')} pour {best.get('duree')} de trajet. "
-                            f"Prix indicatif : {best.get('prix')}. "
-                            f"J'ai directement affiché le bouton de réservation avec le lien direct sur ton écran."
-                        )
-                    try:
-                        await current_sess.send_client_content(
-                            turns=types.Content(role="user", parts=[types.Part.from_text(text=oral_msg)]),
-                            turn_complete=True
-                        )
-                    except Exception as notify_err:
-                        print(f"[Train BG Search] Injection Live error: {notify_err}")
-
-            except Exception as bg_err:
-                print(f"[Train BG Search] Erreur: {bg_err}")
-                supervision_service.complete_action("rechercher_train", status="error", summary=str(bg_err))
-                await broadcast_supervision()
-
-        asyncio.create_task(_run_train_search_bg())
-
-        msg_intro = "je recherche les trains et t'ouvre la réservation sur ton écran" if reserver_automatiquement else "je recherche les départs et les prix"
         return {
-            "status": "lance_en_arriere_plan",
+            "status": "success",
             "action": "rechercher_train",
             "origine": origine,
             "destination": destination,
             "date_depart": date_depart,
-            "reserver_automatiquement": reserver_automatiquement,
-            "instruction_to_jarvis": (
-                f"La recherche de trains entre {origine} et {destination} pour le {date_depart} est lancée en arrière-plan. "
-                f"Confirme immédiatement à Pierre avec ta voix Aoede en une phrase concise et complice "
-                f"que {msg_intro}."
-            )
+            "best_option": best,
+            "primary_deep_link": primary_link,
+            "instruction_to_jarvis": instruction
         }
 
     # ─── surveiller_train ─────────────────────────────────────────────────────

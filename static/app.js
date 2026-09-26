@@ -420,6 +420,7 @@ let micAnimFrame = null;
 let scheduledAudioSources = [];
 let isJarvisSpeaking = false;
 let isToolExecuting = false;   // Vrai pendant l'exécution d'un outil (browser, code, email...)
+let isAwaitingToolResponse = false; // Vrai tant que la réponse vocale de l'outil n'a pas commencé à être diffusée
 let turnCompletePending = false;
 let speechEndTimer = null;
 let silenceSenderInterval = null; // Maintient la session Gemini vivante pendant les actions
@@ -1143,6 +1144,12 @@ function interruptPlayback() {
   });
   scheduledAudioSources = [];
   isJarvisSpeaking = false;
+  isAwaitingToolResponse = false;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify({ type: "speech_ended" }));
+    } catch (e) {}
+  }
   window._jarvisLastSpokenText = '';
   if (jarvisSpokenWordsSet) jarvisSpokenWordsSet.clear();
   jarvisSpeechStartTime = 0;
@@ -1222,6 +1229,8 @@ function startLiveSpeechRecognition() {
         const cleanJarvis = (window._jarvisLastSpokenText || '').toLowerCase().trim();
 
         // Analyse lexicale : compte combien de mots captés sont dans les propos de Jarvis
+        const words = extractSpokenWords(spokenNow);
+        const wordCount = words.length;
         let matchedWords = 0;
         for (const w of words) {
           if (jarvisSpokenWordsSet.has(w)) {
@@ -1371,6 +1380,12 @@ function playPcmChunk(arrayBuffer) {
 
   if (!isJarvisSpeaking) {
     isJarvisSpeaking = true;
+    isAwaitingToolResponse = false;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ type: "speech_started" }));
+      } catch (e) {}
+    }
     if (!activeActionState) {
       isToolExecuting = false;
       stopSilenceSender();
@@ -1414,6 +1429,12 @@ function checkSpeechEnded() {
       if (scheduledAudioSources.length === 0 && turnCompletePending && !isPlaybackPaused) {
         turnCompletePending = false;
         isJarvisSpeaking = false;
+        isAwaitingToolResponse = false;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          try {
+            ws.send(JSON.stringify({ type: "speech_ended" }));
+          } catch (e) {}
+        }
         btn.classList.remove('is-speaking');
         turnAudioChunks = [];
         turnResumeIndex = 0;
@@ -1723,8 +1744,8 @@ async function startJarvis() {
           return;
         }
 
-        // 2. Si un outil tourne en tâche de fond sans restitution vocale active :
-        if (isToolExecuting) {
+        // 2. Si un outil tourne en tâche de fond ou si on attend sa réponse vocale :
+        if (isToolExecuting || isAwaitingToolResponse) {
           return;
         }
 
@@ -1887,24 +1908,28 @@ async function startJarvis() {
           } else if (msg.type === 'interrupted') {
             activeActionState = null;
             isToolExecuting = false;
+            isAwaitingToolResponse = false;
             stopSilenceSender();
             interruptPlayback();
             setJarvisState('listening', "À l'écoute...");
           } else if (msg.type === 'tool_start') {
             // Un outil vient de démarrer : activation immédiate du gating et du silence sender
             isToolExecuting = true;
+            isAwaitingToolResponse = true;
             startSilenceSender();
             if (msg.state) {
               setJarvisState(msg.state, msg.msg, msg.task, { engine: msg.engine, model: msg.model });
               updateLiveActivityBand(msg.state, msg.msg, msg.task, msg.engine, msg.model, msg.api_type, msg.api_label);
             }
           } else if (msg.type === 'tool_end') {
-            // L'outil Python a fini son traitement
+            // L'outil Python a fini son traitement, maintien du micro coupé jusqu'à la synthèse vocale
             isToolExecuting = false;
+            isAwaitingToolResponse = true;
             stopSilenceSender();
             // Délai de grâce fluide (2s) avant de repasser en écoute si aucun audio n'arrive
             if (speechEndTimer) clearTimeout(speechEndTimer);
             speechEndTimer = setTimeout(() => {
+              isAwaitingToolResponse = false;
               if (!isToolExecuting && !isJarvisSpeaking && (!scheduledAudioSources || scheduledAudioSources.length === 0)) {
                 activeActionState = null;
                 updateLiveActivityBand('idle');
