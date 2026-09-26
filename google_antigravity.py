@@ -225,13 +225,17 @@ class AntigravityAgent:
                 env["GEMINI_API_KEY"] = self.api_key
                 env["GOOGLE_API_KEY"] = self.api_key
                 
+            import shutil
+            binary = "agy" if shutil.which("agy") else "antigravity-cli"
             cmd = [
-                "antigravity-cli",
-                "--format", "markdown",
-                "--model", self.requested_model or "gemini-3.1-pro-high",
-                "--workspace", self.workspace,
-                instruction
+                binary,
+                "-p", instruction,
+                "--dangerously-skip-permissions",
+                "--output-format", "text"
             ]
+            if self.requested_model:
+                cmd.extend(["--model", self.requested_model])
+
             
             self.cli_process = await asyncio.create_subprocess_exec(
                 *cmd,
