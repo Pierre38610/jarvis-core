@@ -343,4 +343,56 @@ class TestDispatchDocumentTools:
             assert resp["action"] == "notion_enregistrer"
             assert resp["titre"] == "Idée Jarvis"
 
+    async def test_dispatch_get_active_task_status_idle_and_active(self):
+        from core.tools.dispatcher import dispatch_tool
+        from services.slides_service import slides_service
+        from services.supervision_service import supervision_service
+        mock_ws = AsyncMock()
+        mock_session = AsyncMock()
+
+        # 1. En veille (aucun travail actif)
+        slides_service._current_task["active"] = False
+        supervision_service._actions.clear()
+        resp_idle = await dispatch_tool(
+            name="get_active_task_status",
+            args={},
+            websocket=mock_ws,
+            session=mock_session,
+            is_paid_live=False,
+            live_display_label="Gratuit"
+        )
+        assert resp_idle["status"] == "completed"
+        assert resp_idle["has_active_task"] is False
+        assert "veille active" in resp_idle["instruction_to_jarvis"]
+
+        # 2. En cours de présentation
+        slides_service._current_task = {
+            "active": True,
+            "action_id": "generer_presentation",
+            "topic": "Bitcoin",
+            "step": "Étape 2/4 : Recherche documentaire & Chiffres clés",
+            "details": "Agrégation des faits historiques et métriques de halving",
+            "started_at": 100.0,
+            "slides_count": 6,
+            "presentation_url": ""
+        }
+
+        resp_active = await dispatch_tool(
+            name="get_active_task_status",
+            args={},
+            websocket=mock_ws,
+            session=mock_session,
+            is_paid_live=False,
+            live_display_label="Gratuit"
+        )
+        assert resp_active["status"] == "completed"
+        assert resp_active["has_active_task"] is True
+        assert resp_active["topic"] == "Bitcoin"
+        assert "Étape 2/4" in resp_active["step"]
+        assert "halving" in resp_active["details"]
+        assert "Bitcoin" in resp_active["instruction_to_jarvis"]
+
+        # Nettoyage
+        slides_service._current_task["active"] = False
+
 

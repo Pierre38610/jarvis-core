@@ -332,28 +332,31 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
   - Énumération des fenêtres ouvertes sur le PC Windows (via `EnumWindows` sous Windows).
   - Détection et agrégation des erreurs consoles et exceptions Python (`ConsoleMonitor`) avec diagnostic automatisé et suggestions de réparation.
 
-### 7.8. Automatisation des Processus Externes & Pôle Documentaire (n8n Community)
-- **Fichiers** : `services/automation.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `docs/N8N_GUIDE.md`, `docs/n8n_workflows/documents_suite.json`.
-- **Outils exposés** : `executer_action_externe`, `generer_fichier_tableur`, `generer_presentation`, `notion_enregistrer`.
-- **Pôle Documentaire & Prise de Notes Intégré** :
+### 7.8. Automatisation des Processus Externes, Pôle Documentaire & Présentations Avancées (n8n Community)
+- **Fichiers** : `services/automation.py`, `services/slides_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `docs/N8N_GUIDE.md`, `docs/n8n_workflows/documents_suite.json`.
+- **Outils exposés** : `executer_action_externe`, `generer_fichier_tableur`, `generer_presentation`, `notion_enregistrer`, `get_active_task_status`.
+- **Pôle Documentaire & Présentations Google Slides Élaborées** :
   1. **Génération de tableurs Excel (.xlsx) (`generer_fichier_tableur`)** :
      - Convertit des listes JSON de données (comptabilité, budgets, benchmarks, listes de suivi) en classeurs Excel `.xlsx` propres.
      - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/document-spreadsheet`.
-      - Nœuds n8n : Webhook -> Formater Données -> Spreadsheet File (binaire xlsx) -> Enregistrer dans `/home/opc/jarvis-core/downloads/` -> Respond to Webhook.
+     - Nœuds n8n : Webhook -> Formater Données -> Spreadsheet File (binaire xlsx) -> Enregistrer dans `/home/opc/jarvis-core/downloads/` -> Respond to Webhook.
      - Accès immédiat au fichier généré via le point de montage `/downloads/<nom_fichier>`.
-  2. **Génération de présentations Google Slides / PowerPoint (.pptx) (`generer_presentation`)** :
-     - Construit des présentations ordonnées avec diapositives, titres, puces et notes d'orateur selon le thème souhaité (`stark`, `dark`, `corporate`, `minimal`).
-     - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/document-slides`.
-     - Nœuds n8n : Webhook -> Préparer Présentation -> Google Slides (création) -> Finaliser Export PPTX -> Respond to Webhook.
-     - Lien de téléchargement mis à disposition dans `/downloads/<slug>.pptx`.
+  2. **Génération de présentations Google Slides Expertes & Esthétiques (`generer_presentation`, `services/slides_service.py`)** :
+     - **Moteur de recherche approfondie (`SlidesService`)** : Plutôt que de créer un deck vide ou précipité, le service élabore un plan rigoureux, agrège des faits historiques et chiffres vérifiés (ex: Bitcoin : 21M de limite, SHA-256/PoW, halving avril 2024 à 3.125 BTC, ETF spot, Lightning Network, réserve de valeur), et trie les éléments d'impact.
+     - **Design moderne 16:9 & Thèmes colorimétriques** : Cartes graphiques, typographies hiérarchisées, pastilles métriques (`key_metric`), séparateurs visuels et notes d'orateur complètes avec palette adaptée (`bitcoin`/`gold`, `stark`, `corporate`, `cyber`, `dark`).
+     - **Élimination de la diapositive blanche par défaut** : La requête Google Slides `batchUpdate` génère les nouvelles diapositives enrichies puis supprime l'éventuelle diapositive vierge initiale ("Cliquez ici pour ajouter un titre").
+     - **Pipeline n8n hybride** : Création initiale de la présentation Google Slides, injection par l'API REST `batchUpdate` des diapositives stylisées et export optionnel au format PPTX.
   3. **Prise de notes et to-do Notion (`notion_enregistrer`)** :
      - Ajoute des entrées structurées (notes rapides `note`, items de to-do list `todo`, fiches de veille `veille`, fiches projet `projet`) avec étiquettes dans Notion.
      - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/notion-entry`.
      - Nœuds n8n : Webhook -> Formater Entrée Notion -> Notion Database Page Create -> Respond to Webhook.
+  4. **Suivi d'Activité & Explication Vocale en Direct (`get_active_task_status`)** :
+     - Permet à Jarvis d'interroger en direct l'état des opérations en arrière-plan (recherche documentaire, structuration du plan, génération Google Slides ou tâches Antigravity).
+     - Lorsque Pierre demande oralement *"Qu'est-ce que tu es en train de faire ?"* ou *"Où en es-tu ?"*, Jarvis invoque cet outil et explique avec sa voix Aoede avec précision et naturel l'étape en cours et son avancement.
 - **Passerelle vers n8n & Function Calling Gemini Live** :
   - **Déclaration formelle** : Intégrés dans `core/tools/declarations.py` avec `behavior=types.Behavior.NON_BLOCKING`.
   - **Exécution asynchrone non-bloquante** : Le dispatcheur (`core/tools/dispatcher.py`) renvoie instantanément un accusé de réception pour que Jarvis confirme immédiatement à l'oral avec sa voix Aoede le lancement du travail, puis délègue la requête au webhook HTTP local en tâche de fond (`asyncio.create_task`).
-  - **Retour vocal final** : À la fin de l'action n8n, le résultat (lien de téléchargement dans `/downloads/` ou confirmation d'enregistrement) est injecté dans la session Gemini Live (`send_client_content`) pour restitution orale fluide en français naturel.
+  - **Mise à jour HUD & Retour vocal final** : Durant la génération, le HUD affiche la progression, et dès la finalisation, l'URL de la présentation est projetée à l'écran (`set_browser_link`) et annoncée oralement par Jarvis.
   - **Résilience absolue** : Gestion systématique des exceptions (timeout 30s, erreurs de connexion, JSON malformé) évitant tout crash du canal vocal principal.
   - Workflows n8n exportables et packagés dans `docs/n8n_workflows/documents_suite.json`.
 

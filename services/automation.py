@@ -91,13 +91,51 @@ def build_spreadsheet_payload(nom_fichier: str, colonnes: list[str], lignes: lis
     }
 
 
-def build_slides_payload(titre: str, theme: str, slides: list[dict[str, Any]]) -> dict:
-    """Construit et normalise le payload pour le webhook document-slides."""
-    clean_titre = (titre or "Presentation").strip()
+def build_slides_payload(
+    titre: str,
+    theme: str = "stark",
+    slides: Optional[list[dict[str, Any]]] = None,
+    subtitle: str = "",
+    batch_requests: Optional[list[dict[str, Any]]] = None
+) -> dict:
+    """Construit et normalise le payload pour le webhook document-slides avec requêtes Google Slides API enrichies."""
+    from services.slides_service import slides_service
+
+    clean_titre = (titre or "Présentation").strip()
+    clean_theme = (theme or "stark").strip().lower()
+
+    # Si les diapositives sont absentes ou vides, le moteur expert élabore la structure
+    if not slides:
+        gen_titre, gen_sub, gen_slides = slides_service.generate_deep_research_slides(
+            sujet=clean_titre, titre=clean_titre, theme=clean_theme
+        )
+        clean_titre = gen_titre
+        subtitle = subtitle or gen_sub
+        slides = gen_slides
+
+    if not subtitle:
+        subtitle = f"Dossier d'analyse et synthèse stratégique sur {clean_titre}"
+
+    if batch_requests is None:
+        batch_requests = slides_service.build_google_slides_batch_update(
+            titre=clean_titre,
+            subtitle=subtitle,
+            theme=clean_theme,
+            slides=slides,
+            default_slide_id=None
+        )
+
+    clean_slug = "".join(c for c in clean_titre if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_") or "presentation"
+
     return {
         "titre": clean_titre,
-        "theme": theme or "stark",
+        "subtitle": subtitle,
+        "theme": clean_theme,
         "slides": slides or [],
+        "slides_count": len(slides or []),
+        "batch_requests": batch_requests,
+        "clean_slug": clean_slug,
+        "filename": f"{clean_slug}.pptx",
         "downloads_dir": "/home/opc/jarvis-core/downloads/",
     }
 
@@ -215,7 +253,9 @@ async def executer_action_externe(
         effective_params = build_slides_payload(
             titre=effective_params.get("titre", "Presentation"),
             theme=effective_params.get("theme", "stark"),
-            slides=effective_params.get("slides", [])
+            slides=effective_params.get("slides", []),
+            subtitle=effective_params.get("subtitle", ""),
+            batch_requests=effective_params.get("batch_requests")
         )
     elif effective_action == "notion-entry":
         effective_params = build_notion_payload(

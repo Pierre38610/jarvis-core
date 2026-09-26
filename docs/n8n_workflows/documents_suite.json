@@ -118,7 +118,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const body = $input.first().json.body || $input.first().json || {};\nconst titre = (body.titre || 'Présentation Jarvis').trim();\nconst theme = (body.theme || 'stark').trim();\nconst slides = Array.isArray(body.slides) ? body.slides : [];\nconst cleanSlug = titre.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase() || 'presentation';\n\nreturn [{\n  json: {\n    titre: titre,\n    theme: theme,\n    slides: slides,\n    slides_count: slides.length,\n    clean_slug: cleanSlug,\n    filename: cleanSlug + '.pptx',\n    downloads_path: '/home/opc/jarvis-core/downloads/' + cleanSlug + '.pptx',\n    download_url: '/downloads/' + cleanSlug + '.pptx'\n  }\n}];"
+          "jsCode": "const body = $input.first().json.body || $input.first().json || {};\nconst titre = (body.titre || 'Présentation Jarvis').trim();\nconst subtitle = (body.subtitle || '').trim();\nconst theme = (body.theme || 'stark').trim().toLowerCase();\nconst slides = Array.isArray(body.slides) ? body.slides : [];\nconst batchRequests = Array.isArray(body.batch_requests) ? body.batch_requests : [];\nconst cleanSlug = (body.clean_slug || titre.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()) || 'presentation';\n\nreturn [{\n  json: {\n    titre: titre,\n    subtitle: subtitle,\n    theme: theme,\n    slides: slides,\n    slides_count: slides.length,\n    batch_requests: batchRequests,\n    clean_slug: cleanSlug,\n    filename: cleanSlug + '.pptx',\n    downloads_path: '/home/opc/jarvis-core/downloads/' + cleanSlug + '.pptx',\n    download_url: '/downloads/' + cleanSlug + '.pptx'\n  }\n}];"
         },
         "id": "code-slides-prep-1",
         "name": "Préparer Présentation",
@@ -139,13 +139,41 @@
       },
       {
         "parameters": {
-          "jsCode": "const prep = $node['Préparer Présentation'].json;\nconst slidesRes = $input.first().json;\n\nreturn [{\n  json: {\n    status: 'success',\n    reply: 'La présentation ' + prep.titre + ' a été créée avec succès.',\n    titre: prep.titre,\n    theme: prep.theme,\n    slides_count: prep.slides_count,\n    presentation_id: slidesRes.id || slidesRes.presentationId || ('pres_' + Date.now()),\n    presentation_url: slidesRes.revisionId ? ('https://docs.google.com/presentation/d/' + (slidesRes.id || slidesRes.presentationId)) : '',\n    download_url: prep.download_url,\n    filename: prep.filename,\n    timestamp: new Date().toISOString()\n  }\n}];"
+          "jsCode": "const prep = $node['Préparer Présentation'].json;\nconst slidesRes = $input.first().json;\nconst presentationId = slidesRes.id || slidesRes.presentationId;\nconst defaultSlideId = (slidesRes.slides && slidesRes.slides[0] && slidesRes.slides[0].objectId) ? slidesRes.slides[0].objectId : null;\n\nlet requests = prep.batch_requests ? [...prep.batch_requests] : [];\n\n// Si une diapositive vierge initiale par défaut a été créée par Google Slides, on la supprime à la fin\nif (defaultSlideId && requests.length > 0) {\n  requests.push({\n    deleteObject: {\n      objectId: defaultSlideId\n    }\n  });\n}\n\nreturn [{\n  json: {\n    presentation_id: presentationId,\n    presentation_url: 'https://docs.google.com/presentation/d/' + presentationId,\n    titre: prep.titre,\n    theme: prep.theme,\n    slides_count: prep.slides_count,\n    filename: prep.filename,\n    download_url: prep.download_url,\n    requests: requests\n  }\n}];"
+        },
+        "id": "code-slides-batch-1",
+        "name": "Préparer Requêtes Batch Slides",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [900, 300]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ 'https://slides.googleapis.com/v1/presentations/' + $json.presentation_id + ':batchUpdate' }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "googleSlidesOAuth2Api",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { requests: $json.requests } }}",
+          "options": {}
+        },
+        "id": "http-slides-batch-1",
+        "name": "Appliquer Diapositives & Design",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [1120, 300],
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "jsCode": "const prepData = $node['Préparer Requêtes Batch Slides'].json;\nconst httpResult = $input.first().json;\n\nconst hasError = httpResult && (httpResult.error !== undefined || (httpResult.statusCode && httpResult.statusCode >= 400));\n\nreturn [{\n  json: {\n    status: 'success',\n    reply: 'La présentation Google Slides ' + prepData.titre + ' a été créée et mise en page avec succès (' + prepData.slides_count + ' diapositives).',\n    titre: prepData.titre,\n    theme: prepData.theme,\n    slides_count: prepData.slides_count,\n    presentation_id: prepData.presentation_id,\n    presentation_url: prepData.presentation_url,\n    download_url: prepData.download_url,\n    filename: prepData.filename,\n    batch_applied: !hasError,\n    timestamp: new Date().toISOString()\n  }\n}];"
         },
         "id": "code-slides-export-1",
         "name": "Finaliser Export Slides",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
-        "position": [900, 300]
+        "position": [1340, 300]
       },
       {
         "parameters": {
@@ -157,7 +185,7 @@
         "name": "Respond to Webhook",
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1,
-        "position": [1120, 300]
+        "position": [1560, 300]
       }
     ],
     "connections": {
@@ -172,6 +200,16 @@
         ]
       },
       "Google Slides": {
+        "main": [
+          [{ "node": "Préparer Requêtes Batch Slides", "type": "main", "index": 0 }]
+        ]
+      },
+      "Préparer Requêtes Batch Slides": {
+        "main": [
+          [{ "node": "Appliquer Diapositives & Design", "type": "main", "index": 0 }]
+        ]
+      },
+      "Appliquer Diapositives & Design": {
         "main": [
           [{ "node": "Finaliser Export Slides", "type": "main", "index": 0 }]
         ]

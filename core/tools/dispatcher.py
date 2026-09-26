@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 
 from google.genai import types
 
@@ -965,73 +966,189 @@ async def dispatch_tool(
 
     # ─── generer_presentation ─────────────────────────────────────────────────
     elif name == "generer_presentation":
-        titre = (args.get("titre") or "Présentation").strip()
-        theme = (args.get("theme") or "stark").strip()
+        from services.slides_service import slides_service
+
+        raw_titre = (args.get("titre") or "Présentation").strip()
+        sujet = (args.get("sujet") or raw_titre).strip()
+        theme = (args.get("theme") or "stark").strip().lower()
         slides = args.get("slides") or []
 
+        # Enregistrement de l'action dans supervision_service et slides_service
         supervision_service.start_action(
             "generer_presentation",
-            f"Présentation : {titre}",
+            f"Présentation : {raw_titre}",
             "generer_presentation",
-            f"Création présentation '{titre}' ({len(slides)} slides, thème: {theme})",
-            "n8n Community",
+            f"Recherche et conception de la présentation '{raw_titre}' (thème: {theme})",
+            "Slides Intelligence Engine",
             api_type="free",
             api_label="Local n8n",
             cost_est="0.00 $"
         )
+        supervision_service.update_action_progress(
+            "generer_presentation",
+            "Étape 1/4 : Structuration du plan",
+            f"Conception du fil conducteur narratif et des axes thématiques pour '{raw_titre}'"
+        )
         await broadcast_supervision()
+
+        slides_service._current_task = {
+            "active": True,
+            "action_id": "generer_presentation",
+            "topic": raw_titre,
+            "step": "Étape 1/4 : Structuration du plan directeur",
+            "details": f"Élaboration de l'architecture des diapositives sur {sujet}",
+            "started_at": time.time(),
+            "slides_count": len(slides),
+            "presentation_url": ""
+        }
+
         await websocket.send_text(json.dumps({
             "type": "jarvis_announcement",
-            "text": f"Génération de la présentation '{titre}' via n8n...",
+            "text": f"Recherche et structuration de la présentation '{raw_titre}'...",
             "voice": False
         }))
         await websocket.send_text(json.dumps({
             "type": "status",
             "state": "document",
-            "msg": f"Génération Présentation — {titre}...",
-            "task": f"Slides : {titre}",
-            "engine": "n8n Community",
-            "model": "Slides Automation",
+            "msg": f"Présentation — Recherche sur {raw_titre}...",
+            "task": f"Slides : {raw_titre}",
+            "engine": "Slides Intelligence",
+            "model": "Deep Research Engine",
             "api_type": "free",
             "api_label": "Local n8n"
         }))
 
-        _titre = titre
-        _theme = theme
-        _slides = slides
+        _t_init = raw_titre
+        _sujet = sujet
+        _th = theme
+        _sl_init = list(slides)
         _sess = session
+        _ws = websocket
 
-        async def _run_slides_bg(_t=_titre, _th=_theme, _sl=_slides, _s=_sess):
+        async def _run_slides_bg(_tit=_t_init, _sjt=_sujet, _thm=_th, _sl=_sl_init, _s=_sess, _w=_ws):
             try:
                 from services.automation import executer_action_externe as n8n_exec
-                payload = {
-                    "titre": _t,
-                    "theme": _th,
-                    "slides": _sl,
-                }
+                from services.automation import build_slides_payload
+
+                # 1. Étape 1 : Structuration du plan directeur
+                slides_service._current_task["step"] = "Étape 1/4 : Structuration du plan directeur"
+                slides_service._current_task["details"] = f"Conception de la structure narrative pour {_tit}"
+                supervision_service.update_action_progress(
+                    "generer_presentation",
+                    "Étape 1/4 : Structuration du plan",
+                    f"Conception du plan narratif en diapositives structurées sur {_sjt}"
+                )
+                await broadcast_supervision()
+                await asyncio.sleep(1.2)
+
+                # 2. Étape 2 : Recherche documentaire approfondie & Chiffres clés
+                slides_service._current_task["step"] = "Étape 2/4 : Recherche documentaire & Chiffres clés"
+                slides_service._current_task["details"] = f"Recherche de données factuelles, métriques et actualités vérifiées sur {_sjt}"
+                supervision_service.update_action_progress(
+                    "generer_presentation",
+                    "Étape 2/4 : Recherche & Chiffres clés",
+                    f"Agrégation des faits marquants, jalons historiques et métriques d'impact sur {_sjt}"
+                )
+                await broadcast_supervision()
+
+                # Si les slides n'étaient pas spécifiées ou incomplètes, le moteur produit la recherche experte
+                if not _sl or len(_sl) < 2:
+                    gen_titre, gen_sub, gen_slides = slides_service.generate_deep_research_slides(
+                        sujet=_sjt, titre=_tit, theme=_thm
+                    )
+                    effective_titre = gen_titre
+                    effective_sub = gen_sub
+                    effective_slides = gen_slides
+                else:
+                    effective_titre = _tit
+                    effective_sub = f"Dossier stratégique et analyse d'impact sur {_sjt}"
+                    effective_slides = _sl
+
+                await asyncio.sleep(1.2)
+
+                # 3. Étape 3 : Tri et synthèse des informations
+                slides_service._current_task["step"] = "Étape 3/4 : Tri et synthèse des informations"
+                slides_service._current_task["details"] = f"Sélection des arguments clés et mise en valeur des métriques pour {len(effective_slides)} diapositives"
+                supervision_service.update_action_progress(
+                    "generer_presentation",
+                    "Étape 3/4 : Tri & Synthèse",
+                    f"Sélection des arguments percutants ({len(effective_slides)} slides) et notes d'orateur"
+                )
+                await broadcast_supervision()
+                await asyncio.sleep(1.0)
+
+                # 4. Étape 4 : Mise en page esthétique & Envoi Google Slides via n8n
+                slides_service._current_task["step"] = "Étape 4/4 : Mise en page Google Slides"
+                slides_service._current_task["details"] = f"Application du thème {_thm} et génération sur Google Slides"
+                supervision_service.update_action_progress(
+                    "generer_presentation",
+                    "Étape 4/4 : Génération Google Slides",
+                    f"Application de la charte visuelle (thème {_thm}) et création dans Google Slides"
+                )
+                await broadcast_supervision()
+
+                payload = build_slides_payload(
+                    titre=effective_titre,
+                    theme=_thm,
+                    slides=effective_slides,
+                    subtitle=effective_sub
+                )
                 res = await n8n_exec(action_name="document-slides", parametres=payload)
                 status_res = res.get("status", "completed")
                 is_ok = (status_res == "success")
+
+                raw_result = res.get("result", {})
+                presentation_url = (
+                    raw_result.get("presentation_url")
+                    or (f"https://docs.google.com/presentation/d/{raw_result.get('presentation_id')}" if raw_result.get("presentation_id") else "")
+                    or "https://docs.google.com/presentation"
+                )
+
+                slides_service._current_task["active"] = False
+                slides_service._current_task["presentation_url"] = presentation_url
+
                 supervision_service.complete_action(
                     "generer_presentation",
                     status="completed" if is_ok else "error",
-                    summary=f"Slides {_t} : {status_res}"
+                    summary=f"Présentation '{effective_titre}' créée ({len(effective_slides)} slides, style {_thm})"
                 )
                 await broadcast_supervision()
+
+                # Mise à jour du lien interactif dans le HUD PWA
+                if _w and presentation_url:
+                    try:
+                        await _w.send_text(json.dumps({
+                            "type": "set_browser_link",
+                            "url": presentation_url,
+                            "title": f"Google Slides : {effective_titre}"
+                        }))
+                        await _w.send_text(json.dumps({
+                            "type": "status",
+                            "state": "idle",
+                            "msg": f"Présentation prête : {effective_titre}",
+                            "task": effective_titre,
+                            "engine": "Google Slides",
+                            "model": "Aoede Voix Active"
+                        }))
+                    except Exception:
+                        pass
+
+                # Annonce orale complète à Pierre
                 if _s:
-                    clean_file_slug = "".join(c for c in _t if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_") or "presentation"
-                    download_url = f"/downloads/{clean_file_slug}.pptx"
                     if is_ok:
                         inject_text = (
-                            f"[PRÉSENTATION CRÉÉE AVEC SUCCÈS] La présentation '{_t}' ({len(_sl)} diapositives, style {_th}) a été générée via n8n. "
-                            f"Lien de téléchargement : {download_url}. "
-                            f"Annonce-le fièrement et naturellement à Pierre avec ta voix Aoede."
+                            f"[PRÉSENTATION GOOGLE SLIDES PRÊTE] La présentation complète sur '{effective_titre}' "
+                            f"est finalisée avec {len(effective_slides)} diapositives structurées et esthétiques (style {_thm}). "
+                            f"Elle intègre les données historiques, l'architecture technique, les métriques clés et les perspectives d'avenir. "
+                            f"Lien d'accès Google Slides : {presentation_url}. "
+                            f"Annonce-le chaleureusement et fièrement à Pierre avec ta voix Aoede, résume-lui en 2 phrases les points forts "
+                            f"et dis-lui qu'il peut cliquer directement sur le bouton affiché sur son écran pour l'ouvrir dans son navigateur."
                         )
                     else:
-                        err = res.get("error", "Erreur lors de la création de la présentation")
+                        err = res.get("error", "Erreur lors de la création Google Slides")
                         inject_text = (
-                            f"[GÉNÉRATION PRÉSENTATION ÉCHEC] Impossible de créer la présentation '{_t}' ({err}). "
-                            f"Informe Pierre avec ta voix Aoede."
+                            f"[PRÉSENTATION GOOGLE SLIDES ÉCHEC] Impossible de créer la présentation '{effective_titre}' ({err}). "
+                            f"Informe brièvement Pierre avec ta voix Aoede."
                         )
                     try:
                         await _s.send_client_content(
@@ -1039,9 +1156,11 @@ async def dispatch_tool(
                             turn_complete=True
                         )
                     except Exception as inj_e:
-                        print(f"[Slides BG] Injection Live error: {inj_e}")
+                        print(f"[Slides BG] Erreur injection Live: {inj_e}")
+
             except Exception as bg_err:
                 print(f"[Slides BG] Erreur: {bg_err}")
+                slides_service._current_task["active"] = False
                 supervision_service.complete_action("generer_presentation", status="error", summary=str(bg_err))
                 await broadcast_supervision()
 
@@ -1050,12 +1169,74 @@ async def dispatch_tool(
         return {
             "status": "lance_en_arriere_plan",
             "action": "generer_presentation",
-            "titre": titre,
+            "titre": raw_titre,
+            "theme": theme,
             "slides_count": len(slides),
             "instruction_to_jarvis": (
-                f"La création de la présentation '{titre}' ({len(slides)} slides) est lancée via n8n en tâche de fond. "
-                f"Confirme immédiatement à Pierre avec ta voix Aoede d'un ton complice et dynamique "
-                f"que tu prépares sa présentation '{titre}'."
+                f"La conception de la présentation sur '{raw_titre}' est lancée en arrière-plan. "
+                f"RÈGLE STRICTE : Ne donne pas la présentation immédiatement ! "
+                f"Dis immédiatement et chaleureusement à Pierre avec ta voix Aoede que tu as bien pris en compte sa demande, "
+                f"que tu prends le temps nécessaire pour réfléchir au plan directeur, faire des recherches précises "
+                f"et trier les éléments percutants avant de générer les diapositives sur Google Slides."
+            )
+        }
+
+    # ─── get_active_task_status ──────────────────────────────────────────────
+    elif name == "get_active_task_status":
+        from services.slides_service import slides_service
+
+        task_info = slides_service.get_current_task()
+        supervision_overview = supervision_service.get_full_overview()
+        active_actions = supervision_overview.get("active_actions", [])
+
+        if task_info.get("active"):
+            explanation = task_info.get("explanation", "")
+            step = task_info.get("step", "")
+            details = task_info.get("details", "")
+            elapsed = task_info.get("elapsed_seconds", 0)
+            return {
+                "status": "completed",
+                "has_active_task": True,
+                "task_type": "presentation_slides",
+                "topic": task_info.get("topic"),
+                "step": step,
+                "details": details,
+                "elapsed_seconds": elapsed,
+                "explanation": explanation,
+                "instruction_to_jarvis": (
+                    f"Voici ce que tu es exactement en train de faire : {explanation}. "
+                    f"Explique-le immédiatement et naturellement à Pierre à voix haute avec ta voix Aoede, "
+                    f"d'un ton complice, direct et rassurant, en lui précisant l'étape en cours."
+                )
+            }
+
+        # Vérification d'autres actions actives (ex: Antigravity, Browser-Use, etc.)
+        running_actions = [a for a in active_actions if a.get("status") == "running"]
+        if running_actions:
+            first_act = running_actions[0]
+            act_name = first_act.get("name", "Action en cours")
+            act_step = first_act.get("progress_step", "Traitement en cours")
+            act_detail = first_act.get("progress_text", "")
+            return {
+                "status": "completed",
+                "has_active_task": True,
+                "task_type": first_act.get("tool", "action"),
+                "name": act_name,
+                "step": act_step,
+                "details": act_detail,
+                "instruction_to_jarvis": (
+                    f"Tu es en train d'exécuter l'action '{act_name}' (étape : {act_step}, détail : {act_detail}). "
+                    f"Explique immédiatement à Pierre avec ta voix Aoede ce que tu es en train de faire de manière naturelle et concise."
+                )
+            }
+
+        return {
+            "status": "completed",
+            "has_active_task": False,
+            "instruction_to_jarvis": (
+                "Aucune tâche lourde n'est en cours d'exécution pour le moment. "
+                "Dis simplement et naturellement à Pierre avec ta voix Aoede que tu es en veille active, "
+                "entièrement disponible et à son écoute."
             )
         }
 

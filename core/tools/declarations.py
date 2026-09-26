@@ -486,9 +486,14 @@ def get_tools_list() -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="generer_presentation",
                     description=(
-                        "GÉNÉRATION DE PRÉSENTATION GOOGLE SLIDES / POWERPOINT (.pptx) : "
-                        "Crée une présentation structurée avec diapositives (titres, puces, notes d'orateur) via l'API Google Slides "
-                        "ou template n8n. Exportable au format PPTX/PDF et accessible au téléchargement dans /downloads/."
+                        "CRÉATION DE PRÉSENTATION GOOGLE SLIDES EXPERTE & ESTHÉTIQUE : "
+                        "Conçoit une présentation Google Slides complète (5 à 8 diapositives), richement documentée, percutante et stylisée "
+                        "(thèmes Stark sombre/cyan, Bitcoin/Gold or/noir, Corporate, Cyber). "
+                        "Le système prend impérativement le temps en tâche de fond d'élaborer un plan narratif rigoureux, de rechercher des faits vérifiés, "
+                        "actualités et métriques clés, de trier les informations et d'appliquer une mise en page soignée avec cartes de contenu et chiffres clés. "
+                        "Tu dois spécifier le titre ou sujet (ex: 'Bitcoin', 'Intelligence Artificielle', 'Transition Énergétique'), et le thème souhaité. "
+                        "Si tu n'as pas de liste de slides pré-écrite, laisse le champ 'slides' vide ou omis : Jarvis structurera lui-même les diapositives complètes. "
+                        "L'opération s'exécute en tâche de fond et le lien direct vers Google Slides est fourni à Pierre à la fin."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -496,11 +501,15 @@ def get_tools_list() -> list[types.Tool]:
                         properties={
                             "titre": types.Schema(
                                 type="STRING",
-                                description="Titre général de la présentation"
+                                description="Titre ou sujet général de la présentation (ex: 'Bitcoin : Révolution Monétaire', 'Intelligence Artificielle 2026')"
+                            ),
+                            "sujet": types.Schema(
+                                type="STRING",
+                                description="Thématique ou sujet détaillé à analyser et développer si distinct du titre"
                             ),
                             "theme": types.Schema(
                                 type="STRING",
-                                description="Thème ou ambiance visuelle de la présentation (ex: 'stark', 'dark', 'corporate', 'minimal', 'light')"
+                                description="Thème esthétique : 'stark' (défaut, sombre futuriste Stark Industries), 'bitcoin' ou 'gold' (noir/or prestige crypto), 'corporate' (blanc/bleu exécutif), 'cyber' (néon/violet), 'dark' (minimaliste sombre)"
                             ),
                             "slides": types.Schema(
                                 type="ARRAY",
@@ -508,15 +517,40 @@ def get_tools_list() -> list[types.Tool]:
                                     type="OBJECT",
                                     properties={
                                         "titre_slide": types.Schema(type="STRING", description="Titre de la diapositive"),
-                                        "points": types.Schema(type="ARRAY", items=types.Schema(type="STRING"), description="Liste des points clés ou puces"),
-                                        "notes": types.Schema(type="STRING", description="Notes d'orateur ou texte explicatif optionnel"),
+                                        "category": types.Schema(type="STRING", description="Section ou catégorie (ex: 'HISTOIRE', 'ARCHITECTURE', 'MARCHÉ')"),
+                                        "points": types.Schema(type="ARRAY", items=types.Schema(type="STRING"), description="Liste des points clés ou faits vérifiés"),
+                                        "key_metric": types.Schema(
+                                            type="OBJECT",
+                                            properties={
+                                                "label": types.Schema(type="STRING", description="Libellé du chiffre clé (ex: 'PLAFOND')"),
+                                                "value": types.Schema(type="STRING", description="Valeur du chiffre clé (ex: '21M BTC')"),
+                                                "desc": types.Schema(type="STRING", description="Explication concise du chiffre clé"),
+                                            },
+                                            description="Chiffre clé ou métrique majeure mise en exergue"
+                                        ),
+                                        "notes": types.Schema(type="STRING", description="Notes d'orateur ou texte explicatif"),
                                     },
                                     required=["titre_slide", "points"]
                                 ),
-                                description="Liste ordonnée des diapositives à créer"
+                                description="Liste optionnelle de diapositives pré-structurées. Si omise, Jarvis élabore lui-même le plan et effectue les recherches."
                             ),
                         },
-                        required=["titre", "theme", "slides"]
+                        required=["titre"]
+                    )
+                ),
+                types.FunctionDeclaration(
+                    name="get_active_task_status",
+                    description=(
+                        "Consulte en temps réel l'état d'avancement, l'étape précise et les détails des tâches actives en arrière-plan "
+                        "(recherche documentaire et génération Google Slides, développement Antigravity, navigation web, etc.). "
+                        "À INVOQUER IMMÉDIATEMENT dès que Pierre te demande ce que tu es en train de faire, où en est sa présentation, "
+                        "ou comment progresse son travail (ex: 'qu'est-ce que tu fais ?', 'où en est ma présentation ?', 'explique-moi ce que tu es en train de faire')."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "task_id": types.Schema(type="STRING", description="Identifiant optionnel d'une tâche spécifique à vérifier"),
+                        }
                     )
                 ),
                 types.FunctionDeclaration(
