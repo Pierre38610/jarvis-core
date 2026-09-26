@@ -60,12 +60,13 @@ class TestTransportService(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(time_default, "08:00")
 
     def test_generate_deep_links_sweden(self):
-        """Vérifie la génération de deep links suédois (SJ, Trafikverket, Skånetrafiken)."""
+        """Vérifie la génération de deep links suédois (Omio, SJ, Trafikverket, Skånetrafiken)."""
         res = transport_service.generate_deep_links("Malmö", "Stockholm", "2026-10-15", "14:00", "SE")
         self.assertEqual(res["country"], "SE")
         self.assertEqual(res["operator"], "SJ")
-        self.assertIn("sj.se", res["primary_url"])
-        self.assertIn("Malm", res["links"]["sj_direct"])
+        self.assertIn("omio.fr", res["primary_url"])
+        self.assertIn("omio.fr", res["links"]["omio_booking"])
+        self.assertIn("sj.se", res["links"]["sj_portal"])
         self.assertIn("trafikverket.se", res["links"]["trafikverket_live"])
         self.assertIn("skanetrafiken.se", res["links"]["skanetrafiken"])
 
@@ -158,12 +159,12 @@ class TestTransportService(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(seg2["destination"], "Kiruna")
         self.assertEqual(seg2["origine"], "Stockholm Central")
 
-        # Escale et URLs de réservation
+        # Escale et URLs de réservation directe
         self.assertEqual(multi["escale"]["gare"], "Stockholm Central")
         self.assertEqual(len(multi["booking_urls"]), 2)
         for url in multi["booking_urls"]:
-            self.assertTrue(url.startswith("https://www.sj.se/en"))
-            self.assertNotIn("/sok-resa.html", url)
+            self.assertTrue(url.startswith("https://www.omio.fr/trains/"))
+            self.assertNotIn(".html", url)
 
     async def test_rechercher_itineraires_multi_segment(self):
         """Vérifie que rechercher_itineraires renvoie les informations multi-billets pour le Nord de la Suède."""
@@ -184,8 +185,8 @@ class TestTransportService(unittest.IsolatedAsyncioTestCase):
              patch.object(local_agent_service, "execute_command", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = {"status": "success", "action": "prepare_train_checkout"}
             urls = [
-                "https://www.sj.se/en?from=Malm%C3%B6&to=Stockholm",
-                "https://www.sj.se/en/travel-info/sj-night-train.html",
+                "https://www.omio.fr/trains/malmo-stockholm",
+                "https://www.omio.fr/trains/stockholm-kiruna",
             ]
             res = await transport_service.reserver_billet_train_local(
                 operateur="sj",
@@ -198,6 +199,39 @@ class TestTransportService(unittest.IsolatedAsyncioTestCase):
             call_kwargs = mock_exec.call_args[1]
             self.assertEqual(call_kwargs["urls"], urls)
             self.assertEqual(call_kwargs["operateur"], "sj")
+
+    async def test_reserver_billet_train_local_sanitizes_broken_urls(self):
+        """Vérifie que reserver_billet_train_local assainit automatiquement les URLs de blog statique ou home page SJ."""
+        from services.local_agent_service import local_agent_service
+        with patch.object(local_agent_service, "is_connected", return_value=True), \
+             patch.object(local_agent_service, "execute_command", new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = {"status": "success", "action": "prepare_train_checkout"}
+            broken_urls = [
+                "https://www.sj.se/en?from=Malm%C3%B6&to=Stockholm",
+                "https://www.sj.se/en/travel-info/sj-night-train.html",
+            ]
+            transport_service._last_search = {
+                "origine": "Malmö",
+                "destination": "Kiruna",
+                "date_depart": "2026-09-28",
+                "booking_urls": [
+                    "https://www.omio.fr/trains/malmo-stockholm",
+                    "https://www.omio.fr/trains/stockholm-kiruna"
+                ]
+            }
+            res = await transport_service.reserver_billet_train_local(
+                operateur="sj",
+                urls_trajets=broken_urls,
+                origine="Malmö",
+                destination="Kiruna"
+            )
+            self.assertEqual(res["status"], "success")
+            mock_exec.assert_called_once()
+            call_kwargs = mock_exec.call_args[1]
+            for u in call_kwargs["urls"]:
+                self.assertNotIn(".html", u)
+                self.assertNotIn("travel-info", u)
+                self.assertTrue(u.startswith("https://www.omio.fr/trains/"))
 
 
 if __name__ == "__main__":

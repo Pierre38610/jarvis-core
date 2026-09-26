@@ -399,8 +399,14 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
        * *Segment 1 (Jour)* : Train à grande vitesse SJ Snabbtåg (ex: Malmö Central 09:04 → Stockholm Central 13:35).
        * *Correspondance* : Escale confortable et sécurisée à Stockholm Central (~2h45 pour le déjeuner et le transfert de quai).
        * *Segment 2 (Nuit)* : Train de nuit couchette arctique SJ Nattåg 94 (ex: Stockholm Central 16:20 → Kiruna 09:15 J+1).
-     - **Génération d'URLs valides et modernes (zéro 404)** : URLs directes sur le portail moderne SJ (`https://www.sj.se/en`), guide officiel SJ Night Train (`https://www.sj.se/en/travel-info/sj-night-train.html`), Google Maps Transit et Rome2rio (élimination des anciens slugs `.html?from=...` non supportés par la SPA SJ).
-     - **Option `reserver_automatiquement: bool`** : Permet à Jarvis d'enchaîner directement la recherche avec l'ouverture automatique de tous les onglets de réservation dans le navigateur de Pierre.
+      - **Génération d'URLs de réservation directe et fonctionnelle (zéro redirection sur page d'accueil vide)** :
+        * Les portails comme `sj.se` étant des SPAs fermées qui ignorent les query params d'URL en accès direct, Jarvis génère désormais des liens profonds sur les agrégateurs ferroviaires agréés Suède / Europe :
+          - **Omio Suède** : `https://www.omio.fr/trains/{orig_slug}-{dest_slug}` (ex: `malmo-stockholm` et `stockholm-kiruna`), affichant directement les trains SJ Snabbtåg et SJ Nattåg disponibles avec bouton 'Réserver'.
+          - **Trainline** : `https://www.thetrainline.com/fr/billets-de-train/{orig_slug}-a-{dest_slug}` pour la comparaison tarifaire.
+          - **Google Maps Transit & Trafikverket** pour le suivi temps réel.
+        * Élimination stricte des pages d'accueil neutres (`sj.se/en`) et des articles de blog statiques (`/travel-info/sj-night-train.html`).
+      - **Option `reserver_automatiquement: bool`** : Permet à Jarvis d'enchaîner directement la recherche avec l'ouverture automatique de tous les onglets de réservation dans le navigateur de Pierre.
+      - **Mémoire d'Itinéraire en Session (`_last_search`)** : `TransportService` mémorise le dernier trajet multi-segments recherché. Si Pierre dit ensuite "Réserve-les", Jarvis retrouve instantanément les gares, dates et URLs sans que Pierre ait besoin de répéter sa demande.
      - **Dispatching non-bloquant** : Jarvis confirme immédiatement la prise en charge à voix haute avec sa voix Aoede, annonce les détails des trains et de la correspondance, et pousse le deep link direct sur l'interface PWA via l'événement `browser_update` / `set_browser_link`.
   2. **Surveillance Proactive en Temps Réel (`surveiller_train`)** :
      - Déclenche une boucle de veille asynchrone orchestrée par n8n (`docs/n8n_workflows/train_monitoring.json`).
@@ -414,7 +420,8 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
      - **Respect absolu de l'isolation de sécurité** : exploration et calcul d'itinéraires sur le VPS cloud ; ouverture transactionnelle exclusivement sur le PC Windows physique de Pierre via `execution_target="local_gui"`.
      - Délégué à `jarvis_local_agent.py` sur le PC Windows de Pierre via le canal WebSocket `/ws/local-agent` (action `prepare_train_checkout`) avec fallback de lancement Chrome local.
      - **Support multi-billets en onglets parallèles** : Ouvre simultanément chaque page de réservation dans un onglet distinct Google Chrome (ex: Onglet 1 pour le SJ Snabbtåg + Onglet 2 pour le SJ Nattåg couchette vers Kiruna).
-     - **Garde-fou bancaire inviolable** : L'agent préremplit et amène chaque panier jusqu'à l'écran final de sélection des couchettes et de règlement ; Pierre n'a plus qu'à valider et payer lui-même (zéro prélèvement automatique).
+      - **Assainissement automatique des URLs** : Si des liens obsolètes de blog ou de page d'accueil sans paramètres sont reçus, le service les remplace automatiquement à chaud par les liens directs Omio/Trainline de chaque segment.
+      - **Garde-fou bancaire inviolable & Expérience zéro-friction** : Les pages s'ouvrent directement sur les trajets préremplis avec les offres disponibles ; Pierre n'a plus qu'à choisir ses places/couchettes, s'authentifier et payer (zéro saisie d'itinéraires requise, zéro prélèvement automatique non consenti).
 
 ---
 

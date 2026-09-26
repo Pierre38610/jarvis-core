@@ -1838,17 +1838,19 @@ async def dispatch_tool(
 
     # ─── reserver_billet_train_local ──────────────────────────────────────────
     elif name == "reserver_billet_train_local":
-        operateur = args.get("operateur", "sncf")
+        operateur = args.get("operateur", "auto")
         url_trajet = args.get("url_trajet", "")
         urls_trajets = args.get("urls_trajets", [])
         desc = args.get("description_trajet", "")
+        origine = args.get("origine", "")
+        destination = args.get("destination", "")
+        date_depart = args.get("date_depart", "")
 
-        n_trains = len(urls_trajets) if urls_trajets else 1
         supervision_service.start_action(
             "reserver_billet_train_local",
             "Réservation Train Locale",
             "reserver_billet_train_local",
-            f"Ouverture session {operateur.upper()} ({n_trains} billet(s)) sur PC Windows",
+            f"Ouverture session {operateur.upper()} sur PC Windows",
             "jarvis_local_agent",
             api_type="free",
             api_label="Local Windows GUI",
@@ -1860,7 +1862,10 @@ async def dispatch_tool(
             operateur=operateur,
             url_trajet=url_trajet,
             urls_trajets=urls_trajets,
-            description_trajet=desc
+            description_trajet=desc,
+            origine=origine,
+            destination=destination,
+            date_depart=date_depart
         )
 
         supervision_service.complete_action(
@@ -1870,16 +1875,18 @@ async def dispatch_tool(
         )
         await broadcast_supervision()
 
+        resolved_urls = res_local.get("urls", urls_trajets or ([url_trajet] if url_trajet else []))
+        n_trains = len(resolved_urls)
         train_phrase = f"les {n_trains} billets de train de l'enchaînement" if n_trains > 1 else f"la page de réservation {operateur.upper()}"
         return {
             "status": res_local.get("status", "success"),
             "operateur": operateur,
             "url_trajet": url_trajet,
-            "urls_trajets": urls_trajets,
+            "urls_trajets": resolved_urls,
             "message": res_local.get("message", ""),
             "instruction_to_jarvis": (
                 f"{train_phrase.capitalize()} ont été ouverts dans Chrome sur le PC de Pierre. "
-                f"Confirme-lui avec ta voix Aoede que ses trajets sont prêts sur son écran et qu'il n'a plus qu'à choisir ses places "
+                f"Confirme-lui avec ta voix Aoede que ses pages de réservation directes sont prêtes sur son écran et qu'il n'a plus qu'à choisir ses places "
                 f"et procéder au paiement en toute sécurité."
             )
         }

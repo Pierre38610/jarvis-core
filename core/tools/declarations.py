@@ -745,6 +745,7 @@ def get_tools_list() -> list[types.Tool]:
                         "RÉSERVATION & PANIER SUR PC LOCAL WINDOWS : "
                         "Sur demande de réservation ou d'achat d'un ou plusieurs billets, ouvre la session Google Chrome sur le PC physique de Pierre "
                         "via jarvis_local_agent pour ouvrir la page du trajet ou de chaque segment (enchaînement de trains) jusqu'à l'écran de paiement. "
+                        "Si les URLs ou gares sont omises, reprend automatiquement le dernier trajet ferroviaire recherché. "
                         "Respect absolu du garde-fou bancaire : aucune validation d'achat automatique, Pierre valide lui-même son règlement."
                     ),
                     parameters=types.Schema(
@@ -752,7 +753,19 @@ def get_tools_list() -> list[types.Tool]:
                         properties={
                             "operateur": types.Schema(
                                 type="STRING",
-                                description="Opérateur ou plateforme : 'sj', 'sncf', 'trainline', 'skanetrafiken'"
+                                description="Opérateur ou plateforme : 'sj', 'sncf', 'trainline', 'skanetrafiken', 'omio', 'auto'"
+                            ),
+                            "origine": types.Schema(
+                                type="STRING",
+                                description="Gare ou ville de départ (optionnel si déjà recherchée, ex: 'Malmö Central')"
+                            ),
+                            "destination": types.Schema(
+                                type="STRING",
+                                description="Gare ou ville d'arrivée (optionnel si déjà recherchée, ex: 'Kiruna')"
+                            ),
+                            "date_depart": types.Schema(
+                                type="STRING",
+                                description="Date du voyage (optionnel, ex: 'demain', '2026-09-28')"
                             ),
                             "url_trajet": types.Schema(
                                 type="STRING",
@@ -768,7 +781,6 @@ def get_tools_list() -> list[types.Tool]:
                                 description="Description concise du trajet ou de l'enchaînement (ex: 'Malmö → Stockholm → Kiruna')"
                             ),
                         },
-                        required=["operateur"]
                     )
                 ),
                 types.FunctionDeclaration(

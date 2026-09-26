@@ -24,73 +24,73 @@ logger = logging.getLogger(__name__)
 # ─── Mapping des Gares et Villes ─────────────────────────────────────────────
 
 SWEDISH_CITIES = {
-    "malmo": {"name": "Malmö Central", "slug": "malmo-central", "code": "M"},
-    "malmö": {"name": "Malmö Central", "slug": "malmo-central", "code": "M"},
-    "stockholm": {"name": "Stockholm Central", "slug": "stockholm-central", "code": "Cst"},
-    "goteborg": {"name": "Göteborg Central", "slug": "goteborg-central", "code": "G"},
-    "göteborg": {"name": "Göteborg Central", "slug": "goteborg-central", "code": "G"},
-    "lund": {"name": "Lund Central", "slug": "lund-central", "code": "Lu"},
-    "uppsala": {"name": "Uppsala Central", "slug": "uppsala-central", "code": "U"},
-    "helsingborg": {"name": "Helsingborg Central", "slug": "helsingborg-central", "code": "Hb"},
-    "linkoping": {"name": "Linköping Central", "slug": "linkoping-central", "code": "Lp"},
-    "linköping": {"name": "Linköping Central", "slug": "linkoping-central", "code": "Lp"},
-    "orebro": {"name": "Örebro Central", "slug": "orebro-central", "code": "Ör"},
-    "örebro": {"name": "Örebro Central", "slug": "orebro-central", "code": "Ör"},
-    "norrkoping": {"name": "Norrköping Central", "slug": "norrkoping-central", "code": "Nr"},
-    "norrköping": {"name": "Norrköping Central", "slug": "norrkoping-central", "code": "Nr"},
-    "jonkoping": {"name": "Jönköping Central", "slug": "jonkoping-central", "code": "Jö"},
-    "jönköping": {"name": "Jönköping Central", "slug": "jonkoping-central", "code": "Jö"},
-    "umea": {"name": "Umeå Central", "slug": "umea-central", "code": "Uå"},
-    "umeå": {"name": "Umeå Central", "slug": "umea-central", "code": "Uå"},
-    "gavle": {"name": "Gävle Central", "slug": "gavle-central", "code": "Gä"},
-    "gävle": {"name": "Gävle Central", "slug": "gavle-central", "code": "Gä"},
-    "sundsvall": {"name": "Sundsvall Central", "slug": "sundsvall-central", "code": "Suc"},
-    "karlstad": {"name": "Karlstad Central", "slug": "karlstad-central", "code": "Ks"},
-    "kiruna": {"name": "Kiruna", "slug": "kiruna", "code": "Krn"},
-    "nord-de-la-suede": {"name": "Kiruna", "slug": "kiruna", "code": "Krn"},
-    "nord-de-la-suède": {"name": "Kiruna", "slug": "kiruna", "code": "Krn"},
-    "nord-suede": {"name": "Kiruna", "slug": "kiruna", "code": "Krn"},
-    "laponie": {"name": "Kiruna", "slug": "kiruna", "code": "Krn"},
-    "laponie-suedoise": {"name": "Kiruna", "slug": "kiruna", "code": "Krn"},
-    "laponie-suédoise": {"name": "Kiruna", "slug": "kiruna", "code": "Krn"},
-    "abisko": {"name": "Abisko Östra", "slug": "abisko-ostra", "code": "Ak"},
-    "gallivare": {"name": "Gällivare", "slug": "gallivare", "code": "Gv"},
-    "gällivare": {"name": "Gällivare", "slug": "gallivare", "code": "Gv"},
-    "narvik": {"name": "Narvik", "slug": "narvik", "code": "Nk"},
-    "boden": {"name": "Boden Central", "slug": "boden-central", "code": "Bdn"},
-    "lulea": {"name": "Luleå Central", "slug": "lulea-central", "code": "Le"},
-    "luleå": {"name": "Luleå Central", "slug": "lulea-central", "code": "Le"},
-    "ostersund": {"name": "Östersund Central", "slug": "ostersund-central", "code": "Ös"},
-    "östersund": {"name": "Östersund Central", "slug": "ostersund-central", "code": "Ös"},
-    "are": {"name": "Åre", "slug": "are", "code": "Åre"},
-    "åre": {"name": "Åre", "slug": "are", "code": "Åre"},
-    "halmstad": {"name": "Halmstad Central", "slug": "halmstad-central", "code": "Hd"},
-    "vaxjo": {"name": "Växjö", "slug": "vaxjo", "code": "Vö"},
-    "växjö": {"name": "Växjö", "slug": "vaxjo", "code": "Vö"},
-    "kristianstad": {"name": "Kristianstad Central", "slug": "kristianstad-central", "code": "Cr"},
-    "copenhagen": {"name": "København H", "slug": "kobenhavn-h", "code": "Kh"},
-    "kobenhavn": {"name": "København H", "slug": "kobenhavn-h", "code": "Kh"},
-    "copenhague": {"name": "København H", "slug": "kobenhavn-h", "code": "Kh"},
+    "malmo": {"name": "Malmö Central", "slug": "malmo-central", "code": "M", "city_slug": "malmo"},
+    "malmö": {"name": "Malmö Central", "slug": "malmo-central", "code": "M", "city_slug": "malmo"},
+    "stockholm": {"name": "Stockholm Central", "slug": "stockholm-central", "code": "Cst", "city_slug": "stockholm"},
+    "goteborg": {"name": "Göteborg Central", "slug": "goteborg-central", "code": "G", "city_slug": "goteborg"},
+    "göteborg": {"name": "Göteborg Central", "slug": "goteborg-central", "code": "G", "city_slug": "goteborg"},
+    "lund": {"name": "Lund Central", "slug": "lund-central", "code": "Lu", "city_slug": "lund"},
+    "uppsala": {"name": "Uppsala Central", "slug": "uppsala-central", "code": "U", "city_slug": "uppsala"},
+    "helsingborg": {"name": "Helsingborg Central", "slug": "helsingborg-central", "code": "Hb", "city_slug": "helsingborg"},
+    "linkoping": {"name": "Linköping Central", "slug": "linkoping-central", "code": "Lp", "city_slug": "linkoping"},
+    "linköping": {"name": "Linköping Central", "slug": "linkoping-central", "code": "Lp", "city_slug": "linkoping"},
+    "orebro": {"name": "Örebro Central", "slug": "orebro-central", "code": "Ör", "city_slug": "orebro"},
+    "örebro": {"name": "Örebro Central", "slug": "orebro-central", "code": "Ör", "city_slug": "orebro"},
+    "norrkoping": {"name": "Norrköping Central", "slug": "norrkoping-central", "code": "Nr", "city_slug": "norrkoping"},
+    "norrköping": {"name": "Norrköping Central", "slug": "norrkoping-central", "code": "Nr", "city_slug": "norrkoping"},
+    "jonkoping": {"name": "Jönköping Central", "slug": "jonkoping-central", "code": "Jö", "city_slug": "jonkoping"},
+    "jönköping": {"name": "Jönköping Central", "slug": "jonkoping-central", "code": "Jö", "city_slug": "jonkoping"},
+    "umea": {"name": "Umeå Central", "slug": "umea-central", "code": "Uå", "city_slug": "umea"},
+    "umeå": {"name": "Umeå Central", "slug": "umea-central", "code": "Uå", "city_slug": "umea"},
+    "gavle": {"name": "Gävle Central", "slug": "gavle-central", "code": "Gä", "city_slug": "gavle"},
+    "gävle": {"name": "Gävle Central", "slug": "gavle-central", "code": "Gä", "city_slug": "gavle"},
+    "sundsvall": {"name": "Sundsvall Central", "slug": "sundsvall-central", "code": "Suc", "city_slug": "sundsvall"},
+    "karlstad": {"name": "Karlstad Central", "slug": "karlstad-central", "code": "Ks", "city_slug": "karlstad"},
+    "kiruna": {"name": "Kiruna", "slug": "kiruna", "code": "Krn", "city_slug": "kiruna"},
+    "nord-de-la-suede": {"name": "Kiruna", "slug": "kiruna", "code": "Krn", "city_slug": "kiruna"},
+    "nord-de-la-suède": {"name": "Kiruna", "slug": "kiruna", "code": "Krn", "city_slug": "kiruna"},
+    "nord-suede": {"name": "Kiruna", "slug": "kiruna", "code": "Krn", "city_slug": "kiruna"},
+    "laponie": {"name": "Kiruna", "slug": "kiruna", "code": "Krn", "city_slug": "kiruna"},
+    "laponie-suedoise": {"name": "Kiruna", "slug": "kiruna", "code": "Krn", "city_slug": "kiruna"},
+    "laponie-suédoise": {"name": "Kiruna", "slug": "kiruna", "code": "Krn", "city_slug": "kiruna"},
+    "abisko": {"name": "Abisko Östra", "slug": "abisko-ostra", "code": "Ak", "city_slug": "abisko"},
+    "gallivare": {"name": "Gällivare", "slug": "gallivare", "code": "Gv", "city_slug": "gallivare"},
+    "gällivare": {"name": "Gällivare", "slug": "gallivare", "code": "Gv", "city_slug": "gallivare"},
+    "narvik": {"name": "Narvik", "slug": "narvik", "code": "Nk", "city_slug": "narvik"},
+    "boden": {"name": "Boden Central", "slug": "boden-central", "code": "Bdn", "city_slug": "boden"},
+    "lulea": {"name": "Luleå Central", "slug": "lulea-central", "code": "Le", "city_slug": "lulea"},
+    "luleå": {"name": "Luleå Central", "slug": "lulea-central", "code": "Le", "city_slug": "lulea"},
+    "ostersund": {"name": "Östersund Central", "slug": "ostersund-central", "code": "Ös", "city_slug": "ostersund"},
+    "östersund": {"name": "Östersund Central", "slug": "ostersund-central", "code": "Ös", "city_slug": "ostersund"},
+    "are": {"name": "Åre", "slug": "are", "code": "Åre", "city_slug": "are"},
+    "åre": {"name": "Åre", "slug": "are", "code": "Åre", "city_slug": "are"},
+    "halmstad": {"name": "Halmstad Central", "slug": "halmstad-central", "code": "Hd", "city_slug": "halmstad"},
+    "vaxjo": {"name": "Växjö", "slug": "vaxjo", "code": "Vö", "city_slug": "vaxjo"},
+    "växjö": {"name": "Växjö", "slug": "vaxjo", "code": "Vö", "city_slug": "vaxjo"},
+    "kristianstad": {"name": "Kristianstad Central", "slug": "kristianstad-central", "code": "Cr", "city_slug": "kristianstad"},
+    "copenhagen": {"name": "København H", "slug": "kobenhavn-h", "code": "Kh", "city_slug": "copenhagen"},
+    "kobenhavn": {"name": "København H", "slug": "kobenhavn-h", "code": "Kh", "city_slug": "copenhagen"},
+    "copenhague": {"name": "København H", "slug": "kobenhavn-h", "code": "Kh", "city_slug": "copenhagen"},
 }
 
 FRENCH_CITIES = {
-    "paris": {"name": "Paris (Toutes gares)", "slug": "paris-toutes-gares-intramuros", "code": "FRPAR"},
-    "lyon": {"name": "Lyon (Toutes gares)", "slug": "lyon-toutes-gares", "code": "FRLYS"},
-    "marseille": {"name": "Marseille Saint-Charles", "slug": "marseille-saint-charles", "code": "FRMSC"},
-    "bordeaux": {"name": "Bordeaux Saint-Jean", "slug": "bordeaux-saint-jean", "code": "FRBOJ"},
-    "lille": {"name": "Lille (Toutes gares)", "slug": "lille-toutes-gares", "code": "FRLIL"},
-    "toulouse": {"name": "Toulouse Matabiau", "slug": "toulouse-matabiau", "code": "FRTOU"},
-    "strasbourg": {"name": "Strasbourg", "slug": "strasbourg", "code": "FRSTG"},
-    "nantes": {"name": "Nantes", "slug": "nantes", "code": "FRNTE"},
-    "rennes": {"name": "Rennes", "slug": "rennes", "code": "FRRNS"},
-    "montpellier": {"name": "Montpellier Saint-Roch", "slug": "montpellier-saint-roch", "code": "FRMPL"},
-    "nice": {"name": "Nice Ville", "slug": "nice-ville", "code": "FRNCE"},
-    "grenoble": {"name": "Grenoble", "slug": "grenoble", "code": "FRGNB"},
-    "avignon": {"name": "Avignon TGV", "slug": "avignon-tgv", "code": "FRXZN"},
-    "dijon": {"name": "Dijon Ville", "slug": "dijon-ville", "code": "FRDIJ"},
-    "angers": {"name": "Angers Saint-Laud", "slug": "angers-saint-laud", "code": "FRANE"},
-    "toulon": {"name": "Toulon", "slug": "toulon", "code": "FRTLN"},
-    "reims": {"name": "Reims", "slug": "reims", "code": "FRRHE"},
+    "paris": {"name": "Paris (Toutes gares)", "slug": "paris-toutes-gares-intramuros", "code": "FRPAR", "city_slug": "paris"},
+    "lyon": {"name": "Lyon (Toutes gares)", "slug": "lyon-toutes-gares", "code": "FRLYS", "city_slug": "lyon"},
+    "marseille": {"name": "Marseille Saint-Charles", "slug": "marseille-saint-charles", "code": "FRMSC", "city_slug": "marseille"},
+    "bordeaux": {"name": "Bordeaux Saint-Jean", "slug": "bordeaux-saint-jean", "code": "FRBOJ", "city_slug": "bordeaux"},
+    "lille": {"name": "Lille (Toutes gares)", "slug": "lille-toutes-gares", "code": "FRLIL", "city_slug": "lille"},
+    "toulouse": {"name": "Toulouse Matabiau", "slug": "toulouse-matabiau", "code": "FRTOU", "city_slug": "toulouse"},
+    "strasbourg": {"name": "Strasbourg", "slug": "strasbourg", "code": "FRSTG", "city_slug": "strasbourg"},
+    "nantes": {"name": "Nantes", "slug": "nantes", "code": "FRNTE", "city_slug": "nantes"},
+    "rennes": {"name": "Rennes", "slug": "rennes", "code": "FRRNS", "city_slug": "rennes"},
+    "montpellier": {"name": "Montpellier Saint-Roch", "slug": "montpellier-saint-roch", "code": "FRMPL", "city_slug": "montpellier"},
+    "nice": {"name": "Nice Ville", "slug": "nice-ville", "code": "FRNCE", "city_slug": "nice"},
+    "grenoble": {"name": "Grenoble", "slug": "grenoble", "code": "FRGNB", "city_slug": "grenoble"},
+    "avignon": {"name": "Avignon TGV", "slug": "avignon-tgv", "code": "FRXZN", "city_slug": "avignon"},
+    "dijon": {"name": "Dijon Ville", "slug": "dijon-ville", "code": "FRDIJ", "city_slug": "dijon"},
+    "angers": {"name": "Angers Saint-Laud", "slug": "angers-saint-laud", "code": "FRANE", "city_slug": "angers"},
+    "toulon": {"name": "Toulon", "slug": "toulon", "code": "FRTLN", "city_slug": "toulon"},
+    "reims": {"name": "Reims", "slug": "reims", "code": "FRRHE", "city_slug": "reims"},
 }
 
 
@@ -103,11 +103,22 @@ def slugify(text: str) -> str:
     return re.sub(r'[^a-zA-Z0-9]+', '-', normalized.lower()).strip('-')
 
 
+def get_clean_city_slug(station_norm: Dict[str, str]) -> str:
+    """Extrait le slug de ville épuré (ex: 'malmo-central' -> 'malmo')."""
+    if "city_slug" in station_norm and station_norm["city_slug"]:
+        return station_norm["city_slug"]
+    slug = station_norm.get("slug", "")
+    for s in ["-toutes-gares-intramuros", "-toutes-gares", "-central", "-gare-de-lyon", "-saint-charles", "-saint-jean", "-matabiau", "-ville", "-ostra", "-h", "-tgv"]:
+        slug = slug.replace(s, "")
+    return slug.strip("-") or "station"
+
+
 class TransportService:
     """Service d'intelligence ferroviaire multi-pays (France & Suède)."""
 
     def __init__(self):
         self._monitored_trains: Dict[str, Dict[str, Any]] = {}
+        self._last_search: Optional[Dict[str, Any]] = None
 
     def detect_country(self, origin: str, destination: str, pays: str = "auto") -> str:
         """Détecte si le trajet concerne la Suède ('SE'), la France ('FR') ou un pays spécifique."""
@@ -133,20 +144,30 @@ class TransportService:
         return "FR"
 
     def normalize_station(self, station: str, country: str) -> Dict[str, str]:
-        """Normalise le nom, slug et code de la gare selon le pays."""
+        """Normalise le nom, slug, code et city_slug de la gare selon le pays."""
         clean = (station or "").strip()
         slug = slugify(clean)
 
         if country == "SE":
             for key, data in SWEDISH_CITIES.items():
                 if key in slug or slug in key:
-                    return {"name": data["name"], "slug": data["slug"], "code": data["code"]}
-            return {"name": clean.title(), "slug": slug, "code": slug[:3].upper()}
+                    return {
+                        "name": data["name"],
+                        "slug": data["slug"],
+                        "code": data["code"],
+                        "city_slug": data.get("city_slug", key)
+                    }
+            return {"name": clean.title(), "slug": slug, "code": slug[:3].upper(), "city_slug": slug.split("-")[0]}
         else:
             for key, data in FRENCH_CITIES.items():
                 if key in slug or slug in key:
-                    return {"name": data["name"], "slug": data["slug"], "code": data["code"]}
-            return {"name": clean.title(), "slug": slug, "code": slug[:5].upper()}
+                    return {
+                        "name": data["name"],
+                        "slug": data["slug"],
+                        "code": data["code"],
+                        "city_slug": data.get("city_slug", key)
+                    }
+            return {"name": clean.title(), "slug": slug, "code": slug[:5].upper(), "city_slug": slug.split("-")[0]}
 
     def parse_travel_date(self, date_str: str) -> str:
         """Convertit une expression de date (ex: 'demain', 'semaine prochaine', '2026-09-28') en format YYYY-MM-DD."""
@@ -238,13 +259,26 @@ class TransportService:
 
         outward_datetime = f"{date_iso}T{time_hhmm}:00"
 
+        orig_city = get_clean_city_slug(orig_norm)
+        dest_city = get_clean_city_slug(dest_norm)
+
         if country == "SE":
-            # Deep links pour la Suède (SJ, Skånetrafiken, Trafikverket, Google Transit)
-            # Jamais d'anciennes URL en .html (qui renvoient 404/403)
-            sj_search_url = f"https://www.sj.se/en?from={quote_plus(orig_norm['name'])}&to={quote_plus(dest_norm['name'])}&date={date_iso}"
+            # Liens directs et exploitables immédiatement pour réservation :
+            # 1. Omio (Partenaire agréé Suède / SJ) : Affiche directement les trains disponibles et le bouton 'Réserver'
+            omio_url = f"https://www.omio.fr/trains/{orig_city}-{dest_city}"
+
+            # 2. Trainline : Comparateur et réservation européenne
+            trainline_url = f"https://www.thetrainline.com/fr/billets-de-train/{orig_norm['slug']}-a-{dest_norm['slug']}"
+
+            # 3. Google Maps Transit : Horaires précis en direct et deep links revendeurs
+            google_transit_url = (
+                f"https://www.google.com/maps/dir/?api=1&"
+                f"origin={quote_plus(orig_norm['name'])}&destination={quote_plus(dest_norm['name'])}&travelmode=transit"
+            )
+
+            # 4. Portail officiel SJ
             sj_portal_url = "https://www.sj.se/en"
-            sj_direct_route_url = "https://www.sj.se/kop-resa"
-            sj_night_train_url = "https://www.sj.se/en/travel-info/sj-night-train.html"
+
             trafikverket_url = (
                 f"https://www.trafikverket.se/trafikinformation/tag/?"
                 f"From={quote_plus(orig_norm['name'])}&To={quote_plus(dest_norm['name'])}"
@@ -253,19 +287,10 @@ class TransportService:
                 f"https://www.skanetrafiken.se/sok-resa/?"
                 f"from={quote_plus(orig_norm['name'])}&to={quote_plus(dest_norm['name'])}"
             )
-            google_transit_url = (
-                f"https://www.google.com/maps/dir/?api=1&"
-                f"origin={quote_plus(orig_norm['name'])}&destination={quote_plus(dest_norm['name'])}&travelmode=transit"
-            )
             rome2rio_url = f"https://www.rome2rio.com/fr/map/{quote_plus(orig_norm['name'])}/{quote_plus(dest_norm['name'])}"
 
-            # Pour un trajet vers le nord / train de nuit, pointer prioritairement vers la page nuit ou portail SJ
-            if any(k in dest_norm["slug"] for k in ["kiruna", "abisko", "narvik", "gallivare", "boden", "lulea"]):
-                primary_url = sj_night_train_url
-            else:
-                primary_url = sj_search_url
-
-            primary_title = f"SJ : Trajet {orig_norm['name']} → {dest_norm['name']} ({date_iso})"
+            primary_url = omio_url
+            primary_title = f"Réservation SJ / Omio : {orig_norm['name']} → {dest_norm['name']} ({date_iso})"
 
             return {
                 "country": "SE",
@@ -273,13 +298,14 @@ class TransportService:
                 "primary_title": primary_title,
                 "operator": "SJ",
                 "links": {
-                    "sj_direct": sj_search_url,
+                    "omio_booking": omio_url,
+                    "trainline_booking": trainline_url,
                     "sj_portal": sj_portal_url,
-                    "sj_booking": sj_direct_route_url,
-                    "sj_night_train": sj_night_train_url,
+                    "sj_direct": omio_url,
+                    "sj_booking": trainline_url,
+                    "google_transit": google_transit_url,
                     "trafikverket_live": trafikverket_url,
                     "skanetrafiken": skanetrafiken_url,
-                    "google_transit": google_transit_url,
                     "rome2rio": rome2rio_url,
                 },
                 "origin_norm": orig_norm,
@@ -450,8 +476,8 @@ class TransportService:
                     "prix": base_price,
                     "quai": f"Voie {i + 2} (Spår {i + 2})",
                     "statut": "À l'heure",
-                    "deep_link": deep_links["links"]["sj_direct"],
-                    "booking_link": deep_links["links"]["sj_booking"],
+                    "deep_link": deep_links["links"].get("sj_direct", deep_links.get("primary_url", "")),
+                    "booking_link": deep_links["links"].get("sj_booking", deep_links.get("primary_url", "")),
                 })
             return options
 
@@ -547,9 +573,19 @@ class TransportService:
             seg2_dep = "18:20"
             seg2_arr = "09:15"  # +1 jour
 
-            url_seg1 = f"https://www.sj.se/en?from={quote_plus(orig_norm['name'])}&to=Stockholm+Central&date={date_iso}"
-            url_seg2 = f"https://www.sj.se/en?from=Stockholm+Central&to={quote_plus(dest_norm['name'])}&date={date_iso}"
-            url_night = "https://www.sj.se/en/travel-info/sj-night-train.html"
+            orig_city = get_clean_city_slug(orig_norm)
+            dest_city = get_clean_city_slug(dest_norm)
+
+            url_seg1_omio = f"https://www.omio.fr/trains/{orig_city}-stockholm"
+            url_seg1_trainline = f"https://www.thetrainline.com/fr/billets-de-train/{orig_norm['slug']}-a-stockholm-central"
+            url_seg1_transit = f"https://www.google.com/maps/dir/?api=1&origin={quote_plus(orig_norm['name'])}&destination=Stockholm+Central&travelmode=transit"
+
+            url_seg2_omio = f"https://www.omio.fr/trains/stockholm-{dest_city}"
+            url_seg2_trainline = f"https://www.thetrainline.com/fr/billets-de-train/stockholm-central-a-{dest_norm['slug']}"
+            url_seg2_transit = f"https://www.google.com/maps/dir/?api=1&origin=Stockholm+Central&destination={quote_plus(dest_norm['name'])}&travelmode=transit"
+
+            booking_urls = [url_seg1_omio, url_seg2_omio]
+            primary_url = url_seg1_omio
 
             return {
                 "is_multi_segment": True,
@@ -560,8 +596,8 @@ class TransportService:
                 "hub": "Stockholm Central",
                 "total_duration": "22h10",
                 "prix_total": "1 385 SEK (~121 €)",
-                "primary_deep_link": url_night,
-                "primary_title": f"Enchaînement SJ : {orig_norm['name']} → Stockholm → {dest_norm['name']} ({date_iso})",
+                "primary_deep_link": primary_url,
+                "primary_title": f"Enchaînement Billets Train : {orig_norm['name']} → Stockholm → {dest_norm['name']} ({date_iso})",
                 "segments": [
                     {
                         "segment_index": 1,
@@ -574,7 +610,10 @@ class TransportService:
                         "duree": "4h30",
                         "quai": "Voie 4 (Spår 4)",
                         "prix": "495 SEK (~43 €)",
-                        "url_reservation": url_seg1,
+                        "url_reservation": url_seg1_omio,
+                        "url_trainline": url_seg1_trainline,
+                        "url_google_transit": url_seg1_transit,
+                        "url_sj": "https://www.sj.se/en",
                         "operateur": "SJ",
                         "description": f"Billet 1/2 : Train grande vitesse de jour {orig_norm['name']} vers Stockholm Central."
                     },
@@ -589,8 +628,10 @@ class TransportService:
                         "duree": "14h55",
                         "quai": "Voie 10 (Spår 10)",
                         "prix": "890 SEK (~78 €)",
-                        "url_reservation": url_night,
-                        "url_booking_direct": url_seg2,
+                        "url_reservation": url_seg2_omio,
+                        "url_trainline": url_seg2_trainline,
+                        "url_google_transit": url_seg2_transit,
+                        "url_sj": "https://www.sj.se/en",
                         "operateur": "SJ",
                         "description": f"Billet 2/2 : Train de nuit avec couchettes / lits de Stockholm vers {dest_norm['name']}."
                     }
@@ -602,13 +643,24 @@ class TransportService:
                     "heure_fin": seg2_dep,
                     "conseil": "Escale confortable à Stockholm Central pour changer de quai, déposer les bagages et dîner sereinement."
                 },
-                "booking_urls": [url_seg1, url_night],
+                "booking_urls": booking_urls,
             }
 
         elif is_sweden_southbound:
             # Enchaînement Nord -> Sud : Train de nuit SJ 93 depuis Kiruna / Nord vers Stockholm, puis SJ Snabbtåg vers Malmö
-            url_seg1 = "https://www.sj.se/en/travel-info/sj-night-train.html"
-            url_seg2 = f"https://www.sj.se/en?from=Stockholm+Central&to={quote_plus(dest_norm['name'])}&date={date_iso}"
+            orig_city = get_clean_city_slug(orig_norm)
+            dest_city = get_clean_city_slug(dest_norm)
+
+            url_seg1_omio = f"https://www.omio.fr/trains/{orig_city}-stockholm"
+            url_seg1_trainline = f"https://www.thetrainline.com/fr/billets-de-train/{orig_norm['slug']}-a-stockholm-central"
+            url_seg1_transit = f"https://www.google.com/maps/dir/?api=1&origin={quote_plus(orig_norm['name'])}&destination=Stockholm+Central&travelmode=transit"
+
+            url_seg2_omio = f"https://www.omio.fr/trains/stockholm-{dest_city}"
+            url_seg2_trainline = f"https://www.thetrainline.com/fr/billets-de-train/stockholm-central-a-{dest_norm['slug']}"
+            url_seg2_transit = f"https://www.google.com/maps/dir/?api=1&origin=Stockholm+Central&destination={quote_plus(dest_norm['name'])}&travelmode=transit"
+
+            booking_urls = [url_seg1_omio, url_seg2_omio]
+            primary_url = url_seg1_omio
 
             return {
                 "is_multi_segment": True,
@@ -619,8 +671,8 @@ class TransportService:
                 "hub": "Stockholm Central",
                 "total_duration": "22h00",
                 "prix_total": "1 385 SEK (~121 €)",
-                "primary_deep_link": url_seg1,
-                "primary_title": f"Enchaînement SJ : {orig_norm['name']} → Stockholm → {dest_norm['name']} ({date_iso})",
+                "primary_deep_link": primary_url,
+                "primary_title": f"Enchaînement Billets Train : {orig_norm['name']} → Stockholm → {dest_norm['name']} ({date_iso})",
                 "segments": [
                     {
                         "segment_index": 1,
@@ -633,7 +685,10 @@ class TransportService:
                         "duree": "14h50",
                         "quai": "Voie 1 (Spår 1)",
                         "prix": "890 SEK (~78 €)",
-                        "url_reservation": url_seg1,
+                        "url_reservation": url_seg1_omio,
+                        "url_trainline": url_seg1_trainline,
+                        "url_google_transit": url_seg1_transit,
+                        "url_sj": "https://www.sj.se/en",
                         "operateur": "SJ",
                         "description": f"Billet 1/2 : Train de nuit depuis {orig_norm['name']} vers Stockholm Central."
                     },
@@ -648,7 +703,10 @@ class TransportService:
                         "duree": "4h30",
                         "quai": "Voie 4 (Spår 4)",
                         "prix": "495 SEK (~43 €)",
-                        "url_reservation": url_seg2,
+                        "url_reservation": url_seg2_omio,
+                        "url_trainline": url_seg2_trainline,
+                        "url_google_transit": url_seg2_transit,
+                        "url_sj": "https://www.sj.se/en",
                         "operateur": "SJ",
                         "description": f"Billet 2/2 : Train grande vitesse de jour Stockholm Central vers {dest_norm['name']}."
                     }
@@ -660,7 +718,7 @@ class TransportService:
                     "heure_fin": "11:30",
                     "conseil": "Escale à Stockholm Central pour petit-déjeuner et changer de voie."
                 },
-                "booking_urls": [url_seg1, url_seg2],
+                "booking_urls": booking_urls,
             }
 
         return None
@@ -721,7 +779,7 @@ class TransportService:
                     description_trajet=f"Enchaînement {orig_norm['name']} → {dest_norm['name']}"
                 )
 
-            return {
+            result_multi = {
                 "status": "success",
                 "country": country,
                 "origin": orig_norm["name"],
@@ -742,6 +800,18 @@ class TransportService:
                 "all_links": all_links,
                 "reservation_result": reservation_result
             }
+            self._last_search = {
+                "country": country,
+                "origin": orig_norm["name"],
+                "destination": dest_norm["name"],
+                "date": date_iso,
+                "time": time_hhmm,
+                "is_multi_segment": True,
+                "booking_urls": multi_seg["booking_urls"],
+                "segments": multi_seg["segments"],
+                "description": f"Enchaînement {orig_norm['name']} → {dest_norm['name']}"
+            }
+            return result_multi
 
         # 2. Cas trajet direct standard
         deep_links = self.generate_deep_links(origine, destination, date_iso, time_hhmm, country)
@@ -766,7 +836,7 @@ class TransportService:
                 description_trajet=f"Trajet direct {orig_norm['name']} → {dest_norm['name']}"
             )
 
-        return {
+        result_single = {
             "status": "success",
             "country": country,
             "origin": deep_links["origin_norm"]["name"],
@@ -781,6 +851,18 @@ class TransportService:
             "all_links": deep_links["links"],
             "reservation_result": reservation_result
         }
+        self._last_search = {
+            "country": country,
+            "origin": deep_links["origin_norm"]["name"],
+            "destination": deep_links["destination_norm"]["name"],
+            "date": date_iso,
+            "time": time_hhmm,
+            "is_multi_segment": False,
+            "booking_urls": [best_option.get("booking_link") or deep_links["primary_url"]],
+            "segments": [best_option],
+            "description": f"Trajet {deep_links['origin_norm']['name']} → {deep_links['destination_norm']['name']}"
+        }
+        return result_single
 
     # ─── Surveillance en Temps Réel (n8n Webhook) ─────────────────────────────
 
@@ -845,10 +927,14 @@ class TransportService:
         url_trajet: Optional[str] = None,
         urls_trajets: Optional[List[str]] = None,
         segments: Optional[List[Dict[str, Any]]] = None,
-        description_trajet: Optional[str] = None
+        description_trajet: Optional[str] = None,
+        origine: Optional[str] = None,
+        destination: Optional[str] = None,
+        date_depart: Optional[str] = None
     ) -> Dict[str, Any]:
         """Prépare la réservation sur le PC local Windows via jarvis_local_agent ou directement.
         Ouvre Chrome directement sur la page du trajet ou de chaque segment avec le compte connecté.
+        Si les URLs sont omises, reprend automatiquement le dernier trajet recherché en mémoire.
         Respecte STRICTEMENT le garde-fou bancaire : aucune validation d'achat automatique,
         Pierre valide lui-même son règlement.
         """
@@ -858,32 +944,72 @@ class TransportService:
         if op in ("se", "suede", "suède"):
             op = "sj"
 
-        # Compiler la liste des URLs à ouvrir
-        targets: List[str] = []
+        # 1. Si origine et destination sont fournies directement, résoudre le trajet
+        if origine and destination and not urls_trajets and not url_trajet:
+            cntry = self.detect_country(origine, destination, op)
+            dt = self.parse_travel_date(date_depart or "aujourd'hui")
+            ms = self.detect_multi_segment_route(origine, destination, dt, "09:00", cntry)
+            if ms:
+                urls_trajets = ms["booking_urls"]
+                segments = ms["segments"]
+                description_trajet = description_trajet or f"Enchaînement {ms['origin']} → {ms['destination']}"
+                op = "sj" if cntry == "SE" else "sncf"
+            else:
+                dl = self.generate_deep_links(origine, destination, dt, "09:00", cntry)
+                urls_trajets = [dl["primary_url"]]
+                description_trajet = description_trajet or f"Trajet {dl['origin_norm']['name']} → {dl['destination_norm']['name']}"
+                op = "sj" if cntry == "SE" else "sncf"
+
+        # 2. Si aucune URL ni segment n'est fourni, récupérer depuis le dernier trajet recherché
+        if not urls_trajets and not url_trajet and not segments and self._last_search:
+            urls_trajets = self._last_search.get("booking_urls")
+            segments = self._last_search.get("segments")
+            description_trajet = description_trajet or self._last_search.get("description")
+            if op in ("auto", "sncf") and self._last_search.get("country") == "SE":
+                op = "sj"
+
+        # Compiler et assainir la liste des URLs à ouvrir
+        raw_targets: List[str] = []
         if urls_trajets:
             for u in urls_trajets:
                 u_str = (u or "").strip()
                 if u_str:
-                    if not u_str.startswith("http://") and not u_str.startswith("https://"):
-                        u_str = "https://" + u_str
-                    targets.append(u_str)
+                    raw_targets.append(u_str)
 
-        if not targets and url_trajet:
+        if not raw_targets and url_trajet:
             u_clean = url_trajet.strip()
-            if not u_clean.startswith("http://") and not u_clean.startswith("https://"):
-                u_clean = "https://" + u_clean
-            targets.append(u_clean)
+            if u_clean:
+                raw_targets.append(u_clean)
 
-        if not targets and segments:
+        if not raw_targets and segments:
             for s in segments:
                 u_s = s.get("url_reservation") or s.get("booking_link") or s.get("deep_link")
                 if u_s:
-                    if not u_s.startswith("http://") and not u_s.startswith("https://"):
-                        u_s = "https://" + u_s
-                    targets.append(u_s)
+                    raw_targets.append(u_s.strip())
+
+        # Assainissement des URLs : remplacer les URLs d'accueil ou articles non fonctionnels par les vraies pages de réservation
+        targets: List[str] = []
+        for t in raw_targets:
+            t_clean = t
+            # Si c'est l'URL d'accueil ou article nuit SJ, remplacer par le lien Omio/Trainline de l'itinéraire correspondant
+            if ("sj.se/en?from=" in t_clean or "travel-info/sj-night-train" in t_clean or t_clean in ("https://www.sj.se/en", "https://www.sj.se")):
+                if self._last_search and self._last_search.get("country") == "SE":
+                    orig_c = slugify(self._last_search.get("origin", "malmo")).split("-")[0]
+                    dest_c = slugify(self._last_search.get("destination", "stockholm")).split("-")[0]
+                    t_clean = f"https://www.omio.fr/trains/{orig_c}-{dest_c}"
+                else:
+                    t_clean = "https://www.omio.fr/trains/malmo-stockholm"
+
+            if not t_clean.startswith("http://") and not t_clean.startswith("https://"):
+                t_clean = "https://" + t_clean
+            if t_clean not in targets:
+                targets.append(t_clean)
 
         if not targets:
-            targets = ["https://www.sj.se/en" if op == "sj" else "https://www.sncf-connect.com"]
+            if op == "sj":
+                targets = ["https://www.omio.fr/trains/malmo-stockholm"]
+            else:
+                targets = ["https://www.sncf-connect.com"]
 
         n_trains = len(targets)
         train_label = f"{n_trains} billets de train" if n_trains > 1 else "billet de train"
@@ -896,7 +1022,8 @@ class TransportService:
                 operateur=op,
                 urls=targets,
                 url=targets[0],
-                description=description_trajet
+                segments=segments or (self._last_search.get("segments") if self._last_search else []),
+                description=description_trajet or (self._last_search.get("description") if self._last_search else "")
             )
             return {
                 "status": "success",
@@ -906,7 +1033,7 @@ class TransportService:
                 "local_agent_result": res,
                 "message": (
                     f"Les {train_label} ({op.upper()}) ont été ouverts dans Google Chrome sur votre écran Windows. "
-                    f"Vos trajets sont préremplis. Il ne vous reste plus qu'à sélectionner vos places/couchettes et finaliser l'achat en toute sécurité."
+                    f"Vos pages de réservation directes sont prêtes : sélectionnez vos places/couchettes et finalisez l'achat en toute sécurité."
                 )
             }
 

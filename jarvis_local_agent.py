@@ -362,14 +362,15 @@ async def agent_loop():
                         elif action == "prepare_train_checkout":
                             urls = params.get("urls") or ([params.get("url")] if params.get("url") else [])
                             operateur = params.get("operateur", "sncf")
+                            custom_desc = params.get("description", "")
                             open_res = execute_open_browsers(urls, load_extensions=True)
                             n_trains = len(urls)
-                            label_trains = f"{n_trains} billets de train ({operateur.upper()})" if n_trains > 1 else f"Trajet {operateur.upper()}"
+                            label_trains = custom_desc if custom_desc else (f"{n_trains} billets de train ({operateur.upper()})" if n_trains > 1 else f"Trajet {operateur.upper()}")
                             result = {
                                 "status": open_res.get("status", "success"),
                                 "operateur": operateur,
                                 "urls": urls,
-                                "message": f"{label_trains} ouvert(s) dans Chrome sur votre écran Windows. Vos trajets sont préremplis, il ne vous reste plus qu'à sélectionner vos places/couchettes et finaliser l'achat en toute sécurité."
+                                "message": f"{label_trains} ouvert(s) dans votre navigateur. Vos trajets sont préremplis avec les options disponibles, il ne vous reste plus qu'à choisir vos places/couchettes et payer."
                             }
                         elif action == "prepare_web_cart_or_checkout":
                             try:
