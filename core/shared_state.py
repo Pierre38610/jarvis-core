@@ -251,6 +251,9 @@ def get_tool_metadata(name: str, args: dict = None) -> dict:
     elif name == "reserver_billet_train_local":
         op = (args.get("operateur") or "SNCF").upper()
         return {"state": "shopping", "msg": f"Préparation réservation {op} sur PC...", "task": f"Réservation {op}", "engine": "jarvis_local_agent", "model": "Chrome Local Windows", "api_type": "free", "api_label": "Local GUI"}
+    elif name == "consulter_architecture_jarvis":
+        s = args.get("section") or args.get("sujet") or "Spécifications"
+        return {"state": "system", "msg": f"Consultation architecture ({s})...", "task": f"Architecture {s}", "engine": "Architecture Service", "model": "ARCHITECTURE_COMPLETE_JARVIS.md", "api_type": "free", "api_label": "Local Spec"}
     elif name in ("check_console_errors", "get_system_status", "launch_application", "list_chrome_extensions"):
         return {"state": "system", "msg": "Diagnostic et maintenance système...", "task": "Diagnostic système", "engine": "OS Monitor", "model": "System Telemetry", "api_type": "free", "api_label": "Service Local"}
     else:

@@ -23,6 +23,7 @@
    - 7.8. Automatisation des Processus Externes & Pôle Documentaire (n8n Community)
    - 7.9. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
    - 7.10. Système Intelligent Ferroviaire & Mobilité (France & Suède)
+   - 7.11. Connaissance Architecturale Dynamique & Auto-évaluation (ARCHITECTURE_COMPLETE_JARVIS.md)
 8. [Matrice des Endpoints API REST & Contrats WebSockets](#8-matrice-des-endpoints-api-rest--contrats-websockets)
 9. [Interface Utilisateur, PWA & HUD Mobile](#9-interface-utilisateur-pwa--hud-mobile)
 10. [Analyse Critique : Forces, Dette Technique & Pistes d'Amélioration](#10-analyse-critique--forces-dette-technique--pistes-damélioration)
@@ -408,6 +409,22 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
      - Délégué à `jarvis_local_agent.py` sur le PC Windows de Pierre via le canal WebSocket `/ws/local-agent` (action `prepare_train_checkout`).
      - Ouvre Google Chrome avec la session connectée de Pierre, charge le trajet prérempli jusqu'à l'écran de sélection de place / paiement.
      - **Garde-fou bancaire absolu** : aucune validation d'achat automatique, Pierre valide lui-même son règlement.
+
+---
+
+### 7.11. Connaissance Architecturale Dynamique & Auto-évaluation (ARCHITECTURE_COMPLETE_JARVIS.md)
+- **Fichiers** : `services/architecture_service.py`, `services/unified_memory.py`, `services/memory_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`.
+- **Outils exposés** : `consulter_architecture_jarvis`.
+- **Capacités & Architecture** :
+  1. **Hot-Reload Dynamique par Horodatage (`mtime`)** :
+     - Le service `ArchitectureKnowledgeService` surveille l'horodatage de dernière modification (`os.path.getmtime`) du fichier maître `ARCHITECTURE_COMPLETE_JARVIS.md`.
+     - À chaque consultation ou nouveau démarrage de session vocale ou écrite, si le document a été modifié sur le disque, il est rechargé et ré-analysé en mémoire vive en moins de 5 ms sans redémarrage de serveur.
+  2. **Injection Systémique dans le Prompt de Session & Mémoire** :
+     - Une synthèse structurée et vivante (identité Stark, relation d'égal à égal, topologie hybride Cloud VPS + PC local Windows, catalogue des 10 capacités, 5 garde-fous inviolables) est automatiquement injectée au démarrage dans `_build_system_instruction()` et `unified_memory_manager.build_live_context_prompt()`.
+     - Garantit que Jarvis a conscience en temps réel de ce qu'il est, comment il fonctionne et ce dont il est capable ou non.
+  3. **Outil de Consultation Interactive (`consulter_architecture_jarvis`)** :
+     - Permet à Jarvis d'interroger à tout moment des chapitres spécifiques (ex: section `2` topologie, section `7.4` Deezer, section `8` endpoints) ou de rechercher par mots-clés dans les spécifications techniques complètes.
+     - Fournit une réponse exacte et documentée lorsque Pierre l'interroge sur sa stack technique ou ses capacités.
 
 ---
 

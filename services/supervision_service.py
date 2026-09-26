@@ -191,6 +191,16 @@ class SupervisionService:
                 "cost_est": "0.00 $",
                 "active": False,
                 "description": "Transfert direct d'ebooks vers la liseuse par e-mail ou USB"
+            },
+            "consulter_architecture_jarvis": {
+                "name": "Architecture & Capacités Système",
+                "tool": "consulter_architecture_jarvis",
+                "model": "ARCHITECTURE_COMPLETE_JARVIS.md",
+                "api_type": "local",
+                "api_label": "Service Local",
+                "cost_est": "0.00 $",
+                "active": False,
+                "description": "Consultation dynamique du document de référence d'architecture"
             }
         }
         self._tracked_windows: List[Dict[str, Any]] = []

@@ -756,6 +756,34 @@ def get_tools_list() -> list[types.Tool]:
                         required=["operateur", "url_trajet"]
                     )
                 ),
+                types.FunctionDeclaration(
+                    name="consulter_architecture_jarvis",
+                    description=(
+                        "CONSULTATION DE L'ARCHITECTURE ET DES CAPACITÉS SYSTÈME (ARCHITECTURE_COMPLETE_JARVIS.md) : "
+                        "Accède en temps réel au document d'architecture officiel et complet de J.A.R.V.I.S. (rechargé dynamiquement). "
+                        "Permet de vérifier : "
+                        "1) L'infrastructure technique (VPS Oracle, Docker, Redis, Postgres, Qdrant, n8n, tunnels Cloudflare), "
+                        "2) Le rôle du PC local Windows (jarvis_local_agent, profils Chrome, applications, ports Deezer), "
+                        "3) Le catalogue exhaustif des capacités et outils disponibles, "
+                        "4) Les limites strictes et garde-fous (interdiction paiement auto, interdiction téléchargement sans accord, etc.), "
+                        "5) Les endpoints REST et WebSockets. "
+                        "Utilise cet outil dès que Pierre te demande comment tu fonctionnes, ce que tu es, si tu es capable de faire quelque chose, "
+                        "ou souhaite des détails techniques sur ton infrastructure."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "sujet": types.Schema(
+                                type="STRING",
+                                description="Sujet ou mot-clé recherché (ex: 'infrastructure', 'docker', 'mémoire', 'deezer', 'antigravity', 'limites', 'endpoints', 'stremio')"
+                            ),
+                            "section": types.Schema(
+                                type="STRING",
+                                description="Titre ou numéro de section précis si connu (ex: '1', '2', '3', '7', '7.1', '8', '10')"
+                            ),
+                        }
+                    )
+                ),
             ]
         )
     ]

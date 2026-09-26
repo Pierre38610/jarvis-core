@@ -1835,6 +1835,30 @@ async def dispatch_tool(
             )
         }
 
+    # ─── consulter_architecture_jarvis ─────────────────────────────────────────
+    elif name == "consulter_architecture_jarvis":
+        from services.architecture_service import architecture_service
+        sujet = args.get("sujet")
+        section = args.get("section")
+
+        target_desc = f"Section {section}" if section else (sujet or "Vue d'ensemble")
+        await websocket.send_text(json.dumps({
+            "type": "jarvis_announcement",
+            "text": f"Consultation de l'architecture système : {target_desc}",
+            "voice": False
+        }))
+
+        res = architecture_service.lookup(query=sujet, section=section)
+
+        return {
+            "status": "completed",
+            "result": res,
+            "instruction_to_jarvis": (
+                "Voici les spécifications exactes extraites de ton document d'architecture officiel (ARCHITECTURE_COMPLETE_JARVIS.md). "
+                "Réponds fidèlement, précisément et naturellement à Pierre avec ta voix Aoede en synthétisant les points demandés."
+            )
+        }
+
     # ─── Outil inconnu ─────────────────────────────────────────────────────────
     else:
         return {"status": "error", "message": f"Outil inconnu : {name}"}

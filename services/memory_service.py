@@ -149,7 +149,16 @@ class MemoryService:
         if autofill.get("ereader_email") and autofill["ereader_email"] != autofill["email"]:
             contact_info += f" | Liseuse : {autofill['ereader_email']}"
 
-        return f"UTILISATEUR PRINCIPAL : {user_name}\n{contact_info}\n{memories_text}"
+        base_context = f"UTILISATEUR PRINCIPAL : {user_name}\n{contact_info}\n{memories_text}"
+        try:
+            from services.architecture_service import architecture_service
+            arch_summary = architecture_service.get_summary()
+            if arch_summary:
+                return f"{base_context}\n\n{arch_summary}".strip()
+        except Exception:
+            pass
+
+        return base_context
 
 # Instance globale prête à l'emploi
 memory_service = MemoryService()

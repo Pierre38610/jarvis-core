@@ -84,6 +84,27 @@ class UnifiedMemoryManager:
             except Exception as e:
                 logger.error(f"[UnifiedMemory] Erreur fallback SQLite: {e}")
                 
+        # 3. Enrichissement architectural si la recherche concerne les capacités de Jarvis
+        arch_keywords = [
+            "architecture", "fonctionnement", "comment tu marches", "qui es-tu",
+            "capacités", "que sais-tu faire", "serveur", "infrastructure", "vps",
+            "docker", "limites", "antigravity", "stremio", "deezer", "composants", "spécifications"
+        ]
+        if any(kw in query.lower() for kw in arch_keywords):
+            try:
+                from services.architecture_service import architecture_service
+                arch_res = architecture_service.lookup(query=query)
+                if arch_res.get("status") == "success" and arch_res.get("content"):
+                    results.insert(0, {
+                        "id": "arch_doc",
+                        "content": arch_res["content"][:1000],
+                        "category": "architecture_système",
+                        "score": 1.0,
+                        "created_at": "live_sync"
+                    })
+            except Exception as e:
+                logger.error(f"[UnifiedMemory] Erreur injection architecture dans recall: {e}")
+
         return results
 
     def get_user_profile(self) -> Dict[str, Any]:
@@ -94,7 +115,7 @@ class UnifiedMemoryManager:
         
     async def build_live_context_prompt(self) -> str:
         """
-        Construit un contexte mémoire complet pour Gemini Live (Profil + Vectoriel).
+        Construit un contexte mémoire complet pour Gemini Live (Profil + Vectoriel + Architecture).
         """
         # Profil maître SQLite
         profile = self.get_user_profile()
@@ -115,12 +136,24 @@ class UnifiedMemoryManager:
         except Exception as e:
             logger.error(f"[UnifiedMemory] Erreur génération contexte mémoire: {e}")
             semantic_context = sqlite_memory.build_system_memory_context()
-            
+
+        # Connaissance de l'architecture dynamique issue de ARCHITECTURE_COMPLETE_JARVIS.md
+        arch_summary = ""
+        try:
+            from services.architecture_service import architecture_service
+            arch_summary = architecture_service.get_summary()
+        except Exception as e:
+            logger.error(f"[UnifiedMemory] Erreur chargement résumé architecture: {e}")
+
         # SQLite build_system_memory_context renvoie parfois déjà "UTILISATEUR PRINCIPAL". 
         # Pour éviter les doublons on s'assure d'une bonne mise en page.
         if "UTILISATEUR PRINCIPAL" in semantic_context:
-            return semantic_context # on utilise le fallback tel quel s'il est utilisé
+            base_prompt = semantic_context
+        else:
+            base_prompt = f"UTILISATEUR PRINCIPAL : {user_name}\n{contact_info}\n\n{semantic_context}".strip()
             
-        return f"UTILISATEUR PRINCIPAL : {user_name}\n{contact_info}\n\n{semantic_context}".strip()
+        if arch_summary and arch_summary not in base_prompt:
+            return f"{base_prompt}\n\n{arch_summary}".strip()
+        return base_prompt
 
 unified_memory_manager = UnifiedMemoryManager()
