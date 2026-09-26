@@ -357,9 +357,11 @@ Le serveur principal `App.py` est allégé (< 190 lignes) et instancie l'applica
 | Méthode | Route | Description & Rôle | Authentification |
 | :--- | :--- | :--- | :--- |
 | **GET** | `/` | Sert l'application PWA principale (`index.html`) | Ouvert |
-| **POST** | `/api/auth` | Authentification maître par mot de passe | Mot de passe |
-| **POST** | `/api/auth-qr` | Enregistrement d'un nouvel appareil via ticket QR Code unique | Ticket QR |
-| **GET** | `/api/verify` | Vérifie la validité du token de l'appareil | Token |
+| **POST** | `/api/auth` | Authentification maître par mot de passe & émission JWT | Mot de passe |
+| **GET** | `/api/auth-qr` | Génération d'un ticket unique de pairage QR Code éphémère (TTL 5 min Redis) | Ouvert |
+| **POST** | `/api/auth-qr` | Enregistrement d'un nouvel appareil via ticket QR Code unique (émission JWT) | Ticket QR |
+| **POST** | `/api/auth/revoke` | Révocation immédiate d'un token JWT ou d'un appareil via Redis | Token |
+| **GET** | `/api/verify` | Vérifie la validité du token JWT (avec migration transparente si ancien token) | Token |
 | **GET** | `/api/tunnel-info` | Retourne les URLs du tunnel Cloudflare et l'IP LAN | Token |
 | **POST** | `/api/send-email` | Envoi d'un courriel (format Stark Industries ou libre) | Token |
 | **GET** | `/api/emails/inbox` | Lecture des e-mails reçus via IMAP | Token |
@@ -465,9 +467,9 @@ L'interface de Jarvis a été développée selon des standards graphiques d'insp
 2. **~~Couplage et Redondance des Couches Mémoires~~ [RÉSOLU]** :
    - Coexistence de deux services mémoires distincts (`MemoryService` basé sur SQLite et `VectorMemoryService` basé sur PostgreSQL + Qdrant). Certaines informations de profil se trouvaient en double.
    - *Statut* : **Entièrement résolu**. L'accès à la mémoire est unifié sous une façade unique (`UnifiedMemoryManager`) assurant la déduplication et la synchronisation asynchrone entre la base relationnelle et la base vectorielle.
-3. **Sécurité des Tokens d'Appareils** :
-   - Les tokens des appareils autorisés sont stockés en clair dans un fichier JSON plat (`authorized_devices.json`) sans signature cryptographique ni horodatage d'expiration strict.
-   - *Piste d'amélioration* : Adopter des tokens d'authentification signés (JWT avec clé asymétrique EdDSA ou HMAC-SHA256) avec révocation en base Redis.
+3. **~~Sécurité des Tokens d'Appareils~~ [RÉSOLU]** :
+   - Les tokens des appareils autorisés étaient initialement stockés en texte clair dans un fichier JSON plat (`authorized_devices.json`) sans signature cryptographique ni horodatage d'expiration strict.
+   - *Statut* : **Entièrement résolu**. Authentification migrée vers des tokens signés JWT (HS256) gérés par `services/auth_service.py` avec clé secrète forte `JWT_SECRET_KEY` (.env auto-générée), révocation ultra-rapide en cache Redis (`jarvis:revoked_tokens:{token_id}` et `{device_id}`) avec fallback mémoire local, tickets de pairage QR Code à usage unique avec TTL court (5 minutes) dans Redis, et migration transparente des sessions existantes sans déconnexion.
 4. **Intégration Complète du Module d'Automatisation (`services/automation.py`)** :
    - Le module de liaison avec n8n est entièrement codé et testé, mais n'est pas encore systématiquement injecté dans la liste des outils déclarés de `App.py` (`executer_action_externe`).
    - *Piste d'amélioration* : Raccorder formellement l'outil n8n dans la boucle de function calling de Gemini Live.

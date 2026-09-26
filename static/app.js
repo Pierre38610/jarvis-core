@@ -89,6 +89,11 @@ async function checkExistingAuth() {
       if (res.ok) {
         const data = await res.json();
         if (data.authorized) {
+          if (data.migrated && (data.new_token || data.token)) {
+            const upgradedToken = data.new_token || data.token;
+            localStorage.setItem('jarvis_device_token', upgradedToken);
+            setCookie('jarvis_device_token', upgradedToken, 3650);
+          }
           showMainUI();
           return;
         }

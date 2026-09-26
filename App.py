@@ -118,6 +118,10 @@ async def serve_ui():
     return FileResponse(index_file)
 
 
+from typing import Optional
+from services.auth_service import auth_service
+
+
 class AuthRequest(BaseModel):
     password: str
 
@@ -126,31 +130,53 @@ class QRAuthRequest(BaseModel):
     ticket: str
 
 
+class RevokeRequest(BaseModel):
+    token_id: Optional[str] = None
+    device_id: Optional[str] = None
+
+
 @app.post("/api/auth")
 async def authenticate_device(req: AuthRequest, request: Request, response: Response):
-    """Vérifie le mot de passe maître et génère un jeton permanent d'appareil."""
+    """Vérifie le mot de passe maître et génère un jeton permanent d'appareil signé (JWT)."""
     client_ip = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("user-agent", "unknown")
-    token = auth.verify_and_generate_token(req.password, client_ip, user_agent)
+    token = auth_service.verify_and_generate_token(req.password, client_ip, user_agent)
 
     if token:
         response.set_cookie(
             key="jarvis_device_token",
             value=token,
-            max_age=315360000,  # 10 ans
+            max_age=315360000,  # 10 ans de persistance cookie
             httponly=False,
             samesite="lax",
             secure=True
         )
         return {"status": "ok", "token": token}
+    return JSONResponse(
+        content={"status": "error", "message": "Mot de passe incorrect"},
+        status_code=401
+    )
+
+
+@app.get("/api/auth-qr")
+async def generate_qr_ticket_endpoint(request: Request):
+    """Génère un ticket unique de pairage QR Code avec un TTL court (5 minutes) géré dans Redis."""
+    client_ip = request.client.host if request.client else "unknown"
+    ticket = await auth_service.create_qr_ticket(ttl=300, client_ip=client_ip)
+    return {
+        "status": "ok",
+        "ticket": ticket,
+        "expires_in": 300,
+        "message": "Ticket QR de pairage unique émis (valide 5 minutes)."
+    }
 
 
 @app.post("/api/auth-qr")
 async def authenticate_via_qr(req: QRAuthRequest, request: Request, response: Response):
-    """Enregistre l'appareil sans mot de passe après scan d'un QR code valide."""
+    """Enregistre l'appareil sans mot de passe après scan d'un ticket QR valide (usage unique, TTL 5 min)."""
     client_ip = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("user-agent", "unknown")
-    token = auth.register_device_via_qr(req.ticket, client_ip, user_agent)
+    token = await auth_service.redeem_qr_ticket(req.ticket, client_ip, user_agent)
     if token:
         response.set_cookie(
             key="jarvis_device_token",
@@ -168,12 +194,56 @@ async def authenticate_via_qr(req: QRAuthRequest, request: Request, response: Re
 
 
 @app.get("/api/verify")
-async def verify_device(request: Request):
-    """Vérifie si le terminal possède un jeton d'enregistrement valide."""
+async def verify_device(request: Request, response: Response):
+    """Vérifie si le terminal possède un jeton d'enregistrement valide (JWT ou migration transparente)."""
     token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
-    if auth.is_device_authorized(token):
-        return {"authorized": True}
+    if not token:
+        return JSONResponse(content={"authorized": False}, status_code=401)
+
+    payload = await auth_service.verify_token(token)
+    if payload:
+        resp_data = {
+            "authorized": True,
+            "device_id": payload.get("device_id"),
+            "device_name": payload.get("device_name"),
+            "role": payload.get("role")
+        }
+        # Rétrocompatibilité : si un ancien token en clair a été migré
+        new_jwt = payload.get("_new_token")
+        if new_jwt:
+            resp_data["migrated"] = True
+            resp_data["token"] = new_jwt
+            resp_data["new_token"] = new_jwt
+            response.set_cookie(
+                key="jarvis_device_token",
+                value=new_jwt,
+                max_age=315360000,
+                httponly=False,
+                samesite="lax",
+                secure=True
+            )
+        return resp_data
+
     return JSONResponse(content={"authorized": False}, status_code=401)
+
+
+@app.post("/api/auth/revoke")
+async def revoke_device_or_token(req: RevokeRequest, request: Request):
+    """Révoque immédiatement un token JWT ou un appareil via Redis."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    payload = await auth_service.verify_token(token)
+    if not payload:
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+
+    target_token = req.token_id or payload.get("jti")
+    target_device = req.device_id
+
+    if target_token:
+        await auth_service.revoke_token(target_token)
+    if target_device:
+        await auth_service.revoke_device(target_device)
+
+    return {"status": "ok", "message": "Révocation effectuée avec succès"}
 
 
 if __name__ == "__main__":

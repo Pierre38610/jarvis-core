@@ -31,6 +31,8 @@ except Exception:
 
 # Mot de passe maître défini par l'utilisateur
 ACCESS_PASSWORD = os.environ.get("JARVIS_PASSWORD", "Bonjourmotdepassedu52..")
+JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "").strip()
+JWT_EXPIRATION_DAYS = int(os.environ.get("JWT_EXPIRATION_DAYS", "90"))
 
 # Configuration Tunnel Cloudflare Permanent (signalcraftapps.com)
 CLOUDFLARE_TUNNEL_TOKEN = os.environ.get("CLOUDFLARE_TUNNEL_TOKEN", "").strip()
