@@ -46,6 +46,12 @@ ALLOWED_APPS = {
 MEDIA_APPS = {"deezer", "stremio"}
 
 
+def is_local_pc_online() -> bool:
+    """Indique si le PC local de Pierre est allumé et connecté."""
+    from services.local_agent_service import is_pc_connected
+    return is_pc_connected()
+
+
 def get_system_status() -> Dict[str, Any]:
     try:
         from services.local_agent_service import local_agent_service

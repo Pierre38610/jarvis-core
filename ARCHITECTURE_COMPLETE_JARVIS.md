@@ -266,13 +266,19 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
   - Le dispatcheur renvoie instantanément un accusé de réception préliminaire (`launched_in_background`), permettant à Aoede de confirmer oralement l'engagement du moteur sans aucune latence perçue.
   - La réflexion tourne en arrière-plan (`asyncio.create_task`), notifie les étapes dans `supervision_service` ("Phase 1 : Prospecteur...", "Phase 2 : Analyse critique...", "Phase 3 : Synthèse..."), et injecte la synthèse vocale finale dans le flux Live.
 
-### 7.2. Navigation Web Autonome & E-Commerce (Browser-Use / Playwright)
-- **Fichier** : `services/browser_service.py`.
+### 7.2. Navigation Web Autonome & E-Commerce (Browser-Use / Playwright / Chrome CDP)
+- **Fichier** : `services/browser_service.py` & `jarvis_local_agent.py`.
 - **Outils exposés** : `search_web`, `run_browser_task`, `interact_web_page`, `prepare_web_cart_or_checkout`, `open_user_browser`, `set_browser_link`, `download_ebook_annas_archive`.
-- **Routage Intelligent Hybride (VPS Headless vs PC Local GUI)** :
-  - Orchestré par le flag `execution_target: Literal["vps_headless", "local_gui"]` présent sur toutes les fonctions de navigation.
-  - **Mode Headless VPS (`vps_headless`)** : Les opérations légères (scraping de texte, lecture d'articles, vérification de liens, recherche DuckDuckGo, téléchargement d'EPUB sur Anna's Archive) s'exécutent en tâche de fond directement sur le serveur Cloud VPS via Playwright en mode 100% headless, sans réveiller le PC de Pierre.
-  - **Mode GUI PC Local (`local_gui`)** : Les opérations nécessitant une session connectée (Amazon, Fnac), un affichage visuel à l'écran, ou la validation d'un panier d'achat (`prepare_web_cart_or_checkout`) sont automatiquement déléguées au script `jarvis_local_agent.py` sur le PC Windows de Pierre via le canal WebSocket sécurisé `/ws/local-agent`.
+- **Routage Intelligent Hybride (VPS Cloud vs Chrome Local CDP)** :
+  - Orchestré par le flag typé `execution_target: Literal["vps_headless", "local_gui", "local_chrome_cdp"]` présent sur l'ensemble des fonctions de navigation.
+  - **Mode Headless VPS (`vps_headless`)** : Les opérations légères (scraping, lecture d'articles, vérification de liens, recherche DuckDuckGo, téléchargement d'EPUB sur Anna's Archive) ou discrètes s'exécutent en tâche de fond sur le serveur Cloud VPS via Playwright headless sans solliciter le PC de Pierre.
+  - **Mode Chrome Local CDP (`local_chrome_cdp`)** : Pilotage direct de l'instance réelle Google Chrome de Pierre sur son PC Windows via le Chrome DevTools Protocol (CDP) persistant (`http://localhost:9222`, `playwright.chromium.connect_over_cdp`). Conserve 100% de son profil utilisateur (`User Data`), ses sessions déjà connectées (Google, Amazon, etc.), ses cookies et ses extensions actives (ex: Send to Kindle).
+  - **Mode GUI PC Local (`local_gui`)** : Délégation historique pour ouverture de fenêtres d'applications ou affichages fenêtrés simples via l'agent relais local.
+- **Arbitrage Dynamique de Présence & Dialogue Vocal (Gemini Live Aoede)** :
+  - **Détection temps réel** : Contrôle instantané de la présence du PC de Pierre via `is_pc_connected()` (WebSocket actif `/ws/local-agent` et Redis `jarvis:presence:pc_status`).
+  - **PC Hors-ligne** : Si l'ordinateur de Pierre est éteint ou déconnecté, Jarvis route automatiquement l'ordre sur `execution_target='vps_headless'` sans poser de question superflue.
+  - **PC En ligne** : Si l'ordinateur est allumé et connecté, Aoede demande naturellement à Pierre : *"Ton PC est allumé Pierre. Tu veux que j'agisse directement sur ton Chrome à l'écran ou je gère ça discrètement en arrière-plan ?"*. Selon la réponse de Pierre, Jarvis appelle l'outil avec `execution_target='local_chrome_cdp'` ou `execution_target='vps_headless'`.
+  - **Résilience & Fallback automatique gracieuse** : En cas d'échec de liaison CDP ou de dépassement de délai (timeout 10s), Jarvis bascule automatiquement sur le Playwright headless du VPS Cloud tout en prévenant Pierre avec tact : *"Pierre, ton PC ne répond plus, je bascule sur mon navigateur cloud en secours."*.
 - **Capacités** :
   - **Recherche web enrichie** : Recherche DuckDuckGo avec extraction intelligente de deep links de transport (SNCF Connect, Trainline, Skyscanner, Booking).
   - **Agent autonome Vision (Browser-Use)** : Agent web autonome guidé par modèle vision (Gemini Flash Vision) capable de naviguer de manière indépendante sur des sites dynamiques, de remplir des formulaires complexes et de contourner les bannières de cookies.

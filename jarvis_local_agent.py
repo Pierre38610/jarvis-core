@@ -112,6 +112,221 @@ def get_local_metrics() -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
 
+def is_cdp_ready_sync(port: int = 9222) -> bool:
+    """Vérifie de façon synchrone si le port CDP 9222 répond à /json/version."""
+    try:
+        import urllib.request
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/json/version", headers={"Host": "localhost"})
+        with urllib.request.urlopen(req, timeout=1.0) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                return "webSocketDebuggerUrl" in data or "Browser" in data
+    except Exception:
+        pass
+    return False
+
+
+async def is_cdp_ready(port: int = 9222) -> bool:
+    """Vérifie de façon asynchrone si le port CDP 9222 répond."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, is_cdp_ready_sync, port)
+
+
+def is_chrome_running() -> bool:
+    """Détecte si un processus Google Chrome est en cours d'exécution."""
+    for p in psutil.process_iter(["name"]):
+        try:
+            if p.info["name"] and "chrome.exe" in p.info["name"].lower():
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def is_chrome_running_with_cdp(port: int = 9222) -> bool:
+    """Détecte si Chrome tourne avec le flag --remote-debugging-port actif."""
+    flag = f"--remote-debugging-port={port}"
+    for p in psutil.process_iter(["name", "cmdline"]):
+        try:
+            if p.info["name"] and "chrome.exe" in p.info["name"].lower():
+                cmdline = p.info.get("cmdline") or []
+                if any(flag in arg for arg in cmdline):
+                    return True
+        except Exception:
+            pass
+    return False
+
+
+async def ensure_chrome_cdp_running(port: int = 9222, auto_relaunch: bool = True) -> bool:
+    """S'assure que Google Chrome tourne avec le port CDP actif (port 9222).
+    Si Chrome tourne sans le port CDP ouvert, le relance proprement avec ses sessions.
+    """
+    if await is_cdp_ready(port):
+        print(f"[CDP] Google Chrome est déjà actif avec CDP sur le port {port}.", flush=True)
+        return True
+
+    chrome_exe = CHROME_PATH or "chrome.exe"
+    user_data = os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\User Data")
+
+    running = is_chrome_running()
+    if running and not is_chrome_running_with_cdp(port):
+        print(f"[CDP] Chrome tourne actuellement sans port {port} actif.", flush=True)
+        if auto_relaunch:
+            print(f"[CDP] Relance de Chrome avec --remote-debugging-port={port} et conservation des sessions...", flush=True)
+            for p in psutil.process_iter(["name"]):
+                try:
+                    if p.info["name"] and "chrome.exe" in p.info["name"].lower():
+                        p.terminate()
+                except Exception:
+                    pass
+            await asyncio.sleep(1.0)
+            for p in psutil.process_iter(["name"]):
+                try:
+                    if p.info["name"] and "chrome.exe" in p.info["name"].lower():
+                        p.kill()
+                except Exception:
+                    pass
+            await asyncio.sleep(0.5)
+
+    cmd = [
+        chrome_exe,
+        f"--remote-debugging-port={port}",
+        "--remote-allow-origins=*",
+        "--restore-last-session",
+    ]
+    if os.path.exists(user_data):
+        cmd.append(f"--user-data-dir={user_data}")
+
+    try:
+        subprocess.Popen(cmd, shell=False)
+        print(f"[CDP] Lancement de Google Chrome avec CDP sur le port {port}...", flush=True)
+    except Exception as e:
+        print(f"[CDP] Erreur lors du lancement de Chrome : {e}", flush=True)
+        return False
+
+    for _ in range(20):
+        await asyncio.sleep(0.5)
+        if await is_cdp_ready(port):
+            print(f"[CDP] ✅ Liaison Google Chrome CDP confirmée sur http://127.0.0.1:{port} !", flush=True)
+            return True
+
+    print(f"[CDP] ⚠️ Timeout : le port CDP {port} ne répond pas après 10 secondes.", flush=True)
+    return False
+
+
+async def run_on_local_chrome(url: str = "", steps: list = None, instruction: str = "", task_id: str = "") -> Dict[str, Any]:
+    """Pilote l'instance physique de Google Chrome de Pierre via Playwright connect_over_cdp.
+    Conserve toutes ses sessions connectées, son profil et ses extensions.
+    """
+    cdp_ok = await ensure_chrome_cdp_running(9222)
+    if not cdp_ok:
+        return {
+            "status": "error",
+            "task_id": task_id,
+            "message": "Impossible d'initialiser Google Chrome avec le port CDP 9222 actif sur le PC."
+        }
+
+    steps = steps or []
+    performed_actions = []
+    final_title = ""
+    final_url = ""
+    screenshot_path = ""
+
+    try:
+        from playwright.async_api import async_playwright
+        async with async_playwright() as p:
+            browser = await p.chromium.connect_over_cdp("http://localhost:9222")
+            context = browser.contexts[0] if browser.contexts else await browser.new_context()
+            page = await context.new_page()
+
+            target_url = (url or "").strip()
+            if target_url:
+                if not target_url.startswith(("http://", "https://")):
+                    target_url = f"https://{target_url}"
+                await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
+                await page.wait_for_timeout(1000)
+
+            # Gestion automatique des bannières cookies
+            try:
+                cookie_btn = page.locator("button:has-text('Accepter'), button:has-text('Tout accepter'), button#onetrust-accept-btn-handler, button#sp-cc-accept, button:has-text('Accept all')")
+                if await cookie_btn.count() > 0:
+                    await cookie_btn.first.click(timeout=1500)
+                    await page.wait_for_timeout(800)
+            except Exception:
+                pass
+
+            for step in steps:
+                s_type = step.get("type", "click").lower()
+                sel = step.get("selector", "")
+                val = step.get("value", "")
+
+                try:
+                    if s_type == "click" and sel:
+                        loc = page.locator(sel).first
+                        await loc.click(timeout=5000)
+                        performed_actions.append(f"Clic sur '{sel}'")
+                        await page.wait_for_timeout(800)
+                    elif s_type in ("fill", "type") and sel:
+                        loc = page.locator(sel).first
+                        await loc.fill(val, timeout=5000)
+                        performed_actions.append(f"Saisie de '{val}' dans '{sel}'")
+                        await page.wait_for_timeout(400)
+                    elif s_type == "select" and sel:
+                        loc = page.locator(sel).first
+                        await loc.select_option(val, timeout=5000)
+                        performed_actions.append(f"Sélection de '{val}'")
+                        await page.wait_for_timeout(400)
+                    elif s_type == "press" and val:
+                        await page.keyboard.press(val)
+                        performed_actions.append(f"Touche '{val}' pressée")
+                        await page.wait_for_timeout(500)
+                    elif s_type == "scroll":
+                        await page.evaluate("window.scrollBy(0, 500)")
+                        performed_actions.append("Défilement vers le bas")
+                        await page.wait_for_timeout(400)
+                    elif s_type == "wait":
+                        w_sec = float(step.get("seconds", 1.0))
+                        await page.wait_for_timeout(int(w_sec * 1000))
+                        performed_actions.append(f"Attente {w_sec}s")
+                except Exception as op_err:
+                    performed_actions.append(f"Échec action '{s_type}' sur '{sel}': {op_err}")
+
+            final_title = await page.title()
+            final_url = page.url
+
+            # Capture d'écran actualisée pour le HUD
+            try:
+                screenshot_file = os.path.join(BASE_DIR, "static", "latest_screenshot.jpg")
+                await page.screenshot(path=screenshot_file, type="jpeg", quality=75)
+                screenshot_path = "/static/latest_screenshot.jpg"
+            except Exception:
+                pass
+
+            summary = f"Page ouverte sur l'écran physique : '{final_title}' ({final_url})."
+            if performed_actions:
+                summary += f" Actions : {', '.join(performed_actions)}."
+            if instruction:
+                summary += f" Consigne : {instruction}."
+
+        return {
+            "status": "success",
+            "task_id": task_id,
+            "url": final_url,
+            "title": final_title,
+            "performed_actions": performed_actions,
+            "screenshot_path": screenshot_path,
+            "result_summary": summary,
+            "message": f"Navigation CDP exécutée sur votre écran : {final_title}."
+        }
+    except Exception as e:
+        print(f"[CDP] Erreur exécution Playwright : {e}", flush=True)
+        return {
+            "status": "error",
+            "task_id": task_id,
+            "message": f"Erreur lors de l'exécution sur Chrome local : {e}"
+        }
+
+
 def execute_open_browser(url: str, load_extensions: bool = True) -> Dict[str, Any]:
     """Ouvre une URL directement dans Google Chrome ou le navigateur par défaut sur l'écran."""
     target = (url or "").strip()
@@ -327,6 +542,11 @@ async def agent_loop():
     except Exception as e:
         print(f"[!] Deezer Bridge    : Note ({e})", flush=True)
 
+    # 2. Vérification de la disponibilité Chrome CDP sur le port 9222
+    cdp_active = is_cdp_ready_sync(9222)
+    cdp_msg = "Actif sur http://127.0.0.1:9222" if cdp_active else "En attente (démarrage auto à la demande)"
+    print(f"[{'✔' if cdp_active else '*'}] Chrome CDP (9222)   : {cdp_msg}", flush=True)
+
     print("[*] En attente de synchronisation avec Jarvis Cloud...", flush=True)
 
     while True:
@@ -399,6 +619,13 @@ async def agent_loop():
                                 )
                             except Exception as e:
                                 result = {"status": "error", "message": f"Erreur interact_web_page local : {e}"}
+                        elif action == "execute_cdp_browser_action":
+                            result = await run_on_local_chrome(
+                                url=params.get("url", ""),
+                                steps=params.get("actions") or [],
+                                instruction=params.get("instruction", ""),
+                                task_id=params.get("task_id", "")
+                            )
                         elif action == "get_status":
                             result = get_local_metrics()
                         else:

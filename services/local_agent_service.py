@@ -45,6 +45,17 @@ class LocalAgentService:
         self._connected_at = time.time()
         print("[LocalAgent] ✅ Ordinateur personnel de Pierre connecté au VPS.", flush=True)
 
+        # Enregistrement de présence dans le cache Redis
+        try:
+            from services.cache import cache_service
+            asyncio.create_task(cache_service.set_device_presence(
+                "pc_status",
+                status={"online": True, "connected_at": self._connected_at},
+                ttl=120
+            ))
+        except Exception:
+            pass
+
     def unregister(self):
         """Déconnecte le client WebSocket."""
         self._ws = None
@@ -58,6 +69,18 @@ class LocalAgentService:
                 })
         self._pending_requests.clear()
         print("[LocalAgent] ⚠️ Ordinateur personnel de Pierre déconnecté du VPS.", flush=True)
+
+        # Mise à jour présence Redis
+        try:
+            from services.cache import cache_service
+            if self._loop and self._loop.is_running():
+                asyncio.create_task(cache_service.set_device_presence(
+                    "pc_status",
+                    status={"online": False},
+                    ttl=60
+                ))
+        except Exception:
+            pass
 
     async def handle_agent_messages(self):
         """Boucle de réception des réponses et télémétrie de l'agent local."""
@@ -78,6 +101,19 @@ class LocalAgentService:
                         fut.set_result(data.get("result", data))
                 elif msg_type == "telemetry":
                     self._last_pc_status = data.get("data")
+                    # Synchronisation présence avec télémétrie dans Redis
+                    try:
+                        from services.cache import cache_service
+                        status_dict = {"online": True}
+                        if isinstance(self._last_pc_status, dict):
+                            status_dict.update(self._last_pc_status)
+                        asyncio.create_task(cache_service.set_device_presence(
+                            "pc_status",
+                            status=status_dict,
+                            ttl=120
+                        ))
+                    except Exception:
+                        pass
                 elif msg_type == "deezer_status":
                     self._last_deezer_status = data.get("data")
         except WebSocketDisconnect:
@@ -126,6 +162,12 @@ class LocalAgentService:
                 "message": f"Erreur de communication avec votre PC : {e}"
             }
 
+    async def send_command(self, action: str, payload: Optional[Dict[str, Any]] = None, timeout: float = 12.0, **kwargs) -> Dict[str, Any]:
+        """Router une commande vers l'agent local (supporte un dictionnaire payload ou des kwargs)."""
+        params = dict(payload or {})
+        params.update(kwargs)
+        return await self.execute_command(action, timeout=timeout, **params)
+
     def execute_command_sync(self, action: str, timeout: float = 12.0, **kwargs) -> Dict[str, Any]:
         """Transmet une commande depuis un thread synchrone (ex: thread pool) en toute sécurité."""
         if not self.is_connected() or not self._loop or not self._loop.is_running():
@@ -150,4 +192,28 @@ class LocalAgentService:
 
 # Instance singleton
 local_agent_service = LocalAgentService()
+
+
+def is_pc_connected() -> bool:
+    """Helper synchrone rapide indiquant si le PC de Pierre est connecté au serveur."""
+    return local_agent_service.is_connected()
+
+
+async def is_pc_connected_async() -> bool:
+    """Helper asynchrone vérifiant le WebSocket local et l'état de présence Redis."""
+    if local_agent_service.is_connected():
+        return True
+    try:
+        from services.cache import cache_service
+        pres = await cache_service.get_device_presence("pc_status")
+        if pres and isinstance(pres, dict):
+            status = pres.get("status")
+            if isinstance(status, dict) and status.get("online"):
+                return True
+            elif status in ("online", True):
+                return True
+    except Exception:
+        pass
+    return False
+
 

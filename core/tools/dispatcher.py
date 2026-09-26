@@ -325,6 +325,7 @@ async def dispatch_tool(
     elif name == "run_browser_task":
         goal = args.get("goal", "")
         target_url = args.get("url") or ""
+        execution_target = args.get("execution_target")
         is_confirmed = (bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))) and config.is_paid_key_authorized()
         initial_api_type = "paid" if is_confirmed else "free"
         initial_api_label = "Clé Payante" if is_confirmed else "Clé Gratuite (Essai multi-modèles)"
@@ -336,12 +337,13 @@ async def dispatch_tool(
         _g = goal
         _url = target_url
         _conf = is_confirmed
+        _exec_target = execution_target
         _sess_bg = session
         _ws_bg = websocket
 
-        async def _run_browser_bg(_g=_g, _url=_url, _conf=_conf, _sess=_sess_bg, _ws=_ws_bg):
+        async def _run_browser_bg(_g=_g, _url=_url, _conf=_conf, _et=_exec_target, _sess=_sess_bg, _ws=_ws_bg):
             try:
-                res = await run_browser_task(goal=_g, url=_url, confirmed_by_user=_conf)
+                res = await run_browser_task(goal=_g, url=_url, confirmed_by_user=_conf, execution_target=_et)
                 if res.get("status") == "requires_user_confirmation":
                     active_task_controller["paid_consent_modal_open"] = True
                     supervision_service.complete_action("browser_task", status="pending_confirmation", summary=res.get("reason", ""))
@@ -591,11 +593,12 @@ async def dispatch_tool(
         action = args.get("action", "read")
         selector = args.get("selector", "")
         text_to_fill = args.get("text_to_fill", "")
+        execution_target = args.get("execution_target", "vps_headless")
         supervision_service.start_action("interact_web_page", "Interaction Web & Formulaires", "interact_web_page", f"{action} sur {target_url}", "Playwright Automation Engine", api_type="free", api_label="Local / Playwright", cost_est="0.00 $")
         await broadcast_supervision()
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Interaction sur {target_url} ({action})", "voice": False}))
         await websocket.send_text(json.dumps({"type": "status", "state": "browsing", "msg": "Interaction sur la page web...", "task": f"{action} sur {target_url}", "engine": "Playwright Local", "model": "Browser Engine", "api_type": "free", "api_label": "Clé Gratuite"}))
-        res = await interact_web_page(url=target_url, action=action, selector=selector, text_to_fill=text_to_fill)
+        res = await interact_web_page(url=target_url, action=action, selector=selector, text_to_fill=text_to_fill, execution_target=execution_target)
         supervision_service.complete_action("interact_web_page", status=res.get("status", "completed"), summary=res.get("title", target_url))
         if res.get("url"):
             supervision_service.track_browser_window(res.get("url"), res.get("title", target_url))
@@ -608,11 +611,12 @@ async def dispatch_tool(
         product_or_service = args.get("product_or_service", "")
         merchant_url = args.get("merchant_url") or ""
         open_when_ready = bool(args.get("open_when_ready", True))
+        execution_target = args.get("execution_target", "local_chrome_cdp")
         supervision_service.start_action("prepare_web_cart_or_checkout", "Création Panier & Commande", "prepare_web_cart_or_checkout", f"Panier : {product_or_service}", "Playwright E-Commerce Engine", api_type="free", api_label="Local / Playwright", cost_est="0.00 $")
         await broadcast_supervision()
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Préparation de votre panier pour {product_or_service}...", "voice": False}))
         await websocket.send_text(json.dumps({"type": "status", "state": "shopping", "msg": "Préparation du panier et préremplissage...", "task": f"Panier : {product_or_service}", "engine": "Playwright E-Commerce", "model": "Chrome Automation", "api_type": "free", "api_label": "Clé Gratuite"}))
-        res = await prepare_web_cart_or_checkout(product_or_service=product_or_service, merchant_url=merchant_url, open_when_ready=open_when_ready)
+        res = await prepare_web_cart_or_checkout(product_or_service=product_or_service, merchant_url=merchant_url, open_when_ready=open_when_ready, execution_target=execution_target)
         supervision_service.complete_action("prepare_web_cart_or_checkout", status=res.get("status", "completed"), summary=f"Panier {product_or_service} préparé")
         if res.get("cart_url"):
             supervision_service.track_browser_window(res.get("cart_url"), f"Panier : {product_or_service}")

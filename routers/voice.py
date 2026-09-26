@@ -35,25 +35,45 @@ router = APIRouter()
 
 
 async def _build_system_instruction() -> str:
-    """Construit dynamiquement le system_instruction de la session Live en injectant le contexte mémoire."""
+    """Construit dynamiquement le system_instruction de la session Live en injectant le contexte mémoire et la règle d'arbitrage de présence PC."""
     from services.unified_memory import unified_memory_manager
+    from services.local_agent_service import is_pc_connected
 
     # Injection dynamique du contexte de mémoire unifiée
     memory_context = await unified_memory_manager.build_live_context_prompt()
 
     paid_key_status = "CLÉ PAYANTE ACTIVE" if config.HAS_PAID_API_KEY else "CLÉ PAYANTE NON CONFIGURÉE (mode économie forcée)"
 
+    pc_online = is_pc_connected()
+    pc_presence_str = "EN LIGNE (PC Windows connecté et prêt pour pilotage Chrome CDP)" if pc_online else "HORS-LIGNE (PC Windows éteint ou déconnecté)"
+
+    nav_arbitration_rule = (
+        f"\n\nÉTAT DE PRÉSENCE DU PC WINDOWS ET RÈGLE D'ARBITRAGE DE NAVIGATION :\n"
+        f"- État actuel du PC de Pierre : {pc_presence_str}.\n"
+        f"- RÈGLE D'ARBITRAGE DE NAVIGATION ET PILOTAGE CHROME LOCAL (CDP vs VPS HEADLESS) :\n"
+        f"  Lorsque Pierre te demande une action de navigation web, de recherche visuelle ou d'achat (outils 'run_browser_task', 'prepare_web_cart_or_checkout', 'interact_web_page') :\n"
+        f"  * Vérifie l'état de connexion de son PC Windows.\n"
+        f"  * Si le PC est HORS-LIGNE : utilise immédiatement execution_target='vps_headless' sans lui poser de question inutile.\n"
+        f"  * Si le PC est EN LIGNE et que Pierre n'a pas précisé où exécuter l'action : demande-lui naturellement avec ta voix Aoede : 'Ton PC est allumé Pierre. Tu veux que j'agisse directement sur ton Chrome à l'écran ou je gère ça discrètement en arrière-plan ?'\n"
+        f"  * En fonction de sa réponse, appelle l'outil avec execution_target='local_chrome_cdp' (s'il choisit l'écran ou Chrome physique) ou execution_target='vps_headless' (s'il préfère en arrière-plan ou discret)."
+    )
+
     template = getattr(config, "JARVIS_SYSTEM_INSTRUCTION_TEMPLATE", None)
     if template:
-        return template.format(
-            memory_context=memory_context,
-            paid_key_status=paid_key_status,
-            live_model=config.GEMINI_LIVE_MODEL
-        )
+        try:
+            base_prompt = template.format(
+                memory_context=memory_context,
+                paid_key_status=paid_key_status,
+                live_model=config.GEMINI_LIVE_MODEL
+            )
+        except Exception:
+            base_prompt = str(template)
+        return f"{base_prompt}\n{nav_arbitration_rule}"
+
     static = getattr(config, "JARVIS_SYSTEM_INSTRUCTION", "")
-    if memory_context:
-        return f"{memory_context}\n\n{static}"
-    return static
+    full_prompt = f"{memory_context}\n\n{static}" if memory_context else static
+    return f"{full_prompt}\n{nav_arbitration_rule}"
+
 
 
 async def _establish_live_session(model: str, client_to_use):

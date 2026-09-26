@@ -77,6 +77,11 @@ def get_tools_list() -> list[types.Tool]:
                             "goal": types.Schema(type="STRING", description="L'objectif concret de navigation à accomplir sur le web"),
                             "url": types.Schema(type="STRING", description="L'URL de départ si connue, sinon laisser vide"),
                             "confirmed_by_user": types.Schema(type="BOOLEAN", description="Mettre à True UNIQUEMENT après que Pierre a explicitement donné son accord oral suite à ta demande expliquant le besoin et le coût estimé. Par défaut False."),
+                            "execution_target": types.Schema(
+                                type="STRING",
+                                enum=["vps_headless", "local_chrome_cdp"],
+                                description="Cible d'exécution de la navigation : 'vps_headless' (fond de tâche cloud discret sur le VPS) ou 'local_chrome_cdp' (interactif, directement sur le Google Chrome physique ouvert du PC de Pierre via CDP). Si le PC est hors-ligne, toujours 'vps_headless'. Si le PC est en ligne et que Pierre n'a pas spécifié, demande-lui s'il préfère agir sur son Chrome à l'écran ou discrètement en tâche de fond."
+                            ),
                         },
                         required=["goal"]
                     )
@@ -268,6 +273,11 @@ def get_tools_list() -> list[types.Tool]:
                             "action": types.Schema(type="STRING", description="Type d'action : 'read' (lecture et découverte des champs/boutons), 'click' (clic sur sélecteur), 'fill' (saisie de texte), 'scroll' (défilement)"),
                             "selector": types.Schema(type="STRING", description="Sélecteur CSS ou texte de l'élément cible pour le clic ou la saisie"),
                             "text_to_fill": types.Schema(type="STRING", description="Texte à saisir dans le champ si l'action est 'fill'"),
+                            "execution_target": types.Schema(
+                                type="STRING",
+                                enum=["vps_headless", "local_chrome_cdp"],
+                                description="Cible d'exécution : 'vps_headless' (Playwright headless cloud sur le VPS) ou 'local_chrome_cdp' (interactif, sur le Chrome physique du PC de Pierre via CDP)."
+                            ),
                         },
                         required=["url"]
                     )
@@ -286,6 +296,11 @@ def get_tools_list() -> list[types.Tool]:
                             "product_or_service": types.Schema(type="STRING", description="Le produit, livre, matériel ou service précis à ajouter au panier"),
                             "merchant_url": types.Schema(type="STRING", description="L'URL du site marchand ou boutique en ligne (optionnel, recherche auto si vide)"),
                             "open_when_ready": types.Schema(type="BOOLEAN", description="Ouvrir automatiquement Chrome à l'écran dès que le panier et le formulaire sont prêts (True par défaut)"),
+                            "execution_target": types.Schema(
+                                type="STRING",
+                                enum=["vps_headless", "local_chrome_cdp"],
+                                description="Cible d'exécution du panier/achat : 'local_chrome_cdp' (sur le navigateur Chrome physique du PC de Pierre via CDP) ou 'vps_headless' (fond de tâche cloud sur le VPS)."
+                            ),
                         },
                         required=["product_or_service"]
                     )

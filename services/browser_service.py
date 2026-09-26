@@ -13,7 +13,23 @@ from bs4 import BeautifulSoup
 from urllib.parse import unquote, quote_plus
 from typing import Dict, Any, List, Optional, Literal
 
-ExecutionTarget = Literal["vps_headless", "local_gui"]
+ExecutionTarget = Literal["vps_headless", "local_gui", "local_chrome_cdp"]
+
+
+async def _notify_live_fallback(message: str):
+    """Notifie Pierre par la voix Aoede et le flux Live d'un repli gracieux vers le VPS."""
+    print(f"[browser_service] ⚠️ Repli VPS : {message}", flush=True)
+    try:
+        from core.shared_state import active_task_controller, safe_send_live_client_content
+        sess = active_task_controller.get("live_session")
+        if sess:
+            await safe_send_live_client_content(
+                sess,
+                f"[INFO VOCALE GRACIEUSE] {message}",
+                wait_if_speaking=False
+            )
+    except Exception as e:
+        print(f"[browser_service] Erreur notification vocale repli : {e}", flush=True)
 
 import config
 from config import CHROME_PATH, STATIC_DIR, SCREENSHOT_PATH, PROFILE_DIR, GEMINI_API_KEY, GEMINI_API_KEY_PAID, GEMINI_API_KEY_FREE, BASE_DIR
@@ -220,11 +236,13 @@ async def search_web(
     Mode 'vps_headless' (défaut) : exécuté directement sur le serveur VPS sans solliciter le PC local.
     Mode 'local_gui' : délègue si nécessaire au PC local de Pierre via /ws/local-agent.
     """
-    if execution_target == "local_gui":
+    if execution_target in ("local_gui", "local_chrome_cdp"):
         try:
-            from services.local_agent_service import local_agent_service
-            if local_agent_service.is_connected():
-                return await local_agent_service.execute_command("search_web", timeout=15.0, query=query, max_results=max_results)
+            from services.local_agent_service import local_agent_service, is_pc_connected
+            if is_pc_connected():
+                res = await local_agent_service.execute_command("search_web", timeout=15.0, query=query, max_results=max_results)
+                if res.get("status") == "success":
+                    return res
         except Exception:
             pass
 
@@ -391,11 +409,13 @@ async def browse_page(
     Mode 'vps_headless' (défaut) : Playwright headless directement sur le serveur VPS.
     Mode 'local_gui' : délègue à l'agent local de Pierre via /ws/local-agent.
     """
-    if execution_target == "local_gui":
+    if execution_target in ("local_gui", "local_chrome_cdp"):
         try:
-            from services.local_agent_service import local_agent_service
-            if local_agent_service.is_connected():
-                return await local_agent_service.execute_command("browse_page", timeout=25.0, url=url, wait_seconds=wait_seconds)
+            from services.local_agent_service import local_agent_service, is_pc_connected
+            if is_pc_connected():
+                res = await local_agent_service.execute_command("browse_page", timeout=25.0, url=url, wait_seconds=wait_seconds)
+                if res.get("status") == "success":
+                    return res
         except Exception:
             pass
 
@@ -578,13 +598,46 @@ async def run_browser_task(
 
     # Détection automatique de session connectée et routage transparent
     needs_auth = _detect_needs_auth(goal, url)
-    effective_target: ExecutionTarget = execution_target if execution_target else ("local_gui" if needs_auth else "vps_headless")
+    effective_target: ExecutionTarget = execution_target if execution_target else ("local_chrome_cdp" if needs_auth else "vps_headless")
 
-    if effective_target == "local_gui":
+    if effective_target == "local_chrome_cdp":
+        print(f"[Browser Task] Cible CDP Chrome physique demandée (target: {effective_target}).")
+        try:
+            import time
+            from services.local_agent_service import local_agent_service, is_pc_connected
+            if is_pc_connected():
+                print(f"[Browser Task] Routage vers Google Chrome local via CDP...")
+                payload = {
+                    "task_id": f"cdp_task_{int(time.time() * 1000)}",
+                    "instruction": goal,
+                    "url": url,
+                    "actions": []
+                }
+                cdp_res = await local_agent_service.send_command("execute_cdp_browser_action", payload, timeout=10.0)
+                if cdp_res.get("status") == "success":
+                    return {
+                        "status": "success",
+                        "site_visited": cdp_res.get("url", url),
+                        "page_title": cdp_res.get("title", goal),
+                        "summary": cdp_res.get("result_summary") or f"Action exécutée sur votre Google Chrome physique : {goal}",
+                        "screenshot": cdp_res.get("screenshot_path", "/static/latest_screenshot.jpg"),
+                        "execution_target": "local_chrome_cdp",
+                        "goal": goal
+                    }
+                else:
+                    print(f"[Browser Task] ⚠️ Échec CDP ({cdp_res.get('message')}), bascule sur Playwright VPS headless...")
+                    await _notify_live_fallback("Pierre, ton PC ne répond plus, je bascule sur mon navigateur cloud en secours.")
+            else:
+                print(f"[Browser Task] ⚠️ PC hors-ligne pour CDP, bascule sur Playwright VPS headless...")
+                await _notify_live_fallback("Pierre, ton PC ne répond plus, je bascule sur mon navigateur cloud en secours.")
+        except Exception as e:
+            print(f"[Browser Task] Erreur routage CDP local_agent: {e}")
+            await _notify_live_fallback("Pierre, ton PC ne répond plus, je bascule sur mon navigateur cloud en secours.")
+    elif effective_target == "local_gui":
         print(f"[Browser Task] Session connectée ou cible GUI requise (target: {effective_target}).")
         try:
-            from services.local_agent_service import local_agent_service
-            if local_agent_service.is_connected():
+            from services.local_agent_service import local_agent_service, is_pc_connected
+            if is_pc_connected():
                 print(f"[Browser Task] Délégation au PC local de Pierre via /ws/local-agent...")
                 return await local_agent_service.execute_command("run_browser_task", timeout=60.0, goal=goal, url=url)
         except Exception as e:
@@ -894,10 +947,36 @@ async def interact_web_page(
     Mode 'vps_headless' (défaut) : exécuté via Playwright headless directement sur le VPS Cloud.
     Mode 'local_gui' : délégué au script jarvis_local_agent.py sur le PC local de Pierre via /ws/local-agent.
     """
-    if execution_target == "local_gui":
+    if execution_target == "local_chrome_cdp":
         try:
-            from services.local_agent_service import local_agent_service
-            if local_agent_service.is_connected():
+            import time
+            from services.local_agent_service import local_agent_service, is_pc_connected
+            if is_pc_connected():
+                ops = actions_list if actions_list else []
+                if not ops and action and action != "read":
+                    ops = [{"type": action, "selector": selector, "value": text_to_fill}]
+                payload = {
+                    "task_id": f"cdp_interact_{int(time.time() * 1000)}",
+                    "instruction": f"{action} sur {url}",
+                    "url": url,
+                    "actions": ops
+                }
+                cdp_res = await local_agent_service.send_command("execute_cdp_browser_action", payload, timeout=10.0)
+                if cdp_res.get("status") == "success":
+                    return cdp_res
+                else:
+                    print(f"[interact_web_page] ⚠️ Échec CDP ({cdp_res.get('message')}), bascule VPS headless...")
+                    await _notify_live_fallback("Pierre, ton PC ne répond plus, je bascule sur mon navigateur cloud en secours.")
+            else:
+                print(f"[interact_web_page] ⚠️ PC hors-ligne pour local_chrome_cdp, bascule VPS headless...")
+                await _notify_live_fallback("Pierre, ton PC ne répond plus, je bascule sur mon navigateur cloud en secours.")
+        except Exception as e:
+            print(f"[interact_web_page] Erreur routage CDP : {e}")
+            await _notify_live_fallback("Pierre, ton PC ne répond plus, je bascule sur mon navigateur cloud en secours.")
+    elif execution_target == "local_gui":
+        try:
+            from services.local_agent_service import local_agent_service, is_pc_connected
+            if is_pc_connected():
                 return await local_agent_service.execute_command(
                     "interact_web_page",
                     timeout=30.0,
@@ -1051,29 +1130,41 @@ async def prepare_web_cart_or_checkout(
     pour afficher le panier sur son écran physique avec ses profils et sessions connectées.
     Mode 'vps_headless' : exécuté en mode headless sur le serveur VPS sans affichage physique.
     """
-    if execution_target == "local_gui" and not _is_local_relay:
+    if execution_target in ("local_gui", "local_chrome_cdp") and not _is_local_relay:
         try:
-            from services.local_agent_service import local_agent_service
-            if local_agent_service.is_connected():
-                print(f"[browser_service] Délégation de prepare_web_cart_or_checkout au PC local de Pierre via /ws/local-agent...")
-                return await local_agent_service.execute_command(
+            from services.local_agent_service import local_agent_service, is_pc_connected
+            if is_pc_connected():
+                print(f"[browser_service] Délégation de prepare_web_cart_or_checkout au PC local de Pierre via /ws/local-agent ({execution_target})...")
+                res = await local_agent_service.send_command(
                     "prepare_web_cart_or_checkout",
                     timeout=120.0,
                     product_or_service=product_or_service,
                     merchant_url=merchant_url,
                     autofill_details=autofill_details,
-                    open_when_ready=open_when_ready
+                    open_when_ready=open_when_ready,
+                    execution_target=execution_target
                 )
-            elif sys.platform != "win32":
-                return {
-                    "status": "pc_offline",
-                    "message": (
-                        "L'ordinateur personnel de Pierre est actuellement éteint ou déconnecté du serveur VPS. "
-                        "Impossible de préparer le panier avec son profil connecté et d'ouvrir Chrome sur son écran physique."
-                    )
-                }
+                if res.get("status") in ("success", "completed"):
+                    return res
+                elif execution_target == "local_chrome_cdp":
+                    print(f"[prepare_web_cart_or_checkout] ⚠️ Échec local ({res.get('message')}), bascule VPS headless...")
+                    await _notify_live_fallback("Pierre, ton PC ne répond plus, je bascule sur mon navigateur cloud en secours.")
+            else:
+                if execution_target == "local_chrome_cdp":
+                    print(f"[prepare_web_cart_or_checkout] ⚠️ PC hors-ligne pour local_chrome_cdp, bascule VPS headless...")
+                    await _notify_live_fallback("Pierre, ton PC ne répond plus, je bascule sur mon navigateur cloud en secours.")
+                elif sys.platform != "win32":
+                    return {
+                        "status": "pc_offline",
+                        "message": (
+                            "L'ordinateur personnel de Pierre est actuellement éteint ou déconnecté du serveur VPS. "
+                            "Impossible de préparer le panier avec son profil connecté et d'ouvrir Chrome sur son écran physique."
+                        )
+                    }
         except Exception as exc:
             print(f"[browser_service] Erreur vérification local_agent: {exc}")
+            if execution_target == "local_chrome_cdp":
+                await _notify_live_fallback("Pierre, ton PC ne répond plus, je bascule sur mon navigateur cloud en secours.")
     from playwright.async_api import async_playwright
     from services.memory_service import memory_service
 
