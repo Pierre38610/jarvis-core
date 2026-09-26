@@ -1,0 +1,780 @@
+"""core/tools/dispatcher.py
+Dispatch de chaque appel d'outil Gemini Live vers le service métier approprié.
+Retourne systématiquement un dict tool_resp prêt à être envoyé via send_tool_response().
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+
+from google.genai import types
+
+import config
+from google_antigravity import resolve_antigravity_model, is_stop_directive
+from services.memory_service import memory_service
+from services.memory import vector_memory
+from services.unified_memory import unified_memory_manager
+from services.reasoning_service import run_deep_reasoning, run_antigravity_task
+from services.browser_service import (
+    search_web, run_browser_task, open_browser_window, interact_web_page,
+    prepare_web_cart_or_checkout, send_page_to_kindle, send_file_to_kindle_web,
+    list_installed_chrome_extensions
+)
+from services.download_service import download_file, send_to_ereader, search_and_download_ebook
+from services.system_service import get_system_status, launch_application
+from services.email_service import send_email_async, read_received_emails_async
+from services.console_monitor import console_monitor
+from services.supervision_service import supervision_service
+from services.media_service import control_deezer, play_on_stremio
+
+from core.shared_state import (
+    active_task_controller,
+    broadcast_supervision,
+    stop_active_task,
+    estimate_tool_cost,
+)
+
+
+async def dispatch_tool(
+    name: str,
+    args: dict,
+    websocket,
+    session,
+    is_paid_live: bool,
+    live_display_label: str,
+) -> dict:
+    """
+    Dispatch l'appel d'outil `name` avec ses `args` et retourne le dict tool_resp.
+    Toute la logique métier est ici, séparée de la boucle WebSocket voice.
+    """
+
+    # ─── stop_current_action ───────────────────────────────────────────────────
+    if name == "stop_current_action":
+        stop_reason = args.get("reason", "Arrêt demandé par Pierre")
+        await stop_active_task(source="tool_stop", reason=stop_reason)
+        return {
+            "status": "stopped",
+            "message": f"Action immédiatement et totalement arrêtée ({stop_reason}).",
+            "instruction_to_jarvis": "L'action en cours a été immédiatement et totalement arrêtée. Confirme brièvement et calmement à Pierre avec ta voix Aoede que l'action est stoppée."
+        }
+
+    # ─── run_antigravity_task ──────────────────────────────────────────────────
+    elif name == "run_antigravity_task":
+        instruction = args.get("instruction", "")
+        model_choice = args.get("model") or "gemini-3.8-flash"
+        is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
+        _, model_label = resolve_antigravity_model(model_choice)
+        active_task_controller["info"]["running"] = True
+        active_task_controller["info"]["task"] = instruction
+        active_task_controller["info"]["model"] = model_label
+        active_task_controller["directives"] = []
+        while not active_task_controller["queue"].empty():
+            try:
+                active_task_controller["queue"].get_nowait()
+            except Exception:
+                break
+
+        is_flash = any(k in str(model_choice).lower() for k in ["flash", "3.8", "3.5", "3.6"])
+        initial_api_type = "paid" if (config.is_paid_key_authorized() and ((is_flash and config.GEMINI_API_KEY_PAID) or is_confirmed)) else ("paid" if (config.is_paid_key_authorized() and not config.GEMINI_API_KEY_FREE) else "free")
+        initial_api_label = "Clé Payante" if initial_api_type == "paid" else "Clé Gratuite"
+
+        supervision_service.start_action(
+            "antigravity_task", "Développement Antigravity", "run_antigravity_task",
+            instruction, model_label, api_type=initial_api_type, api_label=initial_api_label,
+            cost_est=estimate_tool_cost(name, args)[1]
+        )
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({
+            "type": "jarvis_announcement",
+            "text": f"Lancement du développement avec {model_label} : {instruction}.",
+            "voice": False
+        }))
+        await websocket.send_text(json.dumps({
+            "type": "status", "state": "coding",
+            "msg": "JARVIS développe via Antigravity...", "task": instruction,
+            "engine": "Antigravity IDE", "model": model_label,
+            "api_type": initial_api_type, "api_label": initial_api_label
+        }))
+
+        _ml2 = model_label
+        _mc = model_choice
+        _instr = instruction
+        _confirmed = is_confirmed
+
+        async def on_antigravity_progress(p_info, _ws_orig=websocket, _ml=model_label):
+            step = p_info.get("step", "progress")
+            text = p_info.get("text", "")
+            active_ws = active_task_controller.get("websocket") or _ws_orig
+            active_sess = active_task_controller.get("live_session")
+            supervision_service.update_action_progress("antigravity_task", step, text, model=_ml)
+            await broadcast_supervision()
+            if active_ws:
+                try:
+                    await active_ws.send_text(json.dumps({
+                        "type": "task_progress_oral", "step": step, "text": text,
+                        "engine": "Antigravity IDE", "model": _ml
+                    }))
+                except Exception:
+                    pass
+            if active_sess and text and step in ("tool", "planning", "adaptation", "thought", "fix", "complete", "fallback"):
+                try:
+                    await active_sess.send_client_content(
+                        turns=types.Content(role="user", parts=[types.Part.from_text(
+                            text=f"[MISE À JOUR DU DÉVELOPPEMENT EN COURS - à dire à voix haute à Pierre en une phrase courte et naturelle] {text}"
+                        )]),
+                        turn_complete=True
+                    )
+                except Exception as inj_err:
+                    print(f"[Progress Injection] {inj_err}")
+
+        async def _run_coding_bg(_instr=_instr, _mc=_mc, _ml2=_ml2, _conf=_confirmed, _ws=websocket, _sess=session):
+            try:
+                res = await run_antigravity_task(
+                    _instr, model=_mc, on_progress=on_antigravity_progress,
+                    directive_queue=active_task_controller["queue"], confirmed_by_user=_conf
+                )
+            except Exception as bg_err:
+                res = {"status": "error", "summary": str(bg_err), "model_label": _ml2}
+            finally:
+                active_task_controller["info"]["running"] = False
+                active_task_controller["bg_task"] = None
+
+            status = res.get("status")
+            current_ws = active_task_controller.get("websocket") or _ws
+            current_sess = active_task_controller.get("live_session") or _sess
+
+            if status == "requires_user_confirmation":
+                active_task_controller["paid_consent_modal_open"] = True
+                supervision_service.complete_action("antigravity_task", status="pending_confirmation", summary=res.get("reason", ""))
+                await broadcast_supervision()
+                if current_ws:
+                    try:
+                        await current_ws.send_text(json.dumps({"type": "paid_consent_request", "action": "run_antigravity_task", "reason": res.get("reason", ""), "cost": res.get("estimated_cost", "~0.005 $"), "model": res.get("model", _mc)}))
+                        await current_ws.send_text(json.dumps({"type": "status", "state": "idle", "msg": "En attente d'accord payant", "engine": "Antigravity IDE", "model": _ml2}))
+                    except Exception:
+                        pass
+                if current_sess:
+                    try:
+                        await current_sess.send_client_content(
+                            turns=types.Content(role="user", parts=[types.Part.from_text(text=f"[ACCORD PAYANT REQUIS POUR CODER] {res.get('instruction_to_jarvis', '')}")]),
+                            turn_complete=True
+                        )
+                    except Exception as e:
+                        print(f"[BG Task] Erreur notification consent: {e}")
+                return
+
+            elif status == "cancelled":
+                supervision_service.complete_action("antigravity_task", status="cancelled", summary="Développement arrêté à votre demande", model=_ml2)
+                await broadcast_supervision()
+                if current_ws:
+                    try:
+                        await current_ws.send_text(json.dumps({"type": "task_cancelled", "reason": "Arrêt demandé", "message": "Développement immédiatement interrompu."}))
+                        await current_ws.send_text(json.dumps({"type": "status", "state": "idle", "msg": "En veille active", "detail": "Prêt pour vos ordres", "engine": "Google API Live", "model": live_display_label}))
+                    except Exception:
+                        pass
+                if current_sess:
+                    try:
+                        await current_sess.send_client_content(
+                            turns=types.Content(role="user", parts=[types.Part.from_text(text="[DÉVELOPPEMENT ARRÊTÉ] Le développement a été interrompu suite à la demande de Pierre. Confirme-lui brièvement à la voix que tout est arrêté.")]),
+                            turn_complete=True
+                        )
+                    except Exception:
+                        pass
+                return
+
+            applied_dirs = list(active_task_controller.get("directives", []))
+            directive_note = (f" Les consignes suivantes ont été intégrées en direct : {'; '.join(applied_dirs)}." if applied_dirs else "")
+
+            is_error = res.get("status") in ("error", "overloaded")
+            is_high_demand = (
+                res.get("status") == "overloaded"
+                or res.get("error_type") == "high_demand"
+                or any(k in res.get("summary", "").lower() for k in ["503", "high demand", "forte demande", "satur", "unavailable", "quota"])
+            )
+
+            supervision_service.complete_action(
+                "antigravity_task",
+                status="error" if is_error else "completed",
+                summary=res.get("summary", "")[:250],
+                model=res.get("model_label", _ml2)
+            )
+            await broadcast_supervision()
+
+            current_ws = active_task_controller.get("websocket") or _ws
+            current_sess = active_task_controller.get("live_session") or _sess
+
+            if current_ws:
+                try:
+                    await current_ws.send_text(json.dumps({
+                        "type": "task_completed", "is_error": is_error,
+                        "status": "error" if is_error else "completed",
+                        "error_type": "high_demand" if is_high_demand else ("error" if is_error else None),
+                        "summary": res.get("summary", ""), "engine": "Antigravity IDE", "model": res.get("model_label", _ml2)
+                    }))
+                    await current_ws.send_text(json.dumps({
+                        "type": "status", "state": "idle", "msg": "En veille active",
+                        "detail": "Prêt pour vos ordres", "engine": "Google API Live", "model": live_display_label
+                    }))
+                except Exception:
+                    pass
+
+            if current_sess:
+                if is_error:
+                    if is_high_demand:
+                        completion_msg = (
+                            "[ARRÊT DÉVELOPPEMENT - FORTE DEMANDE SERVEURS] Tous les modèles Antigravity sont actuellement indisponibles. "
+                            "RÈGLE STRICTE : NE RELANCE PAS 'run_antigravity_task'. "
+                            "Informe Pierre avec ta voix Aoede qu'il y a une forte demande et de réessayer dans quelques instants."
+                        )
+                    else:
+                        completion_msg = (
+                            f"[ARRÊT DÉVELOPPEMENT - ERREUR TECHNIQUE] Le développement a rencontré un obstacle : {res.get('summary', '')[:250]}. "
+                            "RÈGLE STRICTE : NE RELANCE PAS d'outil de code en boucle. "
+                            "Explique brièvement à Pierre à l'oral avec ta voix Aoede ce qui s'est produit."
+                        )
+                else:
+                    completion_msg = (
+                        f"[DÉVELOPPEMENT TERMINÉ] Le développement avec {res.get('model_label', _ml2)} est achevé avec succès."
+                        f"{directive_note} Résume avec ta voix Aoede ce qui a été accompli et mentionne les fichiers créés ou modifiés. "
+                        f"Résultat : {res.get('summary', 'Tâche exécutée avec succès.')[:400]}"
+                    )
+                try:
+                    await current_sess.send_client_content(
+                        turns=types.Content(role="user", parts=[types.Part.from_text(text=completion_msg)]),
+                        turn_complete=True
+                    )
+                except Exception as notify_err:
+                    print(f"[BG Task] Erreur notification fin : {notify_err}")
+
+        bg = asyncio.create_task(_run_coding_bg())
+        active_task_controller["bg_task"] = bg
+        return {
+            "status": "launched_in_background", "model_used": model_label, "engine": "Antigravity IDE",
+            "instruction_to_jarvis": (
+                f"Le développement avec {model_label} est lancé en arrière-plan pour : '{instruction}'. "
+                f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, complice et direct que sa demande est bien prise en compte et que tu lances le développement avec Antigravity. "
+                f"Tu restes ensuite 100% disponible pour échanger normalement avec lui d'égal à égal pendant que le code s'exécute."
+            )
+        }
+
+    # ─── guide_active_task ─────────────────────────────────────────────────────
+    elif name == "guide_active_task":
+        directive = args.get("directive", "")
+        if active_task_controller["info"]["running"]:
+            await active_task_controller["queue"].put(directive)
+            active_task_controller.setdefault("directives", []).append(directive)
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Consigne en direct prise en compte : {directive}.", "voice": False}))
+        return {"status": "adapted", "directive": directive, "message": f"Consigne '{directive}' transmise en direct au moteur Antigravity."}
+
+    # ─── set_browser_link ──────────────────────────────────────────────────────
+    elif name == "set_browser_link":
+        link_url = args.get("url", "")
+        link_title = args.get("title") or "Page sélectionnée"
+        supervision_service.track_browser_window(link_url, link_title)
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "browser_update", "url": link_url, "title": link_title, "screenshot": "/static/latest_screenshot.jpg"}))
+        return {"status": "updated", "url": link_url, "title": link_title, "message": f"Le lien {link_url} a été positionné dans le HUD mobile."}
+
+    # ─── ask_deep_reasoning ────────────────────────────────────────────────────
+    elif name == "ask_deep_reasoning":
+        question = args.get("question", "")
+        engine = args.get("engine") or "auto"
+        model_choice = args.get("model")
+        is_confirmed = (bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))) and config.is_paid_key_authorized()
+
+        if engine == "antigravity" or (model_choice and any(k in model_choice.lower() for k in ["pro", "claude", "sonnet", "opus"])):
+            _, initial_label = resolve_antigravity_model(model_choice or "gemini-3.1-pro-high")
+            initial_engine = "Antigravity IDE"
+            initial_api_type = "paid" if config.is_paid_key_authorized() else "free"
+            initial_api_label = "Clé Payante" if config.is_paid_key_authorized() else "Clé Gratuite (Verrouillée)"
+        else:
+            initial_label = "Gemini 3.8 Flash (Thinking)"
+            initial_engine = "Google API"
+            initial_api_type = "free"
+            initial_api_label = "Clé Gratuite"
+
+        supervision_service.start_action("deep_reasoning", "Raisonnement Approfondi", "ask_deep_reasoning", question, initial_label, api_type=initial_api_type, api_label=initial_api_label, cost_est=estimate_tool_cost(name, args)[1])
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Engagement des protocoles de réflexion approfondie avec {initial_label}.", "voice": False}))
+        await websocket.send_text(json.dumps({"type": "status", "state": "thinking", "msg": "Réflexion approfondie en cours...", "task": question, "engine": initial_engine, "model": initial_label, "api_type": initial_api_type, "api_label": initial_api_label}))
+        res = await run_deep_reasoning(question, model_choice=model_choice, engine=engine, confirmed_by_user=is_confirmed)
+
+        if res.get("status") == "requires_user_confirmation":
+            active_task_controller["paid_consent_modal_open"] = True
+            supervision_service.complete_action("deep_reasoning", status="pending_confirmation", summary=res.get("reason", ""))
+            await broadcast_supervision()
+            await websocket.send_text(json.dumps({"type": "paid_consent_request", "action": "ask_deep_reasoning", "reason": res.get("reason", ""), "cost": res.get("estimated_cost", "~0.03 $"), "model": res.get("model", "Gemini Pro / Claude")}))
+            return {"status": "requires_user_confirmation", "reason": res.get("reason", ""), "estimated_cost": res.get("estimated_cost", "~0.03 $"), "instruction_to_jarvis": res.get("instruction_to_jarvis", "")}
+        else:
+            actual_key_label = res.get("key_used", initial_api_label)
+            actual_api_type = "free" if "gratuite" in actual_key_label.lower() else "paid"
+            supervision_service.complete_action("deep_reasoning", status="completed", summary=res.get("summary", "")[:250], model=res.get("model_label", initial_label))
+            await broadcast_supervision()
+            await websocket.send_text(json.dumps({"type": "status", "state": "thinking", "msg": "Analyse terminée, formulation de la synthèse...", "task": question, "engine": res.get("source", initial_engine), "model": res.get("model_label", initial_label), "api_type": actual_api_type, "api_label": actual_key_label}))
+            return {"status": "completed", "engine_used": res.get("source", initial_engine), "model_used": res.get("model_label", initial_label), "result": res, "instruction_to_jarvis": f"La réflexion avec {res.get('model_label', initial_label)} ({res.get('source', initial_engine)}) est achevée. Présente la synthèse et les conclusions avec clarté et éloquence avec ta voix Aoede."}
+
+    # ─── search_web ────────────────────────────────────────────────────────────
+    elif name == "search_web":
+        query = args.get("query", "")
+        supervision_service.start_action("search_web", "Recherche Internet", "search_web", query, "Playwright / DuckDuckGo", api_type="free", api_label="Clé Gratuite", cost_est="0.00 $")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Recherche sur Internet : {query}", "voice": False}))
+        await websocket.send_text(json.dumps({"type": "status", "state": "browsing", "msg": "Recherche sur Internet...", "task": query, "engine": "Clé Gratuite", "model": "DuckDuckGo / Playwright", "api_type": "free", "api_label": "Clé Gratuite"}))
+
+        _query_bg = query
+        _sess_bg = session
+        _ws_bg = websocket
+
+        async def _run_search_bg(_q=_query_bg, _sess=_sess_bg, _ws=_ws_bg):
+            try:
+                await asyncio.sleep(0.05)
+                res = await search_web(_q)
+                best_url = "https://www.google.com"
+                best_title = _q
+                if res.get("results"):
+                    first = res["results"][0]
+                    best_url = first.get("url", "")
+                    best_title = first.get("title", _q)
+                supervision_service.complete_action("search_web", status="completed", summary=f"Résultats pour {best_title}")
+                supervision_service.track_browser_window(best_url, best_title)
+                await broadcast_supervision()
+                try:
+                    await _ws.send_text(json.dumps({"type": "browser_update", "url": best_url, "title": best_title, "screenshot": "/static/latest_screenshot.jpg"}))
+                    await _ws.send_text(json.dumps({"type": "status", "state": "idle", "msg": "En veille active", "engine": "Google API Live", "model": live_display_label, "api_type": "paid" if is_paid_live else "free", "api_label": "Clé Payante" if is_paid_live else "Clé Gratuite"}))
+                except Exception:
+                    pass
+                result_msg = (
+                    f"[RÉSULTATS DE RECHERCHE DISPONIBLES] La recherche sur '{_q}' est terminée. "
+                    f"Le lien principal est {best_url}. "
+                    f"Voici les résultats : {json.dumps(res.get('results', [])[:3], ensure_ascii=False)[:800]}. "
+                    f"Présente maintenant les résultats pertinents à Pierre avec ta voix Aoede de façon fluide et naturelle."
+                )
+                try:
+                    await _sess.send_client_content(turns=types.Content(role="user", parts=[types.Part.from_text(text=result_msg)]), turn_complete=True)
+                except Exception as inj_err:
+                    print(f"[Search BG] Erreur injection résultats: {inj_err}")
+            except Exception as e:
+                print(f"[Search BG] Erreur: {e}")
+                supervision_service.complete_action("search_web", status="error", summary=str(e))
+                await broadcast_supervision()
+                try:
+                    await _sess.send_client_content(turns=types.Content(role="user", parts=[types.Part.from_text(text=f"[ÉCHEC RECHERCHE] La recherche sur '{_q}' a échoué ({e}). Informe Pierre brièvement.")]), turn_complete=True)
+                except Exception:
+                    pass
+
+        asyncio.create_task(_run_search_bg())
+        return {
+            "status": "searching_in_background", "query": query,
+            "instruction_to_jarvis": (
+                f"La recherche sur '{query}' est lancée en arrière-plan. "
+                f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, direct et complice que ta demande est bien prise en compte et que tu lances la recherche sur le web. "
+                f"Tu lui présenteras les résultats dès qu'ils arrivent."
+            )
+        }
+
+    # ─── run_browser_task ──────────────────────────────────────────────────────
+    elif name == "run_browser_task":
+        goal = args.get("goal", "")
+        target_url = args.get("url") or ""
+        is_confirmed = (bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))) and config.is_paid_key_authorized()
+        initial_api_type = "paid" if is_confirmed else "free"
+        initial_api_label = "Clé Payante" if is_confirmed else "Clé Gratuite (Essai multi-modèles)"
+        supervision_service.start_action("browser_task", "Navigation Web Autonome", "run_browser_task", goal, "Browser-Use (Vision LLM)", api_type=initial_api_type, api_label=initial_api_label, cost_est="~0.02 $" if is_confirmed else "0.00 $")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Navigation autonome : {goal}", "voice": False}))
+        await websocket.send_text(json.dumps({"type": "status", "state": "browsing", "msg": "Navigation autonome en cours...", "task": goal, "engine": initial_api_label, "model": "Browser-Use (Vision LLM)", "api_type": initial_api_type, "api_label": initial_api_label}))
+
+        _g = goal
+        _url = target_url
+        _conf = is_confirmed
+        _sess_bg = session
+        _ws_bg = websocket
+
+        async def _run_browser_bg(_g=_g, _url=_url, _conf=_conf, _sess=_sess_bg, _ws=_ws_bg):
+            try:
+                res = await run_browser_task(goal=_g, url=_url, confirmed_by_user=_conf)
+                if res.get("status") == "requires_user_confirmation":
+                    active_task_controller["paid_consent_modal_open"] = True
+                    supervision_service.complete_action("browser_task", status="pending_confirmation", summary=res.get("reason", ""))
+                    await broadcast_supervision()
+                    if _ws:
+                        try:
+                            await _ws.send_text(json.dumps({"type": "paid_consent_request", "action": "run_browser_task", "reason": res.get("reason", ""), "cost": res.get("estimated_cost", "~0.02 $"), "model": "Browser-Use"}))
+                        except Exception:
+                            pass
+                    if _sess:
+                        try:
+                            await _sess.send_client_content(turns=types.Content(role="user", parts=[types.Part.from_text(text=f"[ACCORD PAYANT REQUIS POUR NAVIGUER] {res.get('instruction_to_jarvis', '')}")]), turn_complete=True)
+                        except Exception:
+                            pass
+                    return
+
+                actual_key = res.get("key_used", initial_api_label)
+                actual_type = "free" if "gratuite" in actual_key.lower() else "paid"
+                final_site_url = res.get("final_url") or res.get("url") or _url or "https://www.google.com"
+
+                supervision_service.complete_action("browser_task", status="completed", summary=res.get("summary", "")[:250])
+                supervision_service.track_browser_window(final_site_url, res.get("page_title", _g))
+                await broadcast_supervision()
+                try:
+                    await _ws.send_text(json.dumps({"type": "browser_update", "url": final_site_url, "title": res.get("page_title", _g), "screenshot": "/static/latest_screenshot.jpg"}))
+                    await _ws.send_text(json.dumps({"type": "status", "state": "idle", "msg": "En veille active", "engine": "Google API Live", "model": live_display_label, "api_type": actual_type, "api_label": actual_key}))
+                except Exception:
+                    pass
+                result_msg = (
+                    f"[RÉSULTATS NAVIGATION DISPONIBLES] La navigation autonome sur '{_g}' est terminée (utilisant {actual_key}). "
+                    f"Site visité : {final_site_url}. Résumé : {res.get('summary', '')[:600]}. "
+                    f"Détaille les résultats à Pierre avec ta voix Aoede de façon fluide."
+                )
+                try:
+                    await _sess.send_client_content(turns=types.Content(role="user", parts=[types.Part.from_text(text=result_msg)]), turn_complete=True)
+                except Exception as inj_err:
+                    print(f"[Browser BG] Erreur injection résultats: {inj_err}")
+            except Exception as e:
+                print(f"[Browser BG] Erreur: {e}")
+                supervision_service.complete_action("browser_task", status="error", summary=str(e))
+                await broadcast_supervision()
+                try:
+                    await _sess.send_client_content(turns=types.Content(role="user", parts=[types.Part.from_text(text=f"[ÉCHEC NAVIGATION] La navigation sur '{_g}' a échoué ({e}). Informe Pierre brièvement.")]), turn_complete=True)
+                except Exception:
+                    pass
+            finally:
+                active_task_controller["browser_bg_task"] = None
+
+        b_task = asyncio.create_task(_run_browser_bg())
+        active_task_controller["browser_bg_task"] = b_task
+        speech_intro = (f"La navigation autonome sur '{goal}' est lancée sur la clé payante autorisée." if is_confirmed else f"La navigation sur '{goal}' est lancée. J'essaie d'abord les modèles sur la clé gratuite.")
+        return {
+            "status": "launched_in_background", "goal": goal,
+            "instruction_to_jarvis": (
+                f"{speech_intro} Dis immédiatement à Pierre avec ta voix Aoede d'un ton direct et complice que tu lances la navigation sur le web. "
+                f"Tu lui présenteras les résultats dès que la mission est accomplie."
+            )
+        }
+
+    # ─── open_user_browser ─────────────────────────────────────────────────────
+    elif name == "open_user_browser":
+        target_url = args.get("url") or "https://www.google.com"
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Ouverture de Google Chrome à l'écran.", "voice": False}))
+        from services.local_agent_service import local_agent_service
+        if local_agent_service.is_connected():
+            res = await local_agent_service.execute_command("open_browser", url=target_url)
+        else:
+            res = await asyncio.to_thread(open_browser_window, target_url)
+        supervision_service.track_browser_window(target_url, "Google Chrome")
+        await broadcast_supervision()
+        return {"status": "completed", "result": res, "instruction_to_jarvis": f"La fenêtre Chrome est ouverte sur {target_url}. Dis directement à Pierre d'un ton complice et naturel que sa demande est bien prise en compte et que tu lui affiches la page."}
+
+    # ─── remember_user_fact ────────────────────────────────────────────────────
+    elif name == "remember_user_fact":
+        fact = args.get("fact", "")
+        cat = args.get("category", "général")
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Mémorisation de l'information dans la mémoire durable.", "voice": False}))
+        res = await unified_memory_manager.memorize(fact, category=cat)
+        return {"status": "completed", "result": res, "instruction_to_jarvis": "L'information est enregistrée dans ta mémoire durable vectorielle. Confirme-le brièvement avec ta voix Aoede."}
+
+    # ─── recall_user_memories ──────────────────────────────────────────────────
+    elif name == "recall_user_memories":
+        query = args.get("query", "")
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Consultation des souvenirs mémorisés.", "voice": False}))
+        memories = await unified_memory_manager.recall(query, limit=6)
+        return {"status": "completed", "memories": memories, "instruction_to_jarvis": "Voici les souvenirs trouvés dans ta mémoire vectorielle. Présente-les à l'utilisateur avec ta voix Aoede de façon naturelle."}
+
+    # ─── memoriser_information ─────────────────────────────────────────────────
+    elif name == "memoriser_information":
+        cle = args.get("cle", "")
+        valeur = args.get("valeur", "")
+        categorie = args.get("categorie", "fait")
+        full_text = f"{cle} : {valeur}".strip() if cle else valeur.strip()
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Mémorisation vectorielle : {cle or valeur[:40]}", "voice": False}))
+        res = await unified_memory_manager.memorize(full_text, category=categorie or "fait", importance=2)
+        return {"status": "completed", "result": res, "instruction_to_jarvis": f"L'information '{cle}' a été mémorisée durablement dans ta mémoire vectorielle. Confirme-le brièvement et naturellement avec ta voix Aoede."}
+
+    # ─── get_system_status ─────────────────────────────────────────────────────
+    elif name == "get_system_status":
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Diagnostic des ressources système en cours.", "voice": False}))
+        status = await asyncio.to_thread(get_system_status)
+        return {"status": "completed", "result": status, "instruction_to_jarvis": "Voici les métriques système actuelles. Communique-les avec précision à l'utilisateur avec ta voix Aoede."}
+
+    # ─── launch_application ────────────────────────────────────────────────────
+    elif name == "launch_application":
+        app_name = args.get("app_name", "")
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Lancement de {app_name}.", "voice": False}))
+        from services.local_agent_service import local_agent_service
+        if local_agent_service.is_connected():
+            res = await local_agent_service.execute_command("launch_app", app_name=app_name)
+        else:
+            res = await asyncio.to_thread(launch_application, app_name)
+        return {"status": "completed", "result": res, "instruction_to_jarvis": f"L'application {app_name} est lancée sur l'écran. Dis directement à Pierre d'un ton complice et naturel que tu as lancé {app_name}."}
+
+    # ─── play_music_deezer ─────────────────────────────────────────────────────
+    elif name == "play_music_deezer":
+        action = args.get("action") or ("choose" if args.get("query") else "playpause")
+        query = args.get("query", "")
+        item_type = args.get("item_type", "track")
+        volume = args.get("volume")
+        enable = args.get("enable")
+
+        if query:
+            q_low = query.lower()
+            if any(k in q_low for k in ["playlist", "mix", "compil"]):
+                item_type = "playlist"
+            elif any(k in q_low for k in ["flow", "mon flow"]):
+                item_type = "flow"
+            elif any(k in q_low for k in ["coup de coeur", "coups de coeur", "favoris", "ma musique"]):
+                item_type = "loved"
+
+        action_label_map = {
+            "play": "Lecture Deezer", "pause": "Pause Deezer", "playpause": "Bascule Play/Pause Deezer",
+            "next": "Morceau suivant Deezer", "prev": "Morceau précédent Deezer",
+            "shuffle": "Aléatoire Deezer",
+            "volume": f"Volume Deezer ({volume}%)" if volume is not None else "Volume Deezer",
+            "status": "Statut lecture Deezer",
+            "choose": f"Musique Deezer ({item_type}) : {query}",
+            "open": "Ouverture Deezer Web"
+        }
+        action_label = action_label_map.get(action.lower(), f"Deezer : {action}")
+        supervision_service.start_action("play_music_deezer", action_label, "play_music_deezer", f"Action : {action} {f'({query})' if query else ''}", "Deezer Web Player (WebSocket Bridge)", api_type="free", api_label="Local", cost_est="0.00 $")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"{action_label}...", "voice": False}))
+        await websocket.send_text(json.dumps({"type": "status", "state": "music", "msg": f"Deezer — {action_label}...", "task": query or action, "engine": "WebSocket Bridge", "model": "Deezer Web", "api_type": "free", "api_label": "Local"}))
+        res = await control_deezer(action=action, query=query, item_type=item_type, volume=volume, enable=enable)
+        supervision_service.complete_action("play_music_deezer", status=res.get("status", "completed"), summary=res.get("message", "Deezer contrôlé avec succès"))
+        await broadcast_supervision()
+        return {"status": res.get("status", "completed"), "result": res, "instruction_to_jarvis": f"{res.get('message', 'Action Deezer exécutée.')} Confirme brièvement et naturellement à Pierre d'un ton complice que sa demande musicale est prise en compte."}
+
+    # ─── play_video_stremio ────────────────────────────────────────────────────
+    elif name == "play_video_stremio":
+        title = args.get("title", "")
+        content_type = args.get("content_type") or "movie"
+        supervision_service.start_action("play_video_stremio", "Lecture Stremio", "play_video_stremio", f"{'Film' if content_type == 'movie' else 'Série'} : {title}", "Stremio + Torrentio", api_type="free", api_label="Local", cost_est="0.00 $")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Recherche de '{title}' sur Stremio...", "voice": False}))
+        await websocket.send_text(json.dumps({"type": "status", "state": "media", "msg": f"Stremio — Recherche de '{title}'...", "task": title, "engine": "Local", "model": "Stremio + Cinemeta", "api_type": "free", "api_label": "Local"}))
+
+        _title_bg = title
+        _ct_bg = content_type
+        _sess_stremio = session
+        _ws_stremio = websocket
+
+        async def _run_stremio_bg(_t=_title_bg, _ct=_ct_bg, _sess=_sess_stremio, _ws=_ws_stremio):
+            try:
+                res = await play_on_stremio(_t, _ct)
+                supervision_service.complete_action("play_video_stremio", status=res.get("status", "launched"), summary=res.get("message", f"Stremio lancé sur {_t}"))
+                await broadcast_supervision()
+                stream = res.get("stream_info", {})
+                size_msg = (f" Le stream 1080p fait {stream['size_gb']} Go." if stream.get("found") and stream.get("size_gb") else "")
+                found_t = res.get("found_title", _t)
+                year = res.get("year", "")
+                rating = res.get("imdb_rating", "")
+                rating_msg = f" Note IMDb : {rating}." if rating else ""
+                inject_msg = f"[STREMIO LANCÉ] Stremio est ouvert sur '{found_t}' ({year}).{rating_msg}{size_msg} Dis à Pierre d'un ton complice et enthousiaste que tu as trouvé et lancé '{found_t}' sur Stremio."
+                try:
+                    await _sess.send_client_content(turns=types.Content(role="user", parts=[types.Part.from_text(text=inject_msg)]), turn_complete=True)
+                except Exception:
+                    pass
+            except Exception as e:
+                supervision_service.complete_action("play_video_stremio", status="error", summary=str(e))
+                await broadcast_supervision()
+                try:
+                    await _sess.send_client_content(turns=types.Content(role="user", parts=[types.Part.from_text(text=f"[STREMIO ERREUR] Impossible de lancer '{_t}' : {e}. Informe Pierre brièvement.")]), turn_complete=True)
+                except Exception:
+                    pass
+
+        asyncio.create_task(_run_stremio_bg())
+        return {"status": "searching_in_background", "title": title, "instruction_to_jarvis": f"La recherche de '{title}' sur Stremio est lancée en arrière-plan. Dis immédiatement à Pierre avec ta voix Aoede d'un ton enthousiaste et complice que tu cherches '{title}' sur Stremio et que tu vas le lancer directement."}
+
+    # ─── send_email ────────────────────────────────────────────────────────────
+    elif name == "send_email":
+        subject = args.get("subject", "Rapport J.A.R.V.I.S.")
+        body = args.get("body", "")
+        to_email = args.get("to_email") or config.DEFAULT_RECIPIENT_EMAIL
+        attachments = args.get("attachments") or []
+        include_screenshot = bool(args.get("include_latest_screenshot", False))
+        supervision_service.start_action("send_email", "Expédition E-mail", "send_email", f"Sujet : {subject} -> {to_email}", "SMTP Stark Protocol", api_type="free", api_label="Service Local", cost_est="0.00 $")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Préparation de l'e-mail pour {to_email}.", "voice": False}))
+        await websocket.send_text(json.dumps({"type": "status", "state": "emailing", "msg": "Expédition d'e-mail en cours...", "task": subject, "engine": "Google API", "model": "Stark Email Protocol", "api_type": "free", "api_label": "Service Local"}))
+        res = await send_email_async(subject=subject, body=body, to_email=to_email, attachments=attachments, include_screenshot=include_screenshot, is_html_report=True)
+        supervision_service.complete_action("send_email", status="completed" if res.get("status") in ("sent", "saved") else "error", summary=res.get("message", f"E-mail traité pour {to_email}"))
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "email_sent", "status": res.get("status"), "subject": subject, "recipient": to_email, "attachments_count": res.get("attachments_count", 0), "message": res.get("message", "")}))
+        return {"status": "completed", "result": res, "instruction_to_jarvis": f"L'e-mail avec pour sujet '{subject}' destiné à {to_email} a été traité ({res.get('message', '')}). Confirme verbalement d'égal à égal à Pierre avec ta voix Aoede que sa demande a bien été prise en compte et que l'e-mail est expédié."}
+
+    # ─── read_emails ───────────────────────────────────────────────────────────
+    elif name == "read_emails":
+        count = int(args.get("count", 5))
+        query = args.get("query")
+        unread_only = bool(args.get("unread_only", False))
+        supervision_service.start_action("read_emails", "Lecture E-mails", "read_emails", f"Consultation Gmail ({count} messages)", "IMAP Stark Protocol", api_type="free", api_label="Service Local", cost_est="0.00 $")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Consultation de votre boîte de réception Gmail en cours...", "voice": False}))
+        await websocket.send_text(json.dumps({"type": "status", "state": "emailing", "msg": "Lecture des e-mails en cours...", "task": f"Boîte de réception ({config.DEFAULT_RECIPIENT_EMAIL})", "engine": "Google API", "model": "Stark IMAP Protocol", "api_type": "free", "api_label": "Service Local"}))
+        res = await read_received_emails_async(max_count=count, query=query, unread_only=unread_only)
+        supervision_service.complete_action("read_emails", status="completed" if res.get("status") == "ok" else "error", summary=f"{res.get('count', 0)} e-mail(s) relevé(s)")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "emails_received", "status": res.get("status"), "count": res.get("count", 0), "emails": res.get("emails", []), "message": res.get("message", "")}))
+        emails_summary_text = ""
+        if res.get("status") == "ok" and res.get("emails"):
+            items_desc = []
+            for idx, m in enumerate(res["emails"], 1):
+                items_desc.append(f"E-mail {idx} : De '{m.get('from', 'Inconnu')}', Objet '{m.get('subject', 'Sans sujet')}', reçu le {m.get('date', '')}. Extrait : {m.get('snippet', '')}")
+                if m.get("has_attachments"):
+                    items_desc.append(f"  Pièces jointes : {', '.join(m.get('attachments', []))}")
+            emails_summary_text = "\n".join(items_desc)
+        else:
+            emails_summary_text = res.get("message", "Aucun message trouvé.")
+        return {"status": "completed", "result": res, "instruction_to_jarvis": f"Voici le résultat de la consultation des e-mails reçus sur {config.DEFAULT_RECIPIENT_EMAIL} :\n{emails_summary_text}\n\nPrésente directement à Pierre à l'oral avec ta voix Aoede un compte-rendu clair, concis et naturel de ses messages récents."}
+
+    # ─── check_console_errors ─────────────────────────────────────────────────
+    elif name == "check_console_errors":
+        action = args.get("action") or "diagnose"
+        if action == "clear":
+            console_monitor.clear()
+            diag = console_monitor.analyze_diagnostics()
+            diag["summary"] = "Journal des erreurs de la console réinitialisé."
+            diag["oral_explanation"] = "Pierre, j'ai purgé et réinitialisé le journal des erreurs de la console."
+        else:
+            diag = console_monitor.analyze_diagnostics()
+            if diag.get("has_errors"):
+                auto_fix = console_monitor.attempt_auto_fix(workspace_path=config.WORKSPACE_DIR)
+                diag["auto_fix"] = auto_fix
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Analyse console : {diag.get('summary', '')[:65]}", "voice": False}))
+        return {"status": "completed", "has_errors": diag.get("has_errors", False), "diagnostic": diag.get("summary", ""), "oral_explanation": diag.get("oral_explanation", ""), "recent_errors": console_monitor.get_recent_errors(limit=4), "instruction_to_jarvis": f"Explique immédiatement à Pierre à l'oral avec ta voix Aoede la situation de la console de façon fluide et rassurante : {diag.get('oral_explanation', '')}"}
+
+    # ─── interact_web_page ─────────────────────────────────────────────────────
+    elif name == "interact_web_page":
+        target_url = args.get("url", "")
+        action = args.get("action", "read")
+        selector = args.get("selector", "")
+        text_to_fill = args.get("text_to_fill", "")
+        supervision_service.start_action("interact_web_page", "Interaction Web & Formulaires", "interact_web_page", f"{action} sur {target_url}", "Playwright Automation Engine", api_type="free", api_label="Local / Playwright", cost_est="0.00 $")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Interaction sur {target_url} ({action})", "voice": False}))
+        await websocket.send_text(json.dumps({"type": "status", "state": "browsing", "msg": "Interaction sur la page web...", "task": f"{action} sur {target_url}", "engine": "Playwright Local", "model": "Browser Engine", "api_type": "free", "api_label": "Clé Gratuite"}))
+        res = await interact_web_page(url=target_url, action=action, selector=selector, text_to_fill=text_to_fill)
+        supervision_service.complete_action("interact_web_page", status=res.get("status", "completed"), summary=res.get("title", target_url))
+        if res.get("url"):
+            supervision_service.track_browser_window(res.get("url"), res.get("title", target_url))
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "browser_update", "url": res.get("url", target_url), "title": res.get("title", "Page Web"), "screenshot": "/static/latest_screenshot.jpg"}))
+        return {"status": res.get("status"), "url": res.get("url"), "title": res.get("title"), "performed_actions": res.get("performed_actions", []), "detected_form_inputs": res.get("detected_form_inputs", []), "available_buttons": res.get("available_buttons", []), "content_preview": res.get("content_preview", "")[:1200], "instruction_to_jarvis": f"L'interaction sur la page {res.get('url')} est terminée. Dis d'abord à Pierre d'un ton franc et complice que sa demande a bien été prise en compte, puis résume les éléments découverts ou les actions effectuées avec ta voix Aoede."}
+
+    # ─── prepare_web_cart_or_checkout ──────────────────────────────────────────
+    elif name == "prepare_web_cart_or_checkout":
+        product_or_service = args.get("product_or_service", "")
+        merchant_url = args.get("merchant_url") or ""
+        open_when_ready = bool(args.get("open_when_ready", True))
+        supervision_service.start_action("prepare_web_cart_or_checkout", "Création Panier & Commande", "prepare_web_cart_or_checkout", f"Panier : {product_or_service}", "Playwright E-Commerce Engine", api_type="free", api_label="Local / Playwright", cost_est="0.00 $")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Préparation de votre panier pour {product_or_service}...", "voice": False}))
+        await websocket.send_text(json.dumps({"type": "status", "state": "shopping", "msg": "Préparation du panier et préremplissage...", "task": f"Panier : {product_or_service}", "engine": "Playwright E-Commerce", "model": "Chrome Automation", "api_type": "free", "api_label": "Clé Gratuite"}))
+        res = await prepare_web_cart_or_checkout(product_or_service=product_or_service, merchant_url=merchant_url, open_when_ready=open_when_ready)
+        supervision_service.complete_action("prepare_web_cart_or_checkout", status=res.get("status", "completed"), summary=f"Panier {product_or_service} préparé")
+        if res.get("cart_url"):
+            supervision_service.track_browser_window(res.get("cart_url"), f"Panier : {product_or_service}")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "browser_update", "url": res.get("cart_url", merchant_url), "title": f"Panier : {product_or_service}", "screenshot": "/static/latest_screenshot.jpg"}))
+        return {"status": res.get("status"), "cart_url": res.get("cart_url"), "prefilled_fields": res.get("prefilled_fields", []), "browser_opened": res.get("browser_opened", True), "result_message": res.get("message", ""), "instruction_to_jarvis": f"Le panier pour '{product_or_service}' est prêt et les coordonnées de Pierre sont préremplies sur son écran. Dis directement à Pierre avec ta voix Aoede d'un ton complice et naturel que sa demande a bien été prise en compte, que le panier est ouvert à l'écran et qu'il n'a plus qu'à régler et valider sa commande."}
+
+    # ─── download_file ─────────────────────────────────────────────────────────
+    elif name == "download_file":
+        target_url = args.get("url", "")
+        filename = args.get("filename")
+        is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
+        file_type = args.get("file_type", "general")
+        supervision_service.start_action("download_file", "Téléchargement Sécurisé", "download_file", f"Téléchargement {filename or target_url}", "Stark Transfer Protocol", api_type="free", api_label="Service Local", cost_est="0.00 $")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "status", "state": "downloading", "msg": f"Téléchargement sécurisé : {filename or target_url}...", "task": f"Téléchargement : {filename or target_url}", "engine": "Stark Transfer Protocol", "model": "Secure Downloader", "api_type": "free", "api_label": "Service Local"}))
+        res = await download_file(url=target_url, filename=filename, confirmed_by_user=is_confirmed, subfolder="ebooks" if file_type == "ebook" else "downloads")
+        if res.get("status") == "requires_user_confirmation":
+            supervision_service.complete_action("download_file", status="pending_confirmation", summary=f"En attente accord Pierre pour {res.get('filename')}")
+            await broadcast_supervision()
+            await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Autorisation requise pour télécharger {res.get('filename')}", "voice": False}))
+            return {"status": "requires_user_confirmation", "filename": res.get("filename"), "size": res.get("estimated_size"), "domain": res.get("domain"), "instruction_to_jarvis": res.get("instruction_to_jarvis")}
+        else:
+            supervision_service.complete_action("download_file", status=res.get("status", "completed"), summary=f"{res.get('filename')} ({res.get('size')})")
+            await broadcast_supervision()
+            await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Téléchargement terminé : {res.get('filename')} ({res.get('size')})", "voice": False}))
+            return {"status": res.get("status"), "filename": res.get("filename"), "filepath": res.get("filepath"), "size": res.get("size"), "message": res.get("message"), "instruction_to_jarvis": f"Le fichier '{res.get('filename')}' ({res.get('size')}) a été téléchargé avec succès sur l'ordinateur. Confirme verbalement d'égal à égal à Pierre avec ta voix Aoede que sa demande a bien été prise en compte et que le fichier est prêt."}
+
+    # ─── send_to_ereader ───────────────────────────────────────────────────────
+    elif name == "send_to_ereader":
+        file_path = args.get("file_path", "")
+        ereader_email = args.get("ereader_email")
+        method = args.get("method", "auto")
+        supervision_service.start_action("send_to_ereader", "Acheminement Liseuse", "send_to_ereader", f"Livre : {file_path}", "USB / SMTP Protocol", api_type="free", api_label="Service Local", cost_est="0.00 $")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Transfert de l'ebook vers la liseuse...", "voice": False}))
+        await websocket.send_text(json.dumps({"type": "status", "state": "kindle", "msg": "Acheminement de l'ebook vers votre liseuse Kindle...", "task": "Kindle : Acheminement liseuse", "detail": f"Livre : {os.path.basename(file_path) if file_path else 'Ebook'}", "engine": "Amazon Send to Kindle", "model": "Stark Reader Protocol", "api_type": "free", "api_label": "Service Local"}))
+        res = await send_to_ereader(file_path=file_path, ereader_email=ereader_email, method=method)
+        supervision_service.complete_action("send_to_ereader", status=res.get("status", "completed"), summary=res.get("message", "Ebook envoyé"))
+        await broadcast_supervision()
+        return {"status": res.get("status"), "channel": res.get("channel"), "message": res.get("message"), "instruction_to_jarvis": f"{res.get('message', 'Le livre a été envoyé vers votre liseuse.')} Confirme à Pierre avec ta voix Aoede que son livre est prêt sur sa liseuse."}
+
+    # ─── search_and_download_ebook ─────────────────────────────────────────────
+    elif name == "search_and_download_ebook":
+        query = args.get("query", "")
+        lang_arg = args.get("lang")
+        source_url = args.get("source_url")
+        is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
+        send_to_reader_flag = bool(args.get("send_to_reader", True))
+        ereader_email = args.get("ereader_email")
+        supervision_service.start_action("send_to_ereader", "Recherche & Ebook Liseuse", "search_and_download_ebook", f"Ebook : {query} ({lang_arg or 'auto'})", "Web / Stark Reader Protocol", api_type="free", api_label="Service Local", cost_est="0.00 $")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Recherche et transfert de l'ebook '{query}' vers votre Kindle...", "voice": False}))
+        await websocket.send_text(json.dumps({"type": "status", "state": "kindle", "msg": f"Recherche & acheminement Kindle : {query}...", "task": f"Kindle : {query}", "detail": f"Ebook : {query} ({lang_arg or 'auto'})", "engine": "Amazon Send to Kindle", "model": "Send to Kindle / Anna's Archive", "api_type": "free", "api_label": "Service Local"}))
+        res = await search_and_download_ebook(query=query, source_url=source_url, confirmed_by_user=is_confirmed, send_to_reader=send_to_reader_flag, ereader_email=ereader_email, lang=lang_arg)
+        if res.get("status") == "requires_user_confirmation":
+            supervision_service.complete_action("send_to_ereader", status="pending_confirmation", summary=f"Accord Pierre requis pour l'ebook {query}")
+            await broadcast_supervision()
+            return {"status": "requires_user_confirmation", "query": query, "book_title": res.get("book_title") or res.get("filename"), "source_url": res.get("source_url"), "filename": res.get("filename"), "size": res.get("estimated_size") or res.get("size"), "domain": res.get("domain") or res.get("source") or "Anna's Archive", "instruction_to_jarvis": res.get("instruction_to_jarvis")}
+        else:
+            supervision_service.complete_action("send_to_ereader", status=res.get("status", "completed"), summary=f"Ebook {query} : {res.get('status')}")
+            await broadcast_supervision()
+            if res.get("status") == "success":
+                instruction = f"L'ebook '{query}' a été téléchargé avec succès et acheminé sur la liseuse Kindle de Pierre. Annonce-lui avec ta voix Aoede que son livre est maintenant prêt dans sa bibliothèque Kindle."
+            else:
+                instruction = f"Une difficulté est survenue lors de la récupération ou de l'envoi de l'ebook '{query}' : {res.get('message', 'Échec du traitement')}. Explique la situation avec ta voix Aoede sans prétendre que le livre est envoyé."
+            return {"status": res.get("status"), "filename": res.get("filename"), "message": res.get("message"), "instruction_to_jarvis": instruction}
+
+    # ─── send_page_to_kindle ──────────────────────────────────────────────────
+    elif name == "send_page_to_kindle":
+        target_url = args.get("url", "")
+        title = args.get("title", "")
+        supervision_service.start_action("send_page_to_kindle", "Envoi Send to Kindle", "send_page_to_kindle", f"Kindle : {title or target_url}", "Send to Kindle Extension & E-Reader Protocol", api_type="free", api_label="Service Local", cost_est="0.00 $")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Mise en page et envoi de l'article vers votre Kindle...", "voice": False}))
+        await websocket.send_text(json.dumps({"type": "status", "state": "kindle", "msg": f"Mise en page Send to Kindle : {title or target_url}...", "task": f"Kindle : {title or target_url}", "detail": "Formatage article web...", "engine": "Amazon Send to Kindle", "model": "Send to Kindle Extension", "api_type": "free", "api_label": "Service Local"}))
+        res = await send_page_to_kindle(url=target_url, title=title, open_in_chrome=True)
+        supervision_service.complete_action("send_page_to_kindle", status=res.get("status", "completed"), summary=res.get("message", "Article envoyé sur Kindle"))
+        await broadcast_supervision()
+        return {"status": res.get("status", "completed"), "result": res, "instruction_to_jarvis": f"{res.get('message', 'Article transféré sur la Kindle.')} Annonce avec ta voix Aoede que l'article a été mis en page et expédié vers sa Kindle, et que Google Chrome est ouvert sur la page avec l'extension Send to Kindle prête."}
+
+    # ─── send_file_to_kindle ──────────────────────────────────────────────────
+    elif name == "send_file_to_kindle":
+        file_path = args.get("file_path", "")
+        open_browser = args.get("open_browser_if_needed", True)
+        supervision_service.start_action("send_file_to_kindle", "Amazon Send to Kindle Web", "send_file_to_kindle", f"Fichier : {file_path}", "Amazon Playwright Authenticated Session", api_type="free", api_label="Service Local", cost_est="0.00 $")
+        await broadcast_supervision()
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Dépôt du fichier {os.path.basename(file_path) if file_path else 'document'} sur Amazon Send to Kindle...", "voice": False}))
+        await websocket.send_text(json.dumps({"type": "status", "state": "kindle", "msg": f"Dépôt Amazon Send to Kindle : {os.path.basename(file_path) if file_path else 'document'}...", "task": f"Kindle : {os.path.basename(file_path) if file_path else 'document'}", "detail": "Amazon Playwright Authenticated Session...", "engine": "Amazon Send to Kindle", "model": "Send to Kindle Web", "api_type": "free", "api_label": "Service Local"}))
+        res = await send_file_to_kindle_web(file_path=file_path, open_browser_if_needed=open_browser)
+        supervision_service.complete_action("send_file_to_kindle", status=res.get("status", "completed"), summary=res.get("message", "Fichier envoyé sur Kindle"))
+        await broadcast_supervision()
+        if res.get("status") == "success":
+            instruction = f"{res.get('message', 'Fichier envoyé sur la Kindle.')} Annonce avec ta voix Aoede que le document a été déposé et envoyé avec succès sur sa liseuse Kindle via sa session Amazon connectée."
+        else:
+            instruction = f"L'envoi sur la Kindle n'a pas pu aboutir : {res.get('message', 'Erreur de transfert')}. Informe Pierre avec ta voix Aoede de la situation sans affirmer que le document est envoyé."
+        return {"status": res.get("status", "completed"), "result": res, "instruction_to_jarvis": instruction}
+
+    # ─── list_chrome_extensions ────────────────────────────────────────────────
+    elif name == "list_chrome_extensions":
+        res = await asyncio.to_thread(list_installed_chrome_extensions)
+        return {"status": "completed", "result": res, "instruction_to_jarvis": f"{res.get('message', 'Extensions analysées.')} Résume oralement les extensions clés installées sur Chrome à Pierre (notamment Send to Kindle) avec ta voix Aoede."}
+
+    # ─── Outil inconnu ─────────────────────────────────────────────────────────
+    else:
+        return {"status": "error", "message": f"Outil inconnu : {name}"}
