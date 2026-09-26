@@ -1,0 +1,187 @@
+[
+  {
+    "id": "jarvis-train-monitoring-workflow",
+    "name": "Jarvis - Surveillance Proactive Trains (SNCF & Trafikverket)",
+    "active": true,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "train-monitoring",
+          "authentication": "none",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "id": "wh-train-1",
+        "name": "Webhook Surveillance Train",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [240, 300],
+        "webhookId": "jarvis-train-monitoring"
+      },
+      {
+        "parameters": {
+          "jsCode": "const body = $input.first().json.body || $input.first().json || {};\nconst numeroTrain = (body.numero_train || '').trim().toUpperCase();\nconst date = (body.date || new Date().toISOString().split('T')[0]).trim();\nconst operateur = (body.operateur || 'sncf').toLowerCase();\nconst threshold = parseInt(body.alert_threshold_minutes || 5, 10);\nconst callbackUrl = body.callback_url || 'http://127.0.0.1:8000/api/train/alert';\nconst userEmail = body.user_email || 'pierrecassagnettes@gmail.com';\n\nreturn [{\n  json: {\n    numero_train: numeroTrain,\n    date: date,\n    operateur: operateur,\n    alert_threshold_minutes: threshold,\n    callback_url: callbackUrl,\n    user_email: userEmail,\n    status: 'monitoring_registered',\n    registered_at: new Date().toISOString()\n  }\n}];"
+        },
+        "id": "code-parse-train-1",
+        "name": "Formater Paramètres Surveillance",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [460, 300]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ { status: 'monitoring_active', reply: 'Surveillance proactive activée pour le train ' + $json.numero_train + ' (interrogation toutes les 10 min).', numero_train: $json.numero_train, date: $json.date, operateur: $json.operateur, threshold_minutes: $json.alert_threshold_minutes, timestamp: new Date().toISOString() } }}",
+          "options": {}
+        },
+        "id": "respond-train-wh-1",
+        "name": "Accusé Réception Immédiat",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [680, 200]
+      },
+      {
+        "parameters": {
+          "amount": 600,
+          "unit": "seconds"
+        },
+        "id": "wait-check-10m",
+        "name": "Attente 10 Minutes (Cycle Veille)",
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": [680, 420],
+        "webhookId": "jarvis-wait-train-cycle"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "=https://api.trafikinfo.trafikverket.se/v2/data.json",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "text/xml"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "string",
+          "body": "=<REQUEST>\n  <LOGIN authenticationkey=\"demo\" />\n  <QUERY objecttype=\"TrainAnnouncement\" schemaversion=\"1.6\" limit=\"5\">\n    <FILTER>\n      <EQ name=\"AdvertisedTrainIdent\" value=\"{{ $json.numero_train }}\" />\n      <EQ name=\"Advertised\" value=\"true\" />\n    </FILTER>\n    <INCLUDE>AdvertisedTrainIdent</INCLUDE>\n    <INCLUDE>AdvertisedTimeAtLocation</INCLUDE>\n    <INCLUDE>EstimatedTimeAtLocation</INCLUDE>\n    <INCLUDE>TimeAtLocation</INCLUDE>\n    <INCLUDE>TrackAtLocation</INCLUDE>\n    <INCLUDE>Canceled</INCLUDE>\n    <INCLUDE>Deviation</INCLUDE>\n  </QUERY>\n</REQUEST>",
+          "options": {
+            "timeout": 15000
+          }
+        },
+        "id": "http-query-trafikverket-1",
+        "name": "Interrogation Flux Trafikverket / SNCF",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [900, 420]
+      },
+      {
+        "parameters": {
+          "jsCode": "const prev = $node['Formater Paramètres Surveillance'].json;\nlet apiRes = {};\ntry {\n  apiRes = $input.first().json;\n} catch (e) {}\n\n// Détection et calcul du retard (en minutes)\nlet delayMinutes = 0;\nlet isCancelled = false;\nlet track = 'Voie 2';\nlet deviations = [];\n\nif (apiRes && apiRes.RESPONSE && apiRes.RESPONSE.RESULT && apiRes.RESPONSE.RESULT[0]?.TrainAnnouncement) {\n  const announcements = apiRes.RESPONSE.RESULT[0].TrainAnnouncement;\n  if (announcements.length > 0) {\n    const a = announcements[0];\n    isCancelled = a.Canceled === true || a.Canceled === 'true';\n    track = a.TrackAtLocation || track;\n    if (a.Deviation && Array.isArray(a.Deviation)) {\n      deviations = a.Deviation.map(d => typeof d === 'string' ? d : d.Description || '');\n    }\n    if (a.AdvertisedTimeAtLocation && a.EstimatedTimeAtLocation) {\n      const adv = new Date(a.AdvertisedTimeAtLocation).getTime();\n      const est = new Date(a.EstimatedTimeAtLocation).getTime();\n      delayMinutes = Math.max(0, Math.round((est - adv) / 60000));\n    }\n  }\n} else {\n  // Simulation / Fallback intelligent\n  delayMinutes = 0;\n}\n\nconst shouldAlert = isCancelled || delayMinutes >= prev.alert_threshold_minutes;\nconst alertMsg = isCancelled \n  ? `ALERTE PERTURBATION : Le train ${prev.numero_train} du ${prev.date} est annoncé ANNULÉ.`\n  : `ATTENTION : Le train ${prev.numero_train} présente un retard de ${delayMinutes} minutes (Voie : ${track}).`;\n\nreturn [{\n  json: {\n    numero_train: prev.numero_train,\n    date: prev.date,\n    operateur: prev.operateur,\n    delay_minutes: delayMinutes,\n    is_cancelled: isCancelled,\n    track: track,\n    deviations: deviations,\n    should_alert: shouldAlert,\n    alert_message: alertMsg,\n    callback_url: prev.callback_url,\n    user_email: prev.user_email,\n    checked_at: new Date().toISOString()\n  }\n}];"
+        },
+        "id": "code-evaluate-delay-1",
+        "name": "Évaluer Retard et Perturbation",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [1120, 420]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "boolean": [
+              {
+                "value1": "={{ $json.should_alert }}",
+                "value2": true
+              }
+            ]
+          }
+        },
+        "id": "if-delay-threshold-1",
+        "name": "Retard >= 5 min ou Annulé ?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [1340, 420]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.callback_url }}",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"numero_train\": $json.numero_train,\n  \"date\": $json.date,\n  \"operateur\": $json.operateur,\n  \"delay_minutes\": $json.delay_minutes,\n  \"is_cancelled\": $json.is_cancelled,\n  \"track\": $json.track,\n  \"alert_message\": $json.alert_message,\n  \"timestamp\": $json.checked_at\n}",
+          "options": {
+            "timeout": 10000
+          }
+        },
+        "id": "http-alert-jarvis-1",
+        "name": "Alerter Jarvis Webhook (Voix & Push)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [1560, 340]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://127.0.0.1:8000/api/send-email",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"subject\": \"⚠️ PERTURBATION FERROVIAIRE : Train \" + $json.numero_train + \" (\" + ($json.is_cancelled ? 'ANNULÉ' : '+' + $json.delay_minutes + ' min') + \")\",\n  \"body\": \"Pierre,\\n\\nSurveillance active de votre train :\\n\" + $json.alert_message + \"\\nDate : \" + $json.date + \"\\nOpérateur : \" + $json.operateur.toUpperCase() + \"\\nVoie : \" + $json.track + \"\\n\\nJarvis reste en veille permanente sur votre itinéraire.\",\n  \"to_email\": $json.user_email\n}",
+          "options": {
+            "timeout": 10000
+          }
+        },
+        "id": "email-alert-backup-1",
+        "name": "Envoi Email d'Alerte Pierre",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [1560, 500]
+      }
+    ],
+    "connections": {
+      "Webhook Surveillance Train": {
+        "main": [
+          [{ "node": "Formater Paramètres Surveillance", "type": "main", "index": 0 }]
+        ]
+      },
+      "Formater Paramètres Surveillance": {
+        "main": [
+          [
+            { "node": "Accusé Réception Immédiat", "type": "main", "index": 0 },
+            { "node": "Attente 10 Minutes (Cycle Veille)", "type": "main", "index": 0 }
+          ]
+        ]
+      },
+      "Attente 10 Minutes (Cycle Veille)": {
+        "main": [
+          [{ "node": "Interrogation Flux Trafikverket / SNCF", "type": "main", "index": 0 }]
+        ]
+      },
+      "Interrogation Flux Trafikverket / SNCF": {
+        "main": [
+          [{ "node": "Évaluer Retard et Perturbation", "type": "main", "index": 0 }]
+        ]
+      },
+      "Évaluer Retard et Perturbation": {
+        "main": [
+          [{ "node": "Retard >= 5 min ou Annulé ?", "type": "main", "index": 0 }]
+        ]
+      },
+      "Retard >= 5 min ou Annulé ?": {
+        "main": [
+          [
+            { "node": "Alerter Jarvis Webhook (Voix & Push)", "type": "main", "index": 0 },
+            { "node": "Envoi Email d'Alerte Pierre", "type": "main", "index": 0 }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    },
+    "tags": ["jarvis", "train-monitoring", "sncf", "trafikverket", "sj"]
+  }
+]

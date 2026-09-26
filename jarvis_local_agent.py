@@ -328,6 +328,16 @@ async def agent_loop():
                             result = execute_media_action(params)
                         elif action == "deezer_action":
                             result = await execute_deezer_action(params)
+                        elif action == "prepare_train_checkout":
+                            url = params.get("url", "")
+                            operateur = params.get("operateur", "sncf")
+                            open_res = execute_open_browser(url, load_extensions=True)
+                            result = {
+                                "status": open_res.get("status", "success"),
+                                "operateur": operateur,
+                                "url": url,
+                                "message": f"Trajet {operateur.upper()} ouvert dans Chrome sur votre écran Windows. Coordonnées prêtes, choix des places et paiement manuel en attente."
+                            }
                         elif action == "prepare_web_cart_or_checkout":
                             try:
                                 from services.browser_service import prepare_web_cart_or_checkout

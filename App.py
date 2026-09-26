@@ -32,7 +32,7 @@ from services.memory import vector_memory
 from services.console_monitor import console_monitor
 
 # ─── Routeurs modulaires ──────────────────────────────────────────────────────
-from routers import voice, local_agent, chat, media, browser, supervision, settings, briefing
+from routers import voice, local_agent, chat, media, browser, supervision, settings, briefing, transport
 
 app = FastAPI(title="J.A.R.V.I.S. Core Server")
 
@@ -58,6 +58,7 @@ app.include_router(browser.router)
 app.include_router(supervision.router)
 app.include_router(settings.router)
 app.include_router(briefing.router)
+app.include_router(transport.router)
 
 
 # ─── Cycle de vie de l'application ───────────────────────────────────────────

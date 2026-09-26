@@ -241,6 +241,16 @@ def get_tool_metadata(name: str, args: dict = None) -> dict:
         return {"state": "reminder", "msg": f"Rappel push ({ech}) : {m}...", "task": f"Rappel : {m}", "engine": "n8n Push", "model": "Push Notification", "api_type": "free", "api_label": "Local n8n"}
     elif name == "demander_morning_briefing":
         return {"state": "briefing", "msg": "Morning Briefing Stark...", "task": "Morning Briefing", "engine": "FastAPI / Redis", "model": "Briefing Protocol", "api_type": "free", "api_label": "Local Service"}
+    elif name == "rechercher_train":
+        orig = args.get("origine", "")
+        dest = args.get("destination", "")
+        return {"state": "browsing", "msg": f"Recherche trains : {orig} → {dest}...", "task": f"Train {orig} - {dest}", "engine": "Transport Service", "model": "Playwright VPS", "api_type": "free", "api_label": "Headless VPS"}
+    elif name == "surveiller_train":
+        num = args.get("numero_train", "")
+        return {"state": "system", "msg": f"Surveillance train {num} via n8n...", "task": f"Veille Train {num}", "engine": "n8n / Trafikverket / SNCF", "model": "Real-time Monitor", "api_type": "free", "api_label": "Local n8n"}
+    elif name == "reserver_billet_train_local":
+        op = (args.get("operateur") or "SNCF").upper()
+        return {"state": "shopping", "msg": f"Préparation réservation {op} sur PC...", "task": f"Réservation {op}", "engine": "jarvis_local_agent", "model": "Chrome Local Windows", "api_type": "free", "api_label": "Local GUI"}
     elif name in ("check_console_errors", "get_system_status", "launch_application", "list_chrome_extensions"):
         return {"state": "system", "msg": "Diagnostic et maintenance système...", "task": "Diagnostic système", "engine": "OS Monitor", "model": "System Telemetry", "api_type": "free", "api_label": "Service Local"}
     else:

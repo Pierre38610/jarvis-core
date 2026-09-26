@@ -22,6 +22,7 @@
    - 7.7. Télémétrie, Diagnostics & Supervision Système
    - 7.8. Automatisation des Processus Externes & Pôle Documentaire (n8n Community)
    - 7.9. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
+   - 7.10. Système Intelligent Ferroviaire & Mobilité (France & Suède)
 8. [Matrice des Endpoints API REST & Contrats WebSockets](#8-matrice-des-endpoints-api-rest--contrats-websockets)
 9. [Interface Utilisateur, PWA & HUD Mobile](#9-interface-utilisateur-pwa--hud-mobile)
 10. [Analyse Critique : Forces, Dette Technique & Pistes d'Amélioration](#10-analyse-critique--forces-dette-technique--pistes-damélioration)
@@ -338,7 +339,7 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
   1. **Génération de tableurs Excel (.xlsx) (`generer_fichier_tableur`)** :
      - Convertit des listes JSON de données (comptabilité, budgets, benchmarks, listes de suivi) en classeurs Excel `.xlsx` propres.
      - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/document-spreadsheet`.
-     - Nœuds n8n : Webhook -> Formater Données -> Spreadsheet File (binaire xlsx) -> Enregistrer dans `/home/opc/jarvis-core/downloads/` -> Respond to Webhook.
+      - Nœuds n8n : Webhook -> Formater Données -> Spreadsheet File (binaire xlsx) -> Enregistrer dans `/home/opc/jarvis-core/downloads/` -> Respond to Webhook.
      - Accès immédiat au fichier généré via le point de montage `/downloads/<nom_fichier>`.
   2. **Génération de présentations Google Slides / PowerPoint (.pptx) (`generer_presentation`)** :
      - Construit des présentations ordonnées avec diapositives, titres, puces et notes d'orateur selon le thème souhaité (`stark`, `dark`, `corporate`, `minimal`).
@@ -379,6 +380,31 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
      - Restitution vocale sans aucune latence au premier "Bonjour" de la journée.
   - Workflows n8n packagés dans `docs/n8n_workflows/time_and_briefing.json`.
 
+### 7.10. Système Intelligent Ferroviaire & Mobilité (France & Suède)
+- **Fichiers** : `services/transport_service.py`, `routers/transport.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `docs/n8n_workflows/train_monitoring.json`.
+- **Outils exposés** : `rechercher_train`, `surveiller_train`, `reserver_billet_train_local`.
+- **Capacités & Architecture** :
+  1. **Recherche d'Itinéraires & Deep Links Paramétrés (`rechercher_train`)** :
+     - Supporte l'ensemble des gares françaises (Paris, Lyon, Marseille, Bordeaux, Lille, Nantes, Strasbourg, etc.) et suédoises (Malmö, Stockholm, Göteborg, Lund, Uppsala, etc.).
+     - Génération intelligente et automatisée de deep links directs avec slugs et paramètres d'horaires :
+       * *France* : SNCF Connect (`https://www.sncf-connect.com/app/home/search/od/...`) et Trainline (`https://www.thetrainline.com/book/results?...`).
+       * *Suède* : SJ direct (`https://www.sj.se/sv/sok-resa.html?...`), Trafikverket Open Data (`https://www.trafikverket.se/trafikinformation/tag/...`), et Skånetrafiken (`https://www.skanetrafiken.se/sok-resa/...`).
+     * Scraper headless Playwright optimisé sur VPS pour extraire instantanément horaires, durées de trajet, correspondances et prix indicatifs sans solliciter le poste utilisateur.
+     * **Dispatching non-bloquant** : Jarvis confirme immédiatement la prise en charge à voix haute avec sa voix Aoede, annonce le meilleur trajet dès disponibilité et pousse le bouton d'ouverture directe sur l'interface PWA via l'événement `browser_update` / `set_browser_link`.
+  2. **Surveillance Proactive en Temps Réel (`surveiller_train`)** :
+     - Déclenche une boucle de veille asynchrone orchestrée par n8n (`docs/n8n_workflows/train_monitoring.json`).
+     - Interroge toutes les 10 minutes les flux Trafikverket Open Data (requêtes XML/JSON) ou SNCF GTFS-RT jusqu'au départ du train.
+     - Évalue les retards, annulations et changements de voie/quai de départ.
+     - Dès qu'un retard dépasse 5 minutes ou qu'une annulation est signalée :
+       * Déclenche un webhook entrant sur Jarvis (`POST /api/train/alert`).
+       * Injection instantanée dans la session Gemini Live active pour qu'Aoede prévienne oralement Pierre en direct.
+       * Alerte push visuelle sur le HUD mobile et courriel exécutif Stark en copie de secours.
+  3. **Préparation Sécurisée de Réservation Locale (`reserver_billet_train_local`)** :
+     - **Respect absolu de l'isolation de sécurité** : exploration et scraping headless sur le VPS cloud ; interaction transactionnelle exclusivement sur le PC Windows physique via `execution_target="local_gui"`.
+     - Délégué à `jarvis_local_agent.py` sur le PC Windows de Pierre via le canal WebSocket `/ws/local-agent` (action `prepare_train_checkout`).
+     - Ouvre Google Chrome avec la session connectée de Pierre, charge le trajet prérempli jusqu'à l'écran de sélection de place / paiement.
+     - **Garde-fou bancaire absolu** : aucune validation d'achat automatique, Pierre valide lui-même son règlement.
+
 ---
 
 ## 8. MATRICE DES ENDPOINTS API REST & CONTRATS WEBSOCKETS
@@ -392,6 +418,7 @@ Le serveur principal `App.py` est allégé (< 190 lignes) et instancie l'applica
 - **`routers/browser.py`** : Endpoints de navigation, extensions Chrome, Send to Kindle, téléchargements et gestion des emails (`/api/emails/*`, `/api/send-email`).
 - **`routers/supervision.py`** : Endpoints `/api/supervision/*` (overview, fenêtres ouvertes) et injection de directives/arrêts d'urgence (`/api/task/*`).
 - **`routers/briefing.py`** : Endpoints du Morning Briefing (`/api/briefing/*`) et de l'agenda synchronisé (`/api/agenda/*`).
+- **`routers/transport.py`** : Endpoints de mobilité et transports ferroviaires (`/api/train/search`, `/api/train/monitor`, `/api/train/alert`, `/api/train/reserve-local`).
 - **`routers/settings.py`** : Configuration dynamique (`/api/live-model`, `/api/settings/paid-key`, `/api/paid-consent`, `/api/tunnel-info`).
 - **`core/shared_state.py`** : État partagé, clients API Gemini, gestion des exceptions de quota, diffusion temps réel.
 - **`core/tools/declarations.py`** : Déclarations formelles des schémas d'outils Gemini Live Function Calling.
@@ -435,6 +462,10 @@ Le serveur principal `App.py` est allégé (< 190 lignes) et instancie l'applica
 | **POST** | `/api/briefing/compile` | Compilation et mise en cache du Morning Briefing (déclenché par cron n8n à 07:00) | Token |
 | **GET** | `/api/briefing/today` | Récupération instantanée du Morning Briefing compilé du jour | Token |
 | **GET** | `/api/agenda/today` | Consultation des rendez-vous d'agenda du jour mis en cache | Token |
+| **POST** | `/api/train/search` | Recherche d'itinéraires et deep links trains (France & Suède) | Token |
+| **POST** | `/api/train/monitor` | Déclenchement de la surveillance proactive d'un train via n8n | Token |
+| **POST** | `/api/train/alert` | Webhook de réception d'alerte perturbation ferroviaire n8n | Ouvert (Secret) |
+| **POST** | `/api/train/reserve-local` | Préparation de réservation sur le PC local Windows | Token |
 
 ### 8.2. Canaux WebSockets
 

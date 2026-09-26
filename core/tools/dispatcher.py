@@ -30,6 +30,7 @@ from services.supervision_service import supervision_service
 from services.media_service import control_deezer, play_on_stremio
 from services.cache import cache_service
 from services.briefing_service import briefing_service
+from services.transport_service import transport_service
 
 from core.shared_state import (
     active_task_controller,
@@ -1437,6 +1438,219 @@ async def dispatch_tool(
                 f"Voici le Morning Briefing fraîchement compilé pour Pierre : \"{briefing_text}\". "
                 f"Restitue-le-lui immédiatement et intégralement à voix haute avec ta voix Aoede "
                 f"d'un ton percutant et confiant digne de Stark Industries."
+            )
+        }
+
+    # ─── rechercher_train ─────────────────────────────────────────────────────
+    elif name == "rechercher_train":
+        origine = args.get("origine", "")
+        destination = args.get("destination", "")
+        date_depart = args.get("date_depart", "")
+        heure_souhaitee = args.get("heure_souhaitee")
+        pays = args.get("pays", "auto")
+
+        supervision_service.start_action(
+            "rechercher_train",
+            "Recherche de Trains",
+            "rechercher_train",
+            f"Itinéraire {origine} → {destination} ({date_depart})",
+            "Transport Service / Playwright VPS",
+            api_type="free",
+            api_label="Headless VPS",
+            cost_est="0.00 $"
+        )
+        await broadcast_supervision()
+
+        # Annonce UI et changement d'état
+        await websocket.send_text(json.dumps({
+            "type": "jarvis_announcement",
+            "text": f"Recherche des trains entre {origine} et {destination} pour le {date_depart}...",
+            "voice": False
+        }))
+        await websocket.send_text(json.dumps({
+            "type": "status",
+            "state": "browsing",
+            "msg": f"Recherche trains {origine} → {destination}...",
+            "task": f"Itinéraire {origine} - {destination}",
+            "engine": "Transport Service",
+            "model": "Playwright VPS",
+            "api_type": "free",
+            "api_label": "Headless VPS"
+        }))
+
+        # Exécution non-bloquante en arrière-plan
+        async def _run_train_search_bg(_orig=origine, _dest=destination, _date=date_depart, _heure=heure_souhaitee, _pays=pays, _ws=websocket, _sess=session):
+            try:
+                res = await transport_service.rechercher_itineraires(
+                    origine=_orig,
+                    destination=_dest,
+                    date_depart=_date,
+                    heure_souhaitee=_heure,
+                    pays=_pays
+                )
+                best = res.get("best_option", {})
+                primary_link = res.get("primary_deep_link", "")
+                link_title = res.get("primary_title") or f"Train {_orig} → {_dest}"
+
+                # 1. Mise à jour Supervision
+                supervision_service.track_browser_window(primary_link, link_title)
+                summary_text = (
+                    f"Train {best.get('type_train', 'SNCF/SJ')} : départ {best.get('heure_depart', '')} "
+                    f"→ arrivée {best.get('heure_arrivee', '')} ({best.get('duree', '')}) - {best.get('prix', '')}"
+                )
+                supervision_service.complete_action("rechercher_train", status="completed", summary=summary_text)
+                await broadcast_supervision()
+
+                # 2. Mise à jour HUD Mobile PWA (set_browser_link / browser_update)
+                current_ws = active_task_controller.get("websocket") or _ws
+                if current_ws:
+                    try:
+                        await current_ws.send_text(json.dumps({
+                            "type": "browser_update",
+                            "url": primary_link,
+                            "title": link_title,
+                            "screenshot": "/static/latest_screenshot.jpg"
+                        }))
+                        await current_ws.send_text(json.dumps({
+                            "type": "task_completed",
+                            "is_error": False,
+                            "status": "completed",
+                            "summary": summary_text,
+                            "engine": "Transport Service",
+                            "model": "Playwright VPS"
+                        }))
+                        await current_ws.send_text(json.dumps({
+                            "type": "status",
+                            "state": "idle",
+                            "msg": "En veille active",
+                            "detail": "Prêt pour vos ordres",
+                            "engine": "Google API Live",
+                            "model": live_display_label
+                        }))
+                    except Exception:
+                        pass
+
+                # 3. Restitution orale par Aoede dans la session Live
+                current_sess = active_task_controller.get("live_session") or _sess
+                if current_sess:
+                    track_txt = f" au départ de la {best.get('quai')}" if best.get("quai") else ""
+                    oral_msg = (
+                        f"[RÉSULTAT DE LA RECHERCHE DE TRAIN - À ANNONCER CHALEUREUSEMENT À PIERRE AVEC TA VOIX AOEDE] "
+                        f"Pour ton trajet de {res.get('origin', _orig)} vers {res.get('destination', _dest)} le {res.get('date', _date)}, "
+                        f"j'ai un excellent départ à {best.get('heure_depart')} en {best.get('type_train')}{track_txt}, "
+                        f"arrivée prévue à {best.get('heure_arrivee')} pour {best.get('duree')} de trajet. "
+                        f"Prix indicatif : {best.get('prix')}. "
+                        f"J'ai directement affiché le bouton de réservation avec le lien direct sur ton écran."
+                    )
+                    try:
+                        await current_sess.send_client_content(
+                            turns=types.Content(role="user", parts=[types.Part.from_text(text=oral_msg)]),
+                            turn_complete=True
+                        )
+                    except Exception as notify_err:
+                        print(f"[Train BG Search] Injection Live error: {notify_err}")
+
+            except Exception as bg_err:
+                print(f"[Train BG Search] Erreur: {bg_err}")
+                supervision_service.complete_action("rechercher_train", status="error", summary=str(bg_err))
+                await broadcast_supervision()
+
+        asyncio.create_task(_run_train_search_bg())
+
+        return {
+            "status": "lance_en_arriere_plan",
+            "action": "rechercher_train",
+            "origine": origine,
+            "destination": destination,
+            "date_depart": date_depart,
+            "instruction_to_jarvis": (
+                f"La recherche de trains entre {origine} et {destination} pour le {date_depart} est lancée en arrière-plan. "
+                f"Confirme immédiatement à Pierre avec ta voix Aoede en une phrase concise et complice "
+                f"que tu recherches les départs et les prix."
+            )
+        }
+
+    # ─── surveiller_train ─────────────────────────────────────────────────────
+    elif name == "surveiller_train":
+        numero_train = args.get("numero_train", "")
+        date = args.get("date", "")
+        operateur = args.get("operateur", "sncf")
+
+        supervision_service.start_action(
+            "surveiller_train",
+            "Surveillance Train n8n",
+            "surveiller_train",
+            f"Veille proactive train {numero_train} ({date})",
+            "n8n / Trafikverket / SNCF",
+            api_type="free",
+            api_label="n8n Workflow",
+            cost_est="0.00 $"
+        )
+        await broadcast_supervision()
+
+        res_monitor = await transport_service.surveiller_train(
+            numero_train=numero_train,
+            date=date,
+            operateur=operateur
+        )
+
+        supervision_service.complete_action(
+            "surveiller_train",
+            status="completed",
+            summary=f"Surveillance active engagée pour le train {numero_train} via n8n"
+        )
+        await broadcast_supervision()
+
+        return {
+            "status": "surveillance_activee",
+            "numero_train": numero_train,
+            "date": date,
+            "operateur": operateur,
+            "instruction_to_jarvis": (
+                f"La surveillance proactive en temps réel pour le train {numero_train} du {date} est activée via n8n. "
+                f"Confirme à Pierre avec ta voix Aoede que tu surveilles son train toutes les 10 minutes jusqu'au départ "
+                f"et que tu le préviendras immédiatement en cas de retard ou de changement de quai."
+            )
+        }
+
+    # ─── reserver_billet_train_local ──────────────────────────────────────────
+    elif name == "reserver_billet_train_local":
+        operateur = args.get("operateur", "sncf")
+        url_trajet = args.get("url_trajet", "")
+
+        supervision_service.start_action(
+            "reserver_billet_train_local",
+            "Réservation Train Locale",
+            "reserver_billet_train_local",
+            f"Ouverture session {operateur.upper()} sur PC Windows",
+            "jarvis_local_agent",
+            api_type="free",
+            api_label="Local Windows GUI",
+            cost_est="0.00 $"
+        )
+        await broadcast_supervision()
+
+        res_local = await transport_service.reserver_billet_train_local(
+            operateur=operateur,
+            url_trajet=url_trajet
+        )
+
+        supervision_service.complete_action(
+            "reserver_billet_train_local",
+            status="completed" if res_local.get("status") == "success" else "warning",
+            summary=res_local.get("message", "Ouverture effectuée sur PC")
+        )
+        await broadcast_supervision()
+
+        return {
+            "status": res_local.get("status", "success"),
+            "operateur": operateur,
+            "url_trajet": url_trajet,
+            "message": res_local.get("message", ""),
+            "instruction_to_jarvis": (
+                f"La page de réservation {operateur.upper()} a été ouverte sur le PC de Pierre. "
+                f"Confirme-lui avec ta voix Aoede que le trajet est prérempli sur son écran et qu'il n'a plus qu'à choisir sa place "
+                f"et procéder au paiement en toute sécurité."
             )
         }
 

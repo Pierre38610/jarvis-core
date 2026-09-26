@@ -34,6 +34,8 @@ ACTION_WEBHOOK_MAPPING = {
     "agenda-event": "agenda-event",
     "creer_rappel_push": "schedule-push-reminder",
     "schedule-push-reminder": "schedule-push-reminder",
+    "surveiller_train": "train-monitoring",
+    "train-monitoring": "train-monitoring",
 }
 
 
@@ -139,6 +141,26 @@ def build_reminder_payload(message: str, echeance: str, priorite: str = "normale
     }
 
 
+def build_train_monitoring_payload(
+    numero_train: str,
+    date: str,
+    operateur: str = "sncf",
+    alert_threshold_minutes: int = 5,
+    callback_url: str = "http://127.0.0.1:8000/api/train/alert",
+    user_email: str = "pierrecassagnettes@gmail.com"
+) -> dict:
+    """Construit et normalise le payload pour le webhook train-monitoring."""
+    return {
+        "numero_train": (numero_train or "").strip().upper(),
+        "date": (date or "").strip(),
+        "operateur": (operateur or "sncf").strip().lower(),
+        "alert_threshold_minutes": int(alert_threshold_minutes or 5),
+        "callback_url": callback_url,
+        "user_email": user_email,
+        "source": "jarvis-voice"
+    }
+
+
 async def executer_action_externe(
     action: Optional[str] = None,
     parametres: Optional[dict] = None,
@@ -198,6 +220,13 @@ async def executer_action_externe(
             message=effective_params.get("message", "Rappel"),
             echeance=effective_params.get("echeance", ""),
             priorite=effective_params.get("priorite", "normale")
+        )
+    elif effective_action == "train-monitoring":
+        effective_params = build_train_monitoring_payload(
+            numero_train=effective_params.get("numero_train", ""),
+            date=effective_params.get("date", ""),
+            operateur=effective_params.get("operateur", "sncf"),
+            alert_threshold_minutes=effective_params.get("alert_threshold_minutes", 5)
         )
 
 

@@ -634,6 +634,94 @@ def get_tools_list() -> list[types.Tool]:
                         }
                     )
                 ),
+                types.FunctionDeclaration(
+                    name="rechercher_train",
+                    description=(
+                        "RECHERCHE D'ITINÉRAIRES & BILLETS DE TRAIN (FRANCE & SUÈDE) : "
+                        "Recherche les horaires, tarifs indicatifs et génère les deep links directs de réservation "
+                        "pour un trajet ferroviaire en France (SNCF Connect, Trainline) ou en Suède (SJ, Trafikverket, Skånetrafiken). "
+                        "Supporte les gares françaises (Paris, Lyon, Marseille, Bordeaux, etc.) et suédoises (Malmö, Stockholm, Göteborg, Lund, etc.). "
+                        "Jarvis annonce le meilleur départ oralement et affiche le lien direct sur le HUD mobile (set_browser_link)."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "origine": types.Schema(
+                                type="STRING",
+                                description="Gare ou ville de départ (ex: 'Paris', 'Lyon Part-Dieu', 'Malmö Central', 'Stockholm')"
+                            ),
+                            "destination": types.Schema(
+                                type="STRING",
+                                description="Gare ou ville d'arrivée (ex: 'Marseille', 'Bordeaux', 'Stockholm Central', 'Göteborg', 'Lund')"
+                            ),
+                            "date_depart": types.Schema(
+                                type="STRING",
+                                description="Date du voyage au format AAAA-MM-JJ ou clair (ex: '2026-09-28', 'demain', 'vendredi')"
+                            ),
+                            "heure_souhaitee": types.Schema(
+                                type="STRING",
+                                description="Heure ou moment de départ souhaité (ex: '14:00', '14h', 'matin', 'soir'). Optionnel."
+                            ),
+                            "pays": types.Schema(
+                                type="STRING",
+                                description="Réseau ferroviaire : 'auto' (détection automatique par ville), 'france' (ou 'fr'), 'suede' (ou 'se'). Par défaut 'auto'."
+                            ),
+                        },
+                        required=["origine", "destination", "date_depart"]
+                    )
+                ),
+                types.FunctionDeclaration(
+                    name="surveiller_train",
+                    description=(
+                        "SURVEILLANCE PROACTIVE EN TEMPS RÉEL D'UN TRAIN : "
+                        "Active une boucle de veille via n8n (interrogation toutes les 10 min jusqu'au départ) "
+                        "pour surveiller le quai de départ, l'heure et les retards sur les réseaux SNCF, SJ ou Trafikverket. "
+                        "Alerte Pierre dès qu'une perturbation ou un retard supérieur à 5 minutes survient."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "numero_train": types.Schema(
+                                type="STRING",
+                                description="Numéro ou référence du train (ex: 'TGV 6612', 'SJ 532', 'TER 881234')"
+                            ),
+                            "date": types.Schema(
+                                type="STRING",
+                                description="Date de circulation du train (AAAA-MM-JJ ou 'aujourd'hui', 'demain')"
+                            ),
+                            "operateur": types.Schema(
+                                type="STRING",
+                                description="Opérateur ferroviaire : 'sncf', 'sj', 'trafikverket', 'auto'. Par défaut 'sncf'."
+                            ),
+                        },
+                        required=["numero_train", "date"]
+                    )
+                ),
+                types.FunctionDeclaration(
+                    name="reserver_billet_train_local",
+                    description=(
+                        "RÉSERVATION & PANIER SUR PC LOCAL WINDOWS : "
+                        "Sur demande de réservation ou d'achat d'un billet, ouvre la session Google Chrome sur le PC physique de Pierre "
+                        "via jarvis_local_agent pour préremplir le trajet jusqu'à l'écran de paiement. "
+                        "Respect absolu du garde-fou bancaire : aucune validation d'achat automatique, Pierre valide lui-même."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "operateur": types.Schema(
+                                type="STRING",
+                                description="Opérateur ou plateforme : 'sncf', 'trainline', 'sj', 'skanetrafiken'"
+                            ),
+                            "url_trajet": types.Schema(
+                                type="STRING",
+                                description="URL directe ou deep link du trajet à ouvrir sur le Chrome local de Pierre"
+                            ),
+                        },
+                        required=["operateur", "url_trajet"]
+                    )
+                ),
             ]
         )
     ]
