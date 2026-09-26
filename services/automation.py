@@ -121,11 +121,25 @@ def build_agenda_payload(
     description: str = ""
 ) -> dict:
     """Construit et normalise le payload pour le webhook agenda-event (Google Calendar / Samsung)."""
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    clean_debut = (date_debut or "").strip()
+    if not clean_debut or clean_debut.lower() in ("maintenant", "now", "aujourd'hui", "aujourdhui"):
+        clean_debut = now.isoformat()
+
+    clean_fin = (date_fin or "").strip()
+    if not clean_fin or clean_fin == clean_debut:
+        try:
+            dt_start = datetime.fromisoformat(clean_debut.replace("Z", "+00:00"))
+            clean_fin = (dt_start + timedelta(hours=1)).isoformat()
+        except Exception:
+            clean_fin = clean_debut
+
     return {
         "action": (action or "consulter").strip().lower(),
         "titre": (titre or "Événement").strip(),
-        "date_debut": (date_debut or "").strip(),
-        "date_fin": (date_fin or "").strip() or (date_debut or "").strip(),
+        "date_debut": clean_debut,
+        "date_fin": clean_fin,
         "description": (description or "").strip(),
         "calendar_id": "primary",
         "user_email": "pierrecassagnettes@gmail.com",
