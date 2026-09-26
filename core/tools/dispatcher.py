@@ -17,7 +17,7 @@ from google_antigravity import resolve_antigravity_model, is_stop_directive
 from services.memory_service import memory_service
 from services.memory import vector_memory
 from services.unified_memory import unified_memory_manager
-from services.reasoning_service import run_deep_reasoning, run_antigravity_task
+from services.reasoning_service import run_deep_reasoning
 from services.browser_service import (
     search_web, run_browser_task, open_browser_window, interact_web_page,
     prepare_web_cart_or_checkout, send_page_to_kindle, send_file_to_kindle_web,
@@ -65,209 +65,6 @@ async def dispatch_tool(
             "instruction_to_jarvis": "L'action en cours a été immédiatement et totalement arrêtée. Confirme brièvement et calmement à Pierre avec ta voix Aoede que l'action est stoppée."
         }
 
-    # ─── run_antigravity_task ──────────────────────────────────────────────────
-    elif name == "run_antigravity_task":
-        instruction = args.get("instruction", "")
-        model_choice = args.get("model") or "gemini-3.8-flash"
-        is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
-        _, model_label = resolve_antigravity_model(model_choice)
-        active_task_controller["info"]["running"] = True
-        active_task_controller["info"]["task"] = instruction
-        active_task_controller["info"]["model"] = model_label
-        active_task_controller["directives"] = []
-        while not active_task_controller["queue"].empty():
-            try:
-                active_task_controller["queue"].get_nowait()
-            except Exception:
-                break
-
-        is_flash = any(k in str(model_choice).lower() for k in ["flash", "3.8", "3.5", "3.6"])
-        initial_api_type = "paid" if (config.is_paid_key_authorized() and ((is_flash and config.GEMINI_API_KEY_PAID) or is_confirmed)) else ("paid" if (config.is_paid_key_authorized() and not config.GEMINI_API_KEY_FREE) else "free")
-        initial_api_label = "Clé Payante" if initial_api_type == "paid" else "Clé Gratuite"
-
-        supervision_service.start_action(
-            "antigravity_task", "Développement Antigravity", "run_antigravity_task",
-            instruction, model_label, api_type=initial_api_type, api_label=initial_api_label,
-            cost_est=estimate_tool_cost(name, args)[1]
-        )
-        await broadcast_supervision()
-        await websocket.send_text(json.dumps({
-            "type": "jarvis_announcement",
-            "text": f"Lancement du développement avec {model_label} : {instruction}.",
-            "voice": False
-        }))
-        await websocket.send_text(json.dumps({
-            "type": "status", "state": "coding",
-            "msg": "JARVIS développe via Antigravity...", "task": instruction,
-            "engine": "Antigravity IDE", "model": model_label,
-            "api_type": initial_api_type, "api_label": initial_api_label
-        }))
-
-        _ml2 = model_label
-        _mc = model_choice
-        _instr = instruction
-        _confirmed = is_confirmed
-
-        async def on_antigravity_progress(p_info, _ws_orig=websocket, _ml=model_label):
-            step = p_info.get("step", "progress")
-            text = p_info.get("text", "")
-            active_ws = active_task_controller.get("websocket") or _ws_orig
-            active_sess = active_task_controller.get("live_session")
-            supervision_service.update_action_progress("antigravity_task", step, text, model=_ml)
-            await broadcast_supervision()
-            if active_ws:
-                try:
-                    await active_ws.send_text(json.dumps({
-                        "type": "task_progress_oral", "step": step, "text": text,
-                        "engine": "Antigravity IDE", "model": _ml
-                    }))
-                except Exception:
-                    pass
-            now = time.time()
-            last_spoken_p = active_task_controller.get("_last_progress_spoken", 0.0)
-            is_speaking = (
-                active_task_controller.get("speaking_active", False)
-                or now < active_task_controller.get("estimated_speech_end", 0.0) + 0.35
-                or active_task_controller.get("client_speaking", False)
-            )
-            # Ne parler à la voix que sur les jalons clés, espacés d'au moins 12 secondes, et sans couper la parole en cours
-            if active_sess and text and (step in ("planning", "adaptation")) and not is_speaking and (now - last_spoken_p > 12.0):
-                active_task_controller["_last_progress_spoken"] = now
-                try:
-                    await safe_send_live_client_content(
-                        active_sess,
-                        f"[MISE À JOUR DU DÉVELOPPEMENT EN COURS - à dire à voix haute à Pierre en une phrase courte et naturelle] {text}",
-                        wait_if_speaking=False
-                    )
-                except Exception as inj_err:
-                    print(f"[Progress Injection] {inj_err}")
-
-        async def _run_coding_bg(_instr=_instr, _mc=_mc, _ml2=_ml2, _conf=_confirmed, _ws=websocket, _sess=session):
-            try:
-                res = await run_antigravity_task(
-                    _instr, model=_mc, on_progress=on_antigravity_progress,
-                    directive_queue=active_task_controller["queue"], confirmed_by_user=_conf
-                )
-            except Exception as bg_err:
-                res = {"status": "error", "summary": str(bg_err), "model_label": _ml2}
-            finally:
-                active_task_controller["info"]["running"] = False
-                active_task_controller["bg_task"] = None
-
-            status = res.get("status")
-            current_ws = active_task_controller.get("websocket") or _ws
-            current_sess = active_task_controller.get("live_session") or _sess
-
-            if status == "requires_user_confirmation":
-                active_task_controller["paid_consent_modal_open"] = True
-                supervision_service.complete_action("antigravity_task", status="pending_confirmation", summary=res.get("reason", ""))
-                await broadcast_supervision()
-                if current_ws:
-                    try:
-                        await current_ws.send_text(json.dumps({"type": "paid_consent_request", "action": "run_antigravity_task", "reason": res.get("reason", ""), "cost": res.get("estimated_cost", "~0.005 $"), "model": res.get("model", _mc)}))
-                        await current_ws.send_text(json.dumps({"type": "status", "state": "idle", "msg": "En attente d'accord payant", "engine": "Antigravity IDE", "model": _ml2}))
-                    except Exception:
-                        pass
-                if current_sess:
-                    try:
-                        await safe_send_live_client_content(
-                            current_sess,
-                            f"[ACCORD PAYANT REQUIS POUR CODER] {res.get('instruction_to_jarvis', '')}"
-                        )
-                    except Exception as e:
-                        print(f"[BG Task] Erreur notification consent: {e}")
-                return
-
-            elif status == "cancelled":
-                supervision_service.complete_action("antigravity_task", status="cancelled", summary="Développement arrêté à votre demande", model=_ml2)
-                await broadcast_supervision()
-                if current_ws:
-                    try:
-                        await current_ws.send_text(json.dumps({"type": "task_cancelled", "reason": "Arrêt demandé", "message": "Développement immédiatement interrompu."}))
-                        await current_ws.send_text(json.dumps({"type": "status", "state": "idle", "msg": "En veille active", "detail": "Prêt pour vos ordres", "engine": "Google API Live", "model": live_display_label}))
-                    except Exception:
-                        pass
-                if current_sess:
-                    try:
-                        await safe_send_live_client_content(
-                            current_sess,
-                            "[DÉVELOPPEMENT ARRÊTÉ] Le développement a été interrompu suite à la demande de Pierre. Confirme-lui brièvement à la voix que tout est arrêté."
-                        )
-                    except Exception:
-                        pass
-                return
-
-            applied_dirs = list(active_task_controller.get("directives", []))
-            directive_note = (f" Les consignes suivantes ont été intégrées en direct : {'; '.join(applied_dirs)}." if applied_dirs else "")
-
-            is_error = res.get("status") in ("error", "overloaded")
-            is_high_demand = (
-                res.get("status") == "overloaded"
-                or res.get("error_type") == "high_demand"
-                or any(k in res.get("summary", "").lower() for k in ["503", "high demand", "forte demande", "satur", "unavailable", "quota"])
-            )
-
-            supervision_service.complete_action(
-                "antigravity_task",
-                status="error" if is_error else "completed",
-                summary=res.get("summary", "")[:250],
-                model=res.get("model_label", _ml2)
-            )
-            await broadcast_supervision()
-
-            current_ws = active_task_controller.get("websocket") or _ws
-            current_sess = active_task_controller.get("live_session") or _sess
-
-            if current_ws:
-                try:
-                    await current_ws.send_text(json.dumps({
-                        "type": "task_completed", "is_error": is_error,
-                        "status": "error" if is_error else "completed",
-                        "error_type": "high_demand" if is_high_demand else ("error" if is_error else None),
-                        "summary": res.get("summary", ""), "engine": "Antigravity IDE", "model": res.get("model_label", _ml2)
-                    }))
-                    await current_ws.send_text(json.dumps({
-                        "type": "status", "state": "idle", "msg": "En veille active",
-                        "detail": "Prêt pour vos ordres", "engine": "Google API Live", "model": live_display_label
-                    }))
-                except Exception:
-                    pass
-
-            if current_sess:
-                if is_error:
-                    if is_high_demand:
-                        completion_msg = (
-                            "[ARRÊT DÉVELOPPEMENT - FORTE DEMANDE SERVEURS] Tous les modèles Antigravity sont actuellement indisponibles. "
-                            "RÈGLE STRICTE : NE RELANCE PAS 'run_antigravity_task'. "
-                            "Informe Pierre avec ta voix Aoede qu'il y a une forte demande et de réessayer dans quelques instants."
-                        )
-                    else:
-                        completion_msg = (
-                            f"[ARRÊT DÉVELOPPEMENT - ERREUR TECHNIQUE] Le développement a rencontré un obstacle : {res.get('summary', '')[:250]}. "
-                            "RÈGLE STRICTE : NE RELANCE PAS d'outil de code en boucle. "
-                            "Explique brièvement à Pierre à l'oral avec ta voix Aoede ce qui s'est produit."
-                        )
-                else:
-                    completion_msg = (
-                        f"[DÉVELOPPEMENT TERMINÉ] Le développement avec {res.get('model_label', _ml2)} est achevé avec succès."
-                        f"{directive_note} Résume avec ta voix Aoede ce qui a été accompli et mentionne les fichiers créés ou modifiés. "
-                        f"Résultat : {res.get('summary', 'Tâche exécutée avec succès.')[:400]}"
-                    )
-                try:
-                    await safe_send_live_client_content(current_sess, completion_msg)
-                except Exception as notify_err:
-                    print(f"[BG Task] Erreur notification fin : {notify_err}")
-
-        bg = asyncio.create_task(_run_coding_bg())
-        active_task_controller["bg_task"] = bg
-        return {
-            "status": "launched_in_background", "model_used": model_label, "engine": "Antigravity IDE",
-            "instruction_to_jarvis": (
-                f"Le développement avec {model_label} est lancé en arrière-plan pour : '{instruction}'. "
-                f"Confirme brièvement et naturellement à Pierre avec ta voix Aoede que tu mobilises Antigravity pour cette tâche. "
-                f"Tu restes ensuite 100% disponible pour échanger normalement avec lui d'égal à égal pendant que le code s'exécute."
-            )
-        }
 
     # ─── guide_active_task ─────────────────────────────────────────────────────
     elif name == "guide_active_task":
@@ -276,7 +73,7 @@ async def dispatch_tool(
             await active_task_controller["queue"].put(directive)
             active_task_controller.setdefault("directives", []).append(directive)
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Consigne en direct prise en compte : {directive}.", "voice": False}))
-        return {"status": "adapted", "directive": directive, "message": f"Consigne '{directive}' transmise en direct au moteur Antigravity."}
+        return {"status": "adapted", "directive": directive, "message": f"Consigne '{directive}' transmise en direct à Antigravity CLI sur le VPS."}
 
     # ─── set_browser_link ──────────────────────────────────────────────────────
     elif name == "set_browser_link":
@@ -287,7 +84,7 @@ async def dispatch_tool(
         await websocket.send_text(json.dumps({"type": "browser_update", "url": link_url, "title": link_title, "screenshot": "/static/latest_screenshot.jpg"}))
         return {"status": "updated", "url": link_url, "title": link_title, "message": f"Le lien {link_url} a été positionné dans le HUD mobile."}
 
-    # ─── ask_deep_reasoning ────────────────────────────────────────────────────
+    # ─── ask_deep_reasoning (Moteur Antigravity CLI VPS - Avatar Code Violet) ───
     elif name == "ask_deep_reasoning":
         question = args.get("question", "")
         model_choice = args.get("model") or "gemini-3.1-pro-high"
@@ -296,10 +93,10 @@ async def dispatch_tool(
 
         # 1. Vérification de l'accord explicite préalable de Pierre
         if not is_confirmed:
-            reason = f"Investigation approfondie multi-agents via Antigravity ({model_label}) : '{question[:80]}'"
+            reason = f"Mobilisation des agents Antigravity CLI sur le VPS ({model_label}) : '{question[:80]}'"
             supervision_service.start_action(
-                "deep_reasoning", "Raisonnement Approfondi", "ask_deep_reasoning",
-                question, model_label, api_type="free", api_label="Session Pro",
+                "deep_reasoning", "Agents Antigravity CLI", "ask_deep_reasoning",
+                question, model_label, api_type="free", api_label="VPS Oracle",
                 cost_est="0.00 $"
             )
             supervision_service.complete_action("deep_reasoning", status="pending_confirmation", summary=reason)
@@ -311,34 +108,35 @@ async def dispatch_tool(
                 "model": model_label,
                 "reason": reason,
                 "instruction_to_jarvis": (
-                    f"RÈGLE D'INITIATIVE ET DE CONFIRMATION OBLIGATOIRE : Tu as l'initiative de proposer Antigravity pour analyser cette problématique complexe, "
+                    f"RÈGLE D'INITIATIVE ET DE CONFIRMATION OBLIGATOIRE : Tu as l'initiative de proposer nos agents Antigravity CLI sur le VPS pour analyser cette problématique complexe, "
                     f"mais tu DOIS TOUJOURS demander confirmation à Pierre avant de l'exécuter. "
-                    f"Demande-lui directement à voix haute avec ta voix Aoede : 'Pierre, pour analyser cette question en profondeur avec notre moteur multi-agents Antigravity, m'autorises-tu à lancer cette réflexion ?'. "
+                    f"Demande-lui directement à voix haute avec ta voix Aoede : 'Pierre, pour analyser cette question en profondeur avec nos agents Antigravity CLI sur le VPS, m'autorises-tu à lancer cette réflexion ?'. "
                     f"Attends sa confirmation orale avant de relancer l'outil avec confirmed_by_user=True."
                 )
             }
 
-        # 2. Confirmation accordée : lancement asynchrone non-bloquant
+        # 2. Confirmation accordée : lancement asynchrone non-bloquant avec avatar violet (coding)
         active_task_controller["info"]["running"] = True
         active_task_controller["info"]["task"] = question
         active_task_controller["info"]["model"] = model_label
 
         supervision_service.start_action(
-            "deep_reasoning", "Raisonnement Approfondi", "ask_deep_reasoning",
-            question, model_label, api_type="free", api_label="Session Pro",
+            "deep_reasoning", "Agents Antigravity CLI", "ask_deep_reasoning",
+            question, model_label, api_type="free", api_label="VPS Oracle",
             cost_est="0.00 $"
         )
         await broadcast_supervision()
         await websocket.send_text(json.dumps({
             "type": "jarvis_announcement",
-            "text": f"Engagement des protocoles de réflexion approfondie avec {model_label}.",
+            "text": f"Mobilisation des agents Antigravity CLI avec {model_label}.",
             "voice": False
         }))
+        # Révêtement immédiat de l'avatar violet de code (coding) pour Antigravity CLI VPS
         await websocket.send_text(json.dumps({
-            "type": "status", "state": "thinking",
-            "msg": "JARVIS engage la réflexion approfondie...", "task": question,
-            "engine": "Antigravity DeepThinkingEngine", "model": model_label,
-            "api_type": "free", "api_label": "Session Pro"
+            "type": "status", "state": "coding",
+            "msg": "JARVIS mobilise Antigravity CLI (VPS)...", "task": question,
+            "engine": "Antigravity CLI (VPS)", "model": model_label,
+            "api_type": "free", "api_label": "VPS Oracle"
         }))
 
         _q_bg = question
@@ -358,7 +156,7 @@ async def dispatch_tool(
                 try:
                     await active_ws.send_text(json.dumps({
                         "type": "task_progress_oral", "step": step, "text": text,
-                        "engine": "Antigravity DeepThinkingEngine", "model": _ml
+                        "engine": "Antigravity CLI (VPS)", "model": _ml
                     }))
                 except Exception:
                     pass
@@ -366,7 +164,7 @@ async def dispatch_tool(
                 try:
                     await safe_send_live_client_content(
                         active_sess,
-                        f"[MISE À JOUR DE LA RÉFLEXION APPROFONDIE - à dire brièvement à Pierre] {text}"
+                        f"[MISE À JOUR ANTIGRAVITY CLI VPS - à dire brièvement à Pierre] {text}"
                     )
                 except Exception as inj_err:
                     print(f"[Reasoning Progress Injection] {inj_err}")
@@ -381,11 +179,11 @@ async def dispatch_tool(
             except AntigravityQuotaExhaustedError:
                 res = {
                     "status": "quota_exhausted",
-                    "summary": "Quota de session de 5 heures atteint sur Antigravity.",
+                    "summary": "Quota de session de 5 heures atteint sur Antigravity CLI.",
                     "model_label": _ml
                 }
             except asyncio.CancelledError:
-                res = {"status": "cancelled", "summary": "Réflexion interrompue par l'utilisateur.", "model_label": _ml}
+                res = {"status": "cancelled", "summary": "Mission Antigravity CLI interrompue par l'utilisateur.", "model_label": _ml}
             except Exception as bg_err:
                 res = {"status": "error", "summary": str(bg_err), "model_label": _ml}
             finally:
@@ -397,11 +195,11 @@ async def dispatch_tool(
             status = res.get("status")
 
             if status == "cancelled":
-                supervision_service.complete_action("deep_reasoning", status="cancelled", summary="Réflexion arrêtée à votre demande")
+                supervision_service.complete_action("deep_reasoning", status="cancelled", summary="Mission Antigravity CLI arrêtée à votre demande")
                 await broadcast_supervision()
                 if current_ws:
                     try:
-                        await current_ws.send_text(json.dumps({"type": "task_cancelled", "reason": "Arrêt demandé", "message": "Réflexion immédiatement interrompue."}))
+                        await current_ws.send_text(json.dumps({"type": "task_cancelled", "reason": "Arrêt demandé", "message": "Mission Antigravity CLI immédiatement interrompue."}))
                         await current_ws.send_text(json.dumps({"type": "status", "state": "idle", "msg": "En veille active", "engine": "Google API Live", "model": live_display_label}))
                     except Exception:
                         pass
@@ -409,20 +207,20 @@ async def dispatch_tool(
                     try:
                         await safe_send_live_client_content(
                             current_sess,
-                            "[RÉFLEXION ARRÊTÉE] La réflexion a été interrompue suite à la demande de Pierre. Confirme-lui brièvement que tout est arrêté."
+                            "[MISSION ARRÊTÉE] L'exécution Antigravity CLI a été interrompue suite à la demande de Pierre. Confirme-lui brièvement que tout est arrêté."
                         )
                     except Exception:
                         pass
                 return
 
             elif status == "quota_exhausted":
-                supervision_service.complete_action("deep_reasoning", status="error", summary="Quota 5h Antigravity saturé")
+                supervision_service.complete_action("deep_reasoning", status="error", summary="Quota 5h Antigravity CLI saturé")
                 await broadcast_supervision()
                 if current_sess:
                     try:
                         await safe_send_live_client_content(
                             current_sess,
-                            "[ALERTE QUOTA 5H ANTIGRAVITY] Le quota de session de 5 heures d'Antigravity est momentanément saturé. Informe Pierre calmement avec ta voix Aoede et propose-lui soit d'attendre le renouvellement de la session, soit de répondre avec le moteur Google standard."
+                            "[ALERTE QUOTA 5H ANTIGRAVITY CLI] Le quota de session de 5 heures d'Antigravity CLI sur le VPS est momentanément saturé. Informe Pierre calmement avec ta voix Aoede et propose-lui d'attendre le renouvellement de la session."
                         )
                     except Exception:
                         pass
@@ -444,7 +242,7 @@ async def dispatch_tool(
                         "status": "error" if is_error else "completed",
                         "summary": res.get("summary", ""),
                         "artifact_path": res.get("artifact_path"),
-                        "engine": "Antigravity DeepThinkingEngine", "model": res.get("model_label", _ml)
+                        "engine": "Antigravity CLI (VPS)", "model": res.get("model_label", _ml)
                     }))
                     await current_ws.send_text(json.dumps({
                         "type": "status", "state": "idle", "msg": "En veille active",
@@ -455,10 +253,10 @@ async def dispatch_tool(
 
             if current_sess:
                 if is_error:
-                    msg = f"[ERREUR RÉFLEXION] Une anomalie s'est produite lors de l'investigation : {res.get('summary', '')[:200]}. Explique brièvement à Pierre ce qui s'est produit."
+                    msg = f"[ERREUR ANTIGRAVITY CLI] Une anomalie s'est produite lors de la mission : {res.get('summary', '')[:200]}. Explique brièvement à Pierre ce qui s'est produit."
                 else:
                     msg = (
-                        f"[RÉFLEXION APPROFONDIE TERMINÉE] L'investigation multi-agents est achevée avec succès. "
+                        f"[MISSION ANTIGRAVITY CLI TERMINÉE] L'investigation multi-agents Antigravity CLI est achevée avec succès. "
                         f"Voici la synthèse percutante prête pour la parole : {res.get('summary', '')}. "
                         f"Un artefact détaillé a été sauvegardé ({res.get('artifact_filename', 'rapport')}). "
                         f"Présente la synthèse et les conclusions majeures à Pierre avec ta voix Aoede avec franchise, précision et éloquence."

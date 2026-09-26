@@ -217,9 +217,9 @@ Le cœur interactionnel de Jarvis repose sur un canal WebSocket bidirectionnel `
 
 ### 5.2. Boucle de Traitement des Outils (Non-Bloquante)
 Dans les architectures classiques, l'appel d'un outil bloque la boucle de parole du modèle jusqu'à la fin de l'exécution. Jarvis utilise un paradigme asynchrone non-bloquant :
-1. Gemini Live émet un `tool_call` (ex: `run_antigravity_task`).
+1. Gemini Live émet un `tool_call` (ex: `ask_deep_reasoning`).
 2. Le backend renvoie **instantanément** un résultat préliminaire au modèle : `{"status": "launched_in_background"}`.
-3. Le modèle répond immédiatement à Pierre à voix haute : *"C'est bien noté Pierre, je m'en occupe et je lance le développement avec Antigravity."*
+3. Le modèle répond immédiatement à Pierre à voix haute : *"C'est bien noté Pierre, je m'en occupe et je lance nos agents Antigravity CLI sur le VPS."*
 4. La tâche lourde s'exécute en arrière-plan via `asyncio.create_task`.
 5. Pendant ce temps, Pierre peut continuer à poser des questions ou discuter avec Jarvis.
 6. Lorsque la tâche se termine, le backend injecte un message système dans le flux Gemini Live (`send_client_content`) pour que Jarvis annonce le résultat final à l'oral.
@@ -247,10 +247,10 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
 
 ## 7. CATALOGUE EXHAUSTIF DES SERVICES & OUTILS (FUNCTION CALLING)
 
-### 7.1. Agent Autonome d'Ingénierie Logicielle & Moteur de Réflexion Approfondie (DeepThinkingEngine / Antigravity)
+### 7.1. Moteur Multi-Agents Antigravity CLI sur VPS (Ingénierie & Raisonnement Approfondi)
 - **Fichiers** : `google_antigravity.py`, `services/reasoning_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`.
-- **Outils exposés** : `run_antigravity_task`, `guide_active_task`, `stop_current_action`, `ask_deep_reasoning`.
-- **Moteur sous-jacent** : Harnais officiel Google Antigravity CLI (`agy` / `antigravity-cli` v1.2.11) couplé à `google.antigravity.Agent` et la classe centrale `AutonomousReasoningEngine`.
+- **Outils exposés** : `ask_deep_reasoning`, `guide_active_task`, `stop_current_action`.
+- **Moteur sous-jacent** : Harnais Google Antigravity CLI (`agy` / `antigravity-cli` exécuté sur le VPS Oracle Cloud ARM64) orchestré par `AutonomousReasoningEngine` et `run_cli_task_stream`.
 - **Architecture Multi-Agents Délibérative (Système 2 en 3 Phases)** :
   1. **Sous-agent Prospecteur / Web & Sources** : Collecte des faits historiques, métriques vérifiées, données techniques et sources contradictoires.
   2. **Sous-agent Analyste / Critique** : Élimination méthodique des hallucinations, confrontation des chiffres clés et validation de la structure logique.

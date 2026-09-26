@@ -42,25 +42,15 @@ class SupervisionService:
                 "active": False,
                 "description": "Messagerie instantanée écrite et analyse visuelle de photos/captures"
             },
-            "run_antigravity_task": {
-                "name": "Développement de Code Antigravity",
-                "tool": "run_antigravity_task",
-                "model": "Gemini 3.8 Flash (High)",
-                "api_type": "paid",
-                "api_label": "Clé Payante",
-                "cost_est": "~0.005 $ à 0.03 $",
-                "active": False,
-                "description": "Agent autonome outillé modifiant le code du workspace"
-            },
             "ask_deep_reasoning": {
-                "name": "Raisonnement Approfondi (Thinking)",
+                "name": "Investigation Multi-Agents Antigravity CLI (VPS)",
                 "tool": "ask_deep_reasoning",
-                "model": "Gemini Thinking (Gratuite→Payante)",
+                "model": "Antigravity CLI (VPS)",
                 "api_type": "hybrid",
                 "api_label": "Gratuite → Payante (repli)",
                 "cost_est": "0.00 $ (Gratuite) / ~0.03 $ (Payante)",
                 "active": False,
-                "description": "Thinking: clé gratuite en priorité, repli payante si quota épuisé"
+                "description": "Agents Antigravity CLI autonomes sur le VPS Oracle pour recherche, code et analyse approfondie"
             },
             "run_browser_task": {
                 "name": "Navigation Autonome Browser-Use",

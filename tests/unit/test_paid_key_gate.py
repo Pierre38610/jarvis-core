@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import config
 from google_antigravity import resolve_antigravity_model, AntigravityAgent
-from services.reasoning_service import run_antigravity_task, run_deep_reasoning
+from services.reasoning_service import run_deep_reasoning
 from services.supervision_service import supervision_service
 
 
@@ -81,20 +81,6 @@ class TestAntigravityPaidKeyGate:
 class TestReasoningServicePaidKeyGate:
     """Vérifie le blocage préalable et l'exigence de la case à cocher pour les modèles lourds."""
 
-    async def test_run_antigravity_task_heavy_model_blocked_when_locked(self, fake_api_keys):
-        """run_antigravity_task pour gemini-3.1-pro-high exige la confirmation et la case cochée."""
-        config.set_paid_key_authorized(False)
-
-        res = await run_antigravity_task(
-            instruction="Génère un moteur de jeu 3D complet",
-            model="gemini-3.1-pro-high"
-        )
-
-        assert res.get("status") == "requires_user_confirmation"
-        assert res.get("requires_paid_consent") is True
-        assert res.get("requires_checkbox") is True
-        assert "coche" in res.get("message", "").lower() or "verrouillée" in res.get("reason", "").lower()
-
     async def test_run_deep_reasoning_heavy_model_blocked_when_locked(self, fake_api_keys):
         """run_deep_reasoning pour modèle lourd exige l'interrupteur coché."""
         config.set_paid_key_authorized(False)
@@ -107,30 +93,6 @@ class TestReasoningServicePaidKeyGate:
         assert res.get("status") == "requires_user_confirmation"
         assert res.get("requires_paid_consent") is True
         assert res.get("requires_checkbox") is True
-
-    async def test_run_antigravity_task_flash_falls_back_to_free_key_when_locked(self, fake_api_keys):
-        """Pour un modèle Flash, si la clé payante est verrouillée, le service se rabat sur la clé gratuite."""
-        import os
-        workspace_dir = os.path.join(config.BASE_DIR, "tmp_test")
-        os.makedirs(workspace_dir, exist_ok=True)
-        config.set_paid_key_authorized(False)
-
-        with patch("services.reasoning_service.AntigravityAgent") as mock_agent_cls:
-            mock_instance = MagicMock()
-            mock_instance.execute = AsyncMock(return_value={"status": "completed", "summary": "Done"})
-            mock_agent_cls.return_value = mock_instance
-
-            res = await run_antigravity_task(
-                instruction="Tâche rapide flash",
-                model="gemini-2.5-flash",
-                workspace_path=workspace_dir
-            )
-
-            # L'agent a été instancié avec la clé gratuite
-            mock_agent_cls.assert_called_once()
-            call_kwargs = mock_agent_cls.call_args[1]
-            assert call_kwargs["api_key"] == fake_api_keys["free"]
-            assert call_kwargs["api_key"] != fake_api_keys["paid"]
 
 
 class TestSupervisionServiceGateState:

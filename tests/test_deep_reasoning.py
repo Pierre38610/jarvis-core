@@ -112,7 +112,7 @@ async def test_deep_reasoning_executes_when_confirmed():
             confirmed_by_user=True
         )
         assert res["status"] == "completed"
-        assert res["source"] == "Antigravity DeepThinkingEngine"
+        assert res["source"] == "Antigravity CLI (VPS)"
         assert res["summary"] == "Synthèse percutante de l'analyse."
 
 

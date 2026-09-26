@@ -230,7 +230,7 @@ const btnModalOpenExternal = document.getElementById('btnModalOpenExternal');
 const browserScreenshotImg = document.getElementById('browserScreenshotImg');
 const modalBrowserTitle = document.getElementById('modalBrowserTitle');
 
-// Panneau Tâche Active (Antigravity IDE)
+// Panneau Tâche Active (Antigravity CLI VPS)
 const taskDock = document.getElementById('taskDock');
 const taskDockStatus = document.getElementById('taskDockStatus');
 const taskDockModel = document.getElementById('taskDockModel');
@@ -529,7 +529,7 @@ function getActionLabel(state) {
     case 'system': return "DIAGNOSTIC SYSTÈME";
     case 'memory': return "MÉMOIRE DURABLE";
     case 'shopping': return "PANIER & ACHAT";
-    case 'coding': return "PROGRAMMATION";
+    case 'coding': return "ANTIGRAVITY CLI (VPS)";
     case 'browsing': return "NAVIGATION SUR INTERNET";
     case 'emailing': return "EXPÉDITION D'E-MAIL";
     case 'thinking': return "RÉFLEXION";
@@ -777,7 +777,7 @@ function updateLiveActivityBand(state, msg, task, engine, model, apiType, apiLab
   liveActivityBand.className = `live-activity-band band-${state}`;
 
   const titles = {
-    coding: 'DÉVELOPPEMENT EN COURS',
+    coding: 'ANTIGRAVITY CLI // VPS',
     browsing: 'NAVIGATION WEB',
     thinking: 'ANALYSE APPROFONDIE',
     emailing: 'EXPÉDITION E-MAIL',
@@ -1450,7 +1450,7 @@ function checkSpeechEnded() {
         if (isToolExecuting && activeActionState) {
           setJarvisState(activeActionState.state, activeActionState.customMsg, activeActionState.detail, activeActionState.engineInfo);
         } else if (taskDock && taskDock.style.display === 'flex') {
-          setJarvisState('coding', "JARVIS développe via Antigravity...");
+          setJarvisState('coding', "Mission Antigravity CLI en cours sur le VPS...");
         } else if (!isToolExecuting) {
           activeActionState = null;
           updateLiveActivityBand('idle');
@@ -1779,9 +1779,9 @@ async function startJarvis() {
             updateLiveActivityBand(msg.state, msg.msg, msg.detail || msg.task, msg.engine, msg.model, msg.api_type, msg.api_label);
             if (msg.state === 'coding') {
               if (taskDock) taskDock.style.display = 'flex';
-              if (taskDockStatus) taskDockStatus.innerText = "DÉVELOPPEMENT EN COURS";
-              if (taskDockInstruction) taskDockInstruction.innerText = msg.task || msg.detail || "Développement du projet...";
-              if (taskDockModel) taskDockModel.innerText = msg.model || "Antigravity IDE";
+              if (taskDockStatus) taskDockStatus.innerText = "ANTIGRAVITY CLI EN COURS";
+              if (taskDockInstruction) taskDockInstruction.innerText = msg.task || msg.detail || "Mission Antigravity CLI...";
+              if (taskDockModel) taskDockModel.innerText = msg.model || "Antigravity CLI (VPS)";
               // Activation du gating + silence sender pour maintien de session pendant le codage
               isToolExecuting = true;
               startSilenceSender();

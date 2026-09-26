@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import asyncio
 import config
 from google_antigravity import resolve_antigravity_model, AntigravityAgent
-from services.reasoning_service import run_antigravity_task, run_deep_reasoning
+from services.reasoning_service import run_deep_reasoning
 from services.supervision_service import supervision_service
 
 class TestPaidKeyAuthorization(unittest.TestCase):
@@ -50,18 +50,6 @@ class TestPaidKeyAuthorization(unittest.TestCase):
         )
         self.assertNotEqual(agent.api_key, "fake_paid_key_xyz")
         self.assertEqual(agent.api_key, config.GEMINI_API_KEY_FREE)
-
-    def test_reasoning_service_unauthorized_blocks_heavy_models(self):
-        """When unauthorized, run_antigravity_task for heavy model returns user confirmation request with requires_checkbox"""
-        config.set_paid_key_authorized(False)
-        
-        res = asyncio.run(run_antigravity_task(
-            instruction="Crée une simulation physique complexe",
-            model="gemini-3.1-pro-high"
-        ))
-        self.assertEqual(res.get("status"), "requires_user_confirmation")
-        self.assertTrue(res.get("requires_checkbox"))
-        self.assertIn("coche", res.get("message", "").lower())
 
     def test_deep_reasoning_unauthorized_blocks_heavy_models(self):
         """When unauthorized, run_deep_reasoning with heavy model returns requires_checkbox"""

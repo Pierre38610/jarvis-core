@@ -12,41 +12,12 @@ def get_tools_list() -> list[types.Tool]:
         types.Tool(
             function_declarations=[
                 types.FunctionDeclaration(
-                    name="run_antigravity_task",
-                    description=(
-                        "OUTIL MAJEUR ET OBLIGATOIRE POUR TOUT DÉVELOPPEMENT, CODE ET ACTION SYSTÈME : "
-                        "Pilote l'agent autonome outillé Antigravity dans le workspace local (my-project). "
-                        "L'agent Antigravity est un véritable agent d'ingénierie disposant d'outils réels d'action : "
-                        "création et modification de fichiers de code (CREATE_FILE, EDIT_FILE), lecture et inspection (VIEW_FILE), "
-                        "exploration du projet (LIST_DIR, SEARCH_DIR), et exécution de commandes shell ou de tests (RUN_COMMAND). "
-                        "TU DOIS L'INVOQUER SYSTÉMATIQUEMENT dès qu'il s'agit d'écrire du code, corriger un bug, refactorer, "
-                        "créer un jeu ou une application (ex: snake, web app, script python), installer des packages, tester un script "
-                        "ou manipuler des fichiers. Ne récite JAMAIS de code toi-même à l'oral."
-                    ),
-                    behavior=types.Behavior.NON_BLOCKING,
-                    parameters=types.Schema(
-                        type="OBJECT",
-                        properties={
-                            "instruction": types.Schema(type="STRING", description="L'ordre exact de programmation, d'architecture, de test ou d'action agentique à mener"),
-                            "model": types.Schema(type="STRING", description=(
-                                "Modèle Antigravity selon la complexité : "
-                                "'gemini-3.8-flash-low', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-high' (par défaut, ultra-performant et rapide pour tout développement), "
-                                "'gemini-3.1-pro-low', 'gemini-3.1-pro-medium', 'gemini-3.1-pro-high' (recommandé pour algorithmes ardus, logique complexe et architecture), "
-                                "'claude-3-7-sonnet' ou 'claude-3-opus' (pour refactoring massif et ingénierie de précision). "
-                                "Par défaut : 'gemini-3.8-flash-high'."
-                            )),
-                            "confirmed_by_user": types.Schema(type="BOOLEAN", description="Mettre à True UNIQUEMENT après que Pierre a explicitement donné son accord oral suite à ta demande expliquant le besoin et le coût estimé. Par défaut False."),
-                        },
-                        required=["instruction"]
-                    )
-                ),
-                types.FunctionDeclaration(
                     name="stop_current_action",
                     description=(
-                        "ARRÊTE IMMÉDIATEMENT l'action, le développement de code, la navigation web ou la recherche en cours. "
+                        "ARRÊTE IMMÉDIATEMENT l'action, la recherche en cours, les agents Antigravity CLI ou la navigation web. "
                         "TU DOIS L'INVOQUER IMMÉDIATEMENT dès que Pierre te dit d'arrêter, de faire une pause, de stopper ou d'annuler "
                         "(ex: 'arrête', 'stop', 'annule', 'interromps', 'tais-toi et arrête', 'laisse tomber'). "
-                        "Cette action interrompt physiquement l'agent Antigravity ou le navigateur en arrière-plan et remet l'état à l'arrêt."
+                        "Cette action interrompt physiquement l'agent Antigravity CLI sur le VPS ou le navigateur en arrière-plan et remet l'état à l'arrêt."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
@@ -56,22 +27,22 @@ def get_tools_list() -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="guide_active_task",
                     description=(
-                        "Permet à l'utilisateur de guider, adapter, modifier ou corriger en direct l'action ou le code en cours de développement "
-                        "par Antigravity IDE (ex: changer de bibliothèque, ajouter un paramètre, corriger une direction) sans interrompre la session."
+                        "Permet à l'utilisateur de guider, adapter, modifier ou corriger en direct l'investigation ou l'action en cours "
+                        "par les agents Antigravity CLI sur le VPS (ex: approfondir un axe, ajouter un paramètre, réorienter l'analyse ou l'ingénierie) sans interrompre la session."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
-                        properties={"directive": types.Schema(type="STRING", description="La consigne ou adaptation demandée par l'utilisateur pour le développement en cours")},
+                        properties={"directive": types.Schema(type="STRING", description="La consigne ou adaptation demandée par l'utilisateur pour l'action en cours")},
                         required=["directive"]
                     )
                 ),
                 types.FunctionDeclaration(
                     name="ask_deep_reasoning",
                     description=(
-                        "MOTEUR DE RÉFLEXION APPROFONDIE UNIVERSEL (SYSTÈME 2 / MULTI-AGENTS ANTIGRAVITY CLI) : "
-                        "Mobilise le pipeline d'agents autonomes Antigravity CLI (Prospecteur, Analyste critique, Synthèse & Artefact) "
-                        "pour toute tâche complexe, recherche approfondie, analyse comparative, benchmark ou audit technique. "
-                        "PRISE D'INITIATIVE MAXIMALE : À la moindre tâche un peu complexe ou recherche fouillée, propose immédiatement à Pierre de mobiliser les agents Antigravity CLI. "
+                        "MOTEUR UNIQUE MULTI-AGENTS ANTIGRAVITY CLI (SUR LE VPS) : "
+                        "Mobilise le pipeline d'agents autonomes Antigravity CLI qui tournent sur le VPS (Prospecteur, Analyste critique, Synthèse & Artefact, Ingénierie) "
+                        "pour toute tâche complexe, recherche approfondie, analyse comparative, benchmark, audit technique, réflexion ou conception avancée. "
+                        "PRISE D'INITIATIVE MAXIMALE : À la moindre tâche un peu complexe ou recherche fouillée, propose immédiatement à Pierre de mobiliser les agents Antigravity CLI sur le VPS. "
                         "Si Pierre n'a pas encore validé, appelle cet outil avec confirmed_by_user=False pour obtenir la proposition orale pour Aoede. "
                         "Si Pierre a validé ou a directement ordonné d'utiliser Antigravity / recherche approfondie dès son instruction, appelle cet outil avec confirmed_by_user=True."
                     ),
@@ -79,9 +50,9 @@ def get_tools_list() -> list[types.Tool]:
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "question": types.Schema(type="STRING", description="La problématique, sujet d'investigation, question stratégique ou benchmark à traiter en profondeur"),
+                            "question": types.Schema(type="STRING", description="La problématique, sujet d'investigation, question stratégique, audit ou mission à traiter en profondeur par Antigravity CLI sur le VPS"),
                             "model": types.Schema(type="STRING", description=(
-                                "Modèle à mobiliser selon la complexité : "
+                                "Modèle Antigravity CLI selon la complexité : "
                                 "'gemini-3.1-pro-high' (par défaut, pour synthèse et analyse de référence), "
                                 "'claude-3-opus' ou 'claude-3-7-sonnet' (pour analyse conceptuelle pointue), "
                                 "ou 'gemini-3.8-flash-high' (pour investigation rapide)."

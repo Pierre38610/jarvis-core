@@ -256,16 +256,11 @@ def get_tool_metadata(name: str, args: dict = None) -> dict:
     elif name == "download_file":
         fn = args.get("filename") or args.get("url") or "Fichier"
         return {"state": "downloading", "msg": f"Téléchargement : {fn}...", "task": f"Téléchargement : {fn}", "engine": "Stark Transfer", "model": "Secure Downloader", "api_type": "free", "api_label": "Service Local"}
-    elif name == "run_antigravity_task":
-        instr = args.get("instruction") or "Développement de code..."
-        model_choice = args.get("model") or "gemini-3.8-flash"
-        _, m_label = resolve_antigravity_model(model_choice)
-        return {"state": "coding", "msg": "JARVIS développe via Antigravity...", "task": instr, "engine": "Antigravity IDE", "model": m_label, "api_type": "paid", "api_label": "Clé Payante"}
     elif name == "ask_deep_reasoning":
         q = args.get("question") or "Analyse approfondie..."
         model_choice = args.get("model") or "gemini-3.1-pro-high"
         _, m_label = resolve_antigravity_model(model_choice)
-        return {"state": "thinking", "msg": "Réflexion approfondie Antigravity...", "task": q, "engine": "Antigravity DeepThinkingEngine", "model": m_label, "api_type": "free", "api_label": "Session Pro"}
+        return {"state": "coding", "msg": "Agents Antigravity CLI sur le VPS...", "task": q, "engine": "Antigravity CLI (VPS)", "model": m_label, "api_type": "free", "api_label": "Session Pro"}
     elif name in ("search_web", "run_browser_task", "interact_web_page", "open_user_browser"):
         q = args.get("query") or args.get("goal") or args.get("url") or "Navigation internet"
         return {"state": "browsing", "msg": f"Navigation Web : {q}", "task": q, "engine": "Playwright / DuckDuckGo", "model": "Browser Engine", "api_type": "free", "api_label": "Clé Gratuite"}
@@ -312,25 +307,13 @@ def get_tool_metadata(name: str, args: dict = None) -> dict:
 
 def estimate_tool_cost(tool_name: str, args: dict) -> tuple[str, str]:
     """Retourne (reason, cost_string) pour une action nécessitant la clé payante"""
-    if tool_name == "run_antigravity_task":
-        model_choice = args.get("model", "gemini-3.8-flash")
-        instruction = (args.get("instruction") or "")[:80]
-        if any(k in str(model_choice).lower() for k in ["opus"]):
-            cost = "~0.10 $"; model_info = "Claude 3 Opus (Antigravity IDE)"
-        elif any(k in str(model_choice).lower() for k in ["sonnet", "claude"]):
-            cost = "~0.05 $"; model_info = "Claude 3.7 Sonnet (Antigravity IDE)"
-        elif any(k in str(model_choice).lower() for k in ["pro"]):
-            cost = "~0.03 $"; model_info = "Gemini 3.1 Pro (Antigravity IDE)"
-        else:
-            cost = "~0.005 $ (< 1 centime)"; model_info = "Gemini 3.8 Flash (Antigravity IDE)"
-        return f"Développement autonome avec {model_info} : '{instruction}'", cost
-    elif tool_name == "run_browser_task":
+    if tool_name == "run_browser_task":
         goal = (args.get("goal") or "")[:80]
         return f"Navigation autonome Browser-Use pour : '{goal}'", "~0.02 $"
     elif tool_name == "ask_deep_reasoning":
         question = (args.get("question") or "")[:80]
         model_choice = args.get("model", "gemini-3.1-pro-high")
-        return f"Raisonnement approfondi avec {model_choice} pour : '{question}'", "~0.03 $"
+        return f"Investigation multi-agents Antigravity CLI ({model_choice}) : '{question}'", "~0.03 $"
     elif tool_name == "live_fallback":
         return "Session vocale Gemini 3.8 Live (quota gratuit épuisé)", "~0.02 $ / min (~0.10 $ pour 5 min)"
     return "Opération sur clé payante", "~0.01 $"
