@@ -732,10 +732,12 @@ class TransportService:
         date_depart: str,
         heure_souhaitee: Optional[str] = None,
         pays: str = "auto",
-        reserver_automatiquement: bool = False
+        reserver_automatiquement: bool = False,
+        optimiser_avec_agent: bool = True
     ) -> Dict[str, Any]:
         """Méthode principale : analyse les paramètres, génère les deep links,
         détecte les trajets multi-segments (enchaînement de trains), extrait les horaires,
+        déclenche proactivement l'agent Antigravity CLI pour l'arbitrage confort & correspondances,
         et si demandé, ouvre directement les pages de réservation sur le navigateur de Pierre.
         """
         country = self.detect_country(origine, destination, pays)
@@ -779,6 +781,31 @@ class TransportService:
                     description_trajet=f"Enchaînement {orig_norm['name']} → {dest_norm['name']}"
                 )
 
+            # Mobilisation proactive de l'agent Antigravity CLI pour l'analyse multi-critères
+            if optimiser_avec_agent:
+                try:
+                    from services.agentic_dispatcher import agentic_dispatcher
+                    agent_goal = f"Optimisation experte voyage {orig_norm['name']} vers {dest_norm['name']} le {date_iso} (correspondances, confort SJ Snabbtåg vs Nattåg, horaires repas)"
+                    asyncio.create_task(
+                        agentic_dispatcher.launch_agentic_mission(
+                            mission_type="transport_optimizer",
+                            goal=agent_goal,
+                            context={
+                                "origine": orig_norm["name"],
+                                "destination": dest_norm["name"],
+                                "date": date_iso,
+                                "time": time_hhmm,
+                                "country": country,
+                                "is_multi_segment": True,
+                                "multi_segment_details": multi_seg,
+                                "best_option": best_option,
+                                "links": all_links
+                            }
+                        )
+                    )
+                except Exception as ag_err:
+                    logger.warning(f"[TransportService] Note agentic dispatch: {ag_err}")
+
             result_multi = {
                 "status": "success",
                 "country": country,
@@ -798,7 +825,8 @@ class TransportService:
                 "best_option": best_option,
                 "all_options": [best_option],
                 "all_links": all_links,
-                "reservation_result": reservation_result
+                "reservation_result": reservation_result,
+                "agent_optimization_launched": optimiser_avec_agent
             }
             self._last_search = {
                 "country": country,
@@ -836,6 +864,30 @@ class TransportService:
                 description_trajet=f"Trajet direct {orig_norm['name']} → {dest_norm['name']}"
             )
 
+        # Déclenchement de l'agent Antigravity CLI si multi-critères
+        if optimiser_avec_agent:
+            try:
+                from services.agentic_dispatcher import agentic_dispatcher
+                agent_goal = f"Analyse comparative voyage direct {orig_norm['name']} vers {dest_norm['name']} le {date_iso} (confort, 1ère/2nde classe, retards)"
+                asyncio.create_task(
+                    agentic_dispatcher.launch_agentic_mission(
+                        mission_type="transport_optimizer",
+                        goal=agent_goal,
+                        context={
+                            "origine": orig_norm["name"],
+                            "destination": dest_norm["name"],
+                            "date": date_iso,
+                            "time": time_hhmm,
+                            "country": country,
+                            "is_multi_segment": False,
+                            "best_option": best_option,
+                            "links": deep_links["links"]
+                        }
+                    )
+                )
+            except Exception as ag_err:
+                logger.warning(f"[TransportService] Note agentic dispatch: {ag_err}")
+
         result_single = {
             "status": "success",
             "country": country,
@@ -849,7 +901,8 @@ class TransportService:
             "best_option": best_option,
             "all_options": options,
             "all_links": deep_links["links"],
-            "reservation_result": reservation_result
+            "reservation_result": reservation_result,
+            "agent_optimization_launched": optimiser_avec_agent
         }
         self._last_search = {
             "country": country,

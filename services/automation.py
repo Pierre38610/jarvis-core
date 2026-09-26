@@ -91,6 +91,38 @@ def build_spreadsheet_payload(nom_fichier: str, colonnes: list[str], lignes: lis
     }
 
 
+async def generer_modele_tableur_avance(
+    nom_fichier: str,
+    colonnes: list[str],
+    lignes: list[list[Any]],
+    description: str = "",
+    kpi_metrics: Optional[dict[str, Any]] = None
+) -> dict:
+    """Génère un classeur Excel avancé via l'agent Antigravity 'spreadsheet_modeler' (Système 2).
+    Intègre formules dynamiques (XLOOKUP, SUMIFS), calculs de marges/variances,
+    mise en forme conditionnelle professionnelle Stark, KPIs et sauvegarde dans downloads/.
+    """
+    from services.agentic_dispatcher import agentic_dispatcher
+    clean_name = (nom_fichier or "modele_financier.xlsx").strip()
+    if not clean_name.endswith(".xlsx"):
+        clean_name += ".xlsx"
+
+    goal = f"Modélisation Excel avancée avec formules dynamiques pour '{clean_name}' : {description or 'Tableau analytique et indicateurs clés'}"
+    context = {
+        "nom_fichier": clean_name,
+        "colonnes": colonnes,
+        "lignes": lignes,
+        "description": description,
+        "kpi_metrics": kpi_metrics or {}
+    }
+    return await agentic_dispatcher.launch_agentic_mission(
+        mission_type="spreadsheet_modeler",
+        goal=goal,
+        context=context,
+        output_filename=clean_name
+    )
+
+
 def build_slides_payload(
     titre: str,
     theme: str = "stark",

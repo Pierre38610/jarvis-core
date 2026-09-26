@@ -985,3 +985,60 @@ async def read_received_emails_async(
         folder=folder
     )
 
+
+async def analyser_et_preparer_brouillon_agent(
+    email_data: Dict[str, Any],
+    instructions_supplementaires: str = ""
+) -> Dict[str, Any]:
+    """Analyse un e-mail reçu complexe ou une pièce jointe PDF et prépare un projet de réponse
+    via l'agent Antigravity CLI 'email_drafting' (Système 2), sauvegardé dans outbox_emails/.
+    """
+    from services.agentic_dispatcher import agentic_dispatcher
+
+    sujet = email_data.get("subject", "Sans sujet")
+    expediteur = email_data.get("from", "Inconnu")
+    corps = email_data.get("body") or email_data.get("snippet", "")
+    attachments = email_data.get("attachments", [])
+
+    # Extraction du texte des pièces jointes PDF si disponibles
+    pdf_texts = []
+    for att_name in attachments:
+        if att_name.lower().endswith(".pdf"):
+            # Recherche du fichier sur le disque
+            candidate_paths = [
+                os.path.join(DOWNLOADS_DIR, att_name),
+                os.path.join(WORKSPACE_DIR, att_name),
+                os.path.join(BASE_DIR, att_name)
+            ]
+            for c_path in candidate_paths:
+                if os.path.exists(c_path):
+                    try:
+                        from pypdf import PdfReader
+                        reader = PdfReader(c_path)
+                        text = "".join([page.extract_text() or "" for page in reader.pages[:10]])
+                        if text:
+                            pdf_texts.append(f"--- Contenu PDF ({att_name}) ---\n{text[:2000]}")
+                        break
+                    except Exception as pdf_err:
+                        logger.warning(f"[EmailService] Erreur lecture PDF {att_name}: {pdf_err}")
+
+    pdf_extra = "\n\n".join(pdf_texts)
+
+    goal = f"Triage exécutif et rédaction de réponse pour l'e-mail de '{expediteur}' sur '{sujet}'"
+    context = {
+        "expediteur": expediteur,
+        "sujet": sujet,
+        "date": email_data.get("date", ""),
+        "corps": corps[:3000],
+        "pieces_jointes": attachments,
+        "contenu_pieces_jointes": pdf_extra,
+        "instructions_supplementaires": instructions_supplementaires
+    }
+
+    return await agentic_dispatcher.launch_agentic_mission(
+        mission_type="email_drafting",
+        goal=goal,
+        context=context
+    )
+
+

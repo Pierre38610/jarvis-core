@@ -502,6 +502,10 @@ def get_tools_list() -> list[types.Tool]:
                                 type="STRING",
                                 description="Description optionnelle du contenu ou contexte du tableau"
                             ),
+                            "modele_avance_agent": types.Schema(
+                                type="BOOLEAN",
+                                description="Si True (par défaut), mobilise proactivement l'agent Antigravity 'spreadsheet_modeler' (Système 2) pour injecter formules dynamiques (XLOOKUP, SUMIFS), ratios et mise en forme corporate Stark."
+                            ),
                         },
                         required=["nom_fichier", "colonnes", "lignes"]
                     )
@@ -730,6 +734,10 @@ def get_tools_list() -> list[types.Tool]:
                                 type="BOOLEAN",
                                 description="Si True (ou si Pierre souhaite réserver/acheter ou ouvrir les billets sur son navigateur), ouvre automatiquement les pages de réservation de chaque train sur le navigateur de son ordinateur pour qu'il n'ait plus qu'à payer."
                             ),
+                            "optimiser_avec_agent": types.Schema(
+                                type="BOOLEAN",
+                                description="Si True (par défaut), déclenche proactivement l'agent Antigravity CLI pour l'analyse multi-critères approfondie (trains de jour vs trains de nuit, correspondances fines, confort couchette et repas)."
+                            ),
                         },
                         required=["origine", "destination", "date_depart"]
                     )
@@ -831,6 +839,54 @@ def get_tools_list() -> list[types.Tool]:
                                 type="STRING",
                                 description="Titre ou numéro de section précis si connu (ex: '1', '2', '3', '7', '7.1', '8', '10')"
                             ),
+                        }
+                    )
+                ),
+                types.FunctionDeclaration(
+                    name="triage_et_brouillon_email",
+                    description=(
+                        "TRIAGE EXÉCUTIF & BROUILLON D'E-MAIL ANTIGRAVITY (SYSTÈME 2) : "
+                        "Mobilise l'agent Antigravity CLI pour analyser en profondeur un e-mail reçu ou un fil de discussion complexe, "
+                        "extraire et lire les pièces jointes PDF, et préparer un projet de réponse argumenté "
+                        "sauvegardé dans outbox_emails/. Propose ensuite oralement le brouillon à Pierre avant expédition."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "query": types.Schema(type="STRING", description="Expéditeur, mot-clé ou sujet de l'email à traiter (ex: 'Inria', 'stage', 'laboratoire', 'dernier')"),
+                            "consigne": types.Schema(type="STRING", description="Consigne d'orientation ou souhait pour la réponse (ex: 'accepter pour jeudi 14h', 'demander un report')")
+                        }
+                    )
+                ),
+                types.FunctionDeclaration(
+                    name="curation_livre_synthese",
+                    description=(
+                        "CURATION CULTURELLE & GUIDE DE LECTURE ANTIGRAVITY (SYSTÈME 2) : "
+                        "Mobilise l'agent Antigravity CLI pour analyser la table des matières et les thèses fondamentales d'un livre ou ebook, "
+                        "rédiger une fiche exécutive de 2 pages 'Synthèse & Clés de lecture' dans /artifacts/ et l'expédier en bonus sur la liseuse Kindle."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "titre_livre": types.Schema(type="STRING", description="Titre ou nom du livre à analyser"),
+                        },
+                        required=["titre_livre"]
+                    )
+                ),
+                types.FunctionDeclaration(
+                    name="auto_guerison_systeme",
+                    description=(
+                        "AUTO-GUÉRISON SYSTÈME & SRE AUTONOME ANTIGRAVITY (SYSTÈME 2) : "
+                        "Déclenche l'agent Antigravity SRE pour inspecter une anomalie de code, analyser la stacktrace, "
+                        "concevoir un patch correctif et sécuriser le service."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "motif": types.Schema(type="STRING", description="Motif, module ou anomalie à inspecter et corriger (ex: 'console', 'erreur 500', 'service')")
                         }
                     )
                 ),

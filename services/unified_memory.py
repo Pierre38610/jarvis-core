@@ -156,4 +156,25 @@ class UnifiedMemoryManager:
             return f"{base_prompt}\n\n{arch_summary}".strip()
         return base_prompt
 
+    async def consolider_memoire_nocturne(self) -> Dict[str, Any]:
+        """Déclenche la routine nocturne d'assainissement et de consolidation de la mémoire
+        via l'agent Antigravity CLI 'memory_consolidation' (Système 2) : détection des obsolescences,
+        fusion des contradictions et structuration Knowledge Graph.
+        """
+        from services.agentic_dispatcher import agentic_dispatcher
+        all_mems = sqlite_memory.search_memories("", limit=50)
+        profile = self.get_user_profile()
+        goal = "Assainissement nocturne, déduplication et Knowledge Graph de la mémoire de Pierre"
+        context = {
+            "profil": profile,
+            "souvenirs_actuels": all_mems,
+            "nb_souvenirs": len(all_mems)
+        }
+        return await agentic_dispatcher.launch_agentic_mission(
+            mission_type="memory_consolidation",
+            goal=goal,
+            context=context
+        )
+
 unified_memory_manager = UnifiedMemoryManager()
+

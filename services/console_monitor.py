@@ -7,6 +7,7 @@ d'informer Pierre à l'oral de manière claire et bienveillante.
 import sys
 import os
 import time
+import asyncio
 import logging
 import traceback
 from collections import deque
@@ -98,6 +99,42 @@ class ConsoleMonitor:
             return
         entry = ConsoleErrorEntry(source=source, level=level, message=message, details=details)
         self.history.append(entry)
+
+        # Déclenchement autonome du SRE Antigravity sur anomalie critique / 500 / traceback
+        if level in ("CRITICAL", "ERROR"):
+            txt_lower = f"{source} {message} {details}".lower()
+            if any(k in txt_lower for k in ["500", "traceback", "uncaught exception", "critical", "fatal", "segmentation"]):
+                self.trigger_autonomous_healing(source, message, details)
+
+    def trigger_autonomous_healing(self, source: str, message: str, details: str = ""):
+        """Déclenche de manière autonome un agent Antigravity CLI pour inspecter le code source et écrire un patch."""
+        now = time.time()
+        # Cooldown de 5 minutes pour éviter les tempêtes de déclenchement
+        if hasattr(self, "_last_healing_time") and now - self._last_healing_time < 300:
+            return
+        self._last_healing_time = now
+
+        async def _launch():
+            try:
+                from services.agentic_dispatcher import agentic_dispatcher
+                await agentic_dispatcher.launch_agentic_mission(
+                    mission_type="system_healing",
+                    goal=f"Auto-guérison incident système dans {source} : {message[:90]}",
+                    context={
+                        "source": source,
+                        "message": message,
+                        "details": details,
+                        "recent_errors": self.get_recent_errors(limit=5)
+                    }
+                )
+            except Exception as e:
+                pass
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_launch())
+        except RuntimeError:
+            pass
 
     def get_recent_errors(self, limit: int = 8) -> List[Dict[str, Any]]:
         """Retourne la liste des N dernières erreurs capturées."""

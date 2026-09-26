@@ -25,6 +25,7 @@
    - 7.10. Système Intelligent Ferroviaire & Mobilité (France & Suède)
    - 7.11. Connaissance Architecturale Dynamique & Auto-évaluation (ARCHITECTURE_COMPLETE_JARVIS.md)
    - 7.12. Moteur Deep Research Asynchrone (Antigravity CLI + n8n)
+   - 7.13. Moteur Délibératif Multi-Agents Antigravity Transverse ("Système 2" Universel)
 8. [Matrice des Endpoints API REST & Contrats WebSockets](#8-matrice-des-endpoints-api-rest--contrats-websockets)
 9. [Interface Utilisateur, PWA & HUD Mobile](#9-interface-utilisateur-pwa--hud-mobile)
 10. [Analyse Critique : Forces, Dette Technique & Pistes d'Amélioration](#10-analyse-critique--forces-dette-technique--pistes-damélioration)
@@ -474,6 +475,28 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
      - **Notification Vocale Aoede (Gemini Live)** : si la session temps réel est active, injection d'un prompt système direct (`safe_send_live_client_content`) pour qu'Aoede annonce la finalisation avec son élocution vivante, complice et fière, et présente oralement les 3 pistes prioritaires tout en signalant que le lien Google Slides est affiché sur l'écran.
      - **Push Telegram Stark Bot (`chatId: 6849746502`)** : envoi immédiat via `briefing_service.send_telegram_alert` d'un message structuré contenant l'annonce, le résumé des 3 pistes prioritaires, le lien direct du Google Slides et le chemin local de l'artefact Markdown.
      - **HUD & Écran Mobile** : mise à jour instantanée du lien de consultation web (`set_browser_link`) pointant directement vers la présentation Google Slides.
+
+---
+
+### 7.13. Moteur Délibératif Multi-Agents Antigravity Transverse ("Système 2" Universel)
+- **Fichiers** : `services/agentic_dispatcher.py`, `services/transport_service.py`, `services/automation.py`, `services/console_monitor.py`, `services/email_service.py`, `services/download_service.py`, `services/briefing_service.py`, `services/unified_memory.py`, `services/architecture_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`.
+- **Outils exposés** : `rechercher_train` (`optimiser_avec_agent`), `generer_fichier_tableur` (`modele_avance_agent`), `triage_et_brouillon_email`, `curation_livre_synthese`, `auto_guerison_systeme`, `ask_deep_reasoning`.
+- **Vision & Rôle Fondamental** :
+  - Évolution majeure de l'agent Antigravity CLI sur le VPS Oracle Cloud (`gemini-3.1-pro-high` via OAuth2 Google AI Pro) : historiquement restreint au code brut ou au Deep Research, il devient le **moteur de raisonnement délibératif "Système 2" universel de J.A.R.V.I.S.**
+  - Jarvis ne se contente plus de réponses réflexes "Système 1" (Gemini Flash 1-shot) ou de scripts rigides : il **prend proactivement l'initiative** de mobiliser les agents Antigravity dès qu'une tâche nécessite de la réflexion, de l'optimisation fine, du croisement de données ou une valeur ajoutée supérieure.
+- **Règles Impératives d'Architecture** :
+  1. **Réactivité vocale immédiate (< 300 ms)** : confirmation orale instantanée par Aoede ("*Je m'en charge Pierre, je délègue l'analyse à nos agents...*").
+  2. **Exécution asynchrone non-bloquante (`asyncio.create_task`)** : la mission s'exécute en arrière-plan sur le VPS sans geler ni saturer le flux audio Live. Pierre continue à dialoguer normalement avec Aoede.
+  3. **Notification proactive multicanale** : annonce vocale de synthèse d'Aoede quand la mission s'achève (si session Live active), alerte complète sur le Telegram Stark Bot (`chatId: 6849746502`), et livrables dans `/artifacts/` ou `/downloads/`.
+- **Catalogue des 8 Missions Agentiques Spécialisées** :
+  1. **Mobilité & Transports Intelligents (`transport_optimizer`)** : analyse comparative multi-critères (trains de jour SJ Snabbtåg vs train de nuit SJ Nattåg, confort des compartiments couchettes, marges de sécurité aux correspondances à Stockholm Central ou Paris Gare de Lyon, risques statistiques de retard).
+  2. **Data Analyst & Modélisation de Tableurs (`spreadsheet_modeler`)** : génération autonome de scripts Python (`pandas`, `openpyxl`) pour concevoir de vrais modèles financiers et comptables avec formules dynamiques (`XLOOKUP`, `SOMME.SI.ENS`, marges, variances), ratios clés, graphiques vectoriels et exports `.xlsx` prêts dans `/downloads/`.
+  3. **Auto-Guérison Système & SRE Autonome (`system_healing`)** : déclenchement autonome sur exception critique récurrente ou erreur 500, inspection du code source dans `/home/opc/jarvis-core/`, diagnostic approfondi et écriture de patch correctif validé par tests.
+  4. **Triage Exécutif & Brouillons d'E-mails (`email_drafting`)** : analyse des fils de discussion complexes, extraction de pièces jointes PDF via `pypdf`, et rédaction autonome d'un projet de réponse argumenté (ton Stark Industries) sauvegardé dans `outbox_emails/`.
+  5. **Curation Culturelle & Guides de Lecture (`book_curation`)** : extraction de la table des matières et des thèses fondamentales de tout nouvel ouvrage téléchargé, rédaction d'une fiche exécutive de 2 pages "Synthèse & Clés de lecture", transmise directement sur la liseuse Kindle en bonus du livre complet.
+  6. **Briefing Matinal Stratégique Prédictif (`morning_briefing`)** : déclenchement à 6h45 pour une véritable préparation de mission croisant l'agenda, les documents récents, l'historique des contacts, les retards de transport temps réel (Trafikverket / SNCF) et une veille ciblée sur l'actualité IA de pointe.
+  7. **Consolidation Nocturne de la Mémoire (`memory_consolidation`)** : routine d'assainissement nocturne, détection de faits contradictoires ou obsolètes, fusion des représentations vectorielles dans Qdrant et Postgres, et structuration des liens logiques dans le Knowledge Graph.
+  8. **Synchronisation Continue de la Documentation (`doc_sync`)** : comparaison continue entre le code réel des routeurs/services et `ARCHITECTURE_COMPLETE_JARVIS.md`, avec mise à jour autonome de la documentation dès qu'un endpoint ou une capacité évolue.
 
 ---
 

@@ -921,33 +921,27 @@ async def dispatch_tool(
         colonnes = args.get("colonnes") or []
         lignes = args.get("lignes") or []
         description = args.get("description") or ""
+        modele_avance_agent = bool(args.get("modele_avance_agent", True))
 
-        supervision_service.start_action(
-            "generer_fichier_tableur",
-            f"Tableur Excel : {nom_fichier}",
-            "generer_fichier_tableur",
-            f"Génération tableur '{nom_fichier}' ({len(colonnes)} colonnes, {len(lignes)} lignes)",
-            "n8n Community",
-            api_type="free",
-            api_label="Local n8n",
-            cost_est="0.00 $"
-        )
-        await broadcast_supervision()
-        await websocket.send_text(json.dumps({
-            "type": "jarvis_announcement",
-            "text": f"Génération du tableur Excel '{nom_fichier}' via n8n...",
-            "voice": False
-        }))
-        await websocket.send_text(json.dumps({
-            "type": "status",
-            "state": "document",
-            "msg": f"Génération Excel — {nom_fichier}...",
-            "task": f"Tableur : {nom_fichier}",
-            "engine": "n8n Community",
-            "model": "Spreadsheet Automation",
-            "api_type": "free",
-            "api_label": "Local n8n"
-        }))
+        if modele_avance_agent:
+            from services.automation import generer_modele_tableur_avance
+            asyncio.create_task(generer_modele_tableur_avance(
+                nom_fichier=nom_fichier,
+                colonnes=colonnes,
+                lignes=lignes,
+                description=description
+            ))
+            return {
+                "status": "lance_en_arriere_plan",
+                "action": "generer_fichier_tableur",
+                "nom_fichier": nom_fichier,
+                "engine": "Antigravity spreadsheet_modeler",
+                "instruction_to_jarvis": (
+                    f"Je m'en charge Pierre. Je délègue la conception du classeur Excel '{nom_fichier}' "
+                    f"à nos agents Antigravity sur le VPS avec formules dynamiques, ratios et mise en forme corporate. "
+                    f"Confirme-le immédiatement à Pierre avec ta voix Aoede en moins de 300 millisecondes d'un ton complice."
+                )
+            }
 
         _filename = nom_fichier
         _cols = colonnes
@@ -1616,6 +1610,7 @@ async def dispatch_tool(
         heure_souhaitee = args.get("heure_souhaitee")
         pays = args.get("pays", "auto")
         reserver_automatiquement = args.get("reserver_automatiquement", False)
+        optimiser_avec_agent = bool(args.get("optimiser_avec_agent", True))
 
         # Accusé de réception supervision
         supervision_service.start_action(
@@ -1659,7 +1654,8 @@ async def dispatch_tool(
             date_depart=date_depart,
             heure_souhaitee=heure_souhaitee,
             pays=pays,
-            reserver_automatiquement=reserver_automatiquement
+            reserver_automatiquement=reserver_automatiquement,
+            optimiser_avec_agent=optimiser_avec_agent
         )
         best = res.get("best_option", {})
         primary_link = res.get("primary_deep_link", "")
@@ -1738,6 +1734,7 @@ async def dispatch_tool(
             "date_depart": date_depart,
             "best_option": best,
             "primary_deep_link": primary_link,
+            "agent_optimization_launched": res.get("agent_optimization_launched", False),
             "instruction_to_jarvis": instruction
         }
 
@@ -1860,6 +1857,73 @@ async def dispatch_tool(
             "instruction_to_jarvis": (
                 "Voici les spécifications exactes extraites de ton document d'architecture officiel (ARCHITECTURE_COMPLETE_JARVIS.md). "
                 "Réponds fidèlement, précisément et naturellement à Pierre avec ta voix Aoede en synthétisant les points demandés."
+            )
+        }
+
+    # ─── triage_et_brouillon_email ─────────────────────────────────────────────
+    elif name == "triage_et_brouillon_email":
+        query = args.get("query") or ""
+        consigne = args.get("consigne") or ""
+
+        # Récupération de l'e-mail ciblé
+        from services.email_service import read_received_emails_async, analyser_et_preparer_brouillon_agent
+        read_res = await read_received_emails_async(max_count=3, query=query)
+        emails = read_res.get("emails", [])
+        target_email = emails[0] if emails else {"subject": query or "Dernier email", "from": "Expéditeur", "body": "Contenu du courriel", "attachments": []}
+
+        # Déclenchement de l'agent Antigravity email_drafting
+        asyncio.create_task(analyser_et_preparer_brouillon_agent(target_email, instructions_supplementaires=consigne))
+
+        sender = target_email.get("from", "l'expéditeur")
+        subj = target_email.get("subject", "le courriel")
+        return {
+            "status": "lance_en_arriere_plan",
+            "action": "triage_et_brouillon_email",
+            "subject": subj,
+            "from": sender,
+            "instruction_to_jarvis": (
+                f"Je m'en charge Pierre. J'analyse l'e-mail de {sender} ({subj}) avec nos agents Antigravity sur le VPS "
+                f"et je te prépare un brouillon de réponse argumenté. "
+                f"Confirme-le immédiatement à Pierre avec ta voix Aoede en moins de 300 millisecondes."
+            )
+        }
+
+    # ─── curation_livre_synthese ───────────────────────────────────────────────
+    elif name == "curation_livre_synthese":
+        titre_livre = args.get("titre_livre", "").strip()
+        from services.download_service import generer_synthese_lecture_agent
+        asyncio.create_task(generer_synthese_lecture_agent(titre_livre))
+
+        return {
+            "status": "lance_en_arriere_plan",
+            "action": "curation_livre_synthese",
+            "titre_livre": titre_livre,
+            "instruction_to_jarvis": (
+                f"C'est noté Pierre. Je confie l'analyse et la rédaction de la fiche 'Synthèse & Clés de lecture' "
+                f"pour '{titre_livre}' à nos agents Antigravity sur le VPS. Elle sera acheminée sur ta liseuse en bonus. "
+                f"Confirme-le immédiatement à Pierre avec ta voix Aoede en moins de 300 millisecondes."
+            )
+        }
+
+    # ─── auto_guerison_systeme ─────────────────────────────────────────────────
+    elif name == "auto_guerison_systeme":
+        motif = args.get("motif") or "Analyse globale de la console et des processus"
+        from services.agentic_dispatcher import agentic_dispatcher
+        recent = console_monitor.get_recent_errors(limit=5)
+        asyncio.create_task(agentic_dispatcher.launch_agentic_mission(
+            mission_type="system_healing",
+            goal=f"Auto-guérison et inspection SRE autonome : {motif}",
+            context={"motif": motif, "recent_errors": recent}
+        ))
+
+        return {
+            "status": "lance_en_arriere_plan",
+            "action": "auto_guerison_systeme",
+            "motif": motif,
+            "instruction_to_jarvis": (
+                f"Je prends les commandes Pierre. Je lance immédiatement notre agent SRE Antigravity sur le VPS "
+                f"pour inspecter le code source, isoler la cause et appliquer un patch correctif sécurisé. "
+                f"Confirme-le calmement et avec assurance à Pierre avec ta voix Aoede en moins de 300 millisecondes."
             )
         }
 

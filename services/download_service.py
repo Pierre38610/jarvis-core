@@ -830,6 +830,26 @@ async def search_and_download_ebook(
 
         if send_to_reader:
             reader_res = await send_to_ereader(dl_res["filepath"], ereader_email=ereader_email)
+
+            # Déclenchement autonome de l'agent Antigravity pour la fiche de lecture 2 pages
+            try:
+                import asyncio
+                from services.agentic_dispatcher import agentic_dispatcher
+                asyncio.create_task(
+                    agentic_dispatcher.launch_agentic_mission(
+                        mission_type="book_curation",
+                        goal=f"Curation et guide de lecture : {clean_title}",
+                        context={
+                            "titre": clean_title,
+                            "filepath": dl_res["filepath"],
+                            "filename": dl_res["filename"],
+                            "lang": target_lang
+                        }
+                    )
+                )
+            except Exception as bg_err:
+                pass
+
             return {
                 "status": "success",
                 "action": "ebook_download_and_sent",
@@ -837,10 +857,32 @@ async def search_and_download_ebook(
                 "download": dl_res,
                 "ereader_delivery": reader_res,
                 "lang": target_lang,
-                "message": f"L'ebook '{dl_res['filename']}' ({lang_label}) a été téléchargé et {reader_res.get('message', 'transféré sur votre liseuse')}."
+                "curation_agent_launched": True,
+                "message": f"L'ebook '{dl_res['filename']}' ({lang_label}) a été téléchargé, {reader_res.get('message', 'transféré sur votre liseuse')} et la fiche de lecture Antigravity est en préparation."
             }
 
     return dl_res
+
+
+async def generer_synthese_lecture_agent(
+    titre_ou_fichier: str,
+    filepath: Optional[str] = None
+) -> Dict[str, Any]:
+    """Déclenche la rédaction autonome d'une fiche 'Synthèse & Clés de lecture' de 2 pages
+    par l'agent Antigravity CLI 'book_curation' (Système 2) pour l'envoyer sur la liseuse.
+    """
+    from services.agentic_dispatcher import agentic_dispatcher
+    goal = f"Curation culturelle et clés de lecture pour : {titre_ou_fichier}"
+    context = {
+        "titre": titre_ou_fichier,
+        "filepath": filepath or os.path.join(EBOOKS_DIR, titre_ou_fichier),
+    }
+    return await agentic_dispatcher.launch_agentic_mission(
+        mission_type="book_curation",
+        goal=goal,
+        context=context
+    )
+
 
 
 def list_downloaded_files(subfolder: str = "") -> List[Dict[str, Any]]:

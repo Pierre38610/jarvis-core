@@ -298,6 +298,28 @@ class BriefingService:
             logger.error(f"[BriefingService] Erreur lors de l'envoi de l'alerte Telegram: {e}")
             return {"status": "error", "error": str(e)}
 
+    async def preparer_briefing_strategique_agent(self, tech_focus: str = "Architectures LLM, Multi-Agents, IA") -> Dict[str, Any]:
+        """Déclenche la préparation prédictive approfondie du briefing matinal (déclenchée à 6h45 ou à la demande)
+        via l'agent Antigravity CLI 'morning_briefing' (Système 2) : croisement agenda/documents, retards en temps réel
+        et veille technologique ciblée.
+        """
+        from services.agentic_dispatcher import agentic_dispatcher
+        
+        # Récupération des données brutes
+        base_briefing = await self.compiler_morning_briefing(force_refresh=True)
+        goal = "Préparation stratégique prédictive du Morning Briefing et veille technologique ciblée"
+        context = {
+            "date": datetime.date.today().isoformat(),
+            "briefing_brut": base_briefing,
+            "tech_focus": tech_focus,
+            "ville": base_briefing.get("meteo", {}).get("city", "Grenoble")
+        }
+        return await agentic_dispatcher.launch_agentic_mission(
+            mission_type="morning_briefing",
+            goal=goal,
+            context=context
+        )
+
     async def send_telegram_notification(self, message: str, chat_id: str = "6849746502") -> Dict[str, Any]:
         """Alias pratique pour send_telegram_alert."""
         return await self.send_telegram_alert(message, chat_id=chat_id)
@@ -305,4 +327,5 @@ class BriefingService:
 
 # Singleton
 briefing_service = BriefingService()
+
 

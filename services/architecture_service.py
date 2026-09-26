@@ -226,6 +226,36 @@ class ArchitectureKnowledgeService:
             "content": f"{self._cached_summary}\n\nSOMMAIRE DES SECTIONS DISPONIBLES :\n{toc_text}"
         }
 
+    async def synchroniser_architecture_code(self) -> Dict[str, Any]:
+        """Déclenche la comparaison continue entre le code réel des routeurs/services
+        et ARCHITECTURE_COMPLETE_JARVIS.md via l'agent Antigravity CLI 'doc_sync' (Système 2).
+        """
+        from services.agentic_dispatcher import agentic_dispatcher
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        goal = "Synchronisation continue de la documentation d'architecture avec le code source réel"
+
+        routers_dir = os.path.join(base_dir, "routers")
+        services_dir = os.path.join(base_dir, "services")
+        tools_dir = os.path.join(base_dir, "core", "tools")
+
+        routers_files = [f for f in os.listdir(routers_dir) if f.endswith(".py")] if os.path.exists(routers_dir) else []
+        services_files = [f for f in os.listdir(services_dir) if f.endswith(".py")] if os.path.exists(services_dir) else []
+        tools_files = [f for f in os.listdir(tools_dir) if f.endswith(".py")] if os.path.exists(tools_dir) else []
+
+        context = {
+            "routers": routers_files,
+            "services": services_files,
+            "tools": tools_files,
+            "doc_path": self.file_path,
+            "last_doc_mtime": self._last_mtime
+        }
+        return await agentic_dispatcher.launch_agentic_mission(
+            mission_type="doc_sync",
+            goal=goal,
+            context=context
+        )
+
 
 # Instance singleton
 architecture_service = ArchitectureKnowledgeService()
+
