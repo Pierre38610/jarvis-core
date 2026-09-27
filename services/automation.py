@@ -159,11 +159,19 @@ def build_slides_payload(
 
     clean_slug = "".join(c for c in clean_titre if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_") or "presentation"
 
+    slides_data = {
+        "title": clean_titre,
+        "theme": clean_theme,
+        "subtitle": subtitle,
+        "slides": slides or []
+    }
+
     return {
         "titre": clean_titre,
         "subtitle": subtitle,
         "theme": clean_theme,
         "slides": slides or [],
+        "slides_data": slides_data,
         "slides_count": len(slides or []),
         "batch_requests": batch_requests,
         "clean_slug": clean_slug,

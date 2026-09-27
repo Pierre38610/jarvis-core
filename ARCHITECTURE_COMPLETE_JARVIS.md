@@ -381,12 +381,20 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
      - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/document-spreadsheet`.
      - Nœuds n8n : Webhook -> Formater Données -> Spreadsheet File (binaire xlsx) -> Enregistrer dans `/home/opc/jarvis-core/downloads/` -> Respond to Webhook.
      - Accès immédiat au fichier généré via le point de montage `/downloads/<nom_fichier>`.
-  2. **Génération de présentations Google Slides Expertes & Esthétiques (`generer_presentation`, `services/slides_service.py`)** :
-     - **Moteur d'investigation multi-agents (`AutonomousReasoningEngine`)** : Plutôt que de créer un deck vide ou précipité, le service s'appuie désormais sur le moteur délibératif universel (`required_artifact="slides_schema"`). Ce dernier active les sous-agents Prospecteur (chiffres vérifiés, faits historiques), Critique (élimination des hallucinations et validation de cohérence) et Synthèse pour générer un plan directeur exhaustif (5 à 8 diapositives) sauvegardé dans `/artifacts/`.
-     - **Design moderne 16:9 & Thèmes colorimétriques** : Cartes graphiques, typographies hiérarchisées, pastilles métriques (`key_metric`), séparateurs visuels et notes d'orateur complètes avec palette adaptée (`bitcoin`/`gold`, `stark`, `corporate`, `cyber`, `dark`).
-     - **Spécification stricte Google Slides API v1** : Utilisation exclusive du type de forme officiel `ROUND_RECTANGLE` (remplaçant le type invalide `ROUNDED_RECTANGLE`) évitant tout rejet HTTP 400 du batchUpdate.
-     - **Élimination de la diapositive blanche par défaut** : La requête Google Slides `batchUpdate` génère les nouvelles diapositives enrichies puis supprime l'éventuelle diapositive vierge initiale ("Cliquez ici pour ajouter un titre").
-     - **Pipeline n8n 2.x hybride & OAuth2** : Création initiale de la présentation Google Slides, transmission sécurisée du jeton OAuth2 (`googleSlidesOAuth2Api`) dans le nœud HTTP Request n8n avec payload sérialisé `JSON.stringify({ requests: $json.requests })`, et vérification stricte du dispatcheur Jarvis (`batch_applied`) garantissant que la présentation est réellement remplie avant confirmation vocale et affichage du lien HUD.
+   2. **Génération de présentations Google Slides Expertes, Polymorphes & Débridées (`generer_presentation`, `services/slides_service.py`)** :
+      - **Moteur d'investigation multi-agents (`AutonomousReasoningEngine`) & Schéma Polymorphe** : Plutôt que de créer un deck rigide ou précipité, le service s'appuie sur le moteur délibératif universel (`required_artifact="slides_schema"`). Ce dernier active les sous-agents Prospecteur (chiffres vérifiés, faits historiques), Critique (élimination des hallucinations et validation de cohérence) et Synthèse pour générer un plan directeur exhaustif sauvegardé dans `/artifacts/`.
+      - **Disparition définitive du plafond de 6 slides fixes (Nombre Libre & Adaptatif)** : Le nombre de diapositives n'est plus bridé. Il est calculé dynamiquement par l'IA selon la complexité et l'envergure du sujet, ou calé rigoureusement sur la consigne vocale explicite de Pierre (ex: "fais un deck de 3 slides" -> 3 slides ; sujet stratégique vaste -> 8 à 14 slides).
+      - **Multi-layouts visuels polymorphes (Zéro monotonie)** : Alternance dynamique au fil des diapositives entre 7 modèles spécialisés calculés au pixel près en 16:9 widescreen (720x405 PT) :
+        * `hero_title` : Accroche percutante avec grand titre, sous-titre contextuel et barre lumineuse.
+        * `key_metrics` : Indicateurs clés géants (1 à 4 métriques avec valeur d'impact, label et sous-texte).
+        * `cards_grid` : Grilles modernes aérées de 2, 3 ou 4 cartes avec badges, titres et descriptions.
+        * `split_compare` : Analyse comparative 2 colonnes Avant / Après ou Frictions / Cible Stark.
+        * `timeline_steps` : Feuille de route chronologique ou étapes séquentielles par phases.
+        * `quote_highlight` : Mise en exergue de principes fondamentaux ou citations d'autorité.
+        * `conclusion_call_to_action` : Synthèse finale percutante orientée décision et plan d'action immédiat.
+      - **Conformité stricte Google Slides API v1** : Utilisation exclusive du type de forme officiel `ROUND_RECTANGLE` (remplaçant définitivement le type invalide `ROUNDED_RECTANGLE`) évitant tout rejet HTTP 400 du batchUpdate, et palette adaptée aux thèmes (`stark`, `corporate`, `dark`, `gold`/`bitcoin`, `cyber`).
+      - **Élimination de la diapositive blanche par défaut** : La requête Google Slides `batchUpdate` génère les nouvelles diapositives enrichies puis supprime systématiquement la diapositive vierge initiale ("Cliquez ici pour ajouter un titre") via son `objectId`.
+      - **Pipeline n8n 2.x hybride & Moteur géométrique JavaScript** : Le nœud n8n "Préparer Requêtes Batch Slides" calcule en temps réel la géométrie des cartes selon le layout choisi et transmet le batchUpdate sécurisé par OAuth2 (`googleSlidesOAuth2Api`), avec vérification stricte du dispatcheur Jarvis (`batch_applied`).
   3. **Prise de notes et to-do Notion (`notion_enregistrer`)** :
      - Ajoute des entrées structurées (notes rapides `note`, items de to-do list `todo`, fiches de veille `veille`, fiches projet `projet`) avec étiquettes dans Notion.
      - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/notion-entry`.

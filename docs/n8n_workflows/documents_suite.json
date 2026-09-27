@@ -16,7 +16,10 @@
         "name": "Webhook",
         "type": "n8n-nodes-base.webhook",
         "typeVersion": 2,
-        "position": [240, 300],
+        "position": [
+          240,
+          300
+        ],
         "webhookId": "jarvis-document-spreadsheet"
       },
       {
@@ -27,7 +30,10 @@
         "name": "Formater Données Tableur",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
-        "position": [460, 300]
+        "position": [
+          460,
+          300
+        ]
       },
       {
         "parameters": {
@@ -42,7 +48,10 @@
         "name": "Spreadsheet File",
         "type": "n8n-nodes-base.spreadsheetFile",
         "typeVersion": 2,
-        "position": [680, 300]
+        "position": [
+          680,
+          300
+        ]
       },
       {
         "parameters": {
@@ -54,7 +63,10 @@
         "name": "Enregistrer Fichier Excel",
         "type": "n8n-nodes-base.writeBinaryFile",
         "typeVersion": 1,
-        "position": [900, 300]
+        "position": [
+          900,
+          300
+        ]
       },
       {
         "parameters": {
@@ -66,28 +78,55 @@
         "name": "Respond to Webhook",
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1,
-        "position": [1120, 300]
+        "position": [
+          1120,
+          300
+        ]
       }
     ],
     "connections": {
       "Webhook": {
         "main": [
-          [{ "node": "Formater Données Tableur", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Formater Données Tableur",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Formater Données Tableur": {
         "main": [
-          [{ "node": "Spreadsheet File", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Spreadsheet File",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Spreadsheet File": {
         "main": [
-          [{ "node": "Enregistrer Fichier Excel", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Enregistrer Fichier Excel",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Enregistrer Fichier Excel": {
         "main": [
-          [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Respond to Webhook",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       }
     },
@@ -113,18 +152,24 @@
         "name": "Webhook",
         "type": "n8n-nodes-base.webhook",
         "typeVersion": 2,
-        "position": [240, 300],
+        "position": [
+          240,
+          300
+        ],
         "webhookId": "jarvis-document-slides"
       },
       {
         "parameters": {
-          "jsCode": "const body = $input.first().json.body || $input.first().json || {};\nconst titre = (body.titre || 'Présentation Jarvis').trim();\nconst subtitle = (body.subtitle || '').trim();\nconst theme = (body.theme || 'stark').trim().toLowerCase();\nconst slides = Array.isArray(body.slides) ? body.slides : [];\nconst batchRequests = Array.isArray(body.batch_requests) ? body.batch_requests : [];\nconst cleanSlug = (body.clean_slug || titre.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()) || 'presentation';\n\nreturn [{\n  json: {\n    titre: titre,\n    subtitle: subtitle,\n    theme: theme,\n    slides: slides,\n    slides_count: slides.length,\n    batch_requests: batchRequests,\n    clean_slug: cleanSlug,\n    filename: cleanSlug + '.pptx',\n    downloads_path: '/home/opc/jarvis-core/downloads/' + cleanSlug + '.pptx',\n    download_url: '/downloads/' + cleanSlug + '.pptx'\n  }\n}];"
+          "jsCode": "const body = $input.first().json.body || $input.first().json || {};\nconst titre = (body.titre || (body.slides_data && body.slides_data.title) || 'Présentation Jarvis').trim();\nconst subtitle = (body.subtitle || (body.slides_data && body.slides_data.subtitle) || '').trim();\nconst theme = (body.theme || (body.slides_data && body.slides_data.theme) || 'stark').trim().toLowerCase();\nconst slides = Array.isArray(body.slides) ? body.slides : ((body.slides_data && Array.isArray(body.slides_data.slides)) ? body.slides_data.slides : []);\nconst batchRequests = Array.isArray(body.batch_requests) ? body.batch_requests : [];\nconst cleanSlug = (body.clean_slug || titre.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()) || 'presentation';\nconst slidesData = body.slides_data || { title: titre, subtitle: subtitle, theme: theme, slides: slides };\n\nreturn [{\n  json: {\n    titre: titre,\n    subtitle: subtitle,\n    theme: theme,\n    slides: slides,\n    slides_data: slidesData,\n    slides_count: slides.length,\n    batch_requests: batchRequests,\n    clean_slug: cleanSlug,\n    filename: cleanSlug + '.pptx',\n    downloads_path: '/home/opc/jarvis-core/downloads/' + cleanSlug + '.pptx',\n    download_url: '/downloads/' + cleanSlug + '.pptx'\n  }\n}];"
         },
         "id": "code-slides-prep-1",
         "name": "Préparer Présentation",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
-        "position": [460, 300]
+        "position": [
+          460,
+          300
+        ]
       },
       {
         "parameters": {
@@ -135,7 +180,10 @@
         "name": "Google Slides",
         "type": "n8n-nodes-base.googleSlides",
         "typeVersion": 2,
-        "position": [680, 300],
+        "position": [
+          680,
+          300
+        ],
         "credentials": {
           "googleSlidesOAuth2Api": {
             "id": "xSgbXFJicBHr21iE",
@@ -145,18 +193,21 @@
       },
       {
         "parameters": {
-          "jsCode": "const prep = $node['Préparer Présentation'].json;\nconst slidesRes = $input.first().json;\nconst presentationId = slidesRes.id || slidesRes.presentationId;\nconst defaultSlideId = (slidesRes.slides && slidesRes.slides[0] && slidesRes.slides[0].objectId) ? slidesRes.slides[0].objectId : null;\n\nlet requests = prep.batch_requests ? [...prep.batch_requests] : [];\n\n// Si une diapositive vierge initiale par défaut a été créée par Google Slides, on la supprime à la fin\nif (defaultSlideId && requests.length > 0) {\n  requests.push({\n    deleteObject: {\n      objectId: defaultSlideId\n    }\n  });\n}\n\nreturn [{\n  json: {\n    presentation_id: presentationId,\n    presentation_url: 'https://docs.google.com/presentation/d/' + presentationId,\n    titre: prep.titre,\n    theme: prep.theme,\n    slides_count: prep.slides_count,\n    filename: prep.filename,\n    download_url: prep.download_url,\n    requests: requests\n  }\n}];"
+          "jsCode": "const inputData = $input.first().json;\nconst prepNode = ($node && $node['Préparer Présentation']) ? $node['Préparer Présentation'].json : {};\nconst presentationId = inputData.presentationId || (inputData.data && inputData.data.presentationId) || inputData.id || prepNode.presentationId;\nconst slidesData = inputData.slides_data || prepNode.slides_data || (prepNode.slides ? prepNode : inputData);\n\nif (!presentationId) {\n  throw new Error(\"presentationId introuvable pour générer le batchUpdate Google Slides\");\n}\n\nconst themeColors = {\n  stark: {\n    bg: { red: 0.04, green: 0.07, blue: 0.11 },\n    accent: { red: 0.22, green: 0.74, blue: 0.97 },\n    cardBg: { red: 0.07, green: 0.11, blue: 0.18 },\n    text: { red: 0.95, green: 0.97, blue: 1.0 },\n    subtext: { red: 0.58, green: 0.65, blue: 0.75 }\n  },\n  gold: {\n    bg: { red: 0.08, green: 0.07, blue: 0.05 },\n    accent: { red: 0.96, green: 0.72, blue: 0.20 },\n    cardBg: { red: 0.14, green: 0.12, blue: 0.09 },\n    text: { red: 1.0, green: 0.98, blue: 0.92 },\n    subtext: { red: 0.78, green: 0.72, blue: 0.60 }\n  },\n  bitcoin: {\n    bg: { red: 0.08, green: 0.07, blue: 0.05 },\n    accent: { red: 0.96, green: 0.72, blue: 0.20 },\n    cardBg: { red: 0.14, green: 0.12, blue: 0.09 },\n    text: { red: 1.0, green: 0.98, blue: 0.92 },\n    subtext: { red: 0.78, green: 0.72, blue: 0.60 }\n  },\n  corporate: {\n    bg: { red: 0.98, green: 0.99, blue: 1.0 },\n    accent: { red: 0.08, green: 0.38, blue: 0.75 },\n    cardBg: { red: 0.92, green: 0.95, blue: 0.98 },\n    text: { red: 0.08, green: 0.12, blue: 0.18 },\n    subtext: { red: 0.35, green: 0.42, blue: 0.52 }\n  },\n  dark: {\n    bg: { red: 0.06, green: 0.07, blue: 0.09 },\n    accent: { red: 0.55, green: 0.36, blue: 0.96 },\n    cardBg: { red: 0.11, green: 0.13, blue: 0.17 },\n    text: { red: 0.96, green: 0.97, blue: 0.99 },\n    subtext: { red: 0.60, green: 0.64, blue: 0.72 }\n  },\n  cyber: {\n    bg: { red: 0.03, green: 0.03, blue: 0.06 },\n    accent: { red: 0.66, green: 0.33, blue: 0.97 },\n    cardBg: { red: 0.08, green: 0.06, blue: 0.16 },\n    text: { red: 1.0, green: 1.0, blue: 1.0 },\n    subtext: { red: 0.65, green: 0.60, blue: 0.75 }\n  }\n};\n\nconst selectedTheme = themeColors[slidesData.theme] || themeColors.stark;\nconst requests = [];\nconst SLIDE_WIDTH = 720;\nconst SLIDE_HEIGHT = 405;\n\nlet firstSlideId = null;\nif (inputData.slides && inputData.slides.length > 0) {\n  firstSlideId = inputData.slides[0].objectId;\n}\n\nconst slidesList = slidesData.slides || [];\n\nslidesList.forEach((slide, index) => {\n  const slideId = \"slide_jarvis_\" + index + \"_\" + Date.now();\n  requests.push({\n    createSlide: {\n      objectId: slideId,\n      insertionIndex: index,\n      slideLayoutProperties: { masterLayoutReferenceId: \"BLANK\" }\n    }\n  });\n\n  // Fond de slide\n  requests.push({\n    updatePageProperties: {\n      objectId: slideId,\n      pageProperties: {\n        pageBackgroundFill: {\n          solidFill: { color: { rgbColor: selectedTheme.bg } }\n        }\n      },\n      fields: \"pageBackgroundFill\"\n    }\n  });\n\n  const layout = slide.layout || \"cards_grid\";\n\n  if (layout === \"hero_title\") {\n    const titleBoxId = slideId + \"_title\";\n    requests.push({\n      createShape: {\n        objectId: titleBoxId,\n        shapeType: \"TEXT_BOX\",\n        elementProperties: {\n          pageObjectId: slideId,\n          size: { width: { magnitude: 620, unit: \"PT\" }, height: { magnitude: 120, unit: \"PT\" } },\n          transform: { scaleX: 1, scaleY: 1, translateX: 50, translateY: 100, unit: \"PT\" }\n        }\n      }\n    });\n    requests.push({\n      insertText: {\n        objectId: titleBoxId,\n        text: (slide.title || slide.titre_slide || \"\").toUpperCase(),\n        insertionIndex: 0\n      }\n    });\n    requests.push({\n      updateTextStyle: {\n        objectId: titleBoxId,\n        style: {\n          bold: true,\n          fontFamily: \"Trebuchet MS\",\n          fontSize: { magnitude: 34, unit: \"PT\" },\n          foregroundColor: { opaqueColor: { rgbColor: selectedTheme.accent } }\n        },\n        fields: \"bold,fontFamily,fontSize,foregroundColor\"\n      }\n    });\n\n    const subText = slide.subtitle || (slide.points && slide.points[0]) || \"\";\n    if (subText) {\n      const subBoxId = slideId + \"_sub\";\n      requests.push({\n        createShape: {\n          objectId: subBoxId,\n          shapeType: \"TEXT_BOX\",\n          elementProperties: {\n            pageObjectId: slideId,\n            size: { width: { magnitude: 620, unit: \"PT\" }, height: { magnitude: 90, unit: \"PT\" } },\n            transform: { scaleX: 1, scaleY: 1, translateX: 50, translateY: 230, unit: \"PT\" }\n          }\n        }\n      });\n      requests.push({\n        insertText: {\n          objectId: subBoxId,\n          text: subText,\n          insertionIndex: 0\n        }\n      });\n      requests.push({\n        updateTextStyle: {\n          objectId: subBoxId,\n          style: {\n            fontFamily: \"Arial\",\n            fontSize: { magnitude: 18, unit: \"PT\" },\n            foregroundColor: { opaqueColor: { rgbColor: selectedTheme.subtext } }\n          },\n          fields: \"fontFamily,fontSize,foregroundColor\"\n        }\n      });\n    }\n\n  } else if (layout === \"key_metrics\") {\n    // Titre haut\n    const titleId = slideId + \"_title\";\n    requests.push({\n      createShape: {\n        objectId: titleId,\n        shapeType: \"TEXT_BOX\",\n        elementProperties: {\n          pageObjectId: slideId,\n          size: { width: { magnitude: 640, unit: \"PT\" }, height: { magnitude: 50, unit: \"PT\" } },\n          transform: { scaleX: 1, scaleY: 1, translateX: 40, translateY: 25, unit: \"PT\" }\n        }\n      }\n    });\n    requests.push({\n      insertText: { objectId: titleId, text: slide.title || slide.titre_slide || \"\", insertionIndex: 0 }\n    });\n    requests.push({\n      updateTextStyle: {\n        objectId: titleId,\n        style: {\n          bold: true,\n          fontSize: { magnitude: 22, unit: \"PT\" },\n          foregroundColor: { opaqueColor: { rgbColor: selectedTheme.text } }\n        },\n        fields: \"bold,fontSize,foregroundColor\"\n      }\n    });\n\n    const metrics = slide.metrics || (slide.key_metric ? [slide.key_metric] : []);\n    const count = Math.max(1, metrics.length);\n    const availableWidth = 640;\n    const cardGap = 16;\n    const cardW = (availableWidth - (cardGap * (count - 1))) / count;\n    const cardH = 240;\n    const startY = 95;\n\n    metrics.forEach((m, mIdx) => {\n      const cardX = 40 + mIdx * (cardW + cardGap);\n      const cardShapeId = slideId + \"_mcard_\" + mIdx;\n      requests.push({\n        createShape: {\n          objectId: cardShapeId,\n          shapeType: \"ROUND_RECTANGLE\",\n          elementProperties: {\n            pageObjectId: slideId,\n            size: { width: { magnitude: cardW, unit: \"PT\" }, height: { magnitude: cardH, unit: \"PT\" } },\n            transform: { scaleX: 1, scaleY: 1, translateX: cardX, translateY: startY, unit: \"PT\" }\n          }\n        }\n      });\n      requests.push({\n        updateShapeProperties: {\n          objectId: cardShapeId,\n          shapeProperties: {\n            shapeBackgroundFill: { solidFill: { color: { rgbColor: selectedTheme.cardBg } } },\n            outline: { outlineFill: { solidFill: { color: { rgbColor: selectedTheme.accent } } }, weight: { magnitude: 1.5, unit: \"PT\" } }\n          },\n          fields: \"shapeBackgroundFill,outline\"\n        }\n      });\n\n      const mTextId = slideId + \"_mtext_\" + mIdx;\n      requests.push({\n        createShape: {\n          objectId: mTextId,\n          shapeType: \"TEXT_BOX\",\n          elementProperties: {\n            pageObjectId: slideId,\n            size: { width: { magnitude: cardW - 20, unit: \"PT\" }, height: { magnitude: cardH - 20, unit: \"PT\" } },\n            transform: { scaleX: 1, scaleY: 1, translateX: cardX + 10, translateY: startY + 15, unit: \"PT\" }\n          }\n        }\n      });\n      const metricContent = (m.value || \"\") + \"\n\n\" + (m.label || \"\") + (m.subtext || m.desc ? (\"\n\" + (m.subtext || m.desc)) : \"\");\n      requests.push({\n        insertText: { objectId: mTextId, text: metricContent, insertionIndex: 0 }\n      });\n      requests.push({\n        updateTextStyle: {\n          objectId: mTextId,\n          style: {\n            bold: true,\n            fontSize: { magnitude: 36, unit: \"PT\" },\n            foregroundColor: { opaqueColor: { rgbColor: selectedTheme.accent } }\n          },\n          fields: \"bold,fontSize,foregroundColor\"\n        }\n      });\n    });\n\n  } else if (layout === \"split_compare\") {\n    const titleId = slideId + \"_title\";\n    requests.push({\n      createShape: {\n        objectId: titleId,\n        shapeType: \"TEXT_BOX\",\n        elementProperties: {\n          pageObjectId: slideId,\n          size: { width: { magnitude: 640, unit: \"PT\" }, height: { magnitude: 50, unit: \"PT\" } },\n          transform: { scaleX: 1, scaleY: 1, translateX: 40, translateY: 25, unit: \"PT\" }\n        }\n      }\n    });\n    requests.push({\n      insertText: { objectId: titleId, text: slide.title || slide.titre_slide || \"Comparaison\", insertionIndex: 0 }\n    });\n    requests.push({\n      updateTextStyle: {\n        objectId: titleId,\n        style: { bold: true, fontSize: { magnitude: 22, unit: \"PT\" }, foregroundColor: { opaqueColor: { rgbColor: selectedTheme.text } } },\n        fields: \"bold,fontSize,foregroundColor\"\n      }\n    });\n\n    const colW = 310;\n    const colH = 280;\n    const colY = 85;\n\n    // Colonne gauche\n    const leftCardId = slideId + \"_col_left\";\n    requests.push({\n      createShape: {\n        objectId: leftCardId,\n        shapeType: \"ROUND_RECTANGLE\",\n        elementProperties: {\n          pageObjectId: slideId,\n          size: { width: { magnitude: colW, unit: \"PT\" }, height: { magnitude: colH, unit: \"PT\" } },\n          transform: { scaleX: 1, scaleY: 1, translateX: 40, translateY: colY, unit: \"PT\" }\n        }\n      }\n    });\n    requests.push({\n      updateShapeProperties: {\n        objectId: leftCardId,\n        shapeProperties: {\n          shapeBackgroundFill: { solidFill: { color: { rgbColor: selectedTheme.cardBg } } },\n          outline: { outlineFill: { solidFill: { color: { rgbColor: selectedTheme.subtext } } }, weight: { magnitude: 1, unit: \"PT\" } }\n        },\n        fields: \"shapeBackgroundFill,outline\"\n      }\n    });\n\n    const leftTextId = slideId + \"_txt_left\";\n    const leftCol = slide.left_column || {};\n    const leftTitle = (leftCol.title || \"Avant\").toUpperCase();\n    const leftPoints = (leftCol.points || []).map(p => \"• \" + p).join(\"\n\n\");\n    requests.push({\n      createShape: {\n        objectId: leftTextId,\n        shapeType: \"TEXT_BOX\",\n        elementProperties: {\n          pageObjectId: slideId,\n          size: { width: { magnitude: colW - 30, unit: \"PT\" }, height: { magnitude: colH - 30, unit: \"PT\" } },\n          transform: { scaleX: 1, scaleY: 1, translateX: 55, translateY: colY + 15, unit: \"PT\" }\n        }\n      }\n    });\n    requests.push({\n      insertText: { objectId: leftTextId, text: leftTitle + \"\n\n\" + leftPoints, insertionIndex: 0 }\n    });\n    requests.push({\n      updateTextStyle: {\n        objectId: leftTextId,\n        style: { fontSize: { magnitude: 13, unit: \"PT\" }, foregroundColor: { opaqueColor: { rgbColor: selectedTheme.text } } },\n        fields: \"fontSize,foregroundColor\"\n      }\n    });\n\n    // Colonne droite\n    const rightCardId = slideId + \"_col_right\";\n    requests.push({\n      createShape: {\n        objectId: rightCardId,\n        shapeType: \"ROUND_RECTANGLE\",\n        elementProperties: {\n          pageObjectId: slideId,\n          size: { width: { magnitude: colW, unit: \"PT\" }, height: { magnitude: colH, unit: \"PT\" } },\n          transform: { scaleX: 1, scaleY: 1, translateX: 370, translateY: colY, unit: \"PT\" }\n        }\n      }\n    });\n    requests.push({\n      updateShapeProperties: {\n        objectId: rightCardId,\n        shapeProperties: {\n          shapeBackgroundFill: { solidFill: { color: { rgbColor: selectedTheme.cardBg } } },\n          outline: { outlineFill: { solidFill: { color: { rgbColor: selectedTheme.accent } } }, weight: { magnitude: 1.5, unit: \"PT\" } }\n        },\n        fields: \"shapeBackgroundFill,outline\"\n      }\n    });\n\n    const rightTextId = slideId + \"_txt_right\";\n    const rightCol = slide.right_column || {};\n    const rightTitle = (rightCol.title || \"Après / Cible\").toUpperCase();\n    const rightPoints = (rightCol.points || []).map(p => \"✔ \" + p).join(\"\n\n\");\n    requests.push({\n      createShape: {\n        objectId: rightTextId,\n        shapeType: \"TEXT_BOX\",\n        elementProperties: {\n          pageObjectId: slideId,\n          size: { width: { magnitude: colW - 30, unit: \"PT\" }, height: { magnitude: colH - 30, unit: \"PT\" } },\n          transform: { scaleX: 1, scaleY: 1, translateX: 385, translateY: colY + 15, unit: \"PT\" }\n        }\n      }\n    });\n    requests.push({\n      insertText: { objectId: rightTextId, text: rightTitle + \"\n\n\" + rightPoints, insertionIndex: 0 }\n    });\n    requests.push({\n      updateTextStyle: {\n        objectId: rightTextId,\n        style: { fontSize: { magnitude: 13, unit: \"PT\" }, foregroundColor: { opaqueColor: { rgbColor: selectedTheme.text } } },\n        fields: \"fontSize,foregroundColor\"\n      }\n    });\n\n  } else if (layout === \"timeline_steps\") {\n    const titleId = slideId + \"_title\";\n    requests.push({\n      createShape: {\n        objectId: titleId,\n        shapeType: \"TEXT_BOX\",\n        elementProperties: {\n          pageObjectId: slideId,\n          size: { width: { magnitude: 640, unit: \"PT\" }, height: { magnitude: 45, unit: \"PT\" } },\n          transform: { scaleX: 1, scaleY: 1, translateX: 40, translateY: 25, unit: \"PT\" }\n        }\n      }\n    });\n    requests.push({\n      insertText: { objectId: titleId, text: slide.title || slide.titre_slide || \"Feuille de Route\", insertionIndex: 0 }\n    });\n    requests.push({\n      updateTextStyle: {\n        objectId: titleId,\n        style: { bold: true, fontSize: { magnitude: 20, unit: \"PT\" }, foregroundColor: { opaqueColor: { rgbColor: selectedTheme.text } } },\n        fields: \"bold,fontSize,foregroundColor\"\n      }\n    });\n\n    const steps = slide.steps || [];\n    const count = Math.min(4, Math.max(1, steps.length));\n    const availableWidth = 640;\n    const cardGap = 14;\n    const cardW = (availableWidth - (cardGap * (count - 1))) / count;\n    const cardH = 265;\n    const startY = 85;\n\n    steps.slice(0, count).forEach((st, sIdx) => {\n      const cardX = 40 + sIdx * (cardW + cardGap);\n      const cardShapeId = slideId + \"_step_\" + sIdx;\n      requests.push({\n        createShape: {\n          objectId: cardShapeId,\n          shapeType: \"ROUND_RECTANGLE\",\n          elementProperties: {\n            pageObjectId: slideId,\n            size: { width: { magnitude: cardW, unit: \"PT\" }, height: { magnitude: cardH, unit: \"PT\" } },\n            transform: { scaleX: 1, scaleY: 1, translateX: cardX, translateY: startY, unit: \"PT\" }\n          }\n        }\n      });\n      requests.push({\n        updateShapeProperties: {\n          objectId: cardShapeId,\n          shapeProperties: {\n            shapeBackgroundFill: { solidFill: { color: { rgbColor: selectedTheme.cardBg } } },\n            outline: { outlineFill: { solidFill: { color: { rgbColor: selectedTheme.accent } } }, weight: { magnitude: 1.2, unit: \"PT\" } }\n          },\n          fields: \"shapeBackgroundFill,outline\"\n        }\n      });\n\n      const stepTextId = slideId + \"_steptxt_\" + sIdx;\n      requests.push({\n        createShape: {\n          objectId: stepTextId,\n          shapeType: \"TEXT_BOX\",\n          elementProperties: {\n            pageObjectId: slideId,\n            size: { width: { magnitude: cardW - 20, unit: \"PT\" }, height: { magnitude: cardH - 20, unit: \"PT\" } },\n            transform: { scaleX: 1, scaleY: 1, translateX: cardX + 10, translateY: startY + 12, unit: \"PT\" }\n          }\n        }\n      });\n      const stepContent = \"[\" + (st.phase || (\"0\" + (sIdx + 1))) + \"]\n\n\" + (st.title || \"\").toUpperCase() + \"\n\n\" + (st.desc || \"\");\n      requests.push({\n        insertText: { objectId: stepTextId, text: stepContent, insertionIndex: 0 }\n      });\n      requests.push({\n        updateTextStyle: {\n          objectId: stepTextId,\n          style: { fontSize: { magnitude: 12, unit: \"PT\" }, foregroundColor: { opaqueColor: { rgbColor: selectedTheme.text } } },\n          fields: \"fontSize,foregroundColor\"\n        }\n      });\n    });\n\n  } else {\n    // Par défaut : cards_grid dynamique (2, 3 ou 4 cartes)\n    const titleId = slideId + \"_title\";\n    requests.push({\n      createShape: {\n        objectId: titleId,\n        shapeType: \"TEXT_BOX\",\n        elementProperties: {\n          pageObjectId: slideId,\n          size: { width: { magnitude: 640, unit: \"PT\" }, height: { magnitude: 45, unit: \"PT\" } },\n          transform: { scaleX: 1, scaleY: 1, translateX: 40, translateY: 25, unit: \"PT\" }\n        }\n      }\n    });\n    requests.push({\n      insertText: { objectId: titleId, text: slide.title || slide.titre_slide || \"\", insertionIndex: 0 }\n    });\n    requests.push({\n      updateTextStyle: {\n        objectId: titleId,\n        style: { bold: true, fontSize: { magnitude: 20, unit: \"PT\" }, foregroundColor: { opaqueColor: { rgbColor: selectedTheme.text } } },\n        fields: \"bold,fontSize,foregroundColor\"\n      }\n    });\n\n    let cards = slide.cards || [];\n    if (!cards.length && slide.points && Array.isArray(slide.points)) {\n      cards = slide.points.map((p, i) => ({ title: \"Point \" + (i + 1), body: p, badge: \"INFO\" }));\n    }\n    const count = Math.min(4, Math.max(1, cards.length));\n    const availableWidth = 640;\n    const cardGap = 14;\n    const cardW = (availableWidth - (cardGap * (count - 1))) / count;\n    const cardH = 265;\n    const startY = 85;\n\n    cards.slice(0, count).forEach((card, cIdx) => {\n      const cardX = 40 + cIdx * (cardW + cardGap);\n      const cardShapeId = slideId + \"_card_\" + cIdx;\n      requests.push({\n        createShape: {\n          objectId: cardShapeId,\n          shapeType: \"ROUND_RECTANGLE\",\n          elementProperties: {\n            pageObjectId: slideId,\n            size: { width: { magnitude: cardW, unit: \"PT\" }, height: { magnitude: cardH, unit: \"PT\" } },\n            transform: { scaleX: 1, scaleY: 1, translateX: cardX, translateY: startY, unit: \"PT\" }\n          }\n        }\n      });\n      requests.push({\n        updateShapeProperties: {\n          objectId: cardShapeId,\n          shapeProperties: {\n            shapeBackgroundFill: { solidFill: { color: { rgbColor: selectedTheme.cardBg } } },\n            outline: { outlineFill: { solidFill: { color: { rgbColor: selectedTheme.accent } } }, weight: { magnitude: 1, unit: \"PT\" } }\n          },\n          fields: \"shapeBackgroundFill,outline\"\n        }\n      });\n\n      const cardTextId = slideId + \"_cardtxt_\" + cIdx;\n      requests.push({\n        createShape: {\n          objectId: cardTextId,\n          shapeType: \"TEXT_BOX\",\n          elementProperties: {\n            pageObjectId: slideId,\n            size: { width: { magnitude: cardW - 20, unit: \"PT\" }, height: { magnitude: cardH - 20, unit: \"PT\" } },\n            transform: { scaleX: 1, scaleY: 1, translateX: cardX + 10, translateY: startY + 12, unit: \"PT\" }\n          }\n        }\n      });\n      const cardContent = (card.badge ? \"[\" + card.badge + \"]\n\n\" : \"\") + (card.title || \"\").toUpperCase() + \"\n\n\" + (card.body || \"\");\n      requests.push({\n        insertText: { objectId: cardTextId, text: cardContent, insertionIndex: 0 }\n      });\n      requests.push({\n        updateTextStyle: {\n          objectId: cardTextId,\n          style: { fontSize: { magnitude: 12, unit: \"PT\" }, foregroundColor: { opaqueColor: { rgbColor: selectedTheme.text } } },\n          fields: \"fontSize,foregroundColor\"\n        }\n      });\n    });\n  }\n});\n\n// Supprimer la première diapositive vierge initiale si elle existe\nif (firstSlideId && slidesList.length > 0) {\n  requests.push({\n    deleteObject: {\n      objectId: firstSlideId\n    }\n  });\n}\n\nreturn [{\n  json: {\n    presentationId: presentationId,\n    presentation_id: presentationId,\n    presentation_url: 'https://docs.google.com/presentation/d/' + presentationId,\n    titre: (slidesData.title || slidesData.titre || (prepNode && prepNode.titre) || 'Présentation'),\n    theme: (slidesData.theme || (prepNode && prepNode.theme) || 'stark'),\n    slides_count: slidesList.length,\n    download_url: (prepNode && prepNode.download_url) || ('/downloads/' + presentationId + '.pptx'),\n    filename: (prepNode && prepNode.filename) || 'presentation.pptx',\n    requests: requests\n  }\n}];"
         },
         "id": "code-slides-batch-1",
         "name": "Préparer Requêtes Batch Slides",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
-        "position": [900, 300]
+        "position": [
+          900,
+          300
+        ]
       },
       {
         "parameters": {
           "method": "POST",
-          "url": "={{ 'https://slides.googleapis.com/v1/presentations/' + $json.presentation_id + ':batchUpdate' }}",
+          "url": "={{ \"https://slides.googleapis.com/v1/presentations/\" + ($json.presentationId || $json.presentation_id) + \":batchUpdate\" }}",
           "authentication": "predefinedCredentialType",
           "nodeCredentialType": "googleSlidesOAuth2Api",
           "sendBody": true,
@@ -168,7 +219,10 @@
         "name": "Appliquer Diapositives & Design",
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
-        "position": [1120, 300],
+        "position": [
+          1120,
+          300
+        ],
         "continueOnFail": true,
         "credentials": {
           "googleSlidesOAuth2Api": {
@@ -185,7 +239,10 @@
         "name": "Finaliser Export Slides",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
-        "position": [1340, 300]
+        "position": [
+          1340,
+          300
+        ]
       },
       {
         "parameters": {
@@ -197,38 +254,77 @@
         "name": "Respond to Webhook",
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1,
-        "position": [1560, 300]
+        "position": [
+          1560,
+          300
+        ]
       }
     ],
     "connections": {
       "Webhook": {
         "main": [
-          [{ "node": "Préparer Présentation", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Préparer Présentation",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Préparer Présentation": {
         "main": [
-          [{ "node": "Google Slides", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Google Slides",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Google Slides": {
         "main": [
-          [{ "node": "Préparer Requêtes Batch Slides", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Préparer Requêtes Batch Slides",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Préparer Requêtes Batch Slides": {
         "main": [
-          [{ "node": "Appliquer Diapositives & Design", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Appliquer Diapositives & Design",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Appliquer Diapositives & Design": {
         "main": [
-          [{ "node": "Finaliser Export Slides", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Finaliser Export Slides",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Finaliser Export Slides": {
         "main": [
-          [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Respond to Webhook",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       }
     },
@@ -254,7 +350,10 @@
         "name": "Webhook",
         "type": "n8n-nodes-base.webhook",
         "typeVersion": 2,
-        "position": [240, 300],
+        "position": [
+          240,
+          300
+        ],
         "webhookId": "jarvis-notion-entry"
       },
       {
@@ -265,7 +364,10 @@
         "name": "Formater Entrée Notion",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
-        "position": [460, 300]
+        "position": [
+          460,
+          300
+        ]
       },
       {
         "parameters": {
@@ -279,7 +381,10 @@
         "name": "Notion",
         "type": "n8n-nodes-base.notion",
         "typeVersion": 2,
-        "position": [680, 300]
+        "position": [
+          680,
+          300
+        ]
       },
       {
         "parameters": {
@@ -289,7 +394,10 @@
         "name": "Finaliser Réponse Notion",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
-        "position": [900, 300]
+        "position": [
+          900,
+          300
+        ]
       },
       {
         "parameters": {
@@ -301,28 +409,55 @@
         "name": "Respond to Webhook",
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1,
-        "position": [1120, 300]
+        "position": [
+          1120,
+          300
+        ]
       }
     ],
     "connections": {
       "Webhook": {
         "main": [
-          [{ "node": "Formater Entrée Notion", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Formater Entrée Notion",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Formater Entrée Notion": {
         "main": [
-          [{ "node": "Notion", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Notion",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Notion": {
         "main": [
-          [{ "node": "Finaliser Réponse Notion", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Finaliser Réponse Notion",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       },
       "Finaliser Réponse Notion": {
         "main": [
-          [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+          [
+            {
+              "node": "Respond to Webhook",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       }
     },

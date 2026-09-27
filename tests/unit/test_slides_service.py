@@ -165,3 +165,126 @@ class TestBuildSlidesPayloadIntegration:
 
         # Remise à zéro
         slides_service._current_task["active"] = False
+
+
+class TestPolymorphicSlidesEngine:
+    """Tests du débridage complet du générateur Google Slides (nombre libre et polymorphisme)."""
+
+    def test_generate_short_pitch_3_slides(self):
+        """Valide la commande courte : 'Fais-moi un pitch de 3 slides sur Stark Industries'."""
+        titre, sub, slides = slides_service.generate_deep_research_slides(
+            sujet="Fais-moi un pitch de 3 slides sur Stark Industries",
+            theme="stark"
+        )
+        assert len(slides) == 3
+        layouts = [s.get("layout") for s in slides]
+        assert "hero_title" in layouts
+        # Présence d'alternance visuelle
+        assert len(set(layouts)) >= 2
+        for s in slides:
+            assert s.get("title") or s.get("titre_slide")
+            assert len(s.get("points", [])) >= 3 or s.get("metrics") or s.get("cards")
+
+    def test_generate_long_deck_10_slides(self):
+        """Valide la commande longue : 'Fais-moi un dossier complet de 10 slides sur l'automatisation n8n'."""
+        titre, sub, slides = slides_service.generate_deep_research_slides(
+            sujet="Fais-moi un dossier complet de 10 slides sur l'automatisation n8n",
+            theme="cyber"
+        )
+        assert len(slides) == 10
+        layouts = [s.get("layout") for s in slides]
+        # Vérifie la variété des layouts
+        assert "hero_title" in layouts
+        assert "key_metrics" in layouts
+        assert "cards_grid" in layouts
+        assert "split_compare" in layouts
+        assert "timeline_steps" in layouts
+        assert len(set(layouts)) >= 4
+
+    def test_polymorphic_batch_update_all_layouts(self):
+        """Vérifie que build_google_slides_batch_update produit des requêtes valides pour chaque layout."""
+        polymorphic_slides = [
+            {
+                "layout": "hero_title",
+                "title": "Vision Stratégique Stark",
+                "subtitle": "Automatisation et Hyper-croissance"
+            },
+            {
+                "layout": "key_metrics",
+                "title": "Indicateurs Clés",
+                "metrics": [
+                    {"value": "+240%", "label": "Productivité", "subtext": "Exercice 2026"},
+                    {"value": "15 M€", "label": "Économies", "subtext": "SaaS éliminé"}
+                ]
+            },
+            {
+                "layout": "split_compare",
+                "title": "Avant / Après",
+                "left_column": {
+                    "title": "Ancien Système",
+                    "points": ["Lenteur", "Coûts élevés", "Erreurs manuelles"]
+                },
+                "right_column": {
+                    "title": "Jarvis Stark OS",
+                    "points": ["Temps réel", "Résilience absolue", "Zéro coupure"]
+                }
+            },
+            {
+                "layout": "timeline_steps",
+                "title": "Feuille de Route",
+                "steps": [
+                    {"phase": "01", "title": "Cadrage", "desc": "Audit d'architecture"},
+                    {"phase": "02", "title": "Déploiement", "desc": "Mise en service VPS"}
+                ]
+            },
+            {
+                "layout": "cards_grid",
+                "title": "Piliers Majeurs",
+                "cards": [
+                    {"title": "IA", "body": "Modèles de pointe", "badge": "CŒUR"},
+                    {"title": "Cloud", "body": "Infrastructure souveraine", "badge": "SOCLE"}
+                ]
+            }
+        ]
+
+        requests = slides_service.build_google_slides_batch_update(
+            titre="Présentation Polymorphe",
+            subtitle="Test d'intégration multi-layouts",
+            theme="stark",
+            slides=polymorphic_slides,
+            default_slide_id="slide_default_to_delete"
+        )
+
+        assert isinstance(requests, list)
+        assert len(requests) > 20
+
+        # Vérification conformité stricte Google Slides API v1
+        for r in requests:
+            if "createShape" in r:
+                st = r["createShape"]["shapeType"]
+                assert st in ("RECTANGLE", "ROUND_RECTANGLE", "TEXT_BOX")
+                assert st != "ROUNDED_RECTANGLE"
+                ep = r["createShape"]["elementProperties"]
+                w = ep["size"]["width"]["magnitude"]
+                h = ep["size"]["height"]["magnitude"]
+                x = ep["transform"]["translateX"]
+                y = ep["transform"]["translateY"]
+                assert x + w <= 720, f"Débordement horizontal : {x} + {w} > 720"
+                assert y + h <= 405, f"Débordement vertical : {y} + {h} > 405"
+
+        # Vérification suppression de la diapositive par défaut
+        delete_reqs = [r for r in requests if "deleteObject" in r]
+        assert any(d["deleteObject"]["objectId"] == "slide_default_to_delete" for d in delete_reqs)
+
+    def test_slides_schema_prompt_rules(self):
+        """Vérifie que le prompt délibératif SLIDES_SCHEMA_PROMPT contient toutes les règles requises."""
+        from services.slides_service import SLIDES_SCHEMA_PROMPT
+        assert "NOMBRE DE DIAPOSITIVES LIBRE ET ADAPTATIF" in SLIDES_SCHEMA_PROMPT
+        assert "VARIÉTÉ ET ALTERNANCE DES LAYOUTS" in SLIDES_SCHEMA_PROMPT
+        assert "hero_title" in SLIDES_SCHEMA_PROMPT
+        assert "key_metrics" in SLIDES_SCHEMA_PROMPT
+        assert "cards_grid" in SLIDES_SCHEMA_PROMPT
+        assert "split_compare" in SLIDES_SCHEMA_PROMPT
+        assert "timeline_steps" in SLIDES_SCHEMA_PROMPT
+        assert "cyber" in SLIDES_SCHEMA_PROMPT
+

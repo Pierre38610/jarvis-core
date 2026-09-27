@@ -60,20 +60,10 @@ class AutonomousReasoningEngine:
         """Construit le prompt d'orchestration multi-agents imposant la démarche en 3 phases et le format de l'artefact."""
         ctx_str = json.dumps(context, ensure_ascii=False, indent=2) if context else "{}"
 
+        from services.slides_service import SLIDES_SCHEMA_PROMPT
+
         artifact_specs = {
-            "slides_schema": (
-                "LIVRABLE STRICT ATTENDU : Un tableau JSON contenant entre 5 et 8 objets diapositives respectant EXACTEMENT la structure suivante :\n"
-                "[\n"
-                "  {\n"
-                "    \"titre_slide\": \"Titre percutant de la diapositive\",\n"
-                "    \"category\": \"CATEGORIE\",\n"
-                "    \"points\": [\"Fait ou argument 1\", \"Fait ou argument 2\", \"Fait ou argument 3\"],\n"
-                "    \"key_metric\": {\"label\": \"NOM METRIQUE\", \"value\": \"VALEUR\", \"desc\": \"Explication\"},\n"
-                "    \"notes\": \"Notes orateur détaillées pour la présentation orale.\"\n"
-                "  }\n"
-                "]\n"
-                "IMPORTANT : Rends UNIQUEMENT le bloc JSON brut commençant par '[' et finissant par ']'. Aucun commentaire ni markdown autour."
-            ),
+            "slides_schema": SLIDES_SCHEMA_PROMPT,
             "markdown_report": (
                 "LIVRABLE STRICT ATTENDU : Un rapport exécutif Stark Industries complet en Markdown structuré :\n"
                 "# TITRE DU RAPPORT\n"
@@ -239,8 +229,9 @@ class AutonomousReasoningEngine:
             print(f"[Reasoning Engine] Erreur écriture artefact: {write_err}")
 
         # Synthèse vocale percutante pour Aoede (2-3 phrases)
-        if isinstance(parsed_content, list) and required_artifact == "slides_schema":
-            oral_summary = f"Plan de présentation en {len(parsed_content)} diapositives structuré avec succès sur {goal}."
+        if required_artifact == "slides_schema":
+            sl_list = parsed_content.get("slides", []) if isinstance(parsed_content, dict) else (parsed_content if isinstance(parsed_content, list) else [])
+            oral_summary = f"Plan de présentation en {len(sl_list)} diapositives structuré avec succès sur {goal}."
         elif isinstance(parsed_content, dict) and "recommendation" in parsed_content:
             oral_summary = f"Benchmark finalisé. Recommandation clé : {str(parsed_content.get('recommendation', ''))[:160]}."
         else:
