@@ -402,7 +402,7 @@ def get_tool_metadata(name: str, args: dict = None) -> dict:
         _, m_label = resolve_antigravity_model(model_choice)
         return {"state": "coding", "msg": "Agents Antigravity CLI sur le VPS...", "task": q, "engine": "Antigravity CLI (VPS)", "model": m_label, "api_type": "free", "api_label": "Session Pro"}
     elif name == "lancer_mission_deep_research":
-        s = args.get("sujet") or "Mission Deep Research"
+        s = args.get("consigne_utilisateur") or args.get("sujet") or "Mission Deep Research"
         return {"state": "coding", "msg": f"Deep Research : {s[:35]}...", "task": f"Deep Research : {s[:35]}", "engine": "Antigravity CLI (VPS)", "model": "Gemini 3.1 Pro High", "api_type": "free", "api_label": "Google AI Pro VPS"}
     elif name in ("search_web", "run_browser_task", "interact_web_page", "open_user_browser"):
         q = args.get("query") or args.get("goal") or args.get("url") or "Navigation internet"

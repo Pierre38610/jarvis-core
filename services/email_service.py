@@ -62,27 +62,76 @@ os.makedirs(EBOOKS_DIR, exist_ok=True)
 
 
 def _format_markdown_to_html(text: str) -> str:
-    """Convertit simplement du texte brut ou du markdown basique en HTML propre."""
+    """Convertit du texte brut ou du markdown basique (y compris tableaux) en HTML Stark Industries propre."""
+    import re
     lines = text.strip().split("\n")
     html_parts = []
     in_list = False
-    
+    in_table = False
+    table_rows = []
+
+    def flush_table():
+        nonlocal in_table, table_rows
+        if not table_rows:
+            in_table = False
+            return
+        t_html = [
+            "<div style='margin: 16px 0; overflow-x: auto;'>",
+            "<table style='width: 100%; border-collapse: collapse; font-size: 13px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px;'>"
+        ]
+        is_header = True
+        for row in table_rows:
+            if all(set(c.strip()) <= set("-:| ") for c in row if c.strip()):
+                is_header = False
+                continue
+            t_html.append("<tr style='border-bottom: 1px solid rgba(56, 189, 248, 0.15);'>")
+            for cell in row:
+                c_clean = re.sub(r'\*\*(.*?)\*\*', r'<strong style="color: #38bdf8;">\1</strong>', cell.strip())
+                if is_header:
+                    t_html.append(f"<th style='padding: 10px 12px; background: rgba(2, 132, 199, 0.2); color: #00f0ff; text-align: left; font-weight: 700; border-bottom: 2px solid #0284c7;'>{c_clean}</th>")
+                else:
+                    t_html.append(f"<td style='padding: 8px 12px; color: #cbd5e1;'>{c_clean}</td>")
+            t_html.append("</tr>")
+            is_header = False
+        t_html.append("</table></div>")
+        html_parts.append("\n".join(t_html))
+        table_rows = []
+        in_table = False
+
     for line in lines:
         stripped = line.strip()
         if not stripped:
             if in_list:
                 html_parts.append("</ul>")
                 in_list = False
+            if in_table:
+                flush_table()
             html_parts.append("<br>")
             continue
-            
+
+        if stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 2:
+            if in_list:
+                html_parts.append("</ul>")
+                in_list = False
+            in_table = True
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            table_rows.append(cells)
+            continue
+        elif in_table:
+            flush_table()
+
+        if any(stripped.startswith(tag) for tag in ["<table", "</table", "<tr", "<td", "<th", "<thead", "<tbody", "<div", "</div"]):
+            if in_list:
+                html_parts.append("</ul>")
+                in_list = False
+            html_parts.append(stripped)
+            continue
+
         if stripped.startswith("- ") or stripped.startswith("* "):
             if not in_list:
                 html_parts.append("<ul style='margin: 8px 0; padding-left: 24px; color: #cbd5e1;'>")
                 in_list = True
             item_text = stripped[2:]
-            # Remplace le gras **texte**
-            import re
             item_text = re.sub(r'\*\*(.*?)\*\*', r'<strong style="color: #38bdf8;">\1</strong>', item_text)
             html_parts.append(f"<li style='margin-bottom: 4px;'>{item_text}</li>")
         elif stripped.startswith("### "):
@@ -104,13 +153,14 @@ def _format_markdown_to_html(text: str) -> str:
             if in_list:
                 html_parts.append("</ul>")
                 in_list = False
-            import re
             p_text = re.sub(r'\*\*(.*?)\*\*', r'<strong style="color: #38bdf8;">\1</strong>', stripped)
             html_parts.append(f"<p style='margin: 6px 0; line-height: 1.6; color: #e2e8f0;'>{p_text}</p>")
-            
+
     if in_list:
         html_parts.append("</ul>")
-        
+    if in_table:
+        flush_table()
+
     return "\n".join(html_parts)
 
 

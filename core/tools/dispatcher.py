@@ -321,39 +321,34 @@ async def dispatch_tool(
 
     # ─── lancer_mission_deep_research ──────────────────────────────────────────
     elif name == "lancer_mission_deep_research":
-        sujet = args.get("sujet", "")
-        criteres = args.get("criteres_particuliers", "")
+        consigne_utilisateur = args.get("consigne_utilisateur") or args.get("sujet") or ""
+        envoyer_email = bool(args.get("envoyer_email", False))
+        destinataire_email = args.get("destinataire_email")
         generer_slides = bool(args.get("generer_slides", True))
         _sess_deep = session
 
         async def _run_deep_research_bg():
             try:
                 res = await deep_research_service.executer_mission_complete(
-                    sujet=sujet,
-                    criteres=criteres,
+                    consigne_utilisateur=consigne_utilisateur,
+                    envoyer_email=envoyer_email,
+                    destinataire_email=destinataire_email,
                     generer_slides=generer_slides
                 )
-                _sess = active_task_controller.get("live_session") or _sess_deep
-                if _sess:
-                    final_msg = (
-                        f"[MISSION DEEP RESEARCH TERMINÉE] L'investigation sur '{sujet}' est achevée. "
-                        f"Un rapport exhaustif a été produit dans /artifacts/. "
-                        f"Présente les conclusions majeures et la synthèse exécutive à Pierre avec ta voix Aoede avec franchise et synthèse."
-                    )
-                    await safe_send_live_client_content(_sess, final_msg, action_key="lancer_mission_deep_research", drainage_delay=2.5)
             except Exception as e:
                 print(f"[DeepResearch BG] Erreur: {e}")
 
         deep_task = asyncio.create_task(_run_deep_research_bg())
         active_task_controller["deep_research_task"] = deep_task
 
+        consigne_label = (consigne_utilisateur[:80] + "...") if len(consigne_utilisateur) > 80 else consigne_utilisateur
         return {
             "status": "launched_in_background",
             "action": "deep_research",
             "message": "Mission de Deep Research initiée en arrière-plan. Investigation multi-sources en cours.",
             "instruction_to_jarvis": (
-                f"La mission de Deep Research sur '{sujet}' est lancée en arrière-plan. "
-                f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc et complice que tu lances l'investigation multi-sources."
+                f"La mission de Deep Research sur '{consigne_label}' est lancée en arrière-plan. "
+                f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, énergique et complice que tu lances l'investigation multi-sources."
             )
         }
 

@@ -77,26 +77,31 @@ def get_tools_list() -> list[types.Tool]:
                     description=(
                         "Déclenche une recherche de fond approfondie et autonome (5 à 10 minutes) sur un sujet complexe "
                         "(stage, analyse sectorielle, benchmark de labos ou d'entreprises). "
-                        "Rédige un rapport Markdown exhaustif dans /artifacts/ et génère une présentation Google Slides via n8n."
+                        "Compile un contrat de mission dynamique (MissionSpec), audite rigoureusement les critères, "
+                        "rédige un rapport Markdown exhaustif dans /artifacts/ et assure l'envoi automatisé par e-mail et notifications."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "sujet": types.Schema(
+                            "consigne_utilisateur": types.Schema(
                                 type="STRING",
-                                description="Le sujet exhaustif de la recherche (ex: 'Laboratoires de recherche et entreprises en IA/Deep Learning pour un stage de 6 mois')."
+                                description=(
+                                    "L'intégralité brute de la demande de Pierre, contenant tous ses critères, volumes et spécificités "
+                                    "(ex: 'Trouve 20 entreprises à Malmö pour mon stage de fin d'études en IA, avec avantages/inconvénients, "
+                                    "rémunéré ou non, localisation précise et envoie le rapport par mail')."
+                                )
                             ),
-                            "criteres_particuliers": types.Schema(
-                                type="STRING",
-                                description="Précisions géographiques, technologiques ou contraintes particulières."
-                            ),
-                            "generer_slides": types.Schema(
+                            "envoyer_email": types.Schema(
                                 type="BOOLEAN",
-                                description="Détermine si une présentation Google Slides doit être compilée (par défaut True)."
+                                description="Flag explicite indiquant si Pierre a mentionné un envoi par courriel / mail / messagerie (défaut False)."
+                            ),
+                            "destinataire_email": types.Schema(
+                                type="STRING",
+                                description="Adresse cible si mentionnée explicitement (sinon repli sur l'email utilisateur du profil SQLite)."
                             ),
                         },
-                        required=["sujet"]
+                        required=["consigne_utilisateur"]
                     )
                 ),
                 types.FunctionDeclaration(

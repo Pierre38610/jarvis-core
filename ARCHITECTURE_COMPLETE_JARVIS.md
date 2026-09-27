@@ -477,26 +477,33 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
 
 ---
 
-### 7.12. Moteur Deep Research Asynchrone (Antigravity CLI + n8n)
-- **Fichiers** : `services/deep_research_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `core/shared_state.py`, `services/briefing_service.py`, `services/slides_service.py`, `services/automation.py`.
-- **Outils exposés** : `lancer_mission_deep_research` (`behavior=NON_BLOCKING`), complété par `get_active_task_status`.
-- **Capacités & Pipeline d'Investigation en 3 Phases** :
-  1. **Phase 1 : Cadrage & Contexte Utilisateur (UnifiedMemoryManager & SQLite)** :
-     - Interrogation de `UnifiedMemoryManager` et de la base relationnelle `jarvis_memory.db` pour extraire dynamiquement le profil complet de Pierre : identité (`Pierre Cassagnettes`), spécialité d'ingénierie (IA, Deep Learning, Architectures Agentiques LLM, Ingénierie Logicielle Avancée), périmètre géographique cible (France : Grenoble, Paris, Lyon, Sophia-Antipolis ; Suède : Stockholm, Lund, Göteborg, Uppsala, Kiruna / International) et format recherché (stage de fin d'études / césure de 6 mois).
-     - Construction d'une matrice de prospection structurée en axes complémentaires : laboratoires académiques CNRS/Inria/Universités, départements R&D privés de pointe, et instituts de recherche industrielle appliquée.
-  2. **Phase 2 : Exploration Web & Confrontation Critique Multi-Agents (Antigravity CLI VPS)** :
-     - Mobilisation autonome d'Antigravity CLI (`agy` / `antigravity-cli`) sur le VPS Oracle Cloud adossé au jeton OAuth2 Google AI Pro (`gemini-3.1-pro-high`).
-     - **Sous-agent Prospecteur** : crawl et scraping des pages d'équipes réelles, thématiques de recherche 2024-2026, publications clés, directeurs de laboratoires, encadrants potentiels et adresses électroniques réelles vérifiées.
-     - **Sous-agent Analyste & Critique** : élimination impitoyable des hallucinations, détection des pages obsolètes ou entités fermées, et sélection rigoureuse d'un TOP 3 des opportunités prioritaires à plus fort potentiel pour Pierre.
-     - **Décrochage vocal instantané (< 300 ms)** : la tâche de fond s'exécute sur 5 à 10 minutes de façon asynchrone sans bloquer la voix de Jarvis ni saturer le flux audio temps réel. Pierre continue à dialoguer librement avec Aoede pendant l'investigation.
-  3. **Phase 3 : Synthèse, Production d'Artefacts & Déclenchement n8n** :
-     - **Rapport Markdown Exhaustif** : rédigé et enregistré sous `/artifacts/rapport_recherche_[timestamp].md` avec structure standardisée (synthèse exécutive, top 3 prioritaire détaillé, cartographie complète France/Suède des labos et entreprises, contacts vérifiés et méthodologie).
-     - **Schéma JSON Google Slides** : généré et validé sous `/artifacts/slides_schema_[timestamp].json` (structure professionnelle de 6 à 8 slides avec titres percutants, catégories, points factuels, métriques clés et notes orateur).
-     - **Compilation Google Slides via n8n** : envoi du payload au webhook n8n `document-slides` (ou `executer_action_externe`) générant le deck directement dans le Google Drive de Pierre avec URL de consultation immédiate.
-  4. **Restitution & Alertes Proactives (Multi-Canal)** :
-     - **Notification Vocale Aoede (Gemini Live)** : si la session temps réel est active, injection d'un prompt système direct (`safe_send_live_client_content`) pour qu'Aoede annonce la finalisation avec son élocution vivante, complice et fière, et présente oralement les 3 pistes prioritaires tout en signalant que le lien Google Slides est affiché sur l'écran.
-     - **Push Telegram Stark Bot (`chatId: 6849746502`)** : envoi immédiat via `briefing_service.send_telegram_alert` d'un message structuré contenant l'annonce, le résumé des 3 pistes prioritaires, le lien direct du Google Slides et le chemin local de l'artefact Markdown.
-     - **HUD & Écran Mobile** : mise à jour instantanée du lien de consultation web (`set_browser_link`) pointant directement vers la présentation Google Slides.
+### 7.12. Moteur Deep Research Asynchrone (Antigravity CLI + MissionSpec + n8n + E-mail)
+- **Fichiers** : `services/deep_research_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `core/shared_state.py`, `services/email_service.py`, `services/briefing_service.py`, `services/slides_service.py`, `services/automation.py`.
+- **Outils exposés** : `lancer_mission_deep_research` (`behavior=NON_BLOCKING`, paramètres épurés : `consigne_utilisateur`, `envoyer_email`, `destinataire_email`), complété par `get_active_task_status`.
+- **Architecture & Pipeline d'Investigation en 4 Phases Intégrées** :
+  1. **Étape 1 : Compilateur de Contrat de Mission Dynamique (MissionSpec - Tier 1 JSON)** :
+     - Rôle capteur vocal de Gemini Live : réception de l'instruction orale intégrale brute de Pierre sans troncature (< 300 ms de temps de réponse initial).
+     - Déclenchement de `compiler_spec_mission` via un LLM rapide (Tier 1 : `gemini-3.8-flash` en mode JSON strict, avec repli heuristique résilient).
+     - Génération d'une structure typée `MissionSpec` : `sujet`, `quantite_cible` (ex: 20 si demandé, défaut 5), `localisation` (ex: Malmö, Suède), `criteres_obligatoires` (ex: `politique_remuneration`, `avantages`, `inconvenients`, `localisation_exacte`, `contact`), `structure_rapport`, `notifier_email` et `email_cible`.
+  2. **Phase 1 : Cadrage & Profil Utilisateur (UnifiedMemoryManager & SQLite)** :
+     - Interrogation de `UnifiedMemoryManager` et de la base relationnelle `jarvis_memory.db` pour extraire dynamiquement le profil complet de Pierre : identité (`Pierre Cassagnettes`), spécialité d'ingénierie (IA, Deep Learning, Architectures Agentiques LLM, Ingénierie Logicielle Avancée), périmètre géographique prioritaire injecté depuis la `MissionSpec` et format recherché (stage de fin d'études / césure de 6 mois).
+     - Fusion du profil et de la `MissionSpec` dans le prompt de recherche.
+  3. **Phase 2 : Investigation Multi-Agents Antigravity CLI VPS (Tier 3 Délibératif Strict)** :
+     - Mobilisation autonome d'Antigravity CLI (`agy`) sur le VPS Oracle Cloud avec le palier TIER 3 Délibératif (`gemini-3.1-pro-high`) adossé au jeton OAuth2 Google AI Pro.
+     - **Sous-agent Prospecteur** : crawl et prospection web itérative jusqu'à avoir découvert et documenté AU MOINS `quantite_cible` entités réelles, distinctes et vérifiées.
+     - **Sous-agent Critique & Auditeur Qualité (Boucle de Contrôle & Règle de Rejet)** :
+       - Injection formelle du contrat : `quantite_cible` et `criteres_obligatoires`.
+       - Règle de rejet impitoyable : rejet formel du livrable si le volume N < `quantite_cible` ou si l'un des critères obligatoires (ex: politique de rémunération, avantages, inconvénients, contact) est omis ou incomplet sur une fiche. En cas de manquement, renvoi immédiat du Prospecteur pour collecter les données manquantes.
+       - Interdiction absolue de tout repli silencieux vers Flash : en cas de quota 5h saturé, émission d'alertes formelles vocale, Telegram et supervision avant bascule résiliente vers Tier 2.
+     - **Sous-agent Synthèse** : rédaction d'un rapport Markdown comprenant un tableau récapitulatif global des N opportunités et N fiches détaillées exhaustives.
+  4. **Phase 3 & Post-Traitement : Livrables & Livraison Déterministe Multi-Canal** :
+     - **Rapport Markdown Exhaustif** : enregistré sous `/artifacts/rapport_[sujet]_[timestamp].md`.
+     - **Schéma JSON Google Slides** : généré et validé sous `/artifacts/slides_schema_[sujet]_[timestamp].json`.
+     - **Compilation Google Slides via n8n** : envoi au webhook `document-slides` générant la présentation dans le Google Drive de Pierre.
+     - **Livraison E-mail Automatisée Déterministe (Cycle de Vie Intégré)** : si `notifier_email` est actif (détecté oralement ou flag explicite), appel immédiat de `email_service.send_email_async(...)` avec le format Stark Industries HTML (intégrant le tableau de synthèse récapitulatif) et le rapport Markdown complet joint via `resolve_attachment_path`.
+     - **Alerte Push Telegram Stark Bot (`chatId: 6849746502`)** : envoi immédiat via `briefing_service.send_telegram_alert` d'un message structuré avec les métriques validées, le résumé des opportunités phares, le statut de l'e-mail et les chemins d'artefacts.
+     - **Notification Vocale Aoede (Gemini Live)** : injection proactive d'un prompt système (`safe_send_live_client_content`) annonçant avec fierté la finalisation de la mission, le nombre exact d'entités trouvées (ex: 20) et la confirmation de l'envoi du rapport par mail.
+     - **HUD & Écran Mobile** : mise à jour instantanée du lien de consultation web (`set_browser_link`).
 
 ---
 
