@@ -28,6 +28,8 @@ data/
 .antigravity_session/
 
 # Logs & temp files
+*.lock
+.agent_instance.lock
 tunnel_url.txt
 static/latest_screenshot.jpg
 outbox_emails/

@@ -12,21 +12,114 @@ import time
 import asyncio
 import subprocess
 import webbrowser
+import traceback
 from typing import Dict, Any
 
-# Forcer l'encodage UTF-8 dans la console Windows
-if sys.platform == "win32":
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-        sys.stderr.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_FILE = os.path.join(BASE_DIR, "jarvis_agent.log")
+
+
+class AutoFlushStream:
+    """Wrapper de flux garantissant un encodage strict UTF-8 et un flush immédiat de chaque écriture."""
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+        self._file = open(file_path, mode="a", encoding="utf-8", errors="replace", buffering=1)
+
+    def write(self, s: str):
+        try:
+            self._file.write(s)
+            self._file.flush()
+        except Exception:
+            pass
+
+    def writelines(self, lines):
+        try:
+            self._file.writelines(lines)
+            self._file.flush()
+        except Exception:
+            pass
+
+    def flush(self):
+        try:
+            self._file.flush()
+        except Exception:
+            pass
+
+    def isatty(self):
+        return False
+
+    @property
+    def encoding(self):
+        return "utf-8"
+
+
+def init_logging_and_streams():
+    """Détecte l'environnement d'exécution (pythonw ou absence de console)
+    et redirige stdout/stderr vers jarvis_agent.log avec capture des exceptions.
+    """
+    is_pythonw = "pythonw" in (sys.executable or "").lower()
+    no_console = False
+
+    if sys.stdout is None or sys.stderr is None:
+        no_console = True
+    elif hasattr(sys.stdout, "isatty"):
+        try:
+            if not sys.stdout.isatty():
+                no_console = True
+        except Exception:
+            no_console = True
+    elif not hasattr(sys.stdout, "write"):
+        no_console = True
+
+    if is_pythonw or no_console:
+        stream = AutoFlushStream(LOG_FILE)
+        sys.stdout = stream
+        sys.stderr = stream
+    else:
+        # En mode interactif console Windows : forcer l'encodage UTF-8
+        if sys.platform == "win32":
+            try:
+                sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+            try:
+                sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+    def global_excepthook(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+        tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
+        err_msg = "".join(tb_lines)
+        log_entry = f"\n[{now_str}] [CRITICAL CRASH] Exception non gérée interceptée par sys.excepthook :\n{err_msg}\n"
+
+        try:
+            if sys.stderr and hasattr(sys.stderr, "write"):
+                sys.stderr.write(log_entry)
+                sys.stderr.flush()
+        except Exception:
+            pass
+
+        # Secours direct dans jarvis_agent.log
+        try:
+            with open(LOG_FILE, mode="a", encoding="utf-8", errors="replace") as f:
+                f.write(log_entry)
+                f.flush()
+        except Exception:
+            pass
+
+    sys.excepthook = global_excepthook
+
+
+init_logging_and_streams()
 
 import psutil
 import websockets
 from dotenv import load_dotenv
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 HOSTNAME = os.environ.get("CLOUDFLARE_HOSTNAME", "jarvis.signalcraftapps.com").strip()
@@ -597,11 +690,32 @@ async def agent_loop():
     """Boucle principale de maintien de la connexion WebSocket avec Jarvis VPS."""
     uri = f"wss://{HOSTNAME}/ws/local-agent?token={PASSWORD}"
 
+    # Capture des exceptions asynchrones non interceptées
+    loop = asyncio.get_running_loop()
+
+    def handle_async_exception(l, context):
+        msg = context.get("message")
+        exc = context.get("exception")
+        now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+        err_msg = f"\n[{now_str}] [ASYNCIO EXCEPTION] {msg}"
+        if exc:
+            err_msg += f" : {exc}\n" + "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        print(err_msg, flush=True)
+
+    loop.set_exception_handler(handle_async_exception)
+
+    now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+    is_silent = "pythonw" in (sys.executable or "").lower() or not hasattr(sys.stdout, "isatty") or not sys.stdout.isatty()
+    mode_str = "Silencieux (Arrière-plan / pythonw)" if is_silent else "Console Interactive"
+
     print("=" * 70, flush=True)
     print("       ✦  J . A . R . V . I . S .   L O C A L   A G E N T  ✦", flush=True)
     print("                 STARK INDUSTRIES PC COMPANION", flush=True)
+    print(f"[*] Démarrage le      : {now_str} (PID: {os.getpid()})", flush=True)
+    print(f"[*] Mode d'exécution  : {mode_str}", flush=True)
+    print(f"[*] Fichier de log    : {LOG_FILE}", flush=True)
     print("=" * 70, flush=True)
-    print(f"[*] Cible Cloud      : wss://{HOSTNAME}/ws/local-agent", flush=True)
+    print(f"[*] Cible Cloud       : wss://{HOSTNAME}/ws/local-agent", flush=True)
 
     # 1. Démarrage du bridge Deezer local pour écouter le Userscript Tampermonkey sur ws://127.0.0.1:8765
     try:
@@ -725,7 +839,24 @@ async def agent_loop():
 
 
 if __name__ == "__main__":
+    # Verrouillage d'instance unique (Windows msvcrt) pour éviter les doublons WS/Deezer
+    _lock_handle = None
+    if sys.platform == "win32":
+        try:
+            import msvcrt
+            lock_path = os.path.join(BASE_DIR, ".agent_instance.lock")
+            _lock_handle = open(lock_path, "w")
+            msvcrt.locking(_lock_handle.fileno(), msvcrt.LK_NBLCK, 1)
+        except (IOError, OSError):
+            now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+            print(f"[{now_str}] [!] Une instance de jarvis_local_agent.py est déjà active sur ce PC. Arrêt de la nouvelle instance.", flush=True)
+            sys.exit(0)
+
     try:
         asyncio.run(agent_loop())
     except KeyboardInterrupt:
-        print("\n[*] Arrêt de l'agent local.", flush=True)
+        print("\n[*] Arrêt de l'agent local demandé par l'utilisateur.", flush=True)
+    except Exception as e:
+        now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{now_str}] [CRITICAL] Arrêt anormal de l'agent local : {e}", flush=True)
+        traceback.print_exc()
