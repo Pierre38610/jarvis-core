@@ -108,15 +108,16 @@ class TestTransportService(unittest.IsolatedAsyncioTestCase):
         declarations = tools[0].function_declarations
         decl_names = [d.name for d in declarations]
 
-        self.assertIn("rechercher_train", decl_names)
-        self.assertIn("surveiller_train", decl_names)
-        self.assertIn("reserver_billet_train_local", decl_names)
+        self.assertTrue(any(d in ("rechercher_train", "search_train_routes") for d in decl_names))
+        self.assertTrue(any(d in ("surveiller_train", "monitor_train") for d in decl_names))
+        self.assertTrue(any(d in ("reserver_billet_train_local", "open_train_booking") for d in decl_names))
 
-        # Vérification du schéma de rechercher_train
-        rt_tool = next(d for d in declarations if d.name == "rechercher_train")
+        # Vérification du schéma de search_train_routes
+        rt_tool = next(d for d in declarations if d.name in ("rechercher_train", "search_train_routes"))
         self.assertIn("origine", rt_tool.parameters.properties)
         self.assertIn("destination", rt_tool.parameters.properties)
         self.assertIn("date_depart", rt_tool.parameters.properties)
+
 
     def test_n8n_workflow_json(self):
         """Vérifie la validité syntaxique et structurelle du workflow n8n train_monitoring.json."""

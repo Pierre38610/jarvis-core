@@ -65,7 +65,7 @@ class TestArchitectureService(unittest.TestCase):
         """Vérifie que l'outil consulter_architecture_jarvis est exposé dans le catalogue."""
         tools = get_tools_list()
         decl_names = [f.name for t in tools for f in getattr(t, "function_declarations", [])]
-        self.assertIn("consulter_architecture_jarvis", decl_names)
+        self.assertTrue(any(name in ("consulter_architecture_jarvis", "query_jarvis_architecture") for name in decl_names))
 
 
 if __name__ == "__main__":

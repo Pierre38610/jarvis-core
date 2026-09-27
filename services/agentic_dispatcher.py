@@ -43,6 +43,7 @@ from core.shared_state import (
     broadcast_supervision,
     safe_send_live_client_content
 )
+from services.voice_injection_queue import InjectionPriority
 
 logger = logging.getLogger("jarvis.agentic_dispatcher")
 
@@ -365,12 +366,38 @@ class AgenticDispatcher:
                 agent = AntigravityAgent(workspace=WORKSPACE_DIR, model=effective_model, api_key=effective_key)
                 active_task_controller["agent_instance"] = agent
 
+                last_milestone_time = time.time()
+                milestone_emitted = False
+
                 async def _on_cli_progress(p_info: Dict[str, Any]):
+                    nonlocal last_milestone_time, milestone_emitted
                     txt = p_info.get("text", "")
                     step_name = p_info.get("step", "progress")
                     mission_state["details"] = txt
                     supervision_service.update_action_progress(mission_id, step_name, txt)
                     await broadcast_supervision()
+
+                    threshold = getattr(config, "VOCAL_MILESTONE_THRESHOLD_SECONDS", 90.0)
+                    if notify_voice and cog_cfg.estimated_duration >= threshold:
+                        now = time.time()
+                        if (now - last_milestone_time >= threshold) and not milestone_emitted:
+                            last_milestone_time = now
+                            milestone_emitted = True
+                            live_sess = active_task_controller.get("live_session")
+                            if live_sess:
+                                step_desc = txt[:60] if txt else "phase d'investigation en cours"
+                                await safe_send_live_client_content(
+                                    live_sess,
+                                    (
+                                        f"[JALON DE PROGRESSION SYSTÈME 2]\n"
+                                        f"Pierre, l'analyse approfondie sur '{goal[:40]}' avance bien ({step_desc}).\n\n"
+                                        f"Consigne stricte pour Aoede : Indique brièvement d'une courte phrase naturelle et complice que l'analyse approfondie progresse bien."
+                                    ),
+                                    action_key=f"agentic_milestone_{mission_id}",
+                                    wait_if_speaking=True,
+                                    drainage_delay=1.5,
+                                    priority=InjectionPriority.PROGRESS_MILESTONE
+                                )
 
                 try:
                     task_result = await agent.run_cli_task_stream(

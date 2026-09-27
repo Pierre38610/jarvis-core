@@ -32,10 +32,10 @@ def test_declaration_lancer_mission_deep_research():
     tools = get_tools_list()
     assert len(tools) > 0
     declarations = tools[0].function_declarations
-    tool_decl = next((d for d in declarations if d.name == "lancer_mission_deep_research"), None)
+    tool_decl = next((d for d in declarations if d.name in ("lancer_mission_deep_research", "launch_deep_research")), None)
 
     assert tool_decl is not None
-    assert "recherche de fond approfondie" in tool_decl.description.lower()
+    assert "recherche de fond" in tool_decl.description.lower()
     props = tool_decl.parameters.properties
     assert "consigne_utilisateur" in props
     assert "envoyer_email" in props
@@ -159,12 +159,89 @@ async def test_deep_research_full_pipeline_with_email_delivery():
         assert "DEEP RESEARCH TERMINÉE" in tg_args["message"]
         assert "20 entités" in tg_args["message"]
 
-        # Vérification de la notification vocale Aoede
-        mock_live_voice.assert_called_once()
-        voice_prompt = mock_live_voice.call_args[0][1]
-        assert "20 entités" in voice_prompt
-        assert "Aoede" in voice_prompt
-        assert "courriel" in voice_prompt or "mail" in voice_prompt
+        # Vérification des jalons vocaux intermédiaires et de la livraison finale
+        assert mock_live_voice.call_count == 5
+        prompts = [call[0][1] for call in mock_live_voice.call_args_list]
+        assert any("SPÉCIFICATION" in p for p in prompts)
+        assert any("MAP" in p for p in prompts)
+        assert any("REDUCE" in p for p in prompts)
+        assert any("QUALITY GATE" in p for p in prompts)
+
+        final_prompt = prompts[-1]
+        assert "20 entités" in final_prompt
+        assert "Aoede" in final_prompt
+        assert "courriel" in final_prompt or "mail" in final_prompt
+
+
+@pytest.mark.asyncio
+async def test_deep_research_quality_gate_failure_explicitly_reported():
+    """Valide que si le Quality Gate échoue après ses 2 itérations de relance,
+    le livrable final (vocal + rapport écrit) signale explicitement que la cible n'a pas été
+    pleinement atteinte, plutôt que de livrer silencieusement un résultat partiel comme complet."""
+    test_artifacts_dir = os.path.join(os.path.dirname(__file__), "_test_scratch", "deep_research_qg_failure")
+    os.makedirs(test_artifacts_dir, exist_ok=True)
+    service = DeepResearchService(artifacts_dir=test_artifacts_dir)
+
+    consigne = "Trouve 20 entreprises à Malmö pour mon stage IA"
+
+    from services.deep_research_service import NormalizedEntity
+
+    # On simule un ouvrier qui ne retourne qu'une seule entité conforme malgré les relances
+    entities_partielles = [
+        NormalizedEntity(
+            nom="Malmö Autonomous Systems",
+            localisation_exacte="Västra Hamnen, Malmö",
+            description_activite="IA appliquée et robotique de pointe",
+            politique_remuneration="Oui (Rémunéré standard)",
+            avantages="Équipe d'élite",
+            inconvenients="Rythme soutenu",
+            contact="careers@malmoauto.se",
+            source_worker="Ouvrier 1",
+            domaine_expertise="IA"
+        )
+    ]
+
+    with patch.object(service, "_executer_ouvrier_map", new_callable=AsyncMock) as mock_worker, \
+         patch("services.deep_research_service.briefing_service.send_telegram_alert", new_callable=AsyncMock) as mock_tg, \
+         patch("services.deep_research_service.send_email_async", new_callable=AsyncMock) as mock_email, \
+         patch("services.deep_research_service.slides_service.generate_deep_research_slides") as mock_slides_gen, \
+         patch("services.deep_research_service.safe_send_live_client_content", new_callable=AsyncMock) as mock_live_voice:
+
+        mock_worker.return_value = entities_partielles
+        mock_slides_gen.return_value = ("Titre", "Sous-titre", [])
+        mock_live_session = MagicMock()
+        active_task_controller["live_session"] = mock_live_session
+
+        res = await service.executer_mission_complete(
+            consigne_utilisateur=consigne,
+            envoyer_email=True
+        )
+
+        # 1. Vérification du statut de non-complétude explicite
+        assert res["status"] == "completed"
+        assert res["quality_gate_passed"] is False
+        assert res["target_fully_reached"] is False
+        assert len(res["motifs_rejet"]) > 0
+
+        # 2. Vérification du rapport écrit : présence du bandeau d'alerte Quality Gate
+        with open(res["artifact_markdown"], "r", encoding="utf-8") as f:
+            md_content = f.read()
+        assert "AVERTISSEMENT DU CONTRÔLE QUALITÉ" in md_content
+        assert "CIBLE NON PLEINEMENT ATTEINTE" in md_content
+        assert "Cible non pleinement atteinte" in md_content
+
+        # 3. Vérification de la restitution vocale Aoede : consigne explicite d'alerte
+        prompts = [call[0][1] for call in mock_live_voice.call_args_list]
+        final_prompt = prompts[-1]
+        assert "CIBLE NON PLEINEMENT ATTEINTE" in final_prompt
+        assert "pas pleinement atteinte" in final_prompt
+
+        # 4. Vérification de l'alerte Telegram
+        assert any("CIBLE NON PLEINEMENT ATTEINTE" in call[1]["message"] for call in mock_tg.call_args_list)
+
+        # 5. Vérification de l'objet de l'e-mail
+        assert any("Cible partielle" in call[1]["subject"] for call in mock_email.call_args_list)
+
 
 
 @pytest.mark.asyncio

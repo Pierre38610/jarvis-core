@@ -10,6 +10,7 @@ os.environ["no_proxy"] = "127.0.0.1,localhost,::1,0.0.0.0"
 import asyncio
 import json
 import time
+from typing import Any, Optional, Dict, List
 
 from google import genai
 from google.genai import types
@@ -147,34 +148,42 @@ async def safe_send_live_client_content(
     text: str,
     action_key: str | None = None,
     wait_if_speaking: bool = True,
-    drainage_delay: float = 2.0
+    drainage_delay: float = 2.0,
+    priority: Any = None
 ) -> bool:
     """
-    Injecte un message client dans la session Live en s'assurant :
-    1. Du respect de la règle d'or de canal unique (interdiction formelle d'appel si déjà résolu via tool_response).
-    2. Du verrou d'élocution anti-coupure (si Aoede parle, différer de 2 à 3s pour éviter de couper sa phrase).
+    Injecte un message client dans la session Live en passant par la file d'attente prioritaire FIFO :
+    1. Respecte la priorité (INTERRUPTION > TOOL_RESPONSE > PROGRESS_MILESTONE > PASSIVE_INFO).
+    2. Règle d'or de canal unique (interdiction formelle d'appel si déjà résolu via tool_response).
+    3. Verrou d'élocution anti-coupure (wait_until_speech_finished) et drainage du buffer audio.
+    4. Séquencement déterministe pour éliminer les collisions et coupures audio entre tâches de fond concurrentes.
     """
     if not session:
         return False
 
-    # 1. Règle d'or de canal unique : interdire formellement tout doublon si l'action a déjà répondu dans tool_response
-    if action_key and is_action_sync_completed(action_key):
-        print(f"[Canal Unique] Action '{action_key}' déjà traitée de manière synchrone via tool_response. Injection client annulée pour éliminer tout bégaiement.")
-        return False
+    from services.voice_injection_queue import voice_injection_queue, InjectionPriority
 
-    # 2. Verrou d'élocution : attendre que Aoede ait fini de parler + drainage du buffer audio (2 à 3s)
-    if wait_if_speaking:
-        await wait_until_speech_finished(timeout=15.0, buffer_drainage_delay=drainage_delay)
+    if priority is None:
+        text_lower = text.lower()
+        if any(w in text_lower for w in ("[arrêt", "[stop", "[alerte quota", "[urgence")):
+            priority = InjectionPriority.INTERRUPTION
+        elif action_key and not any(k in action_key for k in ("milestone", "jalon", "bg")):
+            priority = InjectionPriority.TOOL_RESPONSE
+        elif "[jalon" in text_lower or "jalon" in text_lower or "étape" in text_lower:
+            priority = InjectionPriority.PROGRESS_MILESTONE
+        else:
+            priority = InjectionPriority.PASSIVE_INFO
 
-    try:
-        await session.send_client_content(
-            turns=types.Content(role="user", parts=[types.Part.from_text(text=text)]),
-            turn_complete=True
-        )
-        return True
-    except Exception as e:
-        print(f"[Safe Live Injection] Erreur: {e}")
-        return False
+    return await voice_injection_queue.enqueue(
+        text=text,
+        priority=priority,
+        session=session,
+        action_key=action_key,
+        wait_if_speaking=wait_if_speaking,
+        drainage_delay=drainage_delay,
+        wait_for_completion=True
+    )
+
 
 
 async def broadcast_supervision():
@@ -351,6 +360,12 @@ async def stop_active_task(source: str = "user", reason: str = "Arrêt demandé 
     active_task_controller["directives"] = []
 
     # 5. Supervision & Constellation
+    try:
+        from services.voice_injection_queue import voice_injection_queue
+        voice_injection_queue.clear()
+    except Exception:
+        pass
+
     await clear_all_subagents()
     for act in ["antigravity_task", "browser_task", "search_web", "deep_reasoning", "deep_research"]:
         supervision_service.complete_action(act, status="cancelled", summary=reason)

@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.4.0 — Classifieur Cognitif LLM Tier 1, Télémétrie PostgreSQL (tier_routing_log) & Audit Quotas 429.*
+> *Dernière révision majeure : Version 5.5.0 — File d'Injection Vocale à Priorités FIFO (VoiceInjectionQueue), Jalons Intermédiaires Système 2 & Quality Gate Déterministe.*
 
 ---
 
@@ -472,12 +472,34 @@ Dans les architectures classiques, l'appel d'un outil bloque la parole du modèl
 5. Pierre et Jarvis continuent à dialoguer normalement pendant l'exécution.
 6. À la fin de la tâche, le backend injecte une notification via `safe_send_live_client_content` pour restitution vocale finale.
 
-### 6.5. Règle d'Or de Canal Unique & Verrou d'Élocution Anti-Coupure
+### 6.5. File d'Injection Vocale à Priorités FIFO (`VoiceInjectionQueue`)
+Afin d'éviter les collisions audio et de garantir un ordre déterministe lors de l'achèvement simultané de plusieurs tâches d'arrière-plan, la vérification ponctuelle `is_model_speaking()` est pilotée par un gestionnaire de file d'attente asynchrone dédié (`services/voice_injection_queue.py`) :
+1. **Hiérarchie Stricte des Priorités (Enum `InjectionPriority`)** :
+   - `INTERRUPTION (1)` : Ordres d'arrêt d'urgence (`stop_current_action`), alertes critiques SRE.
+   - `TOOL_RESPONSE (2)` : Réponses directes d'outils et retours de commandes utilisateur.
+   - `PROGRESS_MILESTONE (3)` : Jalons de progression intermédiaires des tâches longues (ex: étapes Deep Research).
+   - `PASSIVE_INFO (4)` : Télémétrie passive, logs informatifs non-urgents, notifications de veille.
+2. **Ordonnancement Déterministe** :
+   - Les éléments de priorité supérieure préemptent les éléments de priorité inférieure.
+   - Entre deux messages de même niveau de priorité, un compteur séquentiel monotone garantit un ordre FIFO absolu.
+3. **Boucle de Consommation & Sas de Sécurité** :
+   - Vérification de la **Règle d'Or de Canal Unique** (`is_action_sync_completed`) : rejet immédiat si un retour synchrone officiel `tool_response` a déjà été transmis pour l'action.
+   - Respect strict du **Verrou d'Élocution** (`wait_until_speech_finished`) : attente passive de la fin de parole d'Aoede et vidange du tampon audio.
+   - Fenêtre de respiration post-restitution (350 ms par défaut) pour permettre l'amorçage des tampons de la session Live.
+   - Purge intégrale (`queue.clear()`) lors de l'arrêt d'urgence (`stop_active_task`).
+
+### 6.6. Jalons Vocaux Intermédiaires pour Tâches de Fond (`VOCAL_MILESTONE_THRESHOLD_SECONDS`)
+Pour éliminer l'effet "boîte noire" sur les opérations asynchrones de longue durée :
+- **Seuil Configurable** : Défini par la variable d'environnement `VOCAL_MILESTONE_THRESHOLD_SECONDS` (90 secondes par défaut dans `config.py`).
+- **Émission Proactive** : Toute tâche dont la durée estimée excède ce seuil émet des jalons d'avancement vocal (ex: compilateur de spec, phase MAP, phase REDUCE, quality gate, livraison).
+- **Consommation Fluide** : Les jalons sont enfilés avec la priorité `PROGRESS_MILESTONE (3)`. Jarvis informe Pierre brièvement sans jamais couper la parole ni écraser une réponse interactive prioritaire.
+
+### 6.7. Règle d'Or de Canal Unique & Verrou d'Élocution Anti-Coupure
 Pour éliminer les bugs de bégaiement ("stuttering") ou les coupures intempestives en pleine phrase :
 1. **Règle d'Or de Canal Unique (`mark_action_sync_completed` & `is_action_sync_completed`)** : Si une action s'est exécutée de manière synchrone et a déjà fourni son résultat via le message officiel `tool_response`, l'injection parallèle d'un `send_client_content` est formellement bloquée.
 2. **Verrou d'Élocution & Drainage Audio (`wait_until_speech_finished`)** : Avant d'injecter un message dans la session Live, le serveur vérifie si Aoede est en train de parler (`is_model_speaking()`). Si oui, le système temporise jusqu'à la fin de l'élocution plus un délai de vidange du tampon audio (0,3 à 2,0 secondes).
 
-### 6.6. Gestion des Interruptions (Barge-In) & Gating Micro
+### 6.8. Gestion des Interruptions (Barge-In) & Gating Micro
 - Si l'utilisateur commence à parler pendant qu'Aoede restitue une réponse, le frontend et le backend détectent immédiatement l'interruption (barge-in), coupent la lecture sonore côté client et purgent les tampons pour écouter la nouvelle instruction.
 - Un système de gating et d'injection de trames de silence évite que des bruits résiduels de fond ne réveillent inopinément le modèle.
 
@@ -609,17 +631,23 @@ L'agent interroge périodiquement `psutil` pour remonter :
      - *Ouvrier 2 (Pôles technologiques, Scale-ups & R&D privés)*.
      - *Ouvrier 3 (Grands groupes, filiales et éditeurs établis)*.
   4. *Étape 4 : Phase REDUCE — Fusion, Déduplication & Normalisation*. Fusion des retours bruts, déduplication stricte par clé normalisée et structuration sous la dataclass `NormalizedEntity`.
-  5. *Étape 5 : Phase QUALITY GATE — Boucle de Rejet Fermée*. L'agent critique applique 3 règles éliminatoires :
-     - Règle 1 : Volume strict (`nombre_valide >= quantite_cible`).
-     - Règle 2 : Conformité géographique stricte (zéro entité hors zone).
-     - Règle 3 : Complétude des critères (100% des critères obligatoires documentés).
-     En cas de manquement, relance ciblée d'ouvriers prospecteurs pour combler les fiches (jusqu'à 2 itérations).
-  6. *Étape 6 : Livraison Déterministe Multi-Canal* :
-     - Artefact Markdown dans `/artifacts/rapport_[sujet]_[timestamp].md`.
-     - Schéma Google Slides n8n dans `/artifacts/slides_schema_[sujet]_[timestamp].json`.
-     - Expédition du courriel HTML Stark avec pièce jointe si demandé.
-     - Alerte push structurée sur le Telegram Stark Bot (`chatId: 6849746502`).
-     - Notification vocale proactive Aoede dans la session Live.
+   5. *Étape 5 : Phase QUALITY GATE — Boucle de Rejet Fermée & Gestion Explicite d'Échec*. L'agent critique applique 3 règles éliminatoires :
+      - Règle 1 : Volume strict (`nombre_valide >= quantite_cible`).
+      - Règle 2 : Conformité géographique stricte (zéro entité hors zone).
+      - Règle 3 : Complétude des critères (100% des critères obligatoires documentés).
+      En cas de manquement, relance ciblée d'ouvriers prospecteurs pour combler les fiches (jusqu'à 2 itérations).
+      - **Gestion Explicite de l'Échec Quality Gate (Zéro Tolérance aux Livraisons Maquillées)** : Si après 2 relances le score reste insuffisant (`not est_conforme`), le système refuse formellement de masquer le déficit :
+        * Le statut `quality_gate_passed = False` et `target_fully_reached = False` est gravé dans le payload.
+        * **Alerte Vocale Live** : Aoede signale immédiatement à Pierre avec franchise que la cible n'a pas été pleinement atteinte (ex: *"Attention Pierre, l'audit qualité signale que la cible n'a pas été atteinte : seulement 7 entités validées sur 20..."*).
+        * **Bannière d'Avertissement Écrite** : Le rapport Markdown affiche un bandeau rouge bien visible `[ALERTE AUDIT QUALITÉ : CIBLE NON PLEINEMENT ATTEINTE]` avec le détail des motifs de rejet et le badge `AUDIT REJETÉ`.
+        * **Push Telegram & Courriel** : Les sujets et messages portent la mention explicite `[PARTIEL - AUDIT NON VALIDÉ]`.
+   6. *Étape 6 : Livraison Déterministe Multi-Canal & Jalons Vocaux Intermédiaires* :
+      Pendant toute la mission, 5 jalons vocaux sont transmis via `VoiceInjectionQueue` (priorité `PROGRESS_MILESTONE`, respectant le verrou d'élocution `wait_until_speech_finished`) :
+      - *Jalon 1 (Spécification)* : Validation de la cible et des critères d'exclusion géographique.
+      - *Jalon 2 (Fin Phase MAP)* : Nombre de fiches brutes extraites par les 3 ouvriers.
+      - *Jalon 3 (Fin Phase REDUCE)* : Nombre d'entités uniques retenues après déduplication.
+      - *Jalon 4 (Quality Gate)* : Confirmation de validation ou avertissement de cible partielle.
+      - *Jalon 5 (Livraison finale)* : Synthèse exécutive orale et disponibilité des artefacts (Markdown, Google Slides, Push Telegram, E-mail).
 
 ### 8.4. Moteur Délibératif Système 2 Transverse (Missions Spécialisées)
 - **Fichier source** : `services/agentic_dispatcher.py`.

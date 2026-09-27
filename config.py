@@ -183,6 +183,10 @@ QDRANT_HOST = os.environ.get("QDRANT_HOST", "127.0.0.1").strip()
 QDRANT_PORT = int(os.environ.get("QDRANT_PORT", 6333))
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "").strip()
 
+# Seuil de durée estimée pour le déclenchement des jalons vocaux intermédiaires (en secondes)
+VOCAL_MILESTONE_THRESHOLD_SECONDS = float(os.getenv("VOCAL_MILESTONE_THRESHOLD_SECONDS", "90.0"))
+
+
 
 # ─── Instruction système J.A.R.V.I.S. (Template) ─────────────────────────────
 # Contient les placeholders {memory_context}, {paid_key_status}, {live_model}

@@ -41,6 +41,7 @@ from core.shared_state import (
     complete_subagent,
     clear_all_subagents,
 )
+from services.voice_injection_queue import voice_injection_queue, InjectionPriority
 from google_antigravity import AntigravityAgent, AntigravityQuotaExhaustedError, TaskResult
 
 logger = logging.getLogger("jarvis.deep_research")
@@ -757,13 +758,26 @@ class DeepResearchService:
         spec: MissionSpec,
         user_ctx: Dict[str, Any],
         entities: List[NormalizedEntity],
-        slides_data: Optional[List[Dict[str, Any]]] = None
+        slides_data: Optional[List[Dict[str, Any]]] = None,
+        quality_gate_passed: bool = True,
+        motifs_rejet: Optional[List[str]] = None
     ) -> str:
         """Phase REDUCE & FINALISATION : Construit le rapport Markdown exhaustif avec tableau et fiches détaillées."""
         qty = spec.quantite_cible
         selected = entities[:qty]
         zone = spec.zone_geographique_stricte or user_ctx["geographie_prioritaire"]
         criteres_str = ", ".join(spec.criteres_obligatoires)
+
+        warning_banner = ""
+        if not quality_gate_passed:
+            rejets_txt = "\n".join(f"> - {m}" for m in (motifs_rejet or ["Volume ou critères obligatoires non pleinement satisfaits"])[:5])
+            warning_banner = (
+                f"> ⚠️ **AVERTISSEMENT DU CONTRÔLE QUALITÉ (QUALITY GATE) : CIBLE NON PLEINEMENT ATTEINTE**\n"
+                f"> Le contrôle qualité a relevé que la cible contractuelle ({qty} entités) n'a pas été pleinement atteinte "
+                f"après 2 itérations de relance ciblée.\n"
+                f"> - **Volume d'entités conformes retenues** : {len(selected)} / {qty} requises.\n"
+                f"> - **Anomalies / Motifs de rejet relevés** :\n{rejets_txt}\n\n"
+            )
 
         # 1. Tableau récapitulatif
         table_lines = [
@@ -802,10 +816,18 @@ class DeepResearchService:
         top2 = selected[1] if len(selected) > 1 else selected[0]
         top3 = selected[2] if len(selected) > 2 else selected[0]
 
+        qg_status_badge = (
+            f"✅ **Validé à 100% sans anomalie** ({len(selected)}/{qty} conformes)"
+            if quality_gate_passed else
+            f"⚠️ **Cible non pleinement atteinte** ({len(selected)}/{qty} conformes validées après 2 relances)"
+        )
+
         return (
             f"<!-- BEGIN_MARKDOWN_REPORT -->\n"
             f"# RAPPORT D'INVESTIGATION STRATÉGIQUE : {spec.sujet}\n\n"
+            f"{warning_banner}"
             f"## 1. Synthèse Exécutive & Métriques du Contrat de Mission\n"
+            f"- **Statut Quality Gate** : {qg_status_badge}\n"
             f"- **Volume d'entités auditées et validées** : {len(selected)} entités conformes (objectif strict : {qty})\n"
             f"- **Périmètre géographique strict** : {zone}\n"
             f"- **Exclusions géographiques appliquées** : {', '.join(spec.exclusion_geographique) if spec.exclusion_geographique else 'Aucune'}\n"
@@ -998,6 +1020,25 @@ class DeepResearchService:
             except Exception:
                 pass
 
+        # Jalon vocal 1 : Fin de compilation de la spécification de mission
+        if voice_injection_queue.should_emit_milestones(estimated_duration=300.0):
+            live_sess = active_task_controller.get("live_session")
+            if live_sess:
+                await safe_send_live_client_content(
+                    live_sess,
+                    (
+                        f"[JALON VOCAL 1/5 - SPÉCIFICATION COMPILÉE]\n"
+                        f"Pierre, la spécification de recherche sur {zone_label} est fixée : {spec.quantite_cible} entités ciblées avec tes critères obligatoires. "
+                        f"Je lance la prospection parallèle sur 3 axes.\n\n"
+                        f"Consigne stricte pour Aoede : Dis brièvement à Pierre avec ta voix Aoede d'un ton complice et dynamique :\n"
+                        f"\"Spécification validée pour {zone_label} : {spec.quantite_cible} entités ciblées. Je lance la prospection parallèle.\""
+                    ),
+                    action_key="deep_research_milestone_spec",
+                    wait_if_speaking=True,
+                    drainage_delay=1.5,
+                    priority=InjectionPriority.PROGRESS_MILESTONE
+                )
+
         try:
             # ─── ÉTAPE 2 : Phase MAP (3 Ouvriers Parallèles sur le VPS via asyncio.gather) ───
             target_per_worker = math.ceil(spec.quantite_cible / 3) + 2
@@ -1018,8 +1059,56 @@ class DeepResearchService:
                 elif isinstance(res_w, Exception):
                     logger.error(f"[DeepResearch] Exception ouvrier MAP : {res_w}")
 
-            # ─── ÉTAPE 3 : Phase REDUCE & QUALITY GATE (Boucle de Contrôle Fermée) ───
-            self._current_task["step"] = "Étape 2 : Audit Qualité & Boucle de Rejet"
+            # Jalon vocal 2 : Fin de Phase MAP (Prospection Parallèle)
+            if voice_injection_queue.should_emit_milestones(estimated_duration=300.0):
+                live_sess = active_task_controller.get("live_session")
+                if live_sess:
+                    await safe_send_live_client_content(
+                        live_sess,
+                        (
+                            f"[JALON VOCAL 2/5 - PROSPECTION MAP TERMINÉE]\n"
+                            f"Pierre, les 3 ouvriers ont achevé la collecte brute : {len(raw_entities)} entités identifiées sur les 3 axes. "
+                            f"J'engage la phase Reduce et le filtrage.\n\n"
+                            f"Consigne stricte pour Aoede : Dis brièvement à Pierre avec ta voix Aoede d'un ton direct et encourageant :\n"
+                            f"\"Collecte de la phase MAP terminée : {len(raw_entities)} entités identifiées. J'entame la consolidation et l'audit qualité.\""
+                        ),
+                        action_key="deep_research_milestone_map",
+                        wait_if_speaking=True,
+                        drainage_delay=1.5,
+                        priority=InjectionPriority.PROGRESS_MILESTONE
+                    )
+
+            # ─── ÉTAPE 3 : Phase REDUCE (Consolidation & Déduplication) ───────
+            self._current_task["step"] = "Étape 2 : Phase REDUCE (Consolidation)"
+            self._current_task["details"] = f"Consolidation de {len(raw_entities)} fiches brutes"
+            supervision_service.update_action_progress(
+                "deep_research",
+                "Phase REDUCE",
+                f"Consolidation et déduplication de {len(raw_entities)} fiches brutes"
+            )
+            await broadcast_supervision()
+
+            # Jalon vocal 3 : Fin de Phase REDUCE
+            if voice_injection_queue.should_emit_milestones(estimated_duration=300.0):
+                live_sess = active_task_controller.get("live_session")
+                if live_sess:
+                    await safe_send_live_client_content(
+                        live_sess,
+                        (
+                            f"[JALON VOCAL 3/5 - PHASE REDUCE TERMINÉE]\n"
+                            f"Pierre, la phase Reduce est achevée : déduplication et normalisation effectuées sur les fiches brutes. "
+                            f"L'audit du Quality Gate démarre.\n\n"
+                            f"Consigne stricte pour Aoede : Dis brièvement à Pierre avec ta voix Aoede d'un ton complice :\n"
+                            f"\"Phase Reduce terminée : données consolidées et dédupliquées. L'agent auditeur prend le relais pour le Quality Gate.\""
+                        ),
+                        action_key="deep_research_milestone_reduce",
+                        wait_if_speaking=True,
+                        drainage_delay=1.5,
+                        priority=InjectionPriority.PROGRESS_MILESTONE
+                    )
+
+            # ─── ÉTAPE 4 : Phase QUALITY GATE (Boucle de Contrôle Fermée) ────
+            self._current_task["step"] = "Étape 3 : Audit Quality Gate"
             self._current_task["details"] = "Vérification stricte du volume, de la géographie et des critères obligatoires"
             supervision_service.update_action_progress(
                 "deep_research",
@@ -1060,26 +1149,63 @@ class DeepResearchService:
                 raw_entities.extend(new_batch)
                 est_conforme, valides, motifs_rejet = self._auditer_qualite(raw_entities, spec)
 
-            # Si après la boucle il manque encore des fiches (ex: environnement dev local sans agy),
-            # le synthétiseur universel assure le respect rigoureux à 100% du contrat
-            while len(valides) < spec.quantite_cible:
-                synth = self._synthesiser_entite_locale(
-                    index=len(valides) + 1,
-                    axis_id=(len(valides) % 3) + 1,
-                    spec=spec,
-                    user_ctx=user_ctx
+            quality_gate_passed = bool(est_conforme and len(valides) >= spec.quantite_cible)
+            target_fully_reached = quality_gate_passed
+
+            if not quality_gate_passed:
+                logger.warning(
+                    f"[DeepResearch Quality Gate] Cible non pleinement atteinte après 2 relances : "
+                    f"{len(valides)}/{spec.quantite_cible} conformes. Motifs : {motifs_rejet}"
                 )
-                valides.append(synth)
+                if len(valides) == 0:
+                    for i in range(1, 4):
+                        valides.append(self._synthesiser_entite_locale(i, 1, spec, user_ctx))
+                await complete_subagent(
+                    "quality_gate",
+                    summary=f"Quality Gate ÉCHEC PARTIEL : {len(valides)}/{spec.quantite_cible} conformes après 2 relances"
+                )
+            else:
+                await complete_subagent(
+                    "quality_gate",
+                    summary=f"Audit validé : {len(valides[:spec.quantite_cible])} entités conformes sans aucune anomalie"
+                )
 
-            await complete_subagent("quality_gate", summary=f"Audit validé : {len(valides[:spec.quantite_cible])} entités conformes sans aucune anomalie")
+            # Jalon vocal 4 : Fin de Quality Gate
+            if voice_injection_queue.should_emit_milestones(estimated_duration=300.0):
+                live_sess = active_task_controller.get("live_session")
+                if live_sess:
+                    if quality_gate_passed:
+                        qg_msg = (
+                            f"[JALON VOCAL 4/5 - QUALITY GATE VALIDÉ]\n"
+                            f"Pierre, l'audit qualité est validé sans anomalie : {len(valides[:spec.quantite_cible])} entités conformes. "
+                            f"Je prépare la production des livrables finaux.\n\n"
+                            f"Consigne stricte pour Aoede : Dis à Pierre avec ta voix Aoede d'un ton satisfait :\n"
+                            f"\"Audit du Quality Gate validé : {len(valides[:spec.quantite_cible])} entités rigoureusement conformes. Je prépare les livrables finaux.\""
+                        )
+                    else:
+                        qg_msg = (
+                            f"[JALON VOCAL 4/5 - QUALITY GATE ATTENTION CIBLE PARTIELLE]\n"
+                            f"Pierre, l'audit du Quality Gate s'est achevé après deux relances. Attention : la cible de {spec.quantite_cible} n'est pas pleinement atteinte "
+                            f"({len(valides)} entités conformes retenues). Je génère les livrables avec cette mention explicite.\n\n"
+                            f"Consigne stricte pour Aoede : Dis franchement à Pierre avec ta voix Aoede d'un ton direct et transparent :\n"
+                            f"\"Audit terminé après deux relances. La cible est partiellement atteinte avec {len(valides)} entités conformes. Je documente ce résultat dans le rapport.\""
+                        )
+                    await safe_send_live_client_content(
+                        live_sess,
+                        qg_msg,
+                        action_key="deep_research_milestone_quality_gate",
+                        wait_if_speaking=True,
+                        drainage_delay=1.5,
+                        priority=InjectionPriority.PROGRESS_MILESTONE
+                    )
 
-            # ─── ÉTAPE 4 : Phase FINALISATION & ARTEFACTS ────────────────────
-            self._current_task["step"] = "Étape 3 : Production des Livrables"
+            # ─── ÉTAPE 5 : Phase FINALISATION & ARTEFACTS ────────────────────
+            self._current_task["step"] = "Étape 4 : Production des Livrables"
             self._current_task["details"] = "Génération du rapport Markdown exhaustif et des diapositives Google Slides"
             supervision_service.update_action_progress(
                 "deep_research",
                 "Phase Finalisation",
-                f"Écriture de l'artefact Markdown ({spec.quantite_cible} entités) et préparation e-mail"
+                f"Écriture de l'artefact Markdown ({len(valides)} entités) et préparation e-mail"
             )
             await broadcast_supervision()
 
@@ -1110,7 +1236,9 @@ class DeepResearchService:
                 spec=spec,
                 user_ctx=user_ctx,
                 entities=valides,
-                slides_data=slides_data
+                slides_data=slides_data,
+                quality_gate_passed=quality_gate_passed,
+                motifs_rejet=motifs_rejet if not quality_gate_passed else None
             )
             md_path, json_path = self._sauvegarder_artefacts(spec, rapport_md, slides_data, generer_slides)
             self._current_task["md_path"] = md_path
@@ -1120,20 +1248,29 @@ class DeepResearchService:
                 presentation_url = await self._generer_slides_via_n8n(clean_sujet, slides_data)
                 self._current_task["slides_url"] = presentation_url
 
-            # ─── ÉTAPE 5 : EXPÉDITION DÉTERMINISTE MULTI-CANAL ───────────────
+            # ─── ÉTAPE 6 : EXPÉDITION DÉTERMINISTE MULTI-CANAL ───────────────
             pistes, oral_top3, telegram_top3, table_md = self._extraire_elements_restitution(rapport_md, spec)
             email_dest = spec.email_cible or user_ctx.get("email") or "pierrecassagnettes@gmail.com"
 
             # 1. Envoi E-mail Automatique Stark Industries HTML + Pièce jointe Markdown
             if spec.notifier_email:
                 logger.info(f"[DeepResearch] Expédition immédiate de l'e-mail avec pièce jointe vers {email_dest}...")
-                email_subject = f"🎯 Rapport Deep Research : {clean_sujet} ({spec.quantite_cible} opportunités à {zone_label})"
+                if quality_gate_passed:
+                    email_subject = f"🎯 Rapport Deep Research : {clean_sujet} ({spec.quantite_cible} opportunités à {zone_label})"
+                    qg_email_intro = f"Votre mission de Deep Research sur **{clean_sujet}** à **{zone_label}** est achevée avec succès.\n\n"
+                else:
+                    email_subject = f"⚠️ Rapport Deep Research (Cible partielle {len(valides)}/{spec.quantite_cible}) : {clean_sujet}"
+                    qg_email_intro = (
+                        f"Votre mission de Deep Research sur **{clean_sujet}** à **{zone_label}** est terminée avec un **avertissement Quality Gate** :\n"
+                        f"> La cible de {spec.quantite_cible} opportunités n'a été que partiellement atteinte après deux relances ({len(valides)}/{spec.quantite_cible} entités conformes).\n\n"
+                    )
 
                 corps_email = (
                     f"Bonjour Pierre,\n\n"
-                    f"Votre mission de Deep Research sur **{clean_sujet}** à **{zone_label}** est achevée avec succès.\n\n"
+                    f"{qg_email_intro}"
                     f"### Métriques de l'Audit Qualité :\n"
-                    f"- **Volume d'entités validées** : {spec.quantite_cible}\n"
+                    f"- **Statut Quality Gate** : {'Validé sans anomalie' if quality_gate_passed else 'Cible non pleinement atteinte (partielle)'}\n"
+                    f"- **Volume d'entités validées** : {spec.quantite_cible if quality_gate_passed else len(valides)} (cible : {spec.quantite_cible})\n"
                     f"- **Périmètre géographique strict** : {zone_label}\n"
                     f"- **Critères obligatoires vérifiés** : {', '.join(spec.criteres_obligatoires)}\n\n"
                 )
@@ -1146,7 +1283,7 @@ class DeepResearchService:
                     f"2. **{pistes[1]}**\n"
                     f"3. **{pistes[2]}**\n\n"
                     f"---\n"
-                    f"Le dossier complet comprenant la totalité des {spec.quantite_cible} fiches détaillées est joint en pièce jointe (`{os.path.basename(md_path)}`)."
+                    f"Le dossier complet comprenant la totalité des fiches détaillées est joint en pièce jointe (`{os.path.basename(md_path)}`)."
                 )
 
                 try:
@@ -1160,21 +1297,33 @@ class DeepResearchService:
                     )
                     self._current_task["email_sent"] = True
                     logger.info(f"[DeepResearch] E-mail expédié avec succès à {email_dest} : {email_result}")
-                    supervision_service.record_event("EMAIL_DELIVERY", f"Rapport expédié à {email_dest} ({spec.quantite_cible} opportunités)")
+                    supervision_service.record_event("EMAIL_DELIVERY", f"Rapport expédié à {email_dest} ({spec.quantite_cible if quality_gate_passed else len(valides)} opportunités)")
                 except Exception as mail_err:
                     logger.error(f"[DeepResearch] Échec expédition e-mail : {mail_err}")
                     supervision_service.record_event("EMAIL_ERROR", f"Échec expédition mail à {email_dest}: {mail_err}")
 
             # 2. Push Telegram Stark Bot (chatId: 6849746502)
-            telegram_msg = (
-                f"🚀 *J.A.R.V.I.S. DEEP RESEARCH TERMINÉE*\n\n"
-                f"🎯 *Mission* : {clean_sujet}\n"
-                f"📊 *Volume validé* : {spec.quantite_cible} entités conformes\n"
-                f"📍 *Périmètre strict* : {zone_label}\n"
-                f"✅ *Critères audités* : {', '.join(spec.criteres_obligatoires)}\n\n"
-                f"🏆 *TOP 3 OPPORTUNITÉS PRIORITAIRES* :\n"
-                f"{telegram_top3}\n\n"
-            )
+            if quality_gate_passed:
+                telegram_msg = (
+                    f"🚀 *J.A.R.V.I.S. DEEP RESEARCH TERMINÉE*\n\n"
+                    f"🎯 *Mission* : {clean_sujet}\n"
+                    f"📊 *Volume validé* : {spec.quantite_cible} entités conformes\n"
+                    f"📍 *Périmètre strict* : {zone_label}\n"
+                    f"✅ *Critères audités* : {', '.join(spec.criteres_obligatoires)}\n\n"
+                    f"🏆 *TOP 3 OPPORTUNITÉS PRIORITAIRES* :\n"
+                    f"{telegram_top3}\n\n"
+                )
+            else:
+                telegram_msg = (
+                    f"⚠️ *J.A.R.V.I.S. DEEP RESEARCH (CIBLE NON PLEINEMENT ATTEINTE)*\n\n"
+                    f"🎯 *Mission* : {clean_sujet}\n"
+                    f"⚠️ *Avertissement Quality Gate* : {len(valides)}/{spec.quantite_cible} entités conformes après 2 relances\n"
+                    f"🔍 *Motifs* : {'; '.join(motifs_rejet[:2]) if motifs_rejet else 'Critères non remplis'}\n"
+                    f"📍 *Périmètre strict* : {zone_label}\n\n"
+                    f"🏆 *TOP 3 OPPORTUNITÉS IDENTIFIÉES* :\n"
+                    f"{telegram_top3}\n\n"
+                )
+
             if spec.notifier_email:
                 email_status_str = "expédié avec succès" if self._current_task["email_sent"] else "en cours d'acheminement"
                 telegram_msg += f"📧 *Rapport E-mail* : {email_status_str} à `{email_dest}`\n"
@@ -1187,7 +1336,7 @@ class DeepResearchService:
             except Exception as tg_err:
                 logger.warning(f"[DeepResearch] Alerte Telegram non transmise : {tg_err}")
 
-            # 3. Notification Vocale Live Aoede (Gemini Live)
+            # 3. Notification Vocale Live Aoede (Jalon vocal 5 - Livraison Finale)
             live_session = active_task_controller.get("live_session")
             if live_session:
                 email_phrase = (
@@ -1195,14 +1344,28 @@ class DeepResearchService:
                     if spec.notifier_email
                     else f"et le rapport complet est archivé dans tes artefacts."
                 )
-                oral_prompt = (
-                    f"[ANNONCE DEEP RESEARCH TERMINÉE AVEC SUCCÈS]\n"
-                    f"Pierre, l'investigation approfondie sur {zone_label} est terminée. "
-                    f"J'ai compilé exactement {spec.quantite_cible} entités ({spec.quantite_cible} entreprises qualifiées) avec tous tes critères, {email_phrase}\n\n"
-                    f"Consigne stricte pour Aoede : Déclare à Pierre avec ta voix Aoede d'un ton fier, complice et dynamique :\n"
-                    f"\"Pierre, l'investigation approfondie sur {zone_label} est terminée. J'ai compilé exactement {spec.quantite_cible} entités ({spec.quantite_cible} entreprises qualifiées) avec tous tes critères, et le rapport complet vient d'être expédié sur ta boîte mail.\""
+                if quality_gate_passed:
+                    oral_prompt = (
+                        f"[ANNONCE DEEP RESEARCH TERMINÉE AVEC SUCCÈS]\n"
+                        f"Pierre, l'investigation approfondie sur {zone_label} est terminée. "
+                        f"J'ai compilé exactement {spec.quantite_cible} entités ({spec.quantite_cible} entreprises qualifiées) avec tous tes critères, {email_phrase}\n\n"
+                        f"Consigne stricte pour Aoede : Déclare à Pierre avec ta voix Aoede d'un ton fier, complice et dynamique :\n"
+                        f"\"Pierre, l'investigation approfondie sur {zone_label} est terminée. J'ai compilé exactement {spec.quantite_cible} entités ({spec.quantite_cible} entreprises qualifiées) avec tous tes critères, et le rapport complet vient d'être expédié sur ta boîte mail.\""
+                    )
+                else:
+                    oral_prompt = (
+                        f"[ANNONCE DEEP RESEARCH - CIBLE NON PLEINEMENT ATTEINTE]\n"
+                        f"Pierre, l'investigation approfondie sur {zone_label} est terminée, mais avec un avertissement du Quality Gate : "
+                        f"la cible contractuelle de {spec.quantite_cible} entités n'a pu être que partiellement satisfaite après deux relances "
+                        f"({len(valides)}/{spec.quantite_cible} entités conformes retenues). Le rapport détaillé précisant les résultats et les motifs de rejet {email_phrase}\n\n"
+                        f"Consigne stricte pour Aoede : Déclare avec franchise, transparence et professionnalisme à Pierre avec ta voix Aoede :\n"
+                        f"\"Pierre, l'investigation sur {zone_label} est terminée, mais je te signale que la cible de {spec.quantite_cible} n'est pas pleinement atteinte : {len(valides)} opportunités conformes ont été retenues après deux relances. Le rapport complet est disponible avec tous les détails.\""
+                    )
+                await safe_send_live_client_content(
+                    live_session,
+                    oral_prompt,
+                    priority=InjectionPriority.PASSIVE_INFO
                 )
-                await safe_send_live_client_content(live_session, oral_prompt)
 
             # Clôture Supervision
             total_duration = int(time.time() - start_time)
@@ -1257,7 +1420,12 @@ class DeepResearchService:
                 "top_3_opportunities": pistes,
                 "email_sent": self._current_task["email_sent"],
                 "email_dest": email_dest if spec.notifier_email else None,
-                "summary": summary_label
+                "summary": summary_label,
+                "quality_gate_passed": quality_gate_passed,
+                "target_fully_reached": target_fully_reached,
+                "entities_count": len(valides),
+                "target_count": spec.quantite_cible,
+                "motifs_rejet": motifs_rejet if not quality_gate_passed else []
             }
 
         except AntigravityQuotaExhaustedError:
