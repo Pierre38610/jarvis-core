@@ -1,62 +1,90 @@
 """core/tools/declarations.py
 Palette complète des outils Gemini Live de J.A.R.V.I.S. (FunctionDeclarations).
 Ce module est importé une seule fois par routers/voice.py lors de l'établissement de la session.
+Catalogue unifié en anglais (snake_case) avec clauses d'exclusion strictes anti-confusion vocale (ASR).
 """
 
 from google.genai import types
 
 
 def get_tools_list() -> list[types.Tool]:
-    """Retourne la liste complète des outils déclarés pour Gemini Live."""
+    """Retourne la liste complète des 38 outils déclarés pour Gemini Live."""
     return [
         types.Tool(
             function_declarations=[
+                # ─── 1. stop_current_action ───────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="stop_current_action",
                     description=(
-                        "ARRÊTE IMMÉDIATEMENT l'action, la recherche en cours, les agents Antigravity CLI ou la navigation web. "
-                        "TU DOIS L'INVOQUER IMMÉDIATEMENT dès que Pierre te dit d'arrêter, de faire une pause, de stopper ou d'annuler "
-                        "(ex: 'arrête', 'stop', 'annule', 'interromps', 'tais-toi et arrête', 'laisse tomber'). "
-                        "Cette action interrompt physiquement l'agent Antigravity CLI sur le VPS ou le navigateur en arrière-plan et remet l'état à l'arrêt."
+                        "ARRÊTE IMMÉDIATEMENT toute action, recherche, agent Antigravity CLI ou navigation web en cours d'exécution. "
+                        "Cette action interrompt physiquement l'agent Antigravity CLI sur le VPS ou le navigateur en arrière-plan et remet l'état à l'arrêt. "
+                        "À UTILISER QUAND : Pierre demande d'arrêter, de faire une pause, de stopper ou d'annuler immédiatement ce qui tourne "
+                        "('arrête', 'stop', 'annule', 'interromps', 'tais-toi et arrête', 'laisse tomber'). "
+                        "NE JAMAIS UTILISER QUAND : Pierre souhaite simplement réorienter ou donner une directive à une tâche active qui doit continuer "
+                        "(utiliser 'guide_active_task') ou demander des nouvelles de l'avancement (utiliser 'get_active_task_status')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
-                        properties={"reason": types.Schema(type="STRING", description="Le motif ou la consigne d'arrêt exprimée par Pierre")}
+                        properties={
+                            "reason": types.Schema(
+                                type="STRING",
+                                description="Le motif ou la consigne d'arrêt exprimée par Pierre"
+                            )
+                        }
                     )
                 ),
+
+                # ─── 2. guide_active_task ─────────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="guide_active_task",
                     description=(
-                        "Permet à l'utilisateur de guider, adapter, modifier ou corriger en direct l'investigation ou l'action en cours "
-                        "par les agents Antigravity CLI sur le VPS (ex: approfondir un axe, ajouter un paramètre, réorienter l'analyse ou l'ingénierie) sans interrompre la session."
+                        "Transmet en direct une consigne d'orientation, d'adaptation ou de correction à la tâche active ou à l'agent Antigravity CLI sans interrompre la session. "
+                        "À UTILISER QUAND : Une tâche de fond est en cours et Pierre souhaite en direct affiner un axe, corriger un paramètre ou réorienter l'analyse. "
+                        "NE JAMAIS UTILISER QUAND : Aucune tâche n'est active, quand Pierre veut stopper la tâche (utiliser 'stop_current_action'), "
+                        "ou quand il s'agit d'une nouvelle demande indépendante (utiliser 'ask_deep_reasoning' ou 'launch_deep_research')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
-                        properties={"directive": types.Schema(type="STRING", description="La consigne ou adaptation demandée par l'utilisateur pour l'action en cours")},
+                        properties={
+                            "directive": types.Schema(
+                                type="STRING",
+                                description="La consigne ou adaptation demandée par l'utilisateur pour l'action en cours"
+                            )
+                        },
                         required=["directive"]
                     )
                 ),
+
+                # ─── 3. ask_deep_reasoning ────────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="ask_deep_reasoning",
                     description=(
-                        "MOTEUR UNIQUE MULTI-AGENTS ANTIGRAVITY CLI (SUR LE VPS) : "
-                        "Mobilise le pipeline d'agents autonomes Antigravity CLI qui tournent sur le VPS (Prospecteur, Analyste critique, Synthèse & Artefact, Ingénierie) "
-                        "pour toute tâche complexe, recherche approfondie, analyse comparative, benchmark, audit technique, réflexion ou conception avancée. "
-                        "PRISE D'INITIATIVE MAXIMALE : À la moindre tâche un peu complexe ou recherche fouillée, propose immédiatement à Pierre de mobiliser les agents Antigravity CLI sur le VPS. "
-                        "Si Pierre n'a pas encore validé, appelle cet outil avec confirmed_by_user=False pour obtenir la proposition orale pour Aoede. "
-                        "Si Pierre a validé ou a directement ordonné d'utiliser Antigravity / recherche approfondie dès son instruction, appelle cet outil avec confirmed_by_user=True."
+                        "MOTEUR MULTI-AGENTS ANTIGRAVITY CLI VPS (Tiers 1, 2, 3) : "
+                        "Mobilise le pipeline d'agents autonomes sur le VPS (Prospecteur, Analyste critique, Synthèse & Artefact, Ingénierie) "
+                        "pour les réflexions complexes, analyses de code, audits techniques, benchmarks ou décisions architecturales. "
+                        "À UTILISER QUAND : Pierre pose une problématique complexe nécessitant réflexion, architecture, ingénierie de code ou arbitrage logique. "
+                        "Si Pierre n'a pas encore validé, confirmed_by_user=False. S'il a déjà validé, confirmed_by_user=True. "
+                        "NE JAMAIS UTILISER QUAND : Une simple réponse factuelle rapide ou consultation d'actualité suffit (utiliser 'search_web'), "
+                        "ni pour interagir avec une page web (utiliser 'run_browser_task'), "
+                        "ni pour une prospection sectorielle de masse de 5-10 min avec extraction d'entreprises (utiliser 'launch_deep_research')."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "question": types.Schema(type="STRING", description="La problématique, sujet d'investigation, question stratégique, audit ou mission à traiter en profondeur par Antigravity CLI sur le VPS"),
-                            "model": types.Schema(type="STRING", description=(
-                                "Modèle Antigravity CLI selon la complexité : "
-                                "'gemini-3.1-pro-high' (par défaut, pour synthèse et analyse de référence), "
-                                "'claude-3-opus' ou 'claude-3-7-sonnet' (pour analyse conceptuelle pointue), "
-                                "ou 'gemini-3.8-flash-high' (pour investigation rapide)."
-                            )),
+                            "question": types.Schema(
+                                type="STRING",
+                                description="La problématique, sujet d'investigation, question stratégique, audit ou mission à traiter en profondeur par Antigravity CLI sur le VPS"
+                            ),
+                            "model": types.Schema(
+                                type="STRING",
+                                description=(
+                                    "Modèle Antigravity CLI selon la complexité : "
+                                    "'gemini-3.1-pro-high' (par défaut, pour synthèse et analyse de référence), "
+                                    "'claude-3-opus' ou 'claude-3-7-sonnet' (pour analyse conceptuelle pointue), "
+                                    "ou 'gemini-3.8-flash-high' (pour investigation rapide)."
+                                )
+                            ),
                             "intensite_reflexion": types.Schema(
                                 type="STRING",
                                 description=(
@@ -67,20 +95,28 @@ def get_tools_list() -> list[types.Tool]:
                                 ),
                                 enum=["rapide", "tactique", "approfondie"]
                             ),
-                            "confirmed_by_user": types.Schema(type="BOOLEAN", description="Mettre à True UNIQUEMENT après que Pierre a explicitement donné son accord oral suite à ta proposition. Par défaut False."),
+                            "confirmed_by_user": types.Schema(
+                                type="BOOLEAN",
+                                description="Mettre à True UNIQUEMENT après que Pierre a explicitement donné son accord oral suite à ta proposition. Par défaut False."
+                            ),
                         },
                         required=["question"]
                     )
                 ),
+
+                # ─── 4. launch_deep_research ──────────────────────────────────────────
                 types.FunctionDeclaration(
-                    name="lancer_mission_deep_research",
+                    name="launch_deep_research",
                     description=(
-                        "MOTEUR UNIVERSEL DEEP RESEARCH MAP-REDUCE MULTI-AGENTS (5 à 10 minutes) : "
-                        "Déclenche une recherche de fond approfondie et autonome sur n'importe quel sujet complexe "
-                        "(stage, prospective sectorielle, cartographie d'entreprises mondiales, benchmarks technologiques). "
-                        "Compile un contrat de mission dynamique (MissionSpec), applique un override géographique strict, "
-                        "déploie 3 ouvriers prospecteurs parallèles sur le VPS, audite rigoureusement les critères obligatoires, "
-                        "génère le rapport complet dans /artifacts/ et expédie automatiquement le résultat par e-mail et notifications."
+                        "MOTEUR UNIVERSEL DEEP RESEARCH MAP-REDUCE (5 à 10 minutes) : "
+                        "Déclenche une recherche de fond exhaustive, multi-sources et autonome sur un écosystème ou secteur "
+                        "(cartographie d'entreprises, benchmarks mondiaux, prospection de stages). "
+                        "Déploie 3 ouvriers prospecteurs parallèles sur le VPS avec Quality Gate strict, "
+                        "génère un rapport complet dans /artifacts/ et l'expédie par e-mail et notifications. "
+                        "À UTILISER QUAND : Pierre demande expressément une étude de fond, prospection d'entreprises, cartographie sectorielle ou analyse de marché approfondie. "
+                        "NE JAMAIS UTILISER QUAND : La réponse doit être immédiate ou porte sur un fait simple (utiliser 'search_web'), "
+                        "ni pour du raisonnement de code ou d'architecture (utiliser 'ask_deep_reasoning'), "
+                        "ni pour interagir avec un site web en direct (utiliser 'run_browser_task')."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -102,21 +138,55 @@ def get_tools_list() -> list[types.Tool]:
                         required=["consigne_utilisateur"]
                     )
                 ),
+
+                # ─── 5. search_web ────────────────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="search_web",
-                    description="Effectue une recherche rapide sur Internet pour obtenir des informations récentes, des faits, des prix ou des liens.",
-                    parameters=types.Schema(type="OBJECT", properties={"query": types.Schema(type="STRING", description="La requête de recherche web précise")}, required=["query"])
+                    description=(
+                        "Recherche textuelle rapide sur Internet via DuckDuckGo pour obtenir des informations factuelles récentes, définitions, cours ou liens en moins de 2 secondes. "
+                        "À UTILISER QUAND : Pierre pose une question factuelle directe (météo, score sportif, date, définition, fait récent, prix indicatif) nécessitant une réponse immédiate. "
+                        "NE JAMAIS UTILISER QUAND : Une interaction complexe est requise sur un site (clics, panier, formulaires : utiliser 'run_browser_task'), "
+                        "ni pour un raisonnement technique approfondi (utiliser 'ask_deep_reasoning'), "
+                        "ni pour une étude sectorielle lourde de 5-10 minutes (utiliser 'launch_deep_research')."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "query": types.Schema(
+                                type="STRING",
+                                description="La requête de recherche web précise"
+                            )
+                        },
+                        required=["query"]
+                    )
                 ),
+
+                # ─── 6. run_browser_task ──────────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="run_browser_task",
-                    description="Pilote un agent web autonome universel (Browser-Use) pour naviguer, réserver (hôtels, billets), remplir des formulaires, comparer des prix ou exécuter des missions sur n'importe quel site web.",
+                    description=(
+                        "Pilote un agent web autonome universel (Browser-Use) avec vision pour naviguer, explorer un site web, remplir des formulaires, comparer des offres en direct ou accomplir des missions multi-étapes. "
+                        "À UTILISER QUAND : Une mission web dynamique requiert clics, interactions, navigation successive de page en page ou exploration visuelle d'un site. "
+                        "NE JAMAIS UTILISER QUAND : Une recherche d'information textuelle simple suffit sans navigation complexe (utiliser 'search_web'), "
+                        "ni pour une action ciblée sur une URL unique connue (utiliser 'interact_web_page'), "
+                        "ni pour juste ouvrir Chrome à l'écran (utiliser 'open_user_browser')."
+                    ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "goal": types.Schema(type="STRING", description="L'objectif concret de navigation à accomplir sur le web"),
-                            "url": types.Schema(type="STRING", description="L'URL de départ si connue, sinon laisser vide"),
-                            "confirmed_by_user": types.Schema(type="BOOLEAN", description="Mettre à True UNIQUEMENT après que Pierre a explicitement donné son accord oral suite à ta demande expliquant le besoin et le coût estimé. Par défaut False."),
+                            "goal": types.Schema(
+                                type="STRING",
+                                description="L'objectif concret de navigation à accomplir sur le web"
+                            ),
+                            "url": types.Schema(
+                                type="STRING",
+                                description="L'URL de départ si connue, sinon laisser vide"
+                            ),
+                            "confirmed_by_user": types.Schema(
+                                type="BOOLEAN",
+                                description="Mettre à True UNIQUEMENT après que Pierre a explicitement donné son accord oral suite à ta demande expliquant le besoin et le coût estimé. Par défaut False."
+                            ),
                             "execution_target": types.Schema(
                                 type="STRING",
                                 enum=["vps_headless", "local_chrome_cdp"],
@@ -126,202 +196,319 @@ def get_tools_list() -> list[types.Tool]:
                         required=["goal"]
                     )
                 ),
+
+                # ─── 7. open_user_browser ─────────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="open_user_browser",
-                    description="Ouvre Google Chrome directement à l'écran de l'utilisateur avec son profil connecté pour afficher un site ou une page spécifique.",
-                    parameters=types.Schema(
-                        type="OBJECT",
-                        properties={
-                            "url": types.Schema(type="STRING", description="L'URL à ouvrir dans le navigateur à l'écran"),
-                            "reason": types.Schema(type="STRING", description="La raison de l'ouverture"),
-                        }
-                    )
-                ),
-                types.FunctionDeclaration(
-                    name="set_browser_link",
                     description=(
-                        "Définit ou met à jour le lien web précis affiché dans le HUD mobile pour que l'utilisateur puisse cliquer sur 'OUVRIR LE LIEN' "
-                        "(ex: lien direct vers un train spécifique avec horaires, un vol précis, un hôtel, ou un article complet au lieu de la page d'accueil)."
+                        "Ouvre Google Chrome directement à l'écran physique du PC de Pierre avec son profil connecté pour afficher un site ou une page spécifique. "
+                        "À UTILISER QUAND : Pierre demande expressément de voir une page ou un site web s'ouvrir à l'écran de son ordinateur Windows. "
+                        "NE JAMAIS UTILISER QUAND : Il faut seulement proposer un lien cliquable sur le smartphone / HUD mobile (utiliser 'set_browser_link'), "
+                        "ni pour une navigation autonome en tâche de fond (utiliser 'run_browser_task')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "url": types.Schema(type="STRING", description="L'URL directe précise de la page ou de la réservation"),
-                            "title": types.Schema(type="STRING", description="Le libellé court du lien (ex: 'Train Paris - Lyon 14h08', 'Vol Air France')"),
+                            "url": types.Schema(
+                                type="STRING",
+                                description="L'URL à ouvrir dans le navigateur à l'écran"
+                            ),
+                            "reason": types.Schema(
+                                type="STRING",
+                                description="La raison de l'ouverture"
+                            ),
+                        }
+                    )
+                ),
+
+                # ─── 8. set_browser_link ──────────────────────────────────────────────
+                types.FunctionDeclaration(
+                    name="set_browser_link",
+                    description=(
+                        "Définit ou met à jour le lien web interactif affiché dans le HUD mobile pour que Pierre puisse cliquer sur 'OUVRIR LE LIEN' sur son smartphone (billet de train, article, hôtel, réservation). "
+                        "À UTILISER QUAND : Tu souhaites mettre à disposition de Pierre un lien direct précis sur son interface mobile. "
+                        "NE JAMAIS UTILISER QUAND : Pierre demande d'ouvrir la fenêtre Chrome à l'écran de son PC de bureau (utiliser 'open_user_browser')."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "url": types.Schema(
+                                type="STRING",
+                                description="L'URL directe précise de la page ou de la réservation"
+                            ),
+                            "title": types.Schema(
+                                type="STRING",
+                                description="Le libellé court du lien (ex: 'Train Paris - Lyon 14h08', 'Vol Air France')"
+                            ),
                         },
                         required=["url"]
                     )
                 ),
+
+                # ─── 9. save_memory (Fusion remember_user_fact + memoriser_information) ─
                 types.FunctionDeclaration(
-                    name="remember_user_fact",
-                    description="Enregistre un souvenir, une préférence, une habitude ou une information importante concernant l'utilisateur dans la mémoire persistante long-terme de Jarvis.",
+                    name="save_memory",
+                    description=(
+                        "Enregistre durablement un fait, une habitude, une préférence personnelle ou une information clé concernant Pierre dans la mémoire persistante vectorielle (Qdrant + SQLite). "
+                        "À UTILISER QUAND : Pierre te demande de retenir ou mémoriser une information le concernant "
+                        "('retiens que', 'souviens-toi que', 'note que', 'mémorise', 'ma couleur préférée est...', 'mon projet actuel est...'). "
+                        "NE JAMAIS UTILISER QUAND : Pierre cherche à retrouver un souvenir existant (utiliser 'recall_user_memories'), "
+                        "ni pour créer une note structurée dans son Notion (utiliser 'save_notion_entry'), "
+                        "ni pour programmer un rappel avec horaire (utiliser 'create_push_reminder')."
+                    ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "fact": types.Schema(type="STRING", description="Le fait, la préférence ou l'information à mémoriser durablement"),
-                            "category": types.Schema(type="STRING", description="Catégorie (ex: 'préférences', 'projets', 'famille', 'voyage')"),
+                            "fact": types.Schema(
+                                type="STRING",
+                                description="Le fait, la préférence, l'habitude ou l'information à mémoriser durablement"
+                            ),
+                            "category": types.Schema(
+                                type="STRING",
+                                description="Catégorie : 'preference', 'fact', 'habit', 'project', 'contact', 'general'"
+                            ),
+                            "key": types.Schema(
+                                type="STRING",
+                                description="Clé ou titre court optionnel pour indexer l'information (ex: 'couleur_preferee', 'projet_actuel')"
+                            ),
                         },
                         required=["fact"]
                     )
                 ),
+
+                # ─── 10. recall_user_memories ─────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="recall_user_memories",
-                    description="Recherche dans la mémoire persistante long-terme des informations ou souvenirs passés sur l'utilisateur ou ses projets.",
+                    description=(
+                        "Recherche sémantiquement dans la mémoire persistante long-terme des faits, préférences ou informations passées sur Pierre. "
+                        "À UTILISER QUAND : Pierre demande ce que tu sais sur lui ou sur un sujet personnel "
+                        "('qu'est-ce que tu sais sur mes goûts ?', 'tu te souviens de... ?', 'quel est mon projet ?'), "
+                        "ou quand tu as besoin de vérifier ses préférences passées. "
+                        "NE JAMAIS UTILISER QUAND : Pierre te demande d'enregistrer une nouvelle information (utiliser 'save_memory')."
+                    ),
                     parameters=types.Schema(
                         type="OBJECT",
-                        properties={"query": types.Schema(type="STRING", description="Mots-clés de recherche dans la mémoire")},
+                        properties={
+                            "query": types.Schema(
+                                type="STRING",
+                                description="Mots-clés de recherche dans la mémoire"
+                            )
+                        },
                         required=["query"]
                     )
                 ),
-                types.FunctionDeclaration(
-                    name="memoriser_information",
-                    description=(
-                        "Mémorise de façon durable et vectorielle une information, préférence, fait ou tâche que Pierre te demande de retenir. "
-                        "Utilise cet outil dès que Pierre dit 'retiens que', 'souviens-toi que', 'note que', 'mémorise que' ou toute formulation similaire."
-                    ),
-                    parameters=types.Schema(
-                        type="OBJECT",
-                        properties={
-                            "cle": types.Schema(type="STRING", description="Nom ou titre court de l'information à mémoriser (ex: 'couleur préférée', 'projet en cours')"),
-                            "valeur": types.Schema(type="STRING", description="Contenu complet et détaillé de l'information à mémoriser"),
-                            "categorie": types.Schema(type="STRING", description="Catégorie : 'préférence', 'fait', 'tâche', 'habitude', 'projet', 'contact', 'général'"),
-                        },
-                        required=["cle", "valeur"]
-                    )
-                ),
+
+                # ─── 11. get_system_status ────────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="get_system_status",
-                    description="Consulte l'état en direct de l'ordinateur de l'utilisateur (utilisation du processeur CPU, mémoire RAM, état de la batterie).",
+                    description=(
+                        "Consulte en direct la télémétrie matérielle de l'ordinateur et du serveur (CPU, RAM, disques, batterie). "
+                        "À UTILISER QUAND : Pierre demande l'état de son PC, la charge du processeur, la mémoire vive libre ou l'autonomie restante. "
+                        "NE JAMAIS UTILISER QUAND : Il s'agit d'analyser les logs de la console ou les erreurs logicielles du serveur (utiliser 'check_console_errors'), "
+                        "ni pour démarrer une application (utiliser 'launch_application')."
+                    ),
                     parameters=types.Schema(type="OBJECT", properties={})
                 ),
+
+                # ─── 12. launch_application ───────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="launch_application",
                     description=(
-                        "Ouvre une application locale sur l'ordinateur de Pierre "
-                        "(Calculatrice, Bloc-notes, VS Code, Explorateur, Chrome, VLC). "
-                        "IMPORTANT : Pour Deezer utilise 'play_music_deezer'. Pour Stremio utilise 'play_video_stremio'."
+                        "Lance une application locale sur le PC Windows de Pierre (Calculatrice, Bloc-notes, VS Code, Explorateur, Chrome, VLC, Terminal). "
+                        "À UTILISER QUAND : Pierre demande d'ouvrir un logiciel bureautique sur son poste de travail. "
+                        "NE JAMAIS UTILISER QUAND : Pierre demande de la musique sur Deezer (utiliser 'play_music_deezer'), "
+                        "un film ou une série sur Stremio (utiliser 'play_video_stremio'), "
+                        "ou une page web dans Chrome (utiliser 'open_user_browser')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
-                        properties={"app_name": types.Schema(type="STRING", description="Nom de l'application (calculatrice, bloc-notes, vscode, explorateur, chrome, vlc)")},
+                        properties={
+                            "app_name": types.Schema(
+                                type="STRING",
+                                description="Nom de l'application (calculatrice, bloc-notes, vscode, explorateur, chrome, vlc, terminal)"
+                            )
+                        },
                         required=["app_name"]
                     )
                 ),
+
+                # ─── 13. play_music_deezer ────────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="play_music_deezer",
                     description=(
-                        "CONTRÔLE 100% DU WEB PLAYER DEEZER (deezer.com) : "
-                        "Gère le Web Player Deezer en temps réel via liaison WebSocket locale et l'API Deezer officielle. "
-                        "Permet de : "
-                        "1) Mettre en pause ('pause', 'arrête la musique') via action='pause', "
-                        "2) Reprendre la lecture ('play', 'remets la musique', 'reprends') via action='play', "
-                        "3) Basculer play/pause via action='playpause', "
-                        "4) Passer au morceau suivant ('suivant', 'morceau suivant', 'next') via action='next', "
-                        "5) Revenir au morceau précédent ('précédent', 'morceau d'avant') via action='prev', "
-                        "6) Activer/désactiver/basculer l'aléatoire ('mets en aléatoire', 'shuffle') via action='shuffle' (enable=True/False), "
-                        "7) Régler le volume via action='volume' (ex: volume=75), "
-                        "8) Obtenir l'état de lecture via action='status', "
-                        "9) Choisir et lancer un titre, artiste, album ou playlist ('mets Daft Punk', 'joue du rock', 'choisis Billie Jean') via action='choose' avec query='...'. "
-                        "Exemples : 'mets en pause la musique', 'musique suivante', 'mets Get Lucky de Daft Punk', 'active la lecture aléatoire', 'règle le son à 80%'."
+                        "Contrôle intégralement le lecteur web officiel Deezer en temps réel via liaison WebSocket locale "
+                        "(lecture, pause, piste suivante/précédente, volume, lecture aléatoire, recherche de titre/artiste/album/playlist). "
+                        "À UTILISER QUAND : Pierre demande d'écouter, de contrôler ou de régler de la musique sur Deezer. "
+                        "NE JAMAIS UTILISER QUAND : Pierre demande un film, une vidéo ou une série télévisée (utiliser 'play_video_stremio'), "
+                        "ni pour lancer une application bureautique (utiliser 'launch_application')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "action": types.Schema(type="STRING", description="Action à effectuer : 'play', 'pause', 'playpause', 'next', 'prev', 'shuffle', 'volume', 'status', 'choose', 'open'"),
-                            "query": types.Schema(type="STRING", description="Titre du morceau, nom de l'artiste, album ou style de musique recherché"),
-                            "item_type": types.Schema(type="STRING", description="Type de recherche si applicable : 'track' (défaut), 'album', 'playlist', 'artist'"),
-                            "enable": types.Schema(type="BOOLEAN", description="Pour shuffle : True pour activer, False pour désactiver, omis pour basculer"),
-                            "volume": types.Schema(type="INTEGER", description="Niveau de volume de 0 à 100 pour l'action 'volume'"),
+                            "action": types.Schema(
+                                type="STRING",
+                                description="Action à effectuer : 'play', 'pause', 'playpause', 'next', 'prev', 'shuffle', 'volume', 'status', 'choose', 'open'"
+                            ),
+                            "query": types.Schema(
+                                type="STRING",
+                                description="Titre du morceau, nom de l'artiste, album ou style de musique recherché"
+                            ),
+                            "item_type": types.Schema(
+                                type="STRING",
+                                description="Type de recherche si applicable : 'track' (défaut), 'album', 'playlist', 'artist'"
+                            ),
+                            "enable": types.Schema(
+                                type="BOOLEAN",
+                                description="Pour shuffle : True pour activer, False pour désactiver, omis pour basculer"
+                            ),
+                            "volume": types.Schema(
+                                type="INTEGER",
+                                description="Niveau de volume de 0 à 100 pour l'action 'volume'"
+                            ),
                         }
                     )
                 ),
+
+                # ─── 14. play_video_stremio ───────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="play_video_stremio",
                     description=(
-                        "Lance Stremio (installé sur l'ordi de Pierre) et ouvre automatiquement le film ou la série demandée. "
-                        "Recherche le contenu via l'API Stremio (Cinemeta), sélectionne le meilleur stream 1080p le plus léger en Go (via Torrentio), "
-                        "et ouvre Stremio directement sur le film/série. "
-                        "Utilise cet outil dès que Pierre veut regarder un film ou une série. "
-                        "Exemples : 'lance Inception', 'mets Breaking Bad', 'je veux voir Avatar 2'."
+                        "Recherche et lance un film ou un épisode de série sur Stremio localement en sélectionnant automatiquement le meilleur flux 1080p fluide. "
+                        "À UTILISER QUAND : Pierre demande de regarder un film ou une série vidéo. "
+                        "NE JAMAIS UTILISER QUAND : Pierre demande un morceau de musique (utiliser 'play_music_deezer'), "
+                        "ni pour une simple vidéo YouTube dans le navigateur (utiliser 'open_user_browser')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "title": types.Schema(type="STRING", description="Titre du film ou de la série (ex: 'Inception', 'Breaking Bad', 'Avatar', 'The Office')"),
-                            "content_type": types.Schema(type="STRING", description="Type de contenu : 'movie' pour un film (défaut), 'series' pour une série TV"),
+                            "title": types.Schema(
+                                type="STRING",
+                                description="Titre du film ou de la série (ex: 'Inception', 'Breaking Bad', 'Avatar', 'The Office')"
+                            ),
+                            "content_type": types.Schema(
+                                type="STRING",
+                                description="Type de contenu : 'movie' pour un film (défaut), 'series' pour une série TV"
+                            ),
                         },
                         required=["title"]
                     )
                 ),
+
+                # ─── 15. send_email ───────────────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="send_email",
                     description=(
-                        "Envoie un courriel à Pierre Cassagnettes (pierrecassagnettes@gmail.com) ou au destinataire externe demandé. "
-                        "Pour Pierre Cassagnettes : utilise le format officiel exécutif Stark Industries (rapport, synthèse, capture d'écran). "
-                        "Pour toute autre adresse : aucun message prédéfini ni habillage n'est ajouté, tu rédiges intégralement le mail de A à Z. "
-                        "Pour joindre des documents (PDF, tableur Excel, ebook ePub, rapport, fichier texte, etc.) : renseigne impérativement 'attachments' avec le nom ou chemin du fichier."
+                        "Rédige et expédie un courriel via SMTP à Pierre Cassagnettes (format officiel exécutif Stark Industries) "
+                        "ou à un destinataire externe, avec gestion de pièces jointes (documents, rapports, PDF, tableurs). "
+                        "À UTILISER QUAND : Pierre demande d'envoyer un mail directement, de transmettre un fichier ou de s'auto-envoyer un compte-rendu. "
+                        "NE JAMAIS UTILISER QUAND : Il faut analyser un fil de discussion complexe reçu et préparer un projet de réponse argumenté avant envoi "
+                        "(utiliser 'draft_email_response'), ni pour consulter les emails entrants (utiliser 'read_emails')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "subject": types.Schema(type="STRING", description="L'objet de l'e-mail"),
-                            "body": types.Schema(type="STRING", description="Le contenu du message rédigé par l'agent de A à Z"),
-                            "to_email": types.Schema(type="STRING", description="Adresse destinataire. Par défaut: pierrecassagnettes@gmail.com"),
+                            "subject": types.Schema(
+                                type="STRING",
+                                description="L'objet de l'e-mail"
+                            ),
+                            "body": types.Schema(
+                                type="STRING",
+                                description="Le contenu du message rédigé par l'agent de A à Z"
+                            ),
+                            "to_email": types.Schema(
+                                type="STRING",
+                                description="Adresse destinataire. Par défaut: pierrecassagnettes@gmail.com"
+                            ),
                             "attachments": types.Schema(
                                 type="ARRAY",
                                 items=types.Schema(type="STRING"),
-                                description=(
-                                    "Liste des fichiers ou documents à joindre en pièce jointe (ex: ['rapport.pdf'], ['Second Foundation.epub'], ['tableur.xlsx'], ou chemin complet). "
-                                    "Tu peux simplement donner le nom du fichier, du livre ou du document, ou 'dernier' pour le dernier fichier téléchargé. "
-                                    "Jarvis se charge de localiser automatiquement le document dans les téléchargements et sur le système."
-                                )
+                                description="Liste des fichiers ou documents à joindre en pièce jointe (ex: ['rapport.pdf'], ['tableur.xlsx'], ou chemin complet)."
                             ),
-                            "include_latest_screenshot": types.Schema(type="BOOLEAN", description="Mettre à True pour joindre automatiquement une capture d'écran du système ou du navigateur"),
+                            "include_latest_screenshot": types.Schema(
+                                type="BOOLEAN",
+                                description="Mettre à True pour joindre automatiquement une capture d'écran du système ou du navigateur"
+                            ),
                         },
                         required=["subject"]
                     )
                 ),
+
+                # ─── 16. read_emails ──────────────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="read_emails",
                     description=(
-                        "Consulte et lit les e-mails reçus par Pierre Cassagnettes sur son adresse pierrecassagnettes@gmail.com via la boîte de réception Gmail. "
-                        "Permet de récupérer les derniers messages reçus, de rechercher des mails précis par mot-clé ou expéditeur, "
-                        "ou de filtrer les e-mails non lus pour en faire une synthèse vocale claire et fluide."
+                        "Consulte et résume les e-mails récents reçus dans la boîte Gmail de Pierre via IMAP, avec filtres par mot-clé, expéditeur ou non lus. "
+                        "À UTILISER QUAND : Pierre demande s'il a reçu de nouveaux messages ou souhaite consulter ses e-mails. "
+                        "NE JAMAIS UTILISER QUAND : Il faut envoyer un nouveau courriel (utiliser 'send_email'), "
+                        "ni pour décortiquer des pièces jointes et concevoir un brouillon de réponse (utiliser 'draft_email_response')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "count": types.Schema(type="INTEGER", description="Nombre d'e-mails récents à consulter (par défaut: 3 à 5)"),
-                            "query": types.Schema(type="STRING", description="Mot-clé ou expéditeur optionnel pour filtrer la recherche"),
-                            "unread_only": types.Schema(type="BOOLEAN", description="Mettre à True pour ne récupérer que les e-mails non lus"),
+                            "count": types.Schema(
+                                type="INTEGER",
+                                description="Nombre d'e-mails récents à consulter (par défaut: 3 à 5)"
+                            ),
+                            "query": types.Schema(
+                                type="STRING",
+                                description="Mot-clé ou expéditeur optionnel pour filtrer la recherche"
+                            ),
+                            "unread_only": types.Schema(
+                                type="BOOLEAN",
+                                description="Mettre à True pour ne récupérer que les e-mails non lus"
+                            ),
                         }
                     )
                 ),
+
+                # ─── 17. check_console_errors ─────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="check_console_errors",
                     description=(
-                        "Inspecte, lit et analyse les erreurs récentes de la console et des logs serveur pour diagnostiquer un dysfonctionnement, "
-                        "tenter de corriger automatiquement le problème si possible, et informer Pierre à l'oral avec précision avec ta voix Aoede."
-                    ),
-                    parameters=types.Schema(
-                        type="OBJECT",
-                        properties={"action": types.Schema(type="STRING", description="Action souhaitée : 'diagnose' (analyser les erreurs récentes), 'clear' (réinitialiser le journal d'erreurs)")}
-                    )
-                ),
-                types.FunctionDeclaration(
-                    name="interact_web_page",
-                    description=(
-                        "Lit, explore et interagit concrètement avec n'importe quelle page web : lit le texte et la structure HTML, "
-                        "découvre les formulaires, champs et boutons, remplit des champs de texte, clique sur des éléments "
-                        "ou fait défiler la page. Capture un aperçu visuel en direct."
+                        "Lit, inspecte et diagnostique les erreurs récentes des logs de la console serveur ou réinitialise le journal d'erreurs. "
+                        "À UTILISER QUAND : Pierre signale une anomalie ou demande un diagnostic rapide de l'état des logs et erreurs du serveur, ou demande d'effacer le journal. "
+                        "NE JAMAIS UTILISER QUAND : Une panne nécessite une modification et un patch autonome du code source par un agent SRE (utiliser 'system_self_healing'), "
+                        "ni pour la télémétrie matérielle CPU/RAM (utiliser 'get_system_status')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "url": types.Schema(type="STRING", description="L'URL de la page web avec laquelle interagir"),
-                            "action": types.Schema(type="STRING", description="Type d'action : 'read' (lecture et découverte des champs/boutons), 'click' (clic sur sélecteur), 'fill' (saisie de texte), 'scroll' (défilement)"),
-                            "selector": types.Schema(type="STRING", description="Sélecteur CSS ou texte de l'élément cible pour le clic ou la saisie"),
-                            "text_to_fill": types.Schema(type="STRING", description="Texte à saisir dans le champ si l'action est 'fill'"),
+                            "action": types.Schema(
+                                type="STRING",
+                                description="Action souhaitée : 'diagnose' (analyser les erreurs récentes), 'clear' (réinitialiser le journal d'erreurs)"
+                            )
+                        }
+                    )
+                ),
+
+                # ─── 18. interact_web_page ────────────────────────────────────────────
+                types.FunctionDeclaration(
+                    name="interact_web_page",
+                    description=(
+                        "Interagit de manière unitaire et chirurgicale avec une page web spécifique (découverte DOM, clic sur un sélecteur précis, remplissage d'un champ connu, défilement). "
+                        "À UTILISER QUAND : Tu as une URL connue et dois effectuer une manipulation précise (cliquer sur un bouton ciblé ou remplir un champ précis). "
+                        "NE JAMAIS UTILISER QUAND : Il s'agit d'une mission de navigation globale multi-étapes sans sélecteurs précis connus (utiliser 'run_browser_task'), "
+                        "ni pour préparer un panier d'achat e-commerce (utiliser 'prepare_web_cart_or_checkout')."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "url": types.Schema(
+                                type="STRING",
+                                description="L'URL de la page web avec laquelle interagir"
+                            ),
+                            "action": types.Schema(
+                                type="STRING",
+                                description="Type d'action : 'read' (lecture et découverte des champs/boutons), 'click' (clic sur sélecteur), 'fill' (saisie de texte), 'scroll' (défilement)"
+                            ),
+                            "selector": types.Schema(
+                                type="STRING",
+                                description="Sélecteur CSS ou texte de l'élément cible pour le clic ou la saisie"
+                            ),
+                            "text_to_fill": types.Schema(
+                                type="STRING",
+                                description="Texte à saisir dans le champ si l'action est 'fill'"
+                            ),
                             "execution_target": types.Schema(
                                 type="STRING",
                                 enum=["vps_headless", "local_chrome_cdp"],
@@ -331,20 +518,32 @@ def get_tools_list() -> list[types.Tool]:
                         required=["url"]
                     )
                 ),
+
+                # ─── 19. prepare_web_cart_or_checkout ─────────────────────────────────
                 types.FunctionDeclaration(
                     name="prepare_web_cart_or_checkout",
                     description=(
-                        "COMMANDE & ACHAT AUTONOME SÉCURISÉ POUR PIERRE : "
-                        "Recherche un produit ou service, l'ajoute au panier sur un site marchand (Amazon, Fnac, Decathlon, SNCF, etc.), "
-                        "navigue jusqu'à l'étape de commande, préremplit automatiquement les coordonnées de Pierre Cassagnettes, "
-                        "S'ARRÊTE STRICTEMENT AVANT LE PAIEMENT (aucun prélèvement automatique) et ouvre automatiquement Google Chrome à l'écran."
+                        "Recherche un produit ou service, l'ajoute au panier sur un site marchand (Amazon, Fnac, SNCF, etc.), navigue jusqu'à la commande et préremplit les coordonnées de Pierre, "
+                        "puis S'ARRÊTE STRICTEMENT AVANT LE PAIEMENT (aucun prélèvement automatique, règle inviolable). "
+                        "À UTILISER QUAND : Pierre demande de commander ou d'acheter un produit en ligne en préparant son panier jusqu'au règlement final. "
+                        "NE JAMAIS UTILISER QUAND : Il s'agit d'une simple navigation exploratoire sans intention d'achat (utiliser 'run_browser_task' ou 'search_web'), "
+                        "et ne jamais tenter de valider le paiement final."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "product_or_service": types.Schema(type="STRING", description="Le produit, livre, matériel ou service précis à ajouter au panier"),
-                            "merchant_url": types.Schema(type="STRING", description="L'URL du site marchand ou boutique en ligne (optionnel, recherche auto si vide)"),
-                            "open_when_ready": types.Schema(type="BOOLEAN", description="Ouvrir automatiquement Chrome à l'écran dès que le panier et le formulaire sont prêts (True par défaut)"),
+                            "product_or_service": types.Schema(
+                                type="STRING",
+                                description="Le produit, livre, matériel ou service précis à ajouter au panier"
+                            ),
+                            "merchant_url": types.Schema(
+                                type="STRING",
+                                description="L'URL du site marchand ou boutique en ligne (optionnel, recherche auto si vide)"
+                            ),
+                            "open_when_ready": types.Schema(
+                                type="BOOLEAN",
+                                description="Ouvrir automatiquement Chrome à l'écran dès que le panier et le formulaire sont prêts (True par défaut)"
+                            ),
                             "execution_target": types.Schema(
                                 type="STRING",
                                 enum=["vps_headless", "local_chrome_cdp"],
@@ -354,109 +553,141 @@ def get_tools_list() -> list[types.Tool]:
                         required=["product_or_service"]
                     )
                 ),
+
+                # ─── 20. download_file ────────────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="download_file",
                     description=(
-                        "Télécharge un fichier, document, ebook ou média depuis Internet sur l'ordinateur de Pierre. "
-                        "RÈGLE STRICTE : Nécessite TOUJOURS l'accord oral préalable explicite de Pierre. "
-                        "Si confirmed_by_user=False, l'outil analyse la taille et le nom, puis te demande d'obtenir l'accord oral de Pierre."
+                        "Télécharge un fichier, document ou média depuis une URL directe sur l'ordinateur de Pierre après avoir obtenu son accord oral explicite préalable. "
+                        "À UTILISER QUAND : Tu disposes d'une URL de téléchargement direct et Pierre a validé oralement le rapatriement du fichier. "
+                        "NE JAMAIS UTILISER QUAND : Il s'agit de rechercher un livre numérique par titre/auteur (utiliser 'search_and_download_ebook'), "
+                        "ni sans l'accord oral préalable explicite de Pierre (garde-fous système)."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "url": types.Schema(type="STRING", description="L'URL directe de téléchargement du fichier"),
-                            "filename": types.Schema(type="STRING", description="Nom de fichier optionnel sous lequel enregistrer le document"),
-                            "confirmed_by_user": types.Schema(type="BOOLEAN", description="Mettre à True UNIQUEMENT après accord oral explicite de Pierre. Par défaut False."),
-                            "file_type": types.Schema(type="STRING", description="Type de fichier : 'general' pour un document, 'ebook' pour un livre numérique"),
+                            "url": types.Schema(
+                                type="STRING",
+                                description="L'URL directe de téléchargement du fichier"
+                            ),
+                            "filename": types.Schema(
+                                type="STRING",
+                                description="Nom de fichier optionnel sous lequel enregistrer le document"
+                            ),
+                            "confirmed_by_user": types.Schema(
+                                type="BOOLEAN",
+                                description="Mettre à True UNIQUEMENT après accord oral explicite de Pierre. Par défaut False."
+                            ),
+                            "file_type": types.Schema(
+                                type="STRING",
+                                description="Type de fichier : 'general' pour un document, 'ebook' pour un livre numérique"
+                            ),
                         },
                         required=["url"]
                     )
                 ),
+
+                # ─── 21. send_to_ereader (Fusion send_to_ereader + send_page_to_kindle + send_file_to_kindle) ─
                 types.FunctionDeclaration(
                     name="send_to_ereader",
                     description=(
-                        "Achemine un livre numérique (ebook EPUB, MOBI, PDF) vers la liseuse de Pierre (Kindle, Kobo, Vivlio, Bookeen). "
-                        "Détecte automatiquement si une liseuse est branchée en USB pour y copier directement le fichier, "
-                        "ou l'expédie par courriel direct (Send-to-Kindle ou boîte email) avec le livre en pièce jointe."
+                        "Achemine un contenu (livre numérique EPUB/PDF, document local ou article web épuré) vers la liseuse de Pierre (Kindle, Kobo) "
+                        "via USB, Amazon Send-to-Kindle Web ou e-mail. "
+                        "À UTILISER QUAND : Pierre demande d'envoyer un ebook téléchargé, un document local ou un article web sur sa liseuse ou Kindle. "
+                        "NE JAMAIS UTILISER QUAND : Le livre doit d'abord être recherché et téléchargé sur Internet (utiliser 'search_and_download_ebook'), "
+                        "ni pour produire une fiche de lecture analytique (utiliser 'generate_book_summary')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "file_path": types.Schema(type="STRING", description="Chemin local du fichier ebook ou nom du livre téléchargé"),
-                            "ereader_email": types.Schema(type="STRING", description="Adresse e-mail spécifique de la liseuse (ex: pierre@kindle.com) si connue"),
-                            "method": types.Schema(type="STRING", description="Méthode de transfert : 'auto' (USB en priorité puis e-mail), 'usb' (USB uniquement), 'email' (envoi par courriel)"),
+                            "source": types.Schema(
+                                type="STRING",
+                                description="Chemin local du fichier ebook/document (ex: 'livre.epub') OU URL directe de l'article web à envoyer"
+                            ),
+                            "source_type": types.Schema(
+                                type="STRING",
+                                enum=["file", "url"],
+                                description="Type de source : 'file' pour un fichier local ou 'url' pour une page web. Auto-détecté si omis."
+                            ),
+                            "method": types.Schema(
+                                type="STRING",
+                                enum=["auto", "usb", "kindle_web", "email"],
+                                description="Méthode de transfert : 'auto' (USB en priorité puis e-mail), 'usb' (liseuse branchée), 'kindle_web' (Amazon Send to Kindle Web), ou 'email'."
+                            ),
+                            "title": types.Schema(
+                                type="STRING",
+                                description="Titre optionnel de l'article ou de l'ebook pour la bibliothèque de la liseuse"
+                            ),
+                            "ereader_email": types.Schema(
+                                type="STRING",
+                                description="Adresse e-mail spécifique de la liseuse (ex: pierre@kindle.com) si connue"
+                            ),
                         },
-                        required=["file_path"]
+                        required=["source"]
                     )
                 ),
+
+                # ─── 22. search_and_download_ebook ────────────────────────────────────
                 types.FunctionDeclaration(
                     name="search_and_download_ebook",
                     description=(
-                        "Mission complète E-Book : Recherche un livre numérique sur Internet, demande l'accord oral de Pierre pour le télécharger, "
-                        "puis l'envoie automatiquement sur sa liseuse (Kindle, Kobo) via USB ou e-mail. "
-                        "Si confirmed_by_user=False, demande confirmation à Pierre avant de télécharger."
+                        "Mission complète e-book : Recherche un livre numérique sur Internet par titre/auteur, demande l'accord oral de Pierre, "
+                        "le télécharge puis l'achemine optionnellement vers sa liseuse (Kindle, Kobo) via USB ou e-mail. "
+                        "À UTILISER QUAND : Pierre demande de lui trouver et télécharger un livre numérique ou roman. "
+                        "NE JAMAIS UTILISER QUAND : Le fichier du livre est déjà téléchargé sur le disque (utiliser 'send_to_ereader'), "
+                        "ni pour télécharger un document non-ebook depuis une URL connue (utiliser 'download_file')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "query": types.Schema(type="STRING", description="Le titre ou l'auteur de l'ebook recherché (ex: 'L'art de la guerre', '1984 George Orwell')"),
-                            "source_url": types.Schema(type="STRING", description="URL directe du site ou de la page de téléchargement si spécifiée par Pierre"),
-                            "confirmed_by_user": types.Schema(type="BOOLEAN", description="Mettre à True UNIQUEMENT après que Pierre a explicitement donné son accord oral. Par défaut False."),
-                            "send_to_reader": types.Schema(type="BOOLEAN", description="Transférer automatiquement sur la liseuse une fois téléchargé (True par défaut)"),
-                            "ereader_email": types.Schema(type="STRING", description="Adresse e-mail spécifique de la liseuse si renseignée"),
-                            "lang": types.Schema(type="STRING", description="Langue demandée pour le livre : 'en' (anglais) ou 'fr' (français). Détecter automatiquement selon la demande de Pierre."),
+                            "query": types.Schema(
+                                type="STRING",
+                                description="Le titre ou l'auteur de l'ebook recherché (ex: 'L'art de la guerre', '1984 George Orwell')"
+                            ),
+                            "source_url": types.Schema(
+                                type="STRING",
+                                description="URL directe du site ou de la page de téléchargement si spécifiée par Pierre"
+                            ),
+                            "confirmed_by_user": types.Schema(
+                                type="BOOLEAN",
+                                description="Mettre à True UNIQUEMENT après que Pierre a explicitement donné son accord oral. Par défaut False."
+                            ),
+                            "send_to_reader": types.Schema(
+                                type="BOOLEAN",
+                                description="Transférer automatiquement sur la liseuse une fois téléchargé (True par défaut)"
+                            ),
+                            "ereader_email": types.Schema(
+                                type="STRING",
+                                description="Adresse e-mail spécifique de la liseuse si renseignée"
+                            ),
+                            "lang": types.Schema(
+                                type="STRING",
+                                description="Langue demandée pour le livre : 'en' (anglais) ou 'fr' (français). Détecter automatiquement selon la demande de Pierre."
+                            ),
                         },
                         required=["query"]
                     )
                 ),
-                types.FunctionDeclaration(
-                    name="send_page_to_kindle",
-                    description=(
-                        "ENVOI SUR LISEUSE KINDLE : "
-                        "Envoie un article web, une page internet ou un document directement sur la liseuse Kindle de Pierre. "
-                        "Utilise l'extension officielle Google Chrome 'Send to Kindle' et l'acheminement direct e-reader (par courriel vers sa liseuse). "
-                        "Extrait le texte épuré sans publicité en mode lecture, l'expédie par mail et ouvre la page dans Google Chrome avec l'extension prête."
-                    ),
-                    parameters=types.Schema(
-                        type="OBJECT",
-                        properties={
-                            "url": types.Schema(type="STRING", description="L'URL directe de l'article web ou de la page à transférer vers la Kindle"),
-                            "title": types.Schema(type="STRING", description="Titre optionnel de l'article pour la bibliothèque Kindle"),
-                        },
-                        required=["url"]
-                    )
-                ),
-                types.FunctionDeclaration(
-                    name="send_file_to_kindle",
-                    description=(
-                        "ENVOI DE FICHIER SUR LISEUSE KINDLE (AMAZON SEND TO KINDLE WEB) : "
-                        "Dépose et envoie un fichier (livre numérique EPUB, document PDF, texte TXT, document Word DOC/DOCX, image) "
-                        "directement sur la liseuse Kindle de Pierre via la page officielle Amazon Send to Kindle connectée à son compte."
-                    ),
-                    parameters=types.Schema(
-                        type="OBJECT",
-                        properties={
-                            "file_path": types.Schema(type="STRING", description="Chemin ou nom du fichier à déposer sur Amazon Send to Kindle"),
-                            "open_browser_if_needed": types.Schema(type="BOOLEAN", description="Ouvre Chrome à l'écran si une reconnexion Amazon est requise (True par défaut)"),
-                        },
-                        required=["file_path"]
-                    )
-                ),
+
+                # ─── 23. list_chrome_extensions ───────────────────────────────────────
                 types.FunctionDeclaration(
                     name="list_chrome_extensions",
                     description=(
-                        "Liste les extensions Google Chrome installées sur l'ordinateur de Pierre "
-                        "(Send to Kindle, Wanteeed, Adblock, SubWallet, etc.) et vérifie la disponibilité de Send to Kindle."
+                        "Liste les extensions Google Chrome installées dans le profil de Pierre pour vérifier leur présence et leur état (ex: Send to Kindle, Wanteeed). "
+                        "À UTILISER QUAND : Tu dois diagnostiquer la disponibilité d'une extension de navigateur spécifique. "
+                        "NE JAMAIS UTILISER QUAND : Pierre souhaite simplement ouvrir ou naviguer sur un site web (utiliser 'open_user_browser' ou 'search_web')."
                     ),
                     parameters=types.Schema(type="OBJECT", properties={})
                 ),
+
+                # ─── 24. execute_external_action (was executer_action_externe) ────────
                 types.FunctionDeclaration(
-                    name="executer_action_externe",
+                    name="execute_external_action",
                     description=(
-                        "Déclenche un workflow d'automatisation externe n8n en arrière-plan pour exécuter des actions tierces : "
-                        "ajouter un événement au calendrier Samsung, créer une note Notion ou Obsidian, envoyer une notification Gotify, "
-                        "envoyer des emails ou messages, synchroniser des contacts, automatiser une tâche domotique, etc. "
-                        "Utilise systématiquement cet outil dès qu'une action sollicite un service tiers ou un workflow d'automatisation n8n."
+                        "Déclenche un workflow d'automatisation générique sur n8n pour des intégrations tierces personnalisées (webhooks, domotique, Gotify, synchronisations). "
+                        "À UTILISER QUAND : Une action spécifique nécessite un webhook n8n dédié qui ne possède pas son propre outil spécialisé. "
+                        "NE JAMAIS UTILISER QUAND : L'action dispose d'un outil dédié (pour Notion utiliser 'save_notion_entry', "
+                        "pour l'agenda utiliser 'manage_calendar_event', pour un rappel utiliser 'create_push_reminder')."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -464,30 +695,26 @@ def get_tools_list() -> list[types.Tool]:
                         properties={
                             "action_name": types.Schema(
                                 type="STRING",
-                                description=(
-                                    "Nom ou identifiant de l'action / webhook n8n à déclencher. "
-                                    "Exemples : 'document-spreadsheet', 'document-slides', 'notion-entry', "
-                                    "'samsung-calendar', 'notion-note', 'gotify-notify', 'send-email', 'obsidian-note'."
-                                )
+                                description="Nom ou identifiant de l'action / webhook n8n à déclencher (ex: 'gotify-notify', 'domotique-scene', 'custom-sync')."
                             ),
                             "parametres": types.Schema(
                                 type="OBJECT",
-                                description=(
-                                    "Paramètres libres optionnels extraits de la conversation vocale et transmis au workflow. "
-                                    "Exemple pour 'samsung-calendar' : {'titre': 'Dentiste', 'date': '2026-09-27', 'heure': '10:00', 'duree_minutes': 60}."
-                                )
+                                description="Paramètres libres optionnels extraits de la conversation vocale et transmis au workflow."
                             ),
                         },
                         required=["action_name"]
                     )
                 ),
+
+                # ─── 25. generate_spreadsheet (was generer_fichier_tableur) ───────────
                 types.FunctionDeclaration(
-                    name="generer_fichier_tableur",
+                    name="generate_spreadsheet",
                     description=(
-                        "GÉNÉRATION DE TABLEUR EXCEL (.xlsx) : "
-                        "Convertit des listes et structures de données JSON (comptabilité, budgets, benchmarks, inventaires, listes) "
-                        "en un fichier tableur Excel (.xlsx) propre et téléchargeable via n8n. "
-                        "L'opération s'exécute en arrière-plan et le fichier est déposé dans /downloads/."
+                        "Génère un classeur tableur Excel (.xlsx) structuré, avec colonnes, données et formules dynamiques optionnelles "
+                        "via l'agent 'spreadsheet_modeler'. Le fichier est déposé dans /downloads/. "
+                        "À UTILISER QUAND : Pierre demande de créer un tableur, un budget, un comparatif chiffré ou d'exporter des données tabulaires en format Excel. "
+                        "NE JAMAIS UTILISER QUAND : Pierre demande une présentation avec diapositives visuelles (utiliser 'generate_presentation'), "
+                        "ni pour une note de synthèse Notion (utiliser 'save_notion_entry')."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -523,17 +750,16 @@ def get_tools_list() -> list[types.Tool]:
                         required=["nom_fichier", "colonnes", "lignes"]
                     )
                 ),
+
+                # ─── 26. generate_presentation (was generer_presentation) ─────────────
                 types.FunctionDeclaration(
-                    name="generer_presentation",
+                    name="generate_presentation",
                     description=(
-                        "CRÉATION DE PRÉSENTATION GOOGLE SLIDES EXPERTE & ESTHÉTIQUE : "
-                        "Conçoit une présentation Google Slides complète (5 à 8 diapositives), richement documentée, percutante et stylisée "
-                        "(thèmes Stark sombre/cyan, Bitcoin/Gold or/noir, Corporate, Cyber). "
-                        "Le système prend impérativement le temps en tâche de fond d'élaborer un plan narratif rigoureux, de rechercher des faits vérifiés, "
-                        "actualités et métriques clés, de trier les informations et d'appliquer une mise en page soignée avec cartes de contenu et chiffres clés. "
-                        "Tu dois spécifier le titre ou sujet (ex: 'Bitcoin', 'Intelligence Artificielle', 'Transition Énergétique'), et le thème souhaité. "
-                        "Si tu n'as pas de liste de slides pré-écrite, laisse le champ 'slides' vide ou omis : Jarvis structurera lui-même les diapositives complètes. "
-                        "L'opération s'exécute en tâche de fond et le lien direct vers Google Slides est fourni à Pierre à la fin."
+                        "Conçoit une présentation Google Slides complète et stylisée (5 à 8 diapositives polymorphes, thèmes Stark, Bitcoin/Gold, Corporate, Cyber) "
+                        "avec mise en page soignée, métriques clés et lien direct généré en arrière-plan. "
+                        "À UTILISER QUAND : Pierre demande de créer un diaporama ou une présentation Google Slides sur un sujet donné. "
+                        "NE JAMAIS UTILISER QUAND : Pierre demande un fichier tableur Excel (utiliser 'generate_spreadsheet'), "
+                        "ni pour un simple rapport textuel de recherche (utiliser 'launch_deep_research')."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -578,27 +804,37 @@ def get_tools_list() -> list[types.Tool]:
                         required=["titre"]
                     )
                 ),
+
+                # ─── 27. get_active_task_status ───────────────────────────────────────
                 types.FunctionDeclaration(
                     name="get_active_task_status",
                     description=(
-                        "Consulte en temps réel l'état d'avancement, l'étape précise et les détails des tâches actives en arrière-plan "
-                        "(recherche documentaire et génération Google Slides, développement Antigravity, navigation web, etc.). "
-                        "À INVOQUER IMMÉDIATEMENT dès que Pierre te demande ce que tu es en train de faire, où en est sa présentation, "
-                        "ou comment progresse son travail (ex: 'qu'est-ce que tu fais ?', 'où en est ma présentation ?', 'explique-moi ce que tu es en train de faire')."
+                        "Consulte en direct l'avancement, l'étape courante et les détails d'une tâche de fond en cours "
+                        "(génération de slides, prospection Deep Research, agent Antigravity, navigation). "
+                        "À UTILISER QUAND : Pierre te demande où en est son travail ou ce que tu fais ('qu'est-ce que tu fais ?', 'où en est ma présentation ?'). "
+                        "NE JAMAIS UTILISER QUAND : Pierre veut arrêter la tâche (utiliser 'stop_current_action'), "
+                        "ni pour modifier son orientation en direct (utiliser 'guide_active_task')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "task_id": types.Schema(type="STRING", description="Identifiant optionnel d'une tâche spécifique à vérifier"),
+                            "task_id": types.Schema(
+                                type="STRING",
+                                description="Identifiant optionnel d'une tâche spécifique à vérifier"
+                            ),
                         }
                     )
                 ),
+
+                # ─── 28. save_notion_entry (was notion_enregistrer) ───────────────────
                 types.FunctionDeclaration(
-                    name="notion_enregistrer",
+                    name="save_notion_entry",
                     description=(
-                        "PRISE DE NOTES & TO-DO NOTION : "
-                        "Ajoute une entrée structurée (note rapide, item de todo-list, fiche de veille, compte-rendu) "
-                        "dans les bases de données et pages Notion de Pierre via n8n."
+                        "Enregistre une entrée structurée (note rapide, item de todo-list, fiche de veille, compte-rendu) "
+                        "dans les bases et pages Notion de Pierre via n8n. "
+                        "À UTILISER QUAND : Pierre demande explicitement d'ajouter une note, une tâche ou une fiche dans son Notion. "
+                        "NE JAMAIS UTILISER QUAND : Il s'agit d'une préférence personnelle de dialogue à retenir pour Jarvis (utiliser 'save_memory'), "
+                        "ni pour programmer un rappel avec alerte horaire sur son smartphone (utiliser 'create_push_reminder')."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -625,13 +861,15 @@ def get_tools_list() -> list[types.Tool]:
                         required=["type_entree", "titre", "contenu"]
                     )
                 ),
+
+                # ─── 29. manage_calendar_event (was agenda_gerer_evenement) ───────────
                 types.FunctionDeclaration(
-                    name="agenda_gerer_evenement",
+                    name="manage_calendar_event",
                     description=(
-                        "GESTION AGENDA SAMSUNG / GOOGLE CALENDAR : "
-                        "Créer, décaler, consulter ou supprimer des événements et rendez-vous dans l'agenda de Pierre "
-                        "(synchronisés nativement entre Google Calendar et l'application Samsung Calendar de son smartphone). "
-                        "L'opération s'exécute via webhook n8n."
+                        "Gère les événements sur l'agenda Google / Samsung Calendar de Pierre (créer, consulter, décaler, supprimer des rendez-vous). "
+                        "À UTILISER QUAND : Pierre demande d'ajouter, vérifier ou modifier un rendez-vous dans son calendrier. "
+                        "NE JAMAIS UTILISER QUAND : Il s'agit d'un simple rappel push ou mémo sans créneau d'agenda (utiliser 'create_push_reminder'), "
+                        "ni pour le point général du matin (utiliser 'get_morning_briefing')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
@@ -646,11 +884,11 @@ def get_tools_list() -> list[types.Tool]:
                             ),
                             "date_debut": types.Schema(
                                 type="STRING",
-                                description="Date et heure de début au format ISO ou clair (ex: '2026-09-26T14:30:00', 'demain 10h')"
+                                description="Date et heure de début au format ISO ou clair (ex: '2026-09-28T14:30:00', 'demain 10h')"
                             ),
                             "date_fin": types.Schema(
                                 type="STRING",
-                                description="Date et heure de fin optionnelle (ex: '2026-09-26T15:30:00')"
+                                description="Date et heure de fin optionnelle (ex: '2026-09-28T15:30:00')"
                             ),
                             "description": types.Schema(
                                 type="STRING",
@@ -660,12 +898,15 @@ def get_tools_list() -> list[types.Tool]:
                         required=["action", "titre", "date_debut"]
                     )
                 ),
+
+                # ─── 30. create_push_reminder (was creer_rappel_push) ─────────────────
                 types.FunctionDeclaration(
-                    name="creer_rappel_push",
+                    name="create_push_reminder",
                     description=(
-                        "CAPTURE VOCALE AVEC RAPPEL PUSH : "
-                        "Note un mémo oral instantané et programme un rappel push sur le smartphone de Pierre "
-                        "via n8n (Pushbullet / Web Push / Telegram Stark Bot) à une échéance ou un horaire précis."
+                        "Programme un rappel ou mémo vocal avec notification push immédiate ou différée sur le smartphone de Pierre via Telegram Stark Bot / Gotify. "
+                        "À UTILISER QUAND : Pierre demande de lui rappeler quelque chose à une heure précise ou de lui envoyer un mémo sur son téléphone. "
+                        "NE JAMAIS UTILISER QUAND : Il faut inscrire un événement officiel sur son agenda (utiliser 'manage_calendar_event'), "
+                        "ni pour enregistrer une note durable sans rappel (utiliser 'save_notion_entry' ou 'save_memory')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
@@ -676,24 +917,26 @@ def get_tools_list() -> list[types.Tool]:
                             ),
                             "echeance": types.Schema(
                                 type="STRING",
-                                description="Délai ou date/heure d'échéance du rappel ou de la notification (ex: 'maintenant' pour un envoi immédiat, 'dans 30 minutes', 'dans 2 heures', '18h30'). Par défaut 'maintenant'."
+                                description="Délai ou date/heure d'échéance du rappel (ex: 'maintenant' pour un envoi immédiat, 'dans 30 minutes', 'dans 2 heures', '18h30'). Par défaut 'maintenant'."
                             ),
                             "priorite": types.Schema(
                                 type="STRING",
-                                description="Niveau de priorité du rappel : 'basse', 'normale', 'haute', 'urgente'. Par défaut 'normale'."
+                                description="Niveau de priorité : 'basse', 'normale', 'haute', 'urgente'. Par défaut 'normale'."
                             ),
                         },
                         required=["message"]
                     )
                 ),
+
+                # ─── 31. get_morning_briefing (was demander_morning_briefing) ─────────
                 types.FunctionDeclaration(
-                    name="demander_morning_briefing",
+                    name="get_morning_briefing",
                     description=(
-                        "MORNING BRIEFING STARK INDUSTRIES : "
-                        "Restitue la routine matinale au ton Stark Industries (météo locale, rendez-vous du jour, "
-                        "e-mails urgents non lus et résumé des tâches). "
-                        "Interroge en priorité la clé Redis 'jarvis:briefing:today' préparée dès 7h00 pour un retour instantané sans latence, "
-                        "ou compile les données fraîches si nécessaire."
+                        "Restitue la routine matinale Stark Industries compilée (météo locale, rendez-vous du jour, e-mails urgents non lus, état des transports). "
+                        "Interroge en priorité la clé Redis 'jarvis:briefing:today' préparée dès 7h00 pour un retour instantané sans latence. "
+                        "À UTILISER QUAND : Pierre demande son briefing du matin, le résumé du jour ou son récapitulatif quotidien. "
+                        "NE JAMAIS UTILISER QUAND : Pierre pose une question ciblée uniquement sur son agenda (utiliser 'manage_calendar_event') "
+                        "ou souhaite juste lire ses emails (utiliser 'read_emails')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
@@ -705,16 +948,17 @@ def get_tools_list() -> list[types.Tool]:
                         }
                     )
                 ),
+
+                # ─── 32. search_train_routes (was rechercher_train) ───────────────────
                 types.FunctionDeclaration(
-                    name="rechercher_train",
+                    name="search_train_routes",
                     description=(
-                        "RECHERCHE D'ITINÉRAIRES & ENCHAÎNEMENTS FERROVIAIRES (FRANCE & SUÈDE) : "
-                        "Recherche les horaires, tarifs indicatifs et génère les liens valides de réservation "
-                        "pour un trajet direct OU un enchaînement de plusieurs trains nécessitant plusieurs billets "
-                        "(ex: Suède du Sud comme Malmö vers Kiruna / Laponie via Stockholm en train grande vitesse + train de nuit). "
-                        "Supporte les gares françaises (Paris, Lyon, Marseille, etc.) et suédoises (Malmö, Stockholm, Kiruna, etc.). "
-                        "Si Pierre demande de réserver, prendre ou ouvrir les billets, positionne 'reserver_automatiquement' à True pour "
-                        "ouvrir immédiatement toutes les pages de réservation sur son navigateur Chrome pour qu'il n'ait plus qu'à payer."
+                        "Recherche les horaires, enchaînements et tarifs ferroviaires (France SNCF et Suède SJ/Trafikverket), "
+                        "avec optimisation multi-critères optionnelle par l'agent 'transport_optimizer'. "
+                        "Si Pierre demande d'ouvrir ou réserver les billets dès la recherche, positionne 'reserver_automatiquement' à True. "
+                        "À UTILISER QUAND : Pierre cherche un itinéraire ferroviaire, des horaires ou des correspondances en France ou en Suède. "
+                        "NE JAMAIS UTILISER QUAND : Le trajet est déjà choisi et Pierre veut uniquement ouvrir la page de paiement sur son PC (utiliser 'open_train_booking'), "
+                        "ni pour surveiller les retards d'un train en circulation (utiliser 'monitor_train')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
@@ -741,7 +985,7 @@ def get_tools_list() -> list[types.Tool]:
                             ),
                             "reserver_automatiquement": types.Schema(
                                 type="BOOLEAN",
-                                description="Si True (ou si Pierre souhaite réserver/acheter ou ouvrir les billets sur son navigateur), ouvre automatiquement les pages de réservation de chaque train sur le navigateur de son ordinateur pour qu'il n'ait plus qu'à payer."
+                                description="Si True, ouvre automatiquement les pages de réservation de chaque train sur le navigateur de son ordinateur pour qu'il n'ait plus qu'à payer."
                             ),
                             "optimiser_avec_agent": types.Schema(
                                 type="BOOLEAN",
@@ -751,13 +995,15 @@ def get_tools_list() -> list[types.Tool]:
                         required=["origine", "destination", "date_depart"]
                     )
                 ),
+
+                # ─── 33. monitor_train (was surveiller_train) ─────────────────────────
                 types.FunctionDeclaration(
-                    name="surveiller_train",
+                    name="monitor_train",
                     description=(
-                        "SURVEILLANCE PROACTIVE EN TEMPS RÉEL D'UN TRAIN : "
-                        "Active une boucle de veille via n8n (interrogation toutes les 10 min jusqu'au départ) "
-                        "pour surveiller le quai de départ, l'heure et les retards sur les réseaux SNCF, SJ ou Trafikverket. "
-                        "Alerte Pierre dès qu'une perturbation ou un retard supérieur à 5 minutes survient."
+                        "Active une veille proactive en temps réel sur un train en circulation via n8n (vérification régulière quai, retard, perturbations SNCF/SJ/Trafikverket). "
+                        "Alerte Pierre dès qu'une perturbation ou un retard supérieur à 5 minutes survient. "
+                        "À UTILISER QUAND : Pierre demande de surveiller son train pour être prévenu en cas de retard ou de changement de quai. "
+                        "NE JAMAIS UTILISER QUAND : Pierre recherche un trajet ou compare des horaires de trains (utiliser 'search_train_routes')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
@@ -778,14 +1024,17 @@ def get_tools_list() -> list[types.Tool]:
                         required=["numero_train", "date"]
                     )
                 ),
+
+                # ─── 34. open_train_booking (was reserver_billet_train_local) ─────────
                 types.FunctionDeclaration(
-                    name="reserver_billet_train_local",
+                    name="open_train_booking",
                     description=(
-                        "RÉSERVATION & PANIER SUR PC LOCAL WINDOWS : "
-                        "Sur demande de réservation ou d'achat d'un ou plusieurs billets, ouvre la session Google Chrome sur le PC physique de Pierre "
-                        "via jarvis_local_agent pour ouvrir la page du trajet ou de chaque segment (enchaînement de trains) jusqu'à l'écran de paiement. "
+                        "Ouvre directement les onglets de réservation du train sélectionné sur le navigateur Google Chrome du PC Windows de Pierre "
+                        "via l'agent local pour qu'il n'ait plus qu'à choisir ses places et régler. "
                         "Si les URLs ou gares sont omises, reprend automatiquement le dernier trajet ferroviaire recherché. "
-                        "Respect absolu du garde-fou bancaire : aucune validation d'achat automatique, Pierre valide lui-même son règlement."
+                        "Respect absolu du garde-fou bancaire : aucune validation d'achat automatique, Pierre valide lui-même son règlement. "
+                        "À UTILISER QUAND : Pierre a choisi un trajet et confirme vouloir réserver ou ouvrir les pages d'achat sur son écran. "
+                        "NE JAMAIS UTILISER QUAND : Pierre souhaite d'abord chercher, comparer les trains ou connaître les horaires (utiliser 'search_train_routes')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
@@ -822,19 +1071,15 @@ def get_tools_list() -> list[types.Tool]:
                         },
                     )
                 ),
+
+                # ─── 35. query_jarvis_architecture (was consulter_architecture_jarvis) ─
                 types.FunctionDeclaration(
-                    name="consulter_architecture_jarvis",
+                    name="query_jarvis_architecture",
                     description=(
-                        "CONSULTATION DE L'ARCHITECTURE ET DES CAPACITÉS SYSTÈME (ARCHITECTURE_COMPLETE_JARVIS.md) : "
-                        "Accède en temps réel au document d'architecture officiel et complet de J.A.R.V.I.S. (rechargé dynamiquement). "
-                        "Permet de vérifier : "
-                        "1) L'infrastructure technique (VPS Oracle, Docker, Redis, Postgres, Qdrant, n8n, tunnels Cloudflare), "
-                        "2) Le rôle du PC local Windows (jarvis_local_agent, profils Chrome, applications, ports Deezer), "
-                        "3) Le catalogue exhaustif des capacités et outils disponibles, "
-                        "4) Les limites strictes et garde-fous (interdiction paiement auto, interdiction téléchargement sans accord, etc.), "
-                        "5) Les endpoints REST et WebSockets. "
-                        "Utilise cet outil dès que Pierre te demande comment tu fonctionnes, ce que tu es, si tu es capable de faire quelque chose, "
-                        "ou souhaite des détails techniques sur ton infrastructure."
+                        "Interroge en temps réel le document officiel ARCHITECTURE_COMPLETE_JARVIS.md pour répondre à des questions techniques "
+                        "sur l'infrastructure de Jarvis, ses capacités, ses garde-fous ou ses serveurs. "
+                        "À UTILISER QUAND : Pierre pose des questions sur l'architecture système, les conteneurs Docker, les serveurs VPS, les protocoles audio ou les capacités techniques de Jarvis. "
+                        "NE JAMAIS UTILISER QUAND : Pierre demande l'utilisation CPU/RAM instantanée de la machine (utiliser 'get_system_status')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
@@ -850,55 +1095,76 @@ def get_tools_list() -> list[types.Tool]:
                         }
                     )
                 ),
+
+                # ─── 36. draft_email_response (was triage_et_brouillon_email) ─────────
                 types.FunctionDeclaration(
-                    name="triage_et_brouillon_email",
+                    name="draft_email_response",
                     description=(
-                        "TRIAGE EXÉCUTIF & BROUILLON D'E-MAIL ANTIGRAVITY (SYSTÈME 2) : "
-                        "Mobilise l'agent Antigravity CLI pour analyser en profondeur un e-mail reçu ou un fil de discussion complexe, "
-                        "extraire et lire les pièces jointes PDF, et préparer un projet de réponse argumenté "
-                        "sauvegardé dans outbox_emails/. Propose ensuite oralement le brouillon à Pierre avant expédition."
+                        "Mobilise l'agent Antigravity CLI pour analyser en profondeur un email reçu ou un fil complexe, lire les pièces jointes PDF "
+                        "et préparer un projet de réponse argumenté dans outbox_emails/. "
+                        "À UTILISER QUAND : Un email reçu nécessite une analyse experte et la rédaction d'un brouillon soigné avant validation orale de Pierre. "
+                        "NE JAMAIS UTILISER QUAND : Pierre souhaite juste envoyer un courriel direct qu'il dicte lui-même (utiliser 'send_email'), "
+                        "ni pour une simple consultation de boîte de réception (utiliser 'read_emails')."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "query": types.Schema(type="STRING", description="Expéditeur, mot-clé ou sujet de l'email à traiter (ex: 'Inria', 'stage', 'laboratoire', 'dernier')"),
-                            "consigne": types.Schema(type="STRING", description="Consigne d'orientation ou souhait pour la réponse (ex: 'accepter pour jeudi 14h', 'demander un report')")
+                            "query": types.Schema(
+                                type="STRING",
+                                description="Expéditeur, mot-clé ou sujet de l'email à traiter (ex: 'Inria', 'stage', 'laboratoire', 'dernier')"
+                            ),
+                            "consigne": types.Schema(
+                                type="STRING",
+                                description="Consigne d'orientation ou souhait pour la réponse (ex: 'accepter pour jeudi 14h', 'demander un report')"
+                            ),
                         }
                     )
                 ),
+
+                # ─── 37. generate_book_summary (was curation_livre_synthese) ──────────
                 types.FunctionDeclaration(
-                    name="curation_livre_synthese",
+                    name="generate_book_summary",
                     description=(
-                        "CURATION CULTURELLE & GUIDE DE LECTURE ANTIGRAVITY (SYSTÈME 2) : "
-                        "Mobilise l'agent Antigravity CLI pour analyser la table des matières et les thèses fondamentales d'un livre ou ebook, "
-                        "rédiger une fiche exécutive de 2 pages 'Synthèse & Clés de lecture' dans /artifacts/ et l'expédier en bonus sur la liseuse Kindle."
+                        "Mobilise l'agent Antigravity CLI pour analyser les thèses majeures d'un livre et rédiger une fiche exécutive 'Synthèse & Clés de lecture' "
+                        "de 2 pages dans /artifacts/, expédiée sur Kindle. "
+                        "À UTILISER QUAND : Pierre demande une analyse de fond, un guide de lecture ou une synthèse critique d'un livre numérique. "
+                        "NE JAMAIS UTILISER QUAND : Pierre veut juste transférer le fichier du livre sur sa liseuse sans synthèse (utiliser 'send_to_ereader'), "
+                        "ni pour télécharger le livre (utiliser 'search_and_download_ebook')."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "titre_livre": types.Schema(type="STRING", description="Titre ou nom du livre à analyser"),
+                            "titre_livre": types.Schema(
+                                type="STRING",
+                                description="Titre ou nom du livre à analyser"
+                            ),
                         },
                         required=["titre_livre"]
                     )
                 ),
+
+                # ─── 38. system_self_healing (was auto_guerison_systeme) ──────────────
                 types.FunctionDeclaration(
-                    name="auto_guerison_systeme",
+                    name="system_self_healing",
                     description=(
-                        "AUTO-GUÉRISON SYSTÈME & SRE AUTONOME ANTIGRAVITY (SYSTÈME 2) : "
-                        "Déclenche l'agent Antigravity SRE pour inspecter une anomalie de code, analyser la stacktrace, "
-                        "concevoir un patch correctif et sécuriser le service."
+                        "Déclenche l'agent SRE Antigravity pour analyser une anomalie critique de code, isoler la cause racine dans le code source serveur "
+                        "et appliquer un patch correctif validé par tests. "
+                        "À UTILISER QUAND : Une panne ou exception récurrente du serveur nécessite une réparation autonome du code source. "
+                        "NE JAMAIS UTILISER QUAND : Pierre demande un simple diagnostic informatif des logs de la console sans réparation (utiliser 'check_console_errors')."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "motif": types.Schema(type="STRING", description="Motif, module ou anomalie à inspecter et corriger (ex: 'console', 'erreur 500', 'service')")
+                            "motif": types.Schema(
+                                type="STRING",
+                                description="Motif, module ou anomalie à inspecter et corriger (ex: 'console', 'erreur 500', 'service')"
+                            )
                         }
                     )
                 ),
             ]
         )
     ]
-

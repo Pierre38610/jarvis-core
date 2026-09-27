@@ -384,62 +384,71 @@ def get_tool_metadata(name: str, args: dict = None) -> dict:
     """Retourne l'état visuel pour l'avatar (Kindle, Musique, Média, Code, etc.), le message et les métadonnées de l'action."""
     from google_antigravity import resolve_antigravity_model  # Évite circularité
     args = args or {}
-    if name in ("search_and_download_ebook", "send_to_ereader", "send_page_to_kindle", "send_file_to_kindle"):
-        query = args.get("query") or args.get("title") or args.get("file_path") or args.get("url") or "Livre Kindle"
+    if name in ("search_and_download_ebook", "download_ebook", "send_to_ereader", "send_page_to_kindle", "send_file_to_kindle"):
+        query = args.get("query") or args.get("title") or args.get("file_path") or args.get("source") or args.get("url") or "Livre Kindle"
         return {"state": "kindle", "msg": f"Liseuse Kindle : {query}", "task": f"Kindle : {query}", "engine": "Amazon Send to Kindle", "model": "Send to Kindle / Anna's Archive", "api_type": "free", "api_label": "Service Local"}
-    elif name == "play_music_deezer":
+    elif name in ("play_music_deezer", "deezer_action"):
         q = args.get("query") or args.get("action") or "Musique"
         return {"state": "music", "msg": f"Deezer — {q}", "task": f"Deezer : {q}", "engine": "WebSocket Bridge", "model": "Deezer Web Player", "api_type": "free", "api_label": "Local"}
-    elif name == "play_video_stremio":
+    elif name in ("play_video_stremio", "launch_media"):
         t = args.get("title") or "Cinéma"
         return {"state": "media", "msg": f"Stremio — Recherche de '{t}'...", "task": f"Stremio : {t}", "engine": "Cinemeta / Torrentio", "model": "Stremio 4K", "api_type": "free", "api_label": "Local"}
-    elif name == "download_file":
+    elif name in ("download_file", "file_download"):
         fn = args.get("filename") or args.get("url") or "Fichier"
         return {"state": "downloading", "msg": f"Téléchargement : {fn}...", "task": f"Téléchargement : {fn}", "engine": "Stark Transfer", "model": "Secure Downloader", "api_type": "free", "api_label": "Service Local"}
-    elif name == "ask_deep_reasoning":
+    elif name in ("ask_deep_reasoning", "deep_reasoning"):
         q = args.get("question") or "Analyse approfondie..."
         model_choice = args.get("model") or "gemini-3.1-pro-high"
         _, m_label = resolve_antigravity_model(model_choice)
         return {"state": "coding", "msg": "Agents Antigravity CLI sur le VPS...", "task": q, "engine": "Antigravity CLI (VPS)", "model": m_label, "api_type": "free", "api_label": "Session Pro"}
-    elif name == "lancer_mission_deep_research":
+    elif name in ("launch_deep_research", "lancer_mission_deep_research"):
         s = args.get("consigne_utilisateur") or args.get("sujet") or "Mission Deep Research"
         return {"state": "coding", "msg": f"Deep Research : {s[:35]}...", "task": f"Deep Research : {s[:35]}", "engine": "Antigravity CLI (VPS)", "model": "Gemini 3.1 Pro High", "api_type": "free", "api_label": "Google AI Pro VPS"}
-    elif name in ("search_web", "run_browser_task", "interact_web_page", "open_user_browser"):
+    elif name in ("search_web", "web_search", "run_browser_task", "browser_task", "interact_web_page", "open_user_browser", "open_browser"):
         q = args.get("query") or args.get("goal") or args.get("url") or "Navigation internet"
         return {"state": "browsing", "msg": f"Navigation Web : {q}", "task": q, "engine": "Playwright / DuckDuckGo", "model": "Browser Engine", "api_type": "free", "api_label": "Clé Gratuite"}
-    elif name in ("send_email", "read_emails"):
+    elif name in ("send_email", "mail_send", "read_emails", "get_emails"):
         sub = args.get("subject") or "Messagerie Gmail"
         return {"state": "emailing", "msg": f"Messagerie Stark : {sub}", "task": sub, "engine": "SMTP / IMAP Stark", "model": "Gmail Protocol", "api_type": "free", "api_label": "Service Local"}
-    elif name in ("remember_user_fact", "recall_user_memories"):
-        f = args.get("fact") or args.get("query") or "Mémoire persistante"
+    elif name in ("draft_email_response", "triage_et_brouillon_email"):
+        q = args.get("query") or "Triage e-mail"
+        return {"state": "emailing", "msg": f"Brouillon e-mail : {q}...", "task": f"Triage {q}", "engine": "Antigravity CLI", "model": "Email Agent", "api_type": "free", "api_label": "Session Pro"}
+    elif name in ("generate_book_summary", "curation_livre_synthese"):
+        tl = args.get("titre_livre") or "Livre"
+        return {"state": "document", "msg": f"Synthèse livre : {tl}...", "task": f"Fiche de lecture {tl}", "engine": "Antigravity CLI", "model": "Book Curator", "api_type": "free", "api_label": "Session Pro"}
+    elif name in ("system_self_healing", "auto_guerison_systeme"):
+        m = args.get("motif") or "SRE"
+        return {"state": "coding", "msg": f"Auto-guérison SRE : {m}...", "task": f"SRE {m}", "engine": "Antigravity SRE", "model": "Healing Agent", "api_type": "free", "api_label": "Session Pro"}
+    elif name in ("save_memory", "remember_user_fact", "memoriser_information", "recall_user_memories", "search_memories"):
+        f = args.get("fact") or args.get("valeur") or args.get("key") or args.get("query") or "Mémoire persistante"
         return {"state": "memory", "msg": f"Mémoire durable : {f}", "task": f, "engine": "SQLite Durable Memory", "model": "Stark Memory Protocol", "api_type": "free", "api_label": "Service Local"}
-    elif name == "prepare_web_cart_or_checkout":
+    elif name in ("prepare_web_cart_or_checkout", "prepare_cart"):
         p = args.get("product_or_service") or "Panier web"
         return {"state": "shopping", "msg": f"Préparation du panier : {p}", "task": f"Panier : {p}", "engine": "Playwright E-Commerce", "model": "Chrome Automation", "api_type": "free", "api_label": "Clé Gratuite"}
-    elif name in ("executer_action_externe", "generer_fichier_tableur", "generer_presentation", "notion_enregistrer"):
+    elif name in ("execute_external_action", "executer_action_externe", "generate_spreadsheet", "generer_fichier_tableur", "generate_presentation", "generer_presentation", "save_notion_entry", "notion_enregistrer"):
         act = args.get("nom_fichier") or args.get("titre") or args.get("action_name") or args.get("action") or name
         return {"state": "document", "msg": f"Pôle Documentaire n8n : {act}...", "task": f"n8n : {act}", "engine": "n8n Community", "model": "Document Automation", "api_type": "free", "api_label": "Local n8n"}
-    elif name == "agenda_gerer_evenement":
+    elif name in ("manage_calendar_event", "agenda_gerer_evenement"):
         t = args.get("titre") or "Événement"
         act = args.get("action") or "Agenda"
         return {"state": "calendar", "msg": f"Agenda ({act}) : {t}...", "task": f"Agenda : {t}", "engine": "n8n / Google Calendar", "model": "Samsung Sync", "api_type": "free", "api_label": "Local n8n"}
-    elif name == "creer_rappel_push":
+    elif name in ("create_push_reminder", "creer_rappel_push"):
         m = args.get("message") or "Rappel"
         ech = args.get("echeance") or ""
         return {"state": "reminder", "msg": f"Rappel push ({ech}) : {m}...", "task": f"Rappel : {m}", "engine": "n8n Push", "model": "Push Notification", "api_type": "free", "api_label": "Local n8n"}
-    elif name == "demander_morning_briefing":
+    elif name in ("get_morning_briefing", "demander_morning_briefing"):
         return {"state": "briefing", "msg": "Morning Briefing Stark...", "task": "Morning Briefing", "engine": "FastAPI / Redis", "model": "Briefing Protocol", "api_type": "free", "api_label": "Local Service"}
-    elif name == "rechercher_train":
+    elif name in ("search_train_routes", "rechercher_train"):
         orig = args.get("origine", "")
         dest = args.get("destination", "")
         return {"state": "browsing", "msg": f"Recherche trains : {orig} → {dest}...", "task": f"Train {orig} - {dest}", "engine": "Transport Service", "model": "Playwright VPS", "api_type": "free", "api_label": "Headless VPS"}
-    elif name == "surveiller_train":
+    elif name in ("monitor_train", "surveiller_train"):
         num = args.get("numero_train", "")
         return {"state": "system", "msg": f"Surveillance train {num} via n8n...", "task": f"Veille Train {num}", "engine": "n8n / Trafikverket / SNCF", "model": "Real-time Monitor", "api_type": "free", "api_label": "Local n8n"}
-    elif name == "reserver_billet_train_local":
+    elif name in ("open_train_booking", "reserver_billet_train_local"):
         op = (args.get("operateur") or "SNCF").upper()
         return {"state": "shopping", "msg": f"Préparation réservation {op} sur PC...", "task": f"Réservation {op}", "engine": "jarvis_local_agent", "model": "Chrome Local Windows", "api_type": "free", "api_label": "Local GUI"}
-    elif name == "consulter_architecture_jarvis":
+    elif name in ("query_jarvis_architecture", "consulter_architecture_jarvis"):
         s = args.get("section") or args.get("sujet") or "Spécifications"
         return {"state": "system", "msg": f"Consultation architecture ({s})...", "task": f"Architecture {s}", "engine": "Architecture Service", "model": "ARCHITECTURE_COMPLETE_JARVIS.md", "api_type": "free", "api_label": "Local Spec"}
     elif name in ("check_console_errors", "get_system_status", "launch_application", "list_chrome_extensions"):

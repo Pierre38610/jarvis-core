@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.2.0 — Cœur Distribué, Moteur Polymorphe & Système 2 Universel.*
+> *Dernière révision majeure : Version 5.3.0 — Catalogue Unifié des 38 Outils, Résolution d'Ambiguïtés ASR & Fusion Cognitive.*
 
 ---
 
@@ -50,10 +50,10 @@
    - 7.4. Journalisation Auto-Flush & Interception Globale des Crashs
    - 7.5. Exécution Silencieuse VBScript & Scripts d'Automatisation Windows
    - 7.6. Télémétrie Matérielle Réelle (psutil)
-8. [Catalogue Matriciel & Fiches des 41 Outils (Function Calling)](#8-catalogue-matriciel--fiches-des-41-outils-function-calling)
-   - 8.1. Matrice Globale Exhaustive des 41 Outils Déclarés
+8. [Catalogue Matriciel & Fiches des 38 Outils Unifiés (Function Calling)](#8-catalogue-matriciel--fiches-des-38-outils-unifiés-function-calling)
+   - 8.1. Matrice Globale Exhaustive des 38 Outils Déclarés
    - 8.2. Moteur Multi-Agents Antigravity CLI sur VPS (`ask_deep_reasoning`, `guide_active_task`, `stop_current_action`)
-   - 8.3. Moteur Universel Deep Research Map-Reduce (`lancer_mission_deep_research`)
+   - 8.3. Moteur Universel Deep Research Map-Reduce (`launch_deep_research`)
    - 8.4. Moteur Délibératif Système 2 Transverse (Missions Spécialisées)
    - 8.5. Navigation Web Autonome, E-Commerce & Chrome CDP
    - 8.6. Pôle Documentaire & Présentations Google Slides Polymorphes v1
@@ -486,53 +486,57 @@ L'agent interroge périodiquement `psutil` pour remonter :
 
 ---
 
-## 8. CATALOGUE MATRICIEL & FICHES DES 41 OUTILS (FUNCTION CALLING)
+## 8. CATALOGUE MATRICIEL & FICHES DES 38 OUTILS UNIFIÉS (FUNCTION CALLING)
 
-### 8.1. Matrice Globale Exhaustive des 41 Outils Déclarés
+> **Mise à jour V 5.3.0 — Refactorisation & Unification Cognitive** :
+> 1. **Consolidation (41 → 38 outils)** :
+>    - `save_memory` : fusionne `remember_user_fact` et `memoriser_information` avec gestion unifiée de `fact`, `category`, `key`.
+>    - `send_to_ereader` : fusionne `send_to_ereader`, `send_page_to_kindle` et `send_file_to_kindle` avec paramètre `source` (fichier ou URL), `source_type` (`file`|`url`) et `method` (`auto`|`usb`|`kindle_web`|`email`).
+> 2. **Clauses d'Arbitrage ASR Strictes** : Chaque outil intègre une clause explicite `À UTILISER QUAND : ...` et `NE JAMAIS UTILISER QUAND : ...` pour éliminer toute confusion sur entrée vocale bruitée.
+> 3. **Uniformisation Naming** : Adoption universelle de la convention anglaise `snake_case` (verbe + complément). Rétrocompatibilité intégrale à 100 % maintenue dans `core/tools/dispatcher.py` pour tous les identifiants historiques et alias.
 
-| # | Nom de l'Outil | Service Exécutant | Mode d'Exécution | Arguments Obligatoires / Clés | Rôle Opérationnel & Impact Système |
-| :- | :--- | :--- | :--- | :--- | :--- |
-| **1** | `stop_current_action` | `core/shared_state.py` | Bloquant (Immédiat) | `reason: str` | Arrêt physique d'urgence de toute tâche, agent ou navigation en cours. |
-| **2** | `guide_active_task` | `core/shared_state.py` | Non-bloquant | `directive: str` | Injection d'une consigne d'orientation en direct dans la tâche active. |
-| **3** | `ask_deep_reasoning` | `services/reasoning_service.py` | Non-bloquant | `question: str`, `intensite_reflexion` | Moteur délibératif multi-agents Antigravity CLI sur VPS (Tiers 1, 2, 3). |
-| **4** | `lancer_mission_deep_research` | `services/deep_research_service.py` | Non-bloquant | `consigne_utilisateur: str` | Moteur Deep Research Map-Reduce (5-10 min, 3 axes, Quality Gate). |
-| **5** | `search_web` | `services/browser_service.py` | Bloquant | `query: str` | Recherche web rapide via DuckDuckGo avec extraction de liens. |
-| **6** | `run_browser_task` | `services/browser_service.py` | Non-bloquant | `goal: str`, `execution_target` | Navigation web autonome via agent vision Browser-Use ou Playwright. |
-| **7** | `open_user_browser` | `services/browser_service.py` | Bloquant | `url: str`, `reason: str` | Ouvre Google Chrome directement à l'écran du PC de Pierre. |
-| **8** | `set_browser_link` | `core/shared_state.py` | Bloquant | `url: str`, `title: str` | Positionne le lien actif cliquable dans le HUD mobile. |
-| **9** | `remember_user_fact` | `services/unified_memory.py` | Bloquant | `fact: str`, `category: str` | Mémorise un fait ou une préférence dans la mémoire unifiée. |
-| **10** | `recall_user_memories` | `services/unified_memory.py` | Bloquant | `query: str` | Recherche sémantique par distance cosinus dans Qdrant et SQLite. |
-| **11** | `memoriser_information` | `services/unified_memory.py` | Bloquant | `cle: str`, `valeur: str` | Enregistre une paire clé/valeur structurée dans le profil de Pierre. |
-| **12** | `get_system_status` | `services/system_service.py` | Bloquant | Aucun | Diagnostic complet des ressources système (CPU, RAM, disques, PC). |
-| **13** | `launch_application` | `services/system_service.py` | Bloquant | `app_name: str` | Lance une application Windows sur le PC local de Pierre. |
-| **14** | `play_music_deezer` | `services/media_service.py` | Bloquant | `action: str`, `query: str`, `volume` | Contrôle total du lecteur Deezer Web officiel via bridge WebSocket. |
-| **15** | `play_video_stremio` | `services/media_service.py` | Bloquant | `title: str`, `content_type: str` | Lance un film ou une série en streaming 1080p fluide sur Stremio. |
-| **16** | `send_email` | `services/email_service.py` | Bloquant | `subject: str`, `body: str`, `attachments` | Envoie un courriel Stark Industries avec pièces jointes résolues. |
-| **17** | `read_emails` | `services/email_service.py` | Bloquant | `count: int`, `query: str`, `unread_only` | Consulte la boîte Gmail de Pierre via IMAP et résume les messages. |
-| **18** | `check_console_errors` | `services/console_monitor.py` | Bloquant | `filter_level: str` | Analyse les logs de console, diagnostique les erreurs et propose un patch. |
-| **19** | `interact_web_page` | `services/browser_service.py` | Non-bloquant | `url: str`, `instruction: str` | Interagit avec une page web spécifique (formulaire, scraping profond). |
-| **20** | `prepare_web_cart_or_checkout` | `services/browser_service.py` | Non-bloquant | `url: str`, `product: str` | Ajoute un produit au panier et préremplit les coordonnées de Pierre (sans payer). |
-| **21** | `download_file` | `services/download_service.py` | Non-bloquant | `url: str`, `filename: str` | Télécharge un fichier après obtention de l'accord oral préalable. |
-| **22** | `send_to_ereader` | `services/download_service.py` | Bloquant | `file_path: str` | Copie un ebook sur une liseuse physique USB connectée (Kindle/Kobo). |
-| **23** | `search_and_download_ebook` | `services/download_service.py` | Non-bloquant | `query: str`, `language: str` | Recherche et télécharge un EPUB sur Anna's Archive avec contrôle de langue. |
-| **24** | `send_page_to_kindle` | `services/browser_service.py` | Non-bloquant | `url: str`, `title: str` | Extrait un article web épuré et l'envoie sur la Kindle de Pierre. |
-| **25** | `send_file_to_kindle` | `services/browser_service.py` | Non-bloquant | `file_path: str` | Dépose un livre sur Amazon Send to Kindle via Playwright connecté. |
-| **26** | `list_chrome_extensions` | `services/browser_service.py` | Bloquant | Aucun | Énumère les extensions installées dans le profil Chrome de Pierre. |
-| **27** | `executer_action_externe` | `services/automation.py` | Non-bloquant | `service: str`, `action: str`, `params` | Déclenche un webhook générique d'automatisation sur n8n. |
-| **28** | `generer_fichier_tableur` | `services/automation.py` | Non-bloquant | `donnees: list`, `nom_fichier: str` | Génère un classeur Excel `.xlsx` complet via openpyxl ou n8n. |
-| **29** | `generer_presentation` | `services/slides_service.py` | Non-bloquant | `sujet: str`, `theme: str`, `nb_slides` | Conçoit une présentation Google Slides experte polymorphe v1. |
-| **30** | `get_active_task_status` | `services/supervision_service.py`| Bloquant | Aucun | Permet à Jarvis d'expliquer oralement l'état et l'avancement d'une tâche de fond. |
-| **31** | `notion_enregistrer` | `services/automation.py` | Non-bloquant | `titre: str`, `type_entree: str`, `contenu` | Enregistre une note, to-do list ou fiche de veille dans Notion via n8n. |
-| **32** | `agenda_gerer_evenement` | `services/briefing_service.py` | Non-bloquant | `action: str`, `titre: str`, `date_heure` | Crée, décale ou consulte des événements sur Google/Samsung Calendar. |
-| **33** | `creer_rappel_push` | `services/briefing_service.py` | Non-bloquant | `message: str`, `echeance: str` | Programme une notification push instantanée ou différée sur Telegram Stark Bot. |
-| **34** | `demander_morning_briefing` | `services/briefing_service.py` | Bloquant | Aucun | Restitue le briefing matinal compilé (météo, agenda, e-mails urgents, trains). |
-| **35** | `rechercher_train` | `services/transport_service.py`| Bloquant | `origine: str`, `destination: str`, `date` | Calcule un itinéraire ferroviaire France/Suède avec deep links directs Omio. |
-| **36** | `surveiller_train` | `services/transport_service.py`| Non-bloquant | `numero_train: str`, `date: str` | Active la veille proactive 10 min sur Trafikverket/SNCF avec alertes directes. |
-| **37** | `reserver_billet_train_local` | `services/transport_service.py`| Non-bloquant | `trajet_data: dict` | Ouvre simultanément les onglets de réservation Chrome sur le PC local. |
-| **38** | `consulter_architecture_jarvis` | `services/architecture_service.py`| Bloquant | `section: str`, `query: str` | Interroge interactivement le présent fichier d'architecture en temps réel. |
-| **39** | `triage_et_brouillon_email` | `services/agentic_dispatcher.py` | Non-bloquant | `email_id: str`, `instructions: str` | Triage exécutif Système 2, analyse de pièces jointes et brouillon de réponse. |
-| **40** | `curation_livre_synthese` | `services/agentic_dispatcher.py` | Non-bloquant | `titre_livre: str`, `ebook_path: str` | Rédige une fiche de lecture exécutive de 2 pages envoyée sur Kindle en bonus. |
-| **41** | `auto_guerison_systeme` | `services/agentic_dispatcher.py` | Non-bloquant | `incident_log: str`, `composant: str` | SRE autonome : analyse cause racine, patch syntaxique et validation de tests. |
+### 8.1. Matrice Globale Exhaustive des 38 Outils Déclarés
+
+| # | Nom Unifié (v5.3.0) | Nom Historique / Alias | Service Exécutant | Mode d'Exécution | Arguments Clés | Rôle Opérationnel & Impact Système |
+| :- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **1** | `stop_current_action` | `stop` | `core/shared_state.py` | Bloquant (Immédiat) | `reason: str` | Arrêt physique d'urgence immédiat de toute tâche, agent ou navigation en cours. |
+| **2** | `guide_active_task` | `guide` | `core/shared_state.py` | Non-bloquant | `directive: str` | Injection d'une consigne d'orientation en direct dans la tâche active. |
+| **3** | `ask_deep_reasoning` | `deep_reasoning` | `services/reasoning_service.py` | Non-bloquant | `question: str`, `intensite_reflexion` | Moteur délibératif multi-agents Antigravity CLI sur VPS (Tiers 1, 2, 3). |
+| **4** | `launch_deep_research` | `lancer_mission_deep_research` | `services/deep_research_service.py` | Non-bloquant | `consigne_utilisateur: str` | Moteur Deep Research Map-Reduce (5-10 min, 3 axes, Quality Gate). |
+| **5** | `search_web` | `web_search` | `services/browser_service.py` | Bloquant | `query: str` | Recherche web factuelle ultra-rapide via DuckDuckGo (< 2s). |
+| **6** | `run_browser_task` | `browser_task` | `services/browser_service.py` | Non-bloquant | `goal: str`, `execution_target` | Navigation web autonome via agent vision Browser-Use ou Playwright. |
+| **7** | `open_user_browser` | `open_browser` | `services/browser_service.py` | Bloquant | `url: str`, `reason: str` | Ouvre Google Chrome directement à l'écran du PC Windows de Pierre. |
+| **8** | `set_browser_link` | `browser_link` | `core/shared_state.py` | Bloquant | `url: str`, `title: str` | Positionne le lien actif cliquable dans le HUD mobile. |
+| **9** | `save_memory` | `remember_user_fact`, `memoriser_information` | `services/unified_memory.py` | Bloquant | `fact: str`, `category: str`, `key: str` | **Fusion V5.3.0** : Enregistre durablement un fait, habitude ou clé dans Qdrant + SQLite. |
+| **10** | `recall_user_memories` | `search_memories` | `services/unified_memory.py` | Bloquant | `query: str` | Recherche sémantique par distance cosinus dans Qdrant et SQLite. |
+| **11** | `get_system_status` | `get_status` | `services/system_service.py` | Bloquant | Aucun | Diagnostic télémétrique complet des ressources (CPU, RAM, disques, batterie). |
+| **12** | `launch_application` | `launch_app` | `services/system_service.py` | Bloquant | `app_name: str` | Lance une application Windows sur le PC local (VS Code, VLC, Calc, Notepad). |
+| **13** | `play_music_deezer` | `deezer_action` | `services/media_service.py` | Bloquant | `action: str`, `query: str`, `volume` | Contrôle total du lecteur Deezer Web officiel via bridge WebSocket local. |
+| **14** | `play_video_stremio` | `launch_media` | `services/media_service.py` | Bloquant | `title: str`, `content_type: str` | Lance un film ou une série en streaming 1080p fluide sur Stremio local. |
+| **15** | `send_email` | `mail_send` | `services/email_service.py` | Bloquant | `subject: str`, `body: str`, `attachments` | Rédige et expédie un courriel Stark Industries avec pièces jointes résolues. |
+| **16** | `read_emails` | `get_emails` | `services/email_service.py` | Bloquant | `count: int`, `query: str`, `unread_only` | Consulte la boîte Gmail de Pierre via IMAP et résume les messages. |
+| **17** | `check_console_errors` | `console_errors` | `services/console_monitor.py` | Bloquant | `action: str` (`diagnose`|`clear`) | Analyse les logs de console, diagnostique les erreurs ou purge le journal. |
+| **18** | `interact_web_page` | `web_interaction` | `services/browser_service.py` | Non-bloquant | `url: str`, `action: str`, `selector: str` | Action unitaire ciblée sur une page (DOM, clic sélecteur, saisie champ). |
+| **19** | `prepare_web_cart_or_checkout` | `prepare_cart` | `services/browser_service.py` | Non-bloquant | `product_or_service: str`, `merchant_url` | Ajoute un produit au panier et préremplit les coordonnées (sans payer). |
+| **20** | `download_file` | `file_download` | `services/download_service.py` | Non-bloquant | `url: str`, `filename: str` | Télécharge un fichier depuis une URL après accord oral préalable explicite. |
+| **21** | `send_to_ereader` | `send_page_to_kindle`, `send_file_to_kindle` | `services/download_service.py` / `browser_service.py` | Non-bloquant | `source: str`, `source_type`, `method` | **Fusion V5.3.0** : Achemine un ebook, document ou article web vers la liseuse (USB, Kindle Web, mail). |
+| **22** | `search_and_download_ebook` | `download_ebook` | `services/download_service.py` | Non-bloquant | `query: str`, `lang: str` | Recherche un livre sur Anna's Archive, accord oral, download et envoi liseuse. |
+| **23** | `list_chrome_extensions` | `chrome_extensions` | `services/browser_service.py` | Bloquant | Aucun | Énumère les extensions installées dans le profil Chrome de Pierre. |
+| **24** | `execute_external_action` | `executer_action_externe` | `services/automation.py` | Non-bloquant | `action_name: str`, `parametres: dict` | Déclenche un webhook générique d'automatisation sur n8n. |
+| **25** | `generate_spreadsheet` | `generer_fichier_tableur` | `services/automation.py` | Non-bloquant | `nom_fichier: str`, `colonnes`, `lignes` | Génère un classeur Excel `.xlsx` complet avec modèle financier Stark. |
+| **26** | `generate_presentation` | `generer_presentation` | `services/slides_service.py` | Non-bloquant | `titre: str`, `theme: str`, `slides` | Conçoit une présentation Google Slides experte polymorphe (7 layouts). |
+| **27** | `get_active_task_status` | `task_status` | `services/supervision_service.py`| Bloquant | `task_id: str` | Explique oralement l'état et l'avancement d'une tâche de fond en cours. |
+| **28** | `save_notion_entry` | `notion_enregistrer` | `services/automation.py` | Non-bloquant | `titre: str`, `type_entree: str`, `contenu` | Enregistre une note, to-do list ou fiche de veille dans Notion via n8n. |
+| **29** | `manage_calendar_event` | `agenda_gerer_evenement` | `services/briefing_service.py` | Non-bloquant | `action: str`, `titre: str`, `date_debut` | Crée, décale, consulte ou supprime des événements sur Google/Samsung Calendar. |
+| **30** | `create_push_reminder` | `creer_rappel_push` | `services/briefing_service.py` | Non-bloquant | `message: str`, `echeance: str` | Programme une notification push sur smartphone via Telegram Stark Bot. |
+| **31** | `get_morning_briefing` | `demander_morning_briefing` | `services/briefing_service.py` | Bloquant | `force_refresh: bool` | Restitue le briefing matinal compilé (météo, agenda, e-mails urgents, trains). |
+| **32** | `search_train_routes` | `rechercher_train` | `services/transport_service.py`| Bloquant | `origine: str`, `destination`, `date_depart` | Calcule un itinéraire ferroviaire France/Suède avec optimisation multi-critères. |
+| **33** | `monitor_train` | `surveiller_train` | `services/transport_service.py`| Non-bloquant | `numero_train: str`, `date: str` | Active la veille proactive 10 min sur Trafikverket/SNCF avec alertes directs. |
+| **34** | `open_train_booking` | `reserver_billet_train_local` | `services/transport_service.py`| Non-bloquant | `operateur: str`, `urls_trajets` | Ouvre les onglets de réservation du train sur le Chrome physique du PC. |
+| **35** | `query_jarvis_architecture` | `consulter_architecture_jarvis` | `services/architecture_service.py`| Bloquant | `sujet: str`, `section: str` | Interroge interactivement le présent fichier d'architecture en temps réel. |
+| **36** | `draft_email_response` | `triage_et_brouillon_email` | `services/agentic_dispatcher.py` | Non-bloquant | `query: str`, `consigne: str` | Triage exécutif Système 2, analyse pièces jointes PDF et projet de réponse. |
+| **37** | `generate_book_summary` | `curation_livre_synthese` | `services/agentic_dispatcher.py` | Non-bloquant | `titre_livre: str` | Synthèse exécutive 2 pages 'Clés de lecture' envoyée sur Kindle en bonus. |
+| **38** | `system_self_healing` | `auto_guerison_systeme` | `services/agentic_dispatcher.py` | Non-bloquant | `motif: str` | SRE autonome : analyse cause racine, patch syntaxique et validation tests. |
 
 ---
 

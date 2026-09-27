@@ -62,7 +62,7 @@ async def dispatch_tool(
     """
 
     # ─── stop_current_action ───────────────────────────────────────────────────
-    if name == "stop_current_action":
+    if name in ("stop_current_action", "stop"):
         stop_reason = args.get("reason", "Arrêt demandé par Pierre")
         await stop_active_task(source="tool_stop", reason=stop_reason)
         return {
@@ -73,7 +73,7 @@ async def dispatch_tool(
 
 
     # ─── guide_active_task ─────────────────────────────────────────────────────
-    elif name == "guide_active_task":
+    elif name in ("guide_active_task", "guide"):
         directive = args.get("directive", "")
         if active_task_controller["info"]["running"]:
             await active_task_controller["queue"].put(directive)
@@ -82,7 +82,7 @@ async def dispatch_tool(
         return {"status": "adapted", "directive": directive, "message": f"Consigne '{directive}' transmise en direct à Antigravity CLI sur le VPS."}
 
     # ─── set_browser_link ──────────────────────────────────────────────────────
-    elif name == "set_browser_link":
+    elif name in ("set_browser_link", "browser_link"):
         link_url = args.get("url", "")
         link_title = args.get("title") or "Page sélectionnée"
         supervision_service.track_browser_window(link_url, link_title)
@@ -91,7 +91,7 @@ async def dispatch_tool(
         return {"status": "updated", "url": link_url, "title": link_title, "message": f"Le lien {link_url} a été positionné dans le HUD mobile."}
 
     # ─── ask_deep_reasoning (Moteur Antigravity CLI VPS - Avatar Code Violet) ───
-    elif name == "ask_deep_reasoning":
+    elif name in ("ask_deep_reasoning", "deep_reasoning"):
         question = args.get("question", "")
         model_choice = args.get("model")
         intensite_reflexion = args.get("intensite_reflexion")
@@ -320,7 +320,7 @@ async def dispatch_tool(
         }
 
     # ─── lancer_mission_deep_research ──────────────────────────────────────────
-    elif name == "lancer_mission_deep_research":
+    elif name in ("launch_deep_research", "lancer_mission_deep_research"):
         consigne_utilisateur = args.get("consigne_utilisateur") or args.get("sujet") or ""
         envoyer_email = bool(args.get("envoyer_email", False))
         destinataire_email = args.get("destinataire_email")
@@ -352,7 +352,7 @@ async def dispatch_tool(
         }
 
     # ─── search_web ────────────────────────────────────────────────────────────
-    elif name == "search_web":
+    elif name in ("search_web", "web_search"):
         query = args.get("query", "").strip()
         supervision_service.start_action("search_web", "Recherche Internet", "search_web", query, "Playwright / DuckDuckGo", api_type="free", api_label="Clé Gratuite", cost_est="0.00 $")
         await broadcast_supervision()
@@ -393,7 +393,7 @@ async def dispatch_tool(
             }
 
     # ─── run_browser_task ──────────────────────────────────────────────────────
-    elif name == "run_browser_task":
+    elif name in ("run_browser_task", "browser_task"):
         goal = args.get("goal", "")
         target_url = args.get("url") or ""
         execution_target = args.get("execution_target")
@@ -489,30 +489,27 @@ async def dispatch_tool(
         await broadcast_supervision()
         return {"status": "completed", "result": res, "instruction_to_jarvis": f"La fenêtre Chrome est ouverte sur {target_url}. Dis directement à Pierre que la page est affichée à l'écran sans amorce robotique ('J'ouvre Chrome sur...', 'C'est affiché à l'écran')."}
 
-    # ─── remember_user_fact ────────────────────────────────────────────────────
-    elif name == "remember_user_fact":
-        fact = args.get("fact", "")
-        cat = args.get("category", "général")
-        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Mémorisation de l'information dans la mémoire durable.", "voice": False}))
-        res = await unified_memory_manager.memorize(fact, category=cat)
-        return {"status": "completed", "result": res, "instruction_to_jarvis": "L'information est enregistrée dans ta mémoire durable vectorielle. Confirme-le brièvement avec ta voix Aoede."}
+    # ─── save_memory (Fusion remember_user_fact + memoriser_information) ──────
+    elif name in ("save_memory", "remember_user_fact", "memoriser_information"):
+        fact = args.get("fact") or args.get("valeur") or ""
+        cat = args.get("category") or args.get("categorie") or "general"
+        key = args.get("key") or args.get("cle") or ""
+        full_text = f"{key} : {fact}".strip() if key else fact.strip()
+        display_label = key or (fact[:40] if len(fact) <= 40 else fact[:37] + "...")
+        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Mémorisation vectorielle : {display_label}", "voice": False}))
+        res = await unified_memory_manager.memorize(full_text, category=cat or "general", importance=2)
+        return {
+            "status": "completed",
+            "result": res,
+            "instruction_to_jarvis": f"L'information '{display_label}' a été mémorisée durablement dans ta mémoire unifiée vectorielle. Confirme-le brièvement avec ta voix Aoede."
+        }
 
     # ─── recall_user_memories ──────────────────────────────────────────────────
-    elif name == "recall_user_memories":
+    elif name in ("recall_user_memories", "search_memories"):
         query = args.get("query", "")
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Consultation des souvenirs mémorisés.", "voice": False}))
         memories = await unified_memory_manager.recall(query, limit=6)
         return {"status": "completed", "memories": memories, "instruction_to_jarvis": "Voici les souvenirs trouvés dans ta mémoire vectorielle. Présente-les à l'utilisateur avec ta voix Aoede de façon naturelle."}
-
-    # ─── memoriser_information ─────────────────────────────────────────────────
-    elif name == "memoriser_information":
-        cle = args.get("cle", "")
-        valeur = args.get("valeur", "")
-        categorie = args.get("categorie", "fait")
-        full_text = f"{cle} : {valeur}".strip() if cle else valeur.strip()
-        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Mémorisation vectorielle : {cle or valeur[:40]}", "voice": False}))
-        res = await unified_memory_manager.memorize(full_text, category=categorie or "fait", importance=2)
-        return {"status": "completed", "result": res, "instruction_to_jarvis": f"L'information '{cle}' a été mémorisée durablement dans ta mémoire vectorielle. Confirme-le brièvement et naturellement avec ta voix Aoede."}
 
     # ─── get_system_status / get_status ────────────────────────────────────────
     elif name in ("get_system_status", "get_status"):
@@ -609,7 +606,7 @@ async def dispatch_tool(
             }
 
     # ─── send_email ────────────────────────────────────────────────────────────
-    elif name == "send_email":
+    elif name in ("send_email", "mail_send"):
         subject = args.get("subject", "Rapport J.A.R.V.I.S.")
         body = args.get("body", "")
         to_email = args.get("to_email") or config.DEFAULT_RECIPIENT_EMAIL
@@ -714,7 +711,7 @@ async def dispatch_tool(
         }
 
     # ─── read_emails ───────────────────────────────────────────────────────────
-    elif name == "read_emails":
+    elif name in ("read_emails", "get_emails"):
         count = int(args.get("count", 5))
         query = args.get("query")
         unread_only = bool(args.get("unread_only", False))
@@ -739,7 +736,7 @@ async def dispatch_tool(
         return {"status": "completed", "result": res, "instruction_to_jarvis": f"Voici le résultat de la consultation des e-mails reçus sur {config.DEFAULT_RECIPIENT_EMAIL} :\n{emails_summary_text}\n\nPrésente directement à Pierre à l'oral avec ta voix Aoede un compte-rendu clair, concis et naturel de ses messages récents."}
 
     # ─── check_console_errors ─────────────────────────────────────────────────
-    elif name == "check_console_errors":
+    elif name in ("check_console_errors", "console_errors"):
         action = args.get("action") or "diagnose"
         if action == "clear":
             console_monitor.clear()
@@ -755,7 +752,7 @@ async def dispatch_tool(
         return {"status": "completed", "has_errors": diag.get("has_errors", False), "diagnostic": diag.get("summary", ""), "oral_explanation": diag.get("oral_explanation", ""), "recent_errors": console_monitor.get_recent_errors(limit=4), "instruction_to_jarvis": f"Explique immédiatement à Pierre à l'oral avec ta voix Aoede la situation de la console de façon fluide et rassurante : {diag.get('oral_explanation', '')}"}
 
     # ─── interact_web_page ─────────────────────────────────────────────────────
-    elif name == "interact_web_page":
+    elif name in ("interact_web_page", "web_interaction"):
         target_url = args.get("url", "")
         action = args.get("action", "read")
         selector = args.get("selector", "")
@@ -774,7 +771,7 @@ async def dispatch_tool(
         return {"status": res.get("status"), "url": res.get("url"), "title": res.get("title"), "performed_actions": res.get("performed_actions", []), "detected_form_inputs": res.get("detected_form_inputs", []), "available_buttons": res.get("available_buttons", []), "content_preview": res.get("content_preview", "")[:1200], "instruction_to_jarvis": f"L'interaction sur la page {res.get('url')} est terminée. Présente directement et simplement à Pierre avec ta voix Aoede les éléments découverts ou les actions effectuées sans amorce robotique."}
 
     # ─── prepare_web_cart_or_checkout ──────────────────────────────────────────
-    elif name == "prepare_web_cart_or_checkout":
+    elif name in ("prepare_web_cart_or_checkout", "prepare_cart"):
         product_or_service = args.get("product_or_service", "")
         merchant_url = args.get("merchant_url") or ""
         open_when_ready = bool(args.get("open_when_ready", True))
@@ -792,7 +789,7 @@ async def dispatch_tool(
         return {"status": res.get("status"), "cart_url": res.get("cart_url"), "prefilled_fields": res.get("prefilled_fields", []), "browser_opened": res.get("browser_opened", True), "result_message": res.get("message", ""), "instruction_to_jarvis": f"Le panier pour '{product_or_service}' est prêt et les coordonnées de Pierre sont préremplies sur son écran. Dis à Pierre avec ta voix Aoede que le panier est ouvert à l'écran et qu'il n'a plus qu'à régler et valider sa commande."}
 
     # ─── download_file ─────────────────────────────────────────────────────────
-    elif name == "download_file":
+    elif name in ("download_file", "file_download"):
         target_url = args.get("url", "")
         filename = args.get("filename")
         is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
@@ -812,22 +809,56 @@ async def dispatch_tool(
             await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Téléchargement terminé : {res.get('filename')} ({res.get('size')})", "voice": False}))
             return {"status": res.get("status"), "filename": res.get("filename"), "filepath": res.get("filepath"), "size": res.get("size"), "message": res.get("message"), "instruction_to_jarvis": f"Le fichier '{res.get('filename')}' ({res.get('size')}) a été téléchargé avec succès sur l'ordinateur. Confirme verbalement à Pierre avec ta voix Aoede que le fichier est prêt."}
 
-    # ─── send_to_ereader ───────────────────────────────────────────────────────
-    elif name == "send_to_ereader":
-        file_path = args.get("file_path", "")
+    # ─── send_to_ereader (Fusion send_to_ereader + send_page_to_kindle + send_file_to_kindle) ─
+    elif name in ("send_to_ereader", "send_page_to_kindle", "send_file_to_kindle"):
+        source = args.get("source") or args.get("file_path") or args.get("url") or ""
+        source_type = args.get("source_type")
+        if not source_type:
+            source_type = "url" if (source.startswith("http://") or source.startswith("https://")) else "file"
+        method = args.get("method") or ("kindle_web" if name == "send_file_to_kindle" else "auto")
+        title = args.get("title") or ""
         ereader_email = args.get("ereader_email")
-        method = args.get("method", "auto")
-        supervision_service.start_action("send_to_ereader", "Acheminement Liseuse", "send_to_ereader", f"Livre : {file_path}", "USB / SMTP Protocol", api_type="free", api_label="Service Local", cost_est="0.00 $")
-        await broadcast_supervision()
-        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Transfert de l'ebook vers la liseuse...", "voice": False}))
-        await websocket.send_text(json.dumps({"type": "status", "state": "kindle", "msg": "Acheminement de l'ebook vers votre liseuse Kindle...", "task": "Kindle : Acheminement liseuse", "detail": f"Livre : {os.path.basename(file_path) if file_path else 'Ebook'}", "engine": "Amazon Send to Kindle", "model": "Stark Reader Protocol", "api_type": "free", "api_label": "Service Local"}))
-        res = await send_to_ereader(file_path=file_path, ereader_email=ereader_email, method=method)
-        supervision_service.complete_action("send_to_ereader", status=res.get("status", "completed"), summary=res.get("message", "Ebook envoyé"))
-        await broadcast_supervision()
-        return {"status": res.get("status"), "channel": res.get("channel"), "message": res.get("message"), "instruction_to_jarvis": f"{res.get('message', 'Le livre a été envoyé vers votre liseuse.')} Confirme à Pierre avec ta voix Aoede que son livre est prêt sur sa liseuse."}
+
+        # 1. Source URL -> Acheminement d'un article web via extension/email Kindle
+        if source_type == "url" or name == "send_page_to_kindle":
+            supervision_service.start_action("send_page_to_kindle", "Envoi Send to Kindle", "send_to_ereader", f"Kindle : {title or source}", "Send to Kindle Extension & E-Reader Protocol", api_type="free", api_label="Service Local", cost_est="0.00 $")
+            await broadcast_supervision()
+            await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Mise en page et envoi de l'article vers votre Kindle...", "voice": False}))
+            await websocket.send_text(json.dumps({"type": "status", "state": "kindle", "msg": f"Mise en page Send to Kindle : {title or source}...", "task": f"Kindle : {title or source}", "detail": "Formatage article web...", "engine": "Amazon Send to Kindle", "model": "Send to Kindle Extension", "api_type": "free", "api_label": "Service Local"}))
+            res = await send_page_to_kindle(url=source, title=title, open_in_chrome=True)
+            supervision_service.complete_action("send_page_to_kindle", status=res.get("status", "completed"), summary=res.get("message", "Article envoyé sur Kindle"))
+            await broadcast_supervision()
+            return {"status": res.get("status", "completed"), "result": res, "instruction_to_jarvis": f"{res.get('message', 'Article transféré sur la Kindle.')} Annonce avec ta voix Aoede que l'article a été mis en page et expédié vers sa Kindle, et que Google Chrome est ouvert sur la page avec l'extension Send to Kindle prête."}
+
+        # 2. Méthode kindle_web -> Dépôt sur Amazon Send to Kindle Web via Playwright
+        elif method == "kindle_web" or name == "send_file_to_kindle":
+            open_browser = args.get("open_browser_if_needed", True)
+            supervision_service.start_action("send_file_to_kindle", "Amazon Send to Kindle Web", "send_to_ereader", f"Fichier : {source}", "Amazon Playwright Authenticated Session", api_type="free", api_label="Service Local", cost_est="0.00 $")
+            await broadcast_supervision()
+            await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Dépôt du fichier {os.path.basename(source) if source else 'document'} sur Amazon Send to Kindle...", "voice": False}))
+            await websocket.send_text(json.dumps({"type": "status", "state": "kindle", "msg": f"Dépôt Amazon Send to Kindle : {os.path.basename(source) if source else 'document'}...", "task": f"Kindle : {os.path.basename(source) if source else 'document'}", "detail": "Amazon Playwright Authenticated Session...", "engine": "Amazon Send to Kindle", "model": "Send to Kindle Web", "api_type": "free", "api_label": "Service Local"}))
+            res = await send_file_to_kindle_web(file_path=source, open_browser_if_needed=open_browser)
+            supervision_service.complete_action("send_file_to_kindle", status=res.get("status", "completed"), summary=res.get("message", "Fichier envoyé sur Kindle"))
+            await broadcast_supervision()
+            if res.get("status") == "success":
+                instruction = f"{res.get('message', 'Fichier envoyé sur la Kindle.')} Annonce avec ta voix Aoede que le document a été déposé et envoyé avec succès sur sa liseuse Kindle via sa session Amazon connectée."
+            else:
+                instruction = f"L'envoi sur la Kindle n'a pas pu aboutir : {res.get('message', 'Erreur de transfert')}. Informe Pierre avec ta voix Aoede de la situation sans affirmer que le document est envoyé."
+            return {"status": res.get("status", "completed"), "result": res, "instruction_to_jarvis": instruction}
+
+        # 3. Acheminement automatique (USB physique en priorité puis e-mail SMTP)
+        else:
+            supervision_service.start_action("send_to_ereader", "Acheminement Liseuse", "send_to_ereader", f"Livre : {source}", "USB / SMTP Protocol", api_type="free", api_label="Service Local", cost_est="0.00 $")
+            await broadcast_supervision()
+            await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Transfert de l'ebook vers la liseuse...", "voice": False}))
+            await websocket.send_text(json.dumps({"type": "status", "state": "kindle", "msg": "Acheminement de l'ebook vers votre liseuse Kindle...", "task": "Kindle : Acheminement liseuse", "detail": f"Livre : {os.path.basename(source) if source else 'Ebook'}", "engine": "Amazon Send to Kindle", "model": "Stark Reader Protocol", "api_type": "free", "api_label": "Service Local"}))
+            res = await send_to_ereader(file_path=source, ereader_email=ereader_email, method=method)
+            supervision_service.complete_action("send_to_ereader", status=res.get("status", "completed"), summary=res.get("message", "Ebook envoyé"))
+            await broadcast_supervision()
+            return {"status": res.get("status"), "channel": res.get("channel"), "message": res.get("message"), "instruction_to_jarvis": f"{res.get('message', 'Le livre a été envoyé vers votre liseuse.')} Confirme à Pierre avec ta voix Aoede que son livre est prêt sur sa liseuse."}
 
     # ─── search_and_download_ebook ─────────────────────────────────────────────
-    elif name == "search_and_download_ebook":
+    elif name in ("search_and_download_ebook", "download_ebook"):
         query = args.get("query", "")
         lang_arg = args.get("lang")
         source_url = args.get("source_url")
@@ -852,43 +883,13 @@ async def dispatch_tool(
                 instruction = f"Une difficulté est survenue lors de la récupération ou de l'envoi de l'ebook '{query}' : {res.get('message', 'Échec du traitement')}. Explique la situation avec ta voix Aoede sans prétendre que le livre est envoyé."
             return {"status": res.get("status"), "filename": res.get("filename"), "message": res.get("message"), "instruction_to_jarvis": instruction}
 
-    # ─── send_page_to_kindle ──────────────────────────────────────────────────
-    elif name == "send_page_to_kindle":
-        target_url = args.get("url", "")
-        title = args.get("title", "")
-        supervision_service.start_action("send_page_to_kindle", "Envoi Send to Kindle", "send_page_to_kindle", f"Kindle : {title or target_url}", "Send to Kindle Extension & E-Reader Protocol", api_type="free", api_label="Service Local", cost_est="0.00 $")
-        await broadcast_supervision()
-        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Mise en page et envoi de l'article vers votre Kindle...", "voice": False}))
-        await websocket.send_text(json.dumps({"type": "status", "state": "kindle", "msg": f"Mise en page Send to Kindle : {title or target_url}...", "task": f"Kindle : {title or target_url}", "detail": "Formatage article web...", "engine": "Amazon Send to Kindle", "model": "Send to Kindle Extension", "api_type": "free", "api_label": "Service Local"}))
-        res = await send_page_to_kindle(url=target_url, title=title, open_in_chrome=True)
-        supervision_service.complete_action("send_page_to_kindle", status=res.get("status", "completed"), summary=res.get("message", "Article envoyé sur Kindle"))
-        await broadcast_supervision()
-        return {"status": res.get("status", "completed"), "result": res, "instruction_to_jarvis": f"{res.get('message', 'Article transféré sur la Kindle.')} Annonce avec ta voix Aoede que l'article a été mis en page et expédié vers sa Kindle, et que Google Chrome est ouvert sur la page avec l'extension Send to Kindle prête."}
-
-    # ─── send_file_to_kindle ──────────────────────────────────────────────────
-    elif name == "send_file_to_kindle":
-        file_path = args.get("file_path", "")
-        open_browser = args.get("open_browser_if_needed", True)
-        supervision_service.start_action("send_file_to_kindle", "Amazon Send to Kindle Web", "send_file_to_kindle", f"Fichier : {file_path}", "Amazon Playwright Authenticated Session", api_type="free", api_label="Service Local", cost_est="0.00 $")
-        await broadcast_supervision()
-        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Dépôt du fichier {os.path.basename(file_path) if file_path else 'document'} sur Amazon Send to Kindle...", "voice": False}))
-        await websocket.send_text(json.dumps({"type": "status", "state": "kindle", "msg": f"Dépôt Amazon Send to Kindle : {os.path.basename(file_path) if file_path else 'document'}...", "task": f"Kindle : {os.path.basename(file_path) if file_path else 'document'}", "detail": "Amazon Playwright Authenticated Session...", "engine": "Amazon Send to Kindle", "model": "Send to Kindle Web", "api_type": "free", "api_label": "Service Local"}))
-        res = await send_file_to_kindle_web(file_path=file_path, open_browser_if_needed=open_browser)
-        supervision_service.complete_action("send_file_to_kindle", status=res.get("status", "completed"), summary=res.get("message", "Fichier envoyé sur Kindle"))
-        await broadcast_supervision()
-        if res.get("status") == "success":
-            instruction = f"{res.get('message', 'Fichier envoyé sur la Kindle.')} Annonce avec ta voix Aoede que le document a été déposé et envoyé avec succès sur sa liseuse Kindle via sa session Amazon connectée."
-        else:
-            instruction = f"L'envoi sur la Kindle n'a pas pu aboutir : {res.get('message', 'Erreur de transfert')}. Informe Pierre avec ta voix Aoede de la situation sans affirmer que le document est envoyé."
-        return {"status": res.get("status", "completed"), "result": res, "instruction_to_jarvis": instruction}
-
     # ─── list_chrome_extensions ────────────────────────────────────────────────
-    elif name == "list_chrome_extensions":
+    elif name in ("list_chrome_extensions", "chrome_extensions"):
         res = await asyncio.to_thread(list_installed_chrome_extensions)
         return {"status": "completed", "result": res, "instruction_to_jarvis": f"{res.get('message', 'Extensions analysées.')} Résume oralement les extensions clés installées sur Chrome à Pierre (notamment Send to Kindle) avec ta voix Aoede."}
 
     # ─── executer_action_externe ───────────────────────────────────────────────
-    elif name == "executer_action_externe":
+    elif name in ("execute_external_action", "executer_action_externe"):
         action_name = (args.get("action_name") or args.get("action") or "").strip()
         parametres = args.get("parametres") or {}
 
@@ -971,7 +972,7 @@ async def dispatch_tool(
         }
 
     # ─── generer_fichier_tableur ──────────────────────────────────────────────
-    elif name == "generer_fichier_tableur":
+    elif name in ("generate_spreadsheet", "generer_fichier_tableur"):
         nom_fichier = (args.get("nom_fichier") or "document.xlsx").strip()
         if not nom_fichier.lower().endswith(".xlsx"):
             nom_fichier += ".xlsx"
@@ -1061,7 +1062,7 @@ async def dispatch_tool(
         }
 
     # ─── generer_presentation ─────────────────────────────────────────────────
-    elif name == "generer_presentation":
+    elif name in ("generate_presentation", "generer_presentation"):
         from services.slides_service import slides_service
 
         raw_titre = (args.get("titre") or "Présentation").strip()
@@ -1291,7 +1292,7 @@ async def dispatch_tool(
         }
 
     # ─── get_active_task_status ──────────────────────────────────────────────
-    elif name == "get_active_task_status":
+    elif name in ("get_active_task_status", "task_status"):
         from services.slides_service import slides_service
 
         task_info = deep_research_service.get_current_task()
@@ -1355,7 +1356,7 @@ async def dispatch_tool(
         }
 
     # ─── notion_enregistrer ───────────────────────────────────────────────────
-    elif name == "notion_enregistrer":
+    elif name in ("save_notion_entry", "notion_enregistrer"):
         type_entree = (args.get("type_entree") or "note").strip()
         titre = (args.get("titre") or "Note rapide").strip()
         contenu = (args.get("contenu") or "").strip()
@@ -1448,7 +1449,7 @@ async def dispatch_tool(
         }
 
     # ─── agenda_gerer_evenement ───────────────────────────────────────────────
-    elif name == "agenda_gerer_evenement":
+    elif name in ("manage_calendar_event", "agenda_gerer_evenement"):
         action = (args.get("action") or "consulter").strip().lower()
         titre = (args.get("titre") or "Rendez-vous").strip()
         date_debut = (args.get("date_debut") or "").strip()
@@ -1520,7 +1521,7 @@ async def dispatch_tool(
             return {"status": "error", "error": str(e), "instruction_to_jarvis": f"Erreur lors de l'accès à l'agenda ({e}). Informe Pierre brièvement."}
 
     # ─── creer_rappel_push ───────────────────────────────────────────────────
-    elif name == "creer_rappel_push":
+    elif name in ("create_push_reminder", "creer_rappel_push"):
         message = (args.get("message") or args.get("text") or "Rappel").strip()
         echeance = (args.get("echeance") or "maintenant").strip()
         priorite = (args.get("priorite") or "normale").strip().lower()
@@ -1584,7 +1585,7 @@ async def dispatch_tool(
             return {"status": "error", "error": str(e), "instruction_to_jarvis": f"Erreur lors de la programmation du rappel ({e}). Informe Pierre brièvement."}
 
     # ─── demander_morning_briefing ───────────────────────────────────────────
-    elif name == "demander_morning_briefing":
+    elif name in ("get_morning_briefing", "demander_morning_briefing"):
         force_refresh = bool(args.get("force_refresh", False))
 
         supervision_service.start_action(
@@ -1658,7 +1659,7 @@ async def dispatch_tool(
         }
 
     # ─── rechercher_train ─────────────────────────────────────────────────────
-    elif name == "rechercher_train":
+    elif name in ("search_train_routes", "rechercher_train"):
         origine = args.get("origine", "")
         destination = args.get("destination", "")
         date_depart = args.get("date_depart", "")
@@ -1794,7 +1795,7 @@ async def dispatch_tool(
         }
 
     # ─── surveiller_train ─────────────────────────────────────────────────────
-    elif name == "surveiller_train":
+    elif name in ("monitor_train", "surveiller_train"):
         numero_train = args.get("numero_train", "")
         date = args.get("date", "")
         operateur = args.get("operateur", "sncf")
@@ -1837,7 +1838,7 @@ async def dispatch_tool(
         }
 
     # ─── reserver_billet_train_local ──────────────────────────────────────────
-    elif name == "reserver_billet_train_local":
+    elif name in ("open_train_booking", "reserver_billet_train_local"):
         operateur = args.get("operateur", "auto")
         url_trajet = args.get("url_trajet", "")
         urls_trajets = args.get("urls_trajets", [])
@@ -1892,7 +1893,7 @@ async def dispatch_tool(
         }
 
     # ─── consulter_architecture_jarvis ─────────────────────────────────────────
-    elif name == "consulter_architecture_jarvis":
+    elif name in ("query_jarvis_architecture", "consulter_architecture_jarvis"):
         from services.architecture_service import architecture_service
         sujet = args.get("sujet")
         section = args.get("section")
@@ -1916,7 +1917,7 @@ async def dispatch_tool(
         }
 
     # ─── triage_et_brouillon_email ─────────────────────────────────────────────
-    elif name == "triage_et_brouillon_email":
+    elif name in ("draft_email_response", "triage_et_brouillon_email"):
         query = args.get("query") or ""
         consigne = args.get("consigne") or ""
 
@@ -1944,7 +1945,7 @@ async def dispatch_tool(
         }
 
     # ─── curation_livre_synthese ───────────────────────────────────────────────
-    elif name == "curation_livre_synthese":
+    elif name in ("generate_book_summary", "curation_livre_synthese"):
         titre_livre = args.get("titre_livre", "").strip()
         from services.download_service import generer_synthese_lecture_agent
         asyncio.create_task(generer_synthese_lecture_agent(titre_livre))
@@ -1961,7 +1962,7 @@ async def dispatch_tool(
         }
 
     # ─── auto_guerison_systeme ─────────────────────────────────────────────────
-    elif name == "auto_guerison_systeme":
+    elif name in ("system_self_healing", "auto_guerison_systeme"):
         motif = args.get("motif") or "Analyse globale de la console et des processus"
         from services.agentic_dispatcher import agentic_dispatcher
         recent = console_monitor.get_recent_errors(limit=5)
