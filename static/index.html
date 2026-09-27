@@ -36,7 +36,7 @@
     <div class="hud-header">
       <div class="hud-header-left">
         <span class="system-tag"><span class="system-tag-dot"></span> STARK AI CORE</span>
-        <span class="hud-version-tag">V 5.5.0 VOICE INJECTION QUEUE & INTERMEDIATE MILESTONES</span>
+        <span class="hud-version-tag">V 5.6.0 TOOL CALL METRICS & SUPERVISION HISTORIC</span>
       </div>
       <!-- Actions d'en-tête (Kindle, Messagerie & Supervision) -->
       <div class="hud-header-right">
@@ -788,6 +788,105 @@
                   <span id="supPaidToggleBadge" class="paid-toggle-badge badge-locked">🔒 VERROUILLÉE</span>
                 </label>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. MÉTRIQUES & HISTORIQUE D'INSTRUMENTATION DES OUTILS -->
+        <div class="supervision-section" id="supMetricsSection">
+          <div class="section-badge-header">
+            <span class="section-icon">📊</span>
+            <span class="section-title">MÉTRIQUES D'INSTRUMENTATION & OBSERVABILITÉ DES OUTILS</span>
+            <div class="sup-metrics-window-pills">
+              <button class="sup-metrics-pill active" id="btnMetrics24h" onclick="switchMetricsWindow('24h')">24H</button>
+              <button class="sup-metrics-pill" id="btnMetrics7j" onclick="switchMetricsWindow('7j')">7 JOURS</button>
+              <button class="sup-metrics-pill" id="btnMetrics30j" onclick="switchMetricsWindow('30j')">30 JOURS</button>
+            </div>
+          </div>
+
+          <!-- 4 Compteurs Clés -->
+          <div class="sup-metrics-counters-grid">
+            <div class="sup-metric-counter-card">
+              <div class="sup-metric-val" id="metTotalCalls">0</div>
+              <div class="sup-metric-lbl">APPELS D'OUTILS</div>
+              <div class="sup-metric-sub" id="metCallsSub">Fenêtre active</div>
+            </div>
+            <div class="sup-metric-counter-card">
+              <div class="sup-metric-val" id="metFailureRate">0.0%</div>
+              <div class="sup-metric-lbl">TAUX D'ÉCHEC</div>
+              <div class="sup-metric-sub" id="metFailureDetail">0 échec / 0 timeout</div>
+            </div>
+            <div class="sup-metric-counter-card">
+              <div class="sup-metric-val" id="metAvgLatency">0 ms</div>
+              <div class="sup-metric-lbl">LATENCE MOYENNE</div>
+              <div class="sup-metric-sub" id="metP95Latency">P95 : 0 ms</div>
+            </div>
+            <div class="sup-metric-counter-card">
+              <div class="sup-metric-val" id="metTotalCost">0.00 $</div>
+              <div class="sup-metric-lbl">DÉPENSE ESTIMÉE</div>
+              <div class="sup-metric-sub" id="metCostDetail">Clés payantes</div>
+            </div>
+          </div>
+
+          <!-- 2 Graphiques Simples et Visibles -->
+          <div class="sup-metrics-charts-grid">
+            <!-- Graphique 1 : Top Outils & Fréquence / Échecs -->
+            <div class="sup-metrics-chart-box">
+              <div class="sup-chart-title">TOP OUTILS LES PLUS UTILISÉS</div>
+              <div id="metTopToolsBars" class="sup-bars-container">
+                <div class="sup-empty-metrics">Aucun appel d'outil sur cette fenêtre temporelle.</div>
+              </div>
+            </div>
+
+            <!-- Graphique 2 : Répartition Tiers Cognitifs (1/2/3) -->
+            <div class="sup-metrics-chart-box">
+              <div class="sup-chart-title">RÉPARTITION DES TIERS COGNITIFS</div>
+              <div id="metTierDistribution" class="sup-tier-container">
+                <div class="sup-segmented-track" id="metTierTrack">
+                  <div class="sup-seg-bar seg-tier1" id="segTier1" style="width: 0%;" title="Tier 1"></div>
+                  <div class="sup-seg-bar seg-tier2" id="segTier2" style="width: 0%;" title="Tier 2"></div>
+                  <div class="sup-seg-bar seg-tier3" id="segTier3" style="width: 0%;" title="Tier 3"></div>
+                  <div class="sup-seg-bar seg-tier0" id="segTier0" style="width: 100%;" title="Direct"></div>
+                </div>
+                <div class="sup-tier-legend-grid">
+                  <div class="sup-tier-legend-item">
+                    <span class="tier-dot tier1-dot"></span>
+                    <span class="tier-name">Tier 1 (Flash / Réflexe) :</span>
+                    <strong id="metTier1Count">0</strong>
+                  </div>
+                  <div class="sup-tier-legend-item">
+                    <span class="tier-dot tier2-dot"></span>
+                    <span class="tier-name">Tier 2 (Tactique) :</span>
+                    <strong id="metTier2Count">0</strong>
+                  </div>
+                  <div class="sup-tier-legend-item">
+                    <span class="tier-dot tier3-dot"></span>
+                    <span class="tier-name">Tier 3 (Système 2 / Pro) :</span>
+                    <strong id="metTier3Count">0</strong>
+                  </div>
+                  <div class="sup-tier-legend-item">
+                    <span class="tier-dot tier0-dot"></span>
+                    <span class="tier-name">Direct / Local :</span>
+                    <strong id="metTier0Count">0</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tableau récapitulatif détaillé -->
+          <div class="sup-metrics-table-wrapper">
+            <div class="sup-chart-title" style="margin-bottom: 8px;">DÉTAIL PAR OUTIL (LATENCES & FIABILITÉ)</div>
+            <div class="sup-metrics-table-head">
+              <div style="flex: 2;">OUTIL</div>
+              <div style="text-align: center; flex: 1;">APPELS</div>
+              <div style="text-align: center; flex: 1;">ÉCHECS</div>
+              <div style="text-align: center; flex: 1;">MOYENNE</div>
+              <div style="text-align: center; flex: 1;">P95</div>
+              <div style="text-align: right; flex: 1;">COÛT EST.</div>
+            </div>
+            <div id="metToolsTableRows" class="sup-metrics-table-rows">
+              <!-- Rempli dynamiquement -->
             </div>
           </div>
         </div>

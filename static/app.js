@@ -2507,9 +2507,13 @@ function openSupervisionModal() {
   if (!supervisionModal) return;
   supervisionModal.style.display = 'flex';
   fetchSupervisionOverview();
+  fetchSupervisionMetrics();
   
   if (!supervisionPollTimer) {
-    supervisionPollTimer = setInterval(fetchSupervisionOverview, 2500);
+    supervisionPollTimer = setInterval(() => {
+      fetchSupervisionOverview();
+      fetchSupervisionMetrics();
+    }, 2500);
   }
 }
 
@@ -2853,6 +2857,171 @@ function renderSupervisionOverview(data) {
   }
 }
 
+// ─── 6. MÉTRIQUES D'INSTRUMENTATION & OBSERVABILITÉ ──────────────────────────
+let currentMetricsWindow = '24h';
+
+async function fetchSupervisionMetrics(windowParam) {
+  const win = windowParam || currentMetricsWindow || '24h';
+  currentMetricsWindow = win;
+  const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+  try {
+    const url = `/api/supervision/metrics?window=${encodeURIComponent(win)}` + (token ? `&token=${encodeURIComponent(token)}` : '');
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      renderSupervisionMetrics(data);
+    }
+  } catch (err) {
+    console.warn("[Supervision] Erreur fetch métriques:", err);
+  }
+}
+
+function switchMetricsWindow(win) {
+  currentMetricsWindow = win;
+  const pills = {
+    '24h': document.getElementById('btnMetrics24h'),
+    '7j': document.getElementById('btnMetrics7j'),
+    '30j': document.getElementById('btnMetrics30j')
+  };
+  Object.keys(pills).forEach(k => {
+    if (pills[k]) pills[k].classList.toggle('active', k === win);
+  });
+  fetchSupervisionMetrics(win);
+}
+
+function renderSupervisionMetrics(data) {
+  if (!data) return;
+
+  // 1. Compteurs clés
+  const metTotalCalls = document.getElementById('metTotalCalls');
+  const metFailureRate = document.getElementById('metFailureRate');
+  const metFailureDetail = document.getElementById('metFailureDetail');
+  const metAvgLatency = document.getElementById('metAvgLatency');
+  const metP95Latency = document.getElementById('metP95Latency');
+  const metTotalCost = document.getElementById('metTotalCost');
+  const metCallsSub = document.getElementById('metCallsSub');
+
+  if (metTotalCalls) metTotalCalls.innerText = data.total_calls || 0;
+  if (metCallsSub) metCallsSub.innerText = `Fenêtre ${data.window || '24h'}`;
+
+  const fRate = (data.global_failure_rate != null) ? (data.global_failure_rate * 100).toFixed(1) : '0.0';
+  if (metFailureRate) {
+    metFailureRate.innerText = `${fRate}%`;
+    metFailureRate.style.color = (data.global_failure_rate > 0.05) ? '#f87171' : '#38bdf8';
+  }
+  if (metFailureDetail) {
+    metFailureDetail.innerText = `${data.total_failures || 0} échec(s) / ${data.total_timeouts || 0} timeout(s)`;
+  }
+
+  // Calcul latence globale moyenne et p95 pondéré
+  let avgLat = 0;
+  let p95Lat = 0;
+  if (data.tools_summary && data.tools_summary.length > 0) {
+    const totalCalls = data.total_calls || 1;
+    const sumWeightedAvg = data.tools_summary.reduce((acc, t) => acc + (t.avg_latency_ms * t.count), 0);
+    avgLat = Math.round(sumWeightedAvg / totalCalls);
+    const maxP95 = data.tools_summary.reduce((acc, t) => Math.max(acc, t.p95_latency_ms || 0), 0);
+    p95Lat = Math.round(maxP95);
+  }
+
+  if (metAvgLatency) metAvgLatency.innerText = `${avgLat} ms`;
+  if (metP95Latency) metP95Latency.innerText = `P95 Max : ${p95Lat} ms`;
+  if (metTotalCost) metTotalCost.innerText = `${Number(data.total_cost || 0).toFixed(4)} $`;
+
+  // 2. Graphique 1 : Top Outils Barres
+  const metTopToolsBars = document.getElementById('metTopToolsBars');
+  if (metTopToolsBars) {
+    const topTools = data.top_tools || [];
+    if (topTools.length === 0) {
+      metTopToolsBars.innerHTML = '<div class="sup-empty-metrics">Aucun appel d\'outil sur cette période.</div>';
+    } else {
+      const maxCount = Math.max(...topTools.map(t => t.count), 1);
+      metTopToolsBars.innerHTML = topTools.slice(0, 5).map(tool => {
+        const fInfo = (data.failure_rates || []).find(f => f.tool_name === tool.tool_name);
+        const hasFailures = fInfo && fInfo.failures > 0;
+        const fillWidth = Math.max(8, Math.round((tool.count / maxCount) * 100));
+        return `
+          <div class="sup-bar-row">
+            <div class="sup-bar-info">
+              <span class="sup-bar-name">
+                <span>⚙️</span>
+                <span>${escapeHtml(tool.tool_name)}</span>
+              </span>
+              <div class="sup-bar-stats">
+                ${hasFailures ? `<span class="sup-bar-fail-badge">${fInfo.failures} échec${fInfo.failures > 1 ? 's' : ''}</span>` : ''}
+                <span class="sup-bar-badge">${tool.count} (${tool.percentage}%)</span>
+              </div>
+            </div>
+            <div class="sup-bar-track">
+              <div class="sup-bar-fill" style="width: ${fillWidth}%;"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  // 3. Graphique 2 : Répartition Tiers Cognitifs
+  const tUsage = data.tier_usage || { tier_1: 0, tier_2: 0, tier_3: 0, none: 0 };
+  const t1 = tUsage.tier_1 || 0;
+  const t2 = tUsage.tier_2 || 0;
+  const t3 = tUsage.tier_3 || 0;
+  const t0 = tUsage.none || 0;
+  const tTotal = (t1 + t2 + t3 + t0) || 1;
+
+  const pct1 = Math.round((t1 / tTotal) * 100);
+  const pct2 = Math.round((t2 / tTotal) * 100);
+  const pct3 = Math.round((t3 / tTotal) * 100);
+  const pct0 = Math.max(0, 100 - (pct1 + pct2 + pct3));
+
+  const segTier1 = document.getElementById('segTier1');
+  const segTier2 = document.getElementById('segTier2');
+  const segTier3 = document.getElementById('segTier3');
+  const segTier0 = document.getElementById('segTier0');
+
+  if (segTier1) segTier1.style.width = `${pct1}%`;
+  if (segTier2) segTier2.style.width = `${pct2}%`;
+  if (segTier3) segTier3.style.width = `${pct3}%`;
+  if (segTier0) segTier0.style.width = `${pct0}%`;
+
+  const metTier1Count = document.getElementById('metTier1Count');
+  const metTier2Count = document.getElementById('metTier2Count');
+  const metTier3Count = document.getElementById('metTier3Count');
+  const metTier0Count = document.getElementById('metTier0Count');
+
+  if (metTier1Count) metTier1Count.innerText = t1;
+  if (metTier2Count) metTier2Count.innerText = t2;
+  if (metTier3Count) metTier3Count.innerText = t3;
+  if (metTier0Count) metTier0Count.innerText = t0;
+
+  // 4. Tableau Détaillé des Outils
+  const metToolsTableRows = document.getElementById('metToolsTableRows');
+  if (metToolsTableRows) {
+    const tools = data.tools_summary || [];
+    if (tools.length === 0) {
+      metToolsTableRows.innerHTML = '<div class="sup-empty-metrics">Aucune métrique enregistrée sur cette période.</div>';
+    } else {
+      metToolsTableRows.innerHTML = tools.map(t => {
+        const failColor = t.failures > 0 ? '#f87171' : '#64748b';
+        return `
+          <div class="sup-metric-row">
+            <div style="flex: 2; font-family: monospace; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(t.tool_name)}">
+              ${escapeHtml(t.tool_name)}
+            </div>
+            <div style="text-align: center; flex: 1; font-family: 'Orbitron', monospace; color: #38bdf8;">${t.count}</div>
+            <div style="text-align: center; flex: 1; font-weight: 700; color: ${failColor};">${t.failures}</div>
+            <div style="text-align: center; flex: 1; color: #94a3b8;">${t.avg_latency_ms} ms</div>
+            <div style="text-align: center; flex: 1; color: #64748b;">${t.p95_latency_ms} ms</div>
+            <div style="text-align: right; flex: 1; font-family: monospace; color: ${t.cost_est > 0 ? '#c084fc' : '#475569'};">
+              ${t.cost_est > 0 ? t.cost_est.toFixed(3) + ' $' : '0.00 $'}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+}
+
 function escapeHtml(str) {
   if (!str) return '';
   return String(str)
@@ -2879,6 +3048,7 @@ if (btnCloseSupervisionFooter) {
 if (btnRefreshSupervision) {
   btnRefreshSupervision.onclick = () => {
     fetchSupervisionOverview();
+    fetchSupervisionMetrics();
   };
 }
 

@@ -39,6 +39,20 @@ async def get_supervision_windows(request: Request):
     return {"windows": supervision_service.get_open_windows()}
 
 
+@router.get("/api/supervision/metrics")
+async def get_supervision_metrics(request: Request):
+    """Retourne l'historique et les statistiques agrégées des appels d'outils (24h/7j/30j)."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+
+    window = request.query_params.get("window", "24h")
+    from services.metrics_service import metrics_service
+    summary = await metrics_service.get_metrics_summary(window_str=window)
+    return JSONResponse(content=summary)
+
+
+
 @router.post("/api/task/directive")
 async def post_task_directive(req: DirectiveRequest, request: Request):
     """Permet à l'utilisateur d'adapter ou guider en direct la tâche de code en cours de développement."""

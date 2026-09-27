@@ -48,7 +48,122 @@ from core.shared_state import (
 )
 
 
+from services.metrics_service import metrics_service
+
+
+def _infer_tool_tier_and_cost(
+    name: str,
+    args: dict,
+    is_paid_live: bool,
+    res: Optional[dict] = None
+) -> tuple[Optional[int], float]:
+    """Déduit le tier cognitif (1, 2, 3) et le coût estimé pour l'observabilité."""
+    args = args or {}
+    tier = None
+    cost = 0.0
+
+    # 1. Tier cognitif
+    if name in ("generate_book_summary", "curation_livre_synthese"):
+        tier = 1
+    elif name in (
+        "draft_email_response", "triage_et_brouillon_email",
+        "rechercher_train", "search_train_routes",
+        "generate_spreadsheet", "generer_fichier_tableur"
+    ):
+        tier = 2
+    elif name in (
+        "system_self_healing", "auto_guerison_systeme",
+        "launch_deep_research", "deep_research"
+    ):
+        tier = 3
+    elif name in ("ask_deep_reasoning", "deep_reasoning"):
+        m_lower = str(args.get("model") or "").lower()
+        ir_lower = str(args.get("intensite_reflexion") or "").lower()
+        if any(k in ir_lower for k in ["rapide", "tier1", "tier 1", "flash-low"]) or any(k in m_lower for k in ["flash-low", "low", "tier1"]):
+            tier = 1
+        elif any(k in ir_lower for k in ["approfondie", "tier3", "tier 3", "pro-high", "fond", "ingenierie"]) or any(k in m_lower for k in ["pro-high", "opus", "claude", "tier3", "o3"]):
+            tier = 3
+        else:
+            tier = 2
+
+    if isinstance(res, dict):
+        if "cognitive_tier" in res and isinstance(res["cognitive_tier"], int):
+            tier = res["cognitive_tier"]
+        elif "tier" in res and isinstance(res["tier"], int):
+            tier = res["tier"]
+
+    # 2. Coût estimé
+    if name in ("run_browser_task", "browser_task"):
+        cost = 0.02
+    elif name in ("ask_deep_reasoning", "deep_reasoning"):
+        if tier == 3:
+            cost = 0.03
+        elif tier == 2:
+            cost = 0.015
+        elif tier == 1:
+            cost = 0.001
+        else:
+            cost = 0.02
+    elif name in ("launch_deep_research", "deep_research"):
+        cost = 0.05
+    elif is_paid_live:
+        cost = 0.005
+
+    return tier, cost
+
+
 async def dispatch_tool(
+    name: str,
+    args: dict,
+    websocket,
+    session,
+    is_paid_live: bool,
+    live_display_label: str,
+) -> dict:
+    """
+    Dispatch l'appel d'outil `name` avec ses `args` et retourne le dict tool_resp.
+    Instrumenté pour l'observabilité (statut, latence, tier, coût) de manière non-bloquante.
+    """
+    t0 = time.perf_counter()
+    status = "success"
+    res = None
+    try:
+        res = await _execute_dispatch_tool(
+            name=name,
+            args=args,
+            websocket=websocket,
+            session=session,
+            is_paid_live=is_paid_live,
+            live_display_label=live_display_label,
+        )
+        if isinstance(res, dict):
+            res_status = str(res.get("status", "")).lower()
+            if res_status in ("error", "failed", "échec"):
+                status = "failure"
+            elif res_status == "timeout":
+                status = "timeout"
+        return res
+    except asyncio.TimeoutError:
+        status = "timeout"
+        raise
+    except Exception:
+        status = "failure"
+        raise
+    finally:
+        latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+        tier, cost_est = _infer_tool_tier_and_cost(name, args, is_paid_live, res)
+        metrics_service.record_tool_call_background(
+            tool_name=name,
+            status=status,
+            latency_ms=latency_ms,
+            cognitive_tier=tier,
+            cost_est=cost_est,
+            is_paid_key=bool(is_paid_live or cost_est > 0),
+            metadata={"args_keys": list(args.keys()) if isinstance(args, dict) else []},
+        )
+
+
+async def _execute_dispatch_tool(
     name: str,
     args: dict,
     websocket,

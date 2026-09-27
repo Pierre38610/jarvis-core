@@ -3691,5 +3691,288 @@ body {
   letter-spacing: 0.5px;
 }
 
+/* ── SECTION MÉTRIQUES D'INSTRUMENTATION & OBSERVABILITÉ ── */
+.sup-metrics-window-pills {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.sup-metrics-pill {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  color: #94a3b8;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sup-metrics-pill:hover {
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.6);
+}
+
+.sup-metrics-pill.active {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  border-color: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.3);
+}
+
+.sup-metrics-counters-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 600px) {
+  .sup-metrics-counters-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.sup-metric-counter-card {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+  transition: border-color 0.2s ease;
+}
+
+.sup-metric-counter-card:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.sup-metric-val {
+  font-family: 'Orbitron', monospace;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #38bdf8;
+  margin-bottom: 2px;
+}
+
+.sup-metric-lbl {
+  font-size: 0.62rem;
+  color: #94a3b8;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+}
+
+.sup-metric-sub {
+  font-size: 0.58rem;
+  color: #64748b;
+  margin-top: 3px;
+}
+
+.sup-metrics-charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 680px) {
+  .sup-metrics-charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sup-metrics-chart-box {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(56, 189, 248, 0.16);
+  border-radius: 8px;
+  padding: 12px;
+  min-height: 140px;
+}
+
+.sup-chart-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: #94a3b8;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+
+.sup-bars-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sup-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sup-bar-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.65rem;
+}
+
+.sup-bar-name {
+  color: #cbd5e1;
+  font-family: monospace;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sup-bar-stats {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.sup-bar-badge {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-family: 'Orbitron', monospace;
+}
+
+.sup-bar-fail-badge {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.58rem;
+}
+
+.sup-bar-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(30, 41, 59, 0.8);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.sup-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0284c7, #38bdf8);
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+/* Tiers distribution bar */
+.sup-tier-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sup-segmented-track {
+  width: 100%;
+  height: 10px;
+  background: rgba(30, 41, 59, 0.8);
+  border-radius: 5px;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sup-seg-bar {
+  height: 100%;
+  transition: width 0.4s ease;
+}
+
+.seg-tier1 { background: #10b981; } /* Flash */
+.seg-tier2 { background: #06b6d4; } /* Tactique */
+.seg-tier3 { background: #a855f7; } /* Pro */
+.seg-tier0 { background: #475569; } /* Direct / Local */
+
+.sup-tier-legend-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.sup-tier-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.65rem;
+  color: #cbd5e1;
+}
+
+.tier-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.tier1-dot { background: #10b981; box-shadow: 0 0 5px #10b981; }
+.tier2-dot { background: #06b6d4; box-shadow: 0 0 5px #06b6d4; }
+.tier3-dot { background: #a855f7; box-shadow: 0 0 5px #a855f7; }
+.tier0-dot { background: #64748b; }
+
+.sup-tier-legend-item strong {
+  margin-left: auto;
+  font-family: 'Orbitron', monospace;
+  color: #e0f2fe;
+}
+
+/* Table détaillée des métriques */
+.sup-metrics-table-wrapper {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(56, 189, 248, 0.16);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.sup-metrics-table-head {
+  display: flex;
+  font-size: 0.6rem;
+  font-weight: 800;
+  color: #64748b;
+  letter-spacing: 0.6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.15);
+  margin-bottom: 6px;
+}
+
+.sup-metrics-table-rows {
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sup-metric-row {
+  display: flex;
+  align-items: center;
+  font-size: 0.65rem;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.sup-metric-row:last-child {
+  border-bottom: none;
+}
+
+.sup-empty-metrics {
+  color: #64748b;
+  font-size: 0.65rem;
+  font-style: italic;
+  text-align: center;
+  padding: 14px 0;
+}
+
+
 
 
