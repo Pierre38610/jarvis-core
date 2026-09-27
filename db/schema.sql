@@ -67,3 +67,24 @@ DROP TRIGGER IF EXISTS trg_memories_updated_at ON memories;
 CREATE TRIGGER trg_memories_updated_at
     BEFORE UPDATE ON memories
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =============================================================================
+-- TABLE : tier_routing_log
+-- Journalisation de l'arbitrage cognitif et de la résilience 429
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS tier_routing_log (
+    id                  UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    query_text          TEXT            NOT NULL,
+    chosen_tier         SMALLINT        NOT NULL CHECK (chosen_tier IN (1, 2, 3)),
+    reason              TEXT            NOT NULL DEFAULT '',
+    final_tier          SMALLINT        NOT NULL CHECK (final_tier IN (1, 2, 3)),
+    fallback_occurred   BOOLEAN         NOT NULL DEFAULT FALSE,
+    latency_ms          DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    override_manuel     BOOLEAN         NOT NULL DEFAULT FALSE,
+    metadata            JSONB           NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_tier_routing_created_at ON tier_routing_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tier_routing_chosen_tier ON tier_routing_log (chosen_tier);
+CREATE INDEX IF NOT EXISTS idx_tier_routing_final_tier ON tier_routing_log (final_tier);

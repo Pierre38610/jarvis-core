@@ -457,6 +457,47 @@ class VectorMemoryService:
         )
         return block
 
+    async def log_tier_routing(
+        self,
+        query_text: str,
+        chosen_tier: int,
+        reason: str,
+        final_tier: int,
+        latency_ms: float,
+        override_manuel: bool = False,
+        fallback_occurred: bool = False,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """Enregistre un événement d'arbitrage cognitif dans la table PostgreSQL tier_routing_log.
+        Permet de mesurer a posteriori les mauvais routages et les fallbacks 429.
+        """
+        if not self._pg_pool:
+            return False
+        try:
+            sql = """
+                INSERT INTO tier_routing_log (
+                    query_text, chosen_tier, reason, final_tier,
+                    fallback_occurred, latency_ms, override_manuel, metadata
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            """
+            meta_json = json.dumps(metadata or {}, ensure_ascii=False)
+            async with self._pg_pool.acquire() as conn:
+                await conn.execute(
+                    sql,
+                    query_text,
+                    int(chosen_tier),
+                    str(reason),
+                    int(final_tier),
+                    bool(fallback_occurred),
+                    float(latency_ms),
+                    bool(override_manuel),
+                    meta_json
+                )
+            return True
+        except Exception as e:
+            logger.error(f"[Memory] Erreur enregistrement tier_routing_log : {e}")
+            return False
+
     async def close(self) -> None:
         """Ferme proprement les connexions."""
         if self._pg_pool:
@@ -472,3 +513,25 @@ class VectorMemoryService:
 # ─── Instance singleton ────────────────────────────────────────────────────────
 
 vector_memory = VectorMemoryService()
+
+async def log_tier_routing(
+    query_text: str,
+    chosen_tier: int,
+    reason: str,
+    final_tier: int,
+    latency_ms: float,
+    override_manuel: bool = False,
+    fallback_occurred: bool = False,
+    metadata: Optional[Dict[str, Any]] = None
+) -> bool:
+    """Fonction utilitaire globale pour journaliser les arbitrages cognitifs dans PostgreSQL."""
+    return await vector_memory.log_tier_routing(
+        query_text=query_text,
+        chosen_tier=chosen_tier,
+        reason=reason,
+        final_tier=final_tier,
+        latency_ms=latency_ms,
+        override_manuel=override_manuel,
+        fallback_occurred=fallback_occurred,
+        metadata=metadata
+    )

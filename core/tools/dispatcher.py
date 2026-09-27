@@ -98,7 +98,7 @@ async def dispatch_tool(
         is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
 
         from google_antigravity import resolve_cognitive_tier
-        cog_cfg = resolve_cognitive_tier(
+        cog_cfg = await resolve_cognitive_tier(
             query=question,
             user_preference=model_choice,
             intensite_reflexion=intensite_reflexion

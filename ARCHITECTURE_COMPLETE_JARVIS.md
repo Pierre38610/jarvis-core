@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.3.0 — Catalogue Unifié des 38 Outils, Résolution d'Ambiguïtés ASR & Fusion Cognitive.*
+> *Dernière révision majeure : Version 5.4.0 — Classifieur Cognitif LLM Tier 1, Télémétrie PostgreSQL (tier_routing_log) & Audit Quotas 429.*
 
 ---
 
@@ -273,6 +273,23 @@ CREATE TABLE IF NOT EXISTS memories (
     importance      SMALLINT        NOT NULL DEFAULT 1 CHECK (importance BETWEEN 1 AND 5),
     metadata        JSONB           NOT NULL DEFAULT '{}'
 );
+
+-- Table de journalisation des arbitrages cognitifs & résilience 429
+CREATE TABLE IF NOT EXISTS tier_routing_log (
+    id                  UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    query_text          TEXT            NOT NULL,
+    chosen_tier         SMALLINT        NOT NULL CHECK (chosen_tier IN (1, 2, 3)),
+    reason              TEXT            NOT NULL DEFAULT '',
+    final_tier          SMALLINT        NOT NULL CHECK (final_tier IN (1, 2, 3)),
+    fallback_occurred   BOOLEAN         NOT NULL DEFAULT FALSE,
+    latency_ms          DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    override_manuel     BOOLEAN         NOT NULL DEFAULT FALSE,
+    metadata            JSONB           NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_tier_routing_created_at ON tier_routing_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tier_routing_chosen_tier ON tier_routing_log (chosen_tier);
+CREATE INDEX IF NOT EXISTS idx_tier_routing_final_tier ON tier_routing_log (final_tier);
 ```
 
 ### 3.4. Moteur Vectoriel Qdrant & Embeddings Fastembed (`services/memory.py`)
@@ -375,22 +392,54 @@ Pour préserver le quota glissant de 5 heures Google AI Pro tout en garantissant
 
 | Palier (Tier) | Modèle Résolu | Réflexion (Thinking) | Cibles Principales & Cas d'Usage | Latence Typique | Impact Quota 5h |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **TIER 1 — Rapidité & Économie** | `gemini-3.8-flash` | `low` (ou minimal) | `doc_sync`, `book_curation`, `email_simple`, diagnostics de routine, vérifications d'état. | 1 à 3 secondes | Négligeable (0 % Pro) |
+| **TIER 1 — Rapidité & Économie** | `gemini-3.8-flash` | `low` (ou minimal) | `doc_sync`, `book_curation`, `email_simple`, diagnostics de routine, vérifications d'état, classification de routage. | 1 à 3 secondes | Négligeable (0 % Pro) |
 | **TIER 2 — Raisonnement Tactique** | `gemini-3.8-flash` | `high` (renforcé) | `transport_optimizer`, `spreadsheet_modeler`, `email_drafting`, `memory_consolidation`, requêtes libres par défaut. | 4 à 10 secondes | Nul sur le quota 3.1 Pro |
 | **TIER 3 — Délibération Système 2** | `gemini-3.1-pro` | `high` (délibératif) | `deep_research` multi-sources, `system_healing` critique, `code_refactoring`, ingénierie complexe. | 20 à 60 secondes | Consommation mesurée sur Pro |
 
 #### Mécanismes d'Arbitrage Ordonnés (`resolve_cognitive_tier`)
-1. **Surcharge Explicite (Overriding)** : La consigne de l'utilisateur ("*Fais une passe rapide avec Flash*", "*Prends tout ton temps et réfléchis au maximum*") ou le paramètre `intensite_reflexion` (`rapide` -> T1, `tactique` -> T2, `approfondie` -> T3) prévaut immédiatement.
-2. **Table de Correspondance Statique par `mission_type`** : Résolution automatique selon le type de mission.
-3. **Heuristique de Complexité pour Requêtes Libres** : Analyse du prompt, taille (> 600 caractères), présence de blocs de code ou logs, mots-clés d'intensité (`architecture`, `benchmark`, `audit`, `refactor`). Par défaut, le routeur applique le **TIER 2** (`gemini-3.8-flash-high`) pour préserver les quotas Pro.
+Face aux transcriptions vocales imparfaites et à la variabilité du langage naturel, l'ancienne heuristique par seuil de caractères (> 600) et regex a été remplacée par un arbitrage strict en 3 niveaux :
+1. **Priorité 1 — Surcharge Explicite Utilisateur (Overriding Prioritaire)** :
+   - Consignes vocales de rapidité : "*fais une passe rapide*", "*réponds vite*", "*sans réfléchir*", "*juste les grandes lignes*" → Verrouillage immédiat au **TIER 1** (`is_override=True`).
+   - Consignes vocales de profondeur : "*prends tout ton temps*", "*analyse en profondeur*", "*mode délibératif*", "*cherche à fond*" → Verrouillage immédiat au **TIER 3** (`is_override=True`).
+   - Paramètre d'API explicite `intensite_reflexion` (`rapide` → T1, `tactique` → T2, `approfondie` → T3) ou modèle cible forcé (`gemini-3.1-pro`, `gemini-3.8-flash`).
+2. **Priorité 2 — Table de Correspondance Déterministe (`mission_type`)** :
+   - Routage automatique selon le type d'agent ou mission déclarée (`deep_research` → T3, `code_refactoring` → T3, `doc_sync` → T1, etc.).
+3. **Priorité 3 — Classifieur LLM Léger Tier 1 (`classify_query_tier_with_llm`)** :
+   - Pour toute requête libre non couverte par les priorités 1 et 2, Jarvis consulte un modèle Tier 1 ultra-rapide (`gemini-3.8-flash` avec timeout de 3,5s et `response_mime_type="application/json"`).
+   - Le modèle retourne un objet JSON strict :
+     ```json
+     {
+       "tier": 1 | 2 | 3,
+       "reason": "Explication concise de la décision de complexité cognitive"
+     }
+     ```
+   - En cas d'erreur de parsing, d'indisponibilité ou de dépassement de délai, un repli déterministe sécurisé vers le **TIER 2** (`gemini-3.8-flash-high`) est automatiquement appliqué.
+
+#### Télémétrie & Traçabilité Post-Hoc (`tier_routing_log`)
+Chaque routage est persisté de manière asynchrone et non-bloquante dans la table relationnelle PostgreSQL `tier_routing_log` :
+- `query_text` : Prompt ou consigne d'entrée.
+- `chosen_tier` : Palier initialement sélectionné par le classifieur ou la surcharge (1, 2 ou 3).
+- `reason` : Justification fournie par le LLM Tier 1 ou identification de la règle d'override.
+- `final_tier` : Palier réellement exécuté (permettant d'identifier un fallback 429 subséquent).
+- `latency_ms` : Durée totale de traitement de la tâche de raisonnement.
+- `override_manuel` : Booléen (`true` si consigne explicite Pierre ou paramètre d'intensité forcé).
+Cette table permet de mesurer a posteriori les erreurs de routage, la pertinence du classifieur et la fréquence des dégradations de service.
 
 ### 5.4. Protocole de Résilience Quota-Aware & Dégradation Gracieuse (429)
-En cas de saturation du quota 5h sur `gemini-3.1-pro` :
+En cas de saturation du quota glissant 5h sur `gemini-3.1-pro` :
 1. **Interception Immédiate** : Détection de l'exception `AntigravityQuotaExhaustedError` ou code HTTP 429 / `ResourceExhausted`.
-2. **Fallback Transparent Instantané** : Relance automatique de la tâche sur le TIER 2 (`gemini-3.8-flash` avec thinking `high`) sans annulation de la mission.
-3. **Notification Proactive Multicanale** : Enregistrement de l'incident dans `SupervisionService` et alerte vocale/Telegram sans interruption de service :
+2. **Fallback Transparent Instantané** : Relance automatique de la tâche sur le TIER 2 (`gemini-3.8-flash` avec réflexion `high`) sans annulation de la mission.
+3. **Audit de Sécurité Économique & Non-Consommation de Clé Payante** :
+   - **Garantie d'inviolabilité** : Le modèle de fallback Tier 2 est `gemini-3.8-flash`.
+   - **Contrôle d'autorisation** : La clé transmise au fallback passe obligatoirement par la vérification stricte :
+     ```python
+     fallback_key = config.get_effective_paid_key() if config.is_paid_key_authorized() else GEMINI_API_KEY_FREE
+     ```
+   - Si la case "Activer clé payante" est décochée dans l'interface, `is_paid_key_authorized()` renvoie `False` et `get_effective_paid_key()` renvoie `""`. Le fallback s'exécute **exclusivement et physiquement** sur le quota de la clé gratuite (`GEMINI_API_KEY_FREE`).
+   - Il est **impossible** qu'un repli 429 bascule silencieusement sur la clé payante sans accord préalable.
+4. **Notification Proactive Multicanale** : Enregistrement de l'incident dans `SupervisionService` et alerte vocale/Telegram sans interruption de service :
    > *"Pierre, le quota 5h sur 3.1 Pro est atteint. J'ai automatiquement basculé l'agent sur 3.8 Flash en réflexion renforcée pour finaliser la tâche sans blocage."*
-4. **Zéro Échec Critique** : Aucune tâche ne s'interrompt brutalement sur quota tant que le palier Flash reste opérationnel.
+5. **Mise à Jour Télémétrique** : Le champ `final_tier` dans `tier_routing_log` est mis à jour à 2 (tandis que `chosen_tier` reste à 3), permettant de mesurer avec précision l'impact des quotas sur la journée.
 
 ---
 

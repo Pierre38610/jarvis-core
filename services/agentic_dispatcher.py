@@ -285,7 +285,7 @@ class AgenticDispatcher:
         mission_id = f"{mission_type}_{int(time.time())}"
         start_time = time.time()
 
-        cog_cfg = resolve_cognitive_tier(
+        cog_cfg = await resolve_cognitive_tier(
             mission_type=mission_type,
             query=goal,
             user_preference=model
@@ -359,6 +359,7 @@ class AgenticDispatcher:
 
         # Lancement en tâche d'arrière-plan asynchrone non-bloquante
         async def _run_mission_background():
+            fallback_occurred = False
             try:
                 effective_key = config.get_effective_paid_key() if config.is_paid_key_authorized() else GEMINI_API_KEY_FREE
                 agent = AntigravityAgent(workspace=WORKSPACE_DIR, model=effective_model, api_key=effective_key)
@@ -380,6 +381,7 @@ class AgenticDispatcher:
                 except AntigravityQuotaExhaustedError:
                     is_heavy = any(k in effective_model.lower() for k in ["3.1", "pro", "opus", "sonnet"])
                     if is_heavy:
+                        fallback_occurred = True
                         fallback_msg = (
                             "Pierre, le quota 5h sur 3.1 Pro est atteint. "
                             "J'ai automatiquement basculé l'agent sur 3.8 Flash en réflexion renforcée pour finaliser la tâche sans blocage."
@@ -403,8 +405,11 @@ class AgenticDispatcher:
                         except Exception:
                             pass
 
-                        # Relance immédiate avec 3.8 Flash High
-                        fallback_agent = AntigravityAgent(workspace=WORKSPACE_DIR, model="gemini-3.8-flash-high", api_key=effective_key)
+                        # GARDE-FOU INVIOLABLE (Sections 5.2.3 & 5.4 de l'architecture) :
+                        # Le repli sur Tier 2 (3.8 Flash High) suite à une erreur 429 ne doit JAMAIS
+                        # basculer silencieusement vers la clé payante sans accord préalable.
+                        fallback_key = config.get_effective_paid_key() if config.is_paid_key_authorized() else GEMINI_API_KEY_FREE
+                        fallback_agent = AntigravityAgent(workspace=WORKSPACE_DIR, model="gemini-3.8-flash-high", api_key=fallback_key)
                         active_task_controller["agent_instance"] = fallback_agent
                         task_result = await fallback_agent.run_cli_task_stream(
                             prompt,
@@ -524,6 +529,21 @@ class AgenticDispatcher:
 
                 supervision_service.complete_action(mission_id, status="completed", summary=summary_label)
                 await broadcast_supervision()
+
+                try:
+                    from services.memory import log_tier_routing
+                    asyncio.create_task(log_tier_routing(
+                        query_text=goal,
+                        chosen_tier=cog_cfg.tier,
+                        reason=getattr(cog_cfg, "reason", "") or f"Mission {mission_type}",
+                        final_tier=2 if fallback_occurred else cog_cfg.tier,
+                        latency_ms=(time.time() - start_time) * 1000,
+                        override_manuel=getattr(cog_cfg, "is_override", False),
+                        fallback_occurred=fallback_occurred,
+                        metadata={"mission_type": mission_type, "mission_id": mission_id}
+                    ))
+                except Exception as log_err:
+                    logger.warning(f"[AgenticDispatcher] Note journalisation tier_routing_log : {log_err}")
 
                 # ─── RESTITUTION MULTICANALE ──────────────────────────────────
                 # 1. Notification Telegram Stark Bot (chatId: 6849746502)

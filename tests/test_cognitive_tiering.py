@@ -31,85 +31,110 @@ from core.tools.dispatcher import dispatch_tool
 # 1. Validation de la Résolution des Tiers Cognitifs
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_resolve_tier_1_static_missions():
+@pytest.mark.asyncio
+async def test_resolve_tier_1_static_missions():
     """Vérifie que les missions simples ciblent le Tier 1 (3.8-flash low)."""
     for mission in ["doc_sync", "book_curation", "email_simple", "log_check", "documentation"]:
-        cfg = resolve_cognitive_tier(mission_type=mission)
+        cfg = await resolve_cognitive_tier(mission_type=mission)
         assert cfg.tier == 1
         assert "flash" in cfg.model.lower()
         assert cfg.thinking_level == "low"
         assert cfg.timeout_seconds <= 120
+        assert cfg.is_override is False
 
 
-def test_resolve_tier_2_tactical_missions():
+@pytest.mark.asyncio
+async def test_resolve_tier_2_tactical_missions():
     """Vérifie que les missions intermédiaires ciblent le Tier 2 (3.8-flash high)."""
     for mission in ["transport_optimizer", "spreadsheet_modeler", "email_analysis", "email_drafting", "memory_consolidation"]:
-        cfg = resolve_cognitive_tier(mission_type=mission)
+        cfg = await resolve_cognitive_tier(mission_type=mission)
         assert cfg.tier == 2
         assert "flash" in cfg.model.lower()
         assert cfg.thinking_level == "high"
         assert cfg.timeout_seconds == 300
+        assert cfg.is_override is False
 
 
-def test_resolve_tier_3_heavy_missions():
+@pytest.mark.asyncio
+async def test_resolve_tier_3_heavy_missions():
     """Vérifie que les missions de haute ingénierie ciblent le Tier 3 (3.1-pro high)."""
     for mission in ["deep_research", "system_healing", "code_refactoring", "healing"]:
-        cfg = resolve_cognitive_tier(mission_type=mission)
+        cfg = await resolve_cognitive_tier(mission_type=mission)
         assert cfg.tier == 3
         assert "pro" in cfg.model.lower()
         assert cfg.thinking_level == "high"
         assert cfg.timeout_seconds >= 600
+        assert cfg.is_override is False
 
 
-def test_resolve_free_query_defaults_to_tier_2_to_preserve_quota():
-    """Une requête ouverte simple sans mission_type ni code lourd doit adopter le Tier 2."""
-    query = "Jarvis, peux-tu me préparer un plan pour ranger mon bureau ce week-end ?"
-    cfg = resolve_cognitive_tier(query=query)
-    assert cfg.tier == 2
-    assert "flash" in cfg.model.lower()
-    assert cfg.thinking_level == "high"
+@pytest.mark.asyncio
+async def test_resolve_free_query_defaults_to_tier_2_via_classifier():
+    """Une requête ouverte simple classifiée en Tier 2 adopte le Tier 2."""
+    with patch("services.reasoning_service.classify_query_tier_with_llm", new_callable=AsyncMock) as mock_cls:
+        mock_cls.return_value = {"tier": 2, "reason": "Requête d'organisation courante"}
+        query = "Jarvis, peux-tu me préparer un plan pour ranger mon bureau ce week-end ?"
+        cfg = await resolve_cognitive_tier(query=query)
+        assert cfg.tier == 2
+        assert "flash" in cfg.model.lower()
+        assert cfg.thinking_level == "high"
+        assert cfg.is_override is False
+        assert cfg.reason == "Requête d'organisation courante"
 
 
-def test_resolve_free_query_with_complexity_heuristic_targets_tier_3():
-    """Une requête avec code ou mots-clés d'architecture complexes doit mobiliser le Tier 3."""
-    query = (
-        "Peux-tu faire un audit complet de l'architecture du routeur voice.py ? "
-        "Il y a un bug de concurrence asynchrone délicat dans la gestion des WebSockets : "
-        "```python\nasync def handler():\n    await queue.get()\n```"
-    )
-    cfg = resolve_cognitive_tier(query=query)
-    assert cfg.tier == 3
-    assert "pro" in cfg.model.lower()
-    assert cfg.thinking_level == "high"
+@pytest.mark.asyncio
+async def test_resolve_free_query_targets_tier_3_via_classifier():
+    """Une requête complexe classifiée en Tier 3 mobilisera le Tier 3."""
+    with patch("services.reasoning_service.classify_query_tier_with_llm", new_callable=AsyncMock) as mock_cls:
+        mock_cls.return_value = {"tier": 3, "reason": "Audit d'architecture et concurrence asynchrone"}
+        query = (
+            "Peux-tu faire un audit complet de l'architecture du routeur voice.py ? "
+            "Il y a un bug de concurrence asynchrone délicat dans la gestion des WebSockets : "
+            "```python\nasync def handler():\n    await queue.get()\n```"
+        )
+        cfg = await resolve_cognitive_tier(query=query)
+        assert cfg.tier == 3
+        assert "pro" in cfg.model.lower()
+        assert cfg.thinking_level == "high"
+        assert cfg.is_override is False
+        assert cfg.reason == "Audit d'architecture et concurrence asynchrone"
 
 
-def test_explicit_overrides_priority():
-    """Les consignes explicites de vitesse ou d'effort doivent surcharger les heuristiques."""
-    # 1. intensite_reflexion rapide force Tier 1 même sur un sujet complexe
-    cfg1 = resolve_cognitive_tier(
-        query="Refactorise tout le serveur FastAPI immédiatement",
-        intensite_reflexion="rapide"
-    )
-    assert cfg1.tier == 1
+@pytest.mark.asyncio
+async def test_explicit_overrides_priority_over_classifier():
+    """Les consignes explicites de vitesse ou d'effort doivent surcharger le classifieur sans l'appeler."""
+    with patch("services.reasoning_service.classify_query_tier_with_llm", new_callable=AsyncMock) as mock_cls:
+        # 1. intensite_reflexion rapide force Tier 1 même sur un sujet complexe
+        cfg1 = await resolve_cognitive_tier(
+            query="Refactorise tout le serveur FastAPI immédiatement",
+            intensite_reflexion="rapide"
+        )
+        assert cfg1.tier == 1
+        assert cfg1.is_override is True
 
-    # 2. intensite_reflexion approfondie force Tier 3 même sur un sujet anodin
-    cfg2 = resolve_cognitive_tier(
-        query="Dis-moi bonjour",
-        intensite_reflexion="approfondie"
-    )
-    assert cfg2.tier == 3
+        # 2. intensite_reflexion approfondie force Tier 3 même sur un sujet anodin
+        cfg2 = await resolve_cognitive_tier(
+            query="Dis-moi bonjour",
+            intensite_reflexion="approfondie"
+        )
+        assert cfg2.tier == 3
+        assert cfg2.is_override is True
 
-    # 3. Instruction orale rapide dans la requête
-    cfg3 = resolve_cognitive_tier(
-        query="Fais une passe rapide avec Flash sur cette fonction",
-    )
-    assert cfg3.tier == 1
+        # 3. Instruction orale rapide dans la requête
+        cfg3 = await resolve_cognitive_tier(
+            query="Fais une passe rapide avec Flash sur cette fonction",
+        )
+        assert cfg3.tier == 1
+        assert cfg3.is_override is True
 
-    # 4. Instruction orale approfondie dans la requête
-    cfg4 = resolve_cognitive_tier(
-        query="Prends tout ton temps et réfléchis au maximum pour analyser ce problème",
-    )
-    assert cfg4.tier == 3
+        # 4. Instruction orale approfondie dans la requête
+        cfg4 = await resolve_cognitive_tier(
+            query="Prends tout ton temps et réfléchis au maximum pour analyser ce problème",
+        )
+        assert cfg4.tier == 3
+        assert cfg4.is_override is True
+
+        # Le classifieur LLM ne doit JAMAIS avoir été appelé car les overrides sont prioritaires
+        assert mock_cls.call_count == 0
 
 
 def test_resolve_cli_model_args_contains_thinking_and_model():
@@ -283,3 +308,83 @@ async def test_dispatch_tool_ask_deep_reasoning_confirmed_launches_bg_task():
 
         assert res.get("status") == "launched_in_background"
         assert "Antigravity" in res.get("engine", "")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. Validation de la Table de Log PostgreSQL et du Verrou de Clé Payante
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_tier_routing_log_recorded_on_investigation():
+    """Vérifie que run_autonomous_investigation journalise l'arbitrage dans tier_routing_log."""
+    engine = AutonomousReasoningEngine()
+
+    with patch("google_antigravity.AntigravityAgent.run_cli_task_stream", new_callable=AsyncMock) as mock_cli:
+        mock_cli.return_value = TaskResult(summary="Investigation réussie", status="completed", model_label="Gemini 3.8 Flash (High)")
+        with patch("services.memory.log_tier_routing", new_callable=AsyncMock) as mock_log:
+            await engine.run_autonomous_investigation(
+                goal="Optimiser les requêtes SQL",
+                model="gemini-3.8-flash-high",
+                chosen_tier=2,
+                reason="Requête tactique",
+                is_override=False
+            )
+            # Attend le déclenchement de la coroutine de log en tâche de fond
+            await asyncio.sleep(0.05)
+            assert mock_log.call_count == 1
+            call_kwargs = mock_log.call_args.kwargs
+            assert call_kwargs["chosen_tier"] == 2
+            assert call_kwargs["final_tier"] == 2
+            assert call_kwargs["fallback_occurred"] is False
+            assert call_kwargs["override_manuel"] is False
+            assert call_kwargs["latency_ms"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_fallback_does_not_consume_paid_key_silently():
+    """Vérifie que lors d'un repli 429, si l'encoche payante est décochée,
+    le modèle Tier 2 utilise impérativement GEMINI_API_KEY_FREE et jamais la clé payante.
+    """
+    engine = AutonomousReasoningEngine()
+    import config
+    from config import GEMINI_API_KEY_FREE
+
+    # Simule l'encoche payante décochée
+    with patch("config.is_paid_key_authorized", return_value=False):
+        with patch("config.get_effective_paid_key", return_value=""):
+            call_agents = []
+
+            class FakeAgent:
+                def __init__(self, workspace, model, api_key, **kwargs):
+                    self.workspace = workspace
+                    self.model = model
+                    self.api_key = api_key
+                    self.model_label = model
+                    call_agents.append(self)
+
+                async def run_cli_task_stream(self, prompt, **kwargs):
+                    if len(call_agents) == 1:
+                        raise AntigravityQuotaExhaustedError("Quota saturé")
+                    return TaskResult(summary="OK", status="completed", model_label="Gemini 3.8 Flash (High)")
+
+            with patch("services.reasoning_service.AntigravityAgent", side_effect=FakeAgent):
+                with patch("services.memory.log_tier_routing", new_callable=AsyncMock) as mock_log:
+                    await engine.run_autonomous_investigation(
+                        goal="Débogage critique",
+                        model="gemini-3.1-pro-high",
+                        allow_quota_fallback=True,
+                        chosen_tier=3,
+                        reason="Test audit",
+                        is_override=False
+                    )
+                    await asyncio.sleep(0.05)
+
+                    assert len(call_agents) == 2
+                    # L'agent Tier 2 de fallback DOIT impérativement avoir la clé gratuite
+                    assert call_agents[1].api_key == GEMINI_API_KEY_FREE
+                    assert call_agents[1].model == "gemini-3.8-flash-high"
+                    # Et le log doit enregistrer le fallback 429
+                    assert mock_log.call_count == 1
+                    assert mock_log.call_args.kwargs["fallback_occurred"] is True
+                    assert mock_log.call_args.kwargs["chosen_tier"] == 3
+                    assert mock_log.call_args.kwargs["final_tier"] == 2

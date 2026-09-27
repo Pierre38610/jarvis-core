@@ -30,6 +30,8 @@ class CognitiveConfig:
     cli_model_arg: str = ""
     voice_pitch: str = ""
     description: str = ""
+    reason: str = ""
+    is_override: bool = False
 
     def __post_init__(self):
         if not self.cli_model_arg:
@@ -42,6 +44,19 @@ class CognitiveConfig:
                 self.tier = 1
             elif any(k in self.model for k in ["pro", "opus", "sonnet"]):
                 self.tier = 3
+
+    def with_details(self, reason: str = "", is_override: bool = False) -> "CognitiveConfig":
+        return CognitiveConfig(
+            model=self.model,
+            thinking_level=self.thinking_level,
+            timeout_seconds=self.timeout_seconds,
+            tier=self.tier,
+            cli_model_arg=self.cli_model_arg,
+            voice_pitch=self.voice_pitch,
+            description=self.description,
+            reason=reason,
+            is_override=is_override
+        )
 
 
 # ─── PALIERS COGNITIFS OFFICIELS (TIERS 1, 2, 3) ───
@@ -76,75 +91,61 @@ COGNITIVE_TIER_3 = CognitiveConfig(
 )
 
 
-def resolve_cognitive_tier(
+def resolve_cognitive_tier_sync(
     mission_type: Optional[str] = None,
     query: str = "",
     user_preference: Optional[str] = None,
     intensite_reflexion: Optional[str] = None
 ) -> CognitiveConfig:
-    """Résout dynamiquement le palier cognitif (Tier 1, 2 ou 3) selon 3 modes ordonnés :
-    1. Surcharge explicite orale ou écrite (Overriding : vitesse, modèle forcé, intensité)
-    2. Table de correspondance statique par mission_type (Priorité standard)
-    3. Heuristique de complexité pour les requêtes libres (Défaut Tier 2 pour préserver les quotas)
-    """
+    """Version synchrone de résolution cognitive (priorité overrides, missions statiques et repli Tier 2)."""
     # ─── MODE 1 : Surcharge explicite (Overriding) ───
-    # A. Paramètre direct intensite_reflexion
     if intensite_reflexion:
         ir = intensite_reflexion.lower().strip()
         if any(k in ir for k in ["rapide", "tier1", "tier 1", "flash-low", "flash_low", "economique"]):
-            return COGNITIVE_TIER_1
+            return COGNITIVE_TIER_1.with_details(reason=f"Override explicite intensite_reflexion: {intensite_reflexion}", is_override=True)
         elif any(k in ir for k in ["tactique", "tier2", "tier 2", "flash-high", "flash_high"]):
-            return COGNITIVE_TIER_2
+            return COGNITIVE_TIER_2.with_details(reason=f"Override explicite intensite_reflexion: {intensite_reflexion}", is_override=True)
         elif any(k in ir for k in ["approfondie", "tier3", "tier 3", "pro-high", "pro_high", "fond", "ingenierie"]):
-            return COGNITIVE_TIER_3
+            return COGNITIVE_TIER_3.with_details(reason=f"Override explicite intensite_reflexion: {intensite_reflexion}", is_override=True)
 
-    # B. Paramètre user_preference ou modèle forcé
     if user_preference:
         up = user_preference.lower().strip()
         if any(k in up for k in ["tier1", "tier 1", "flash-low", "flash_low"]):
-            return COGNITIVE_TIER_1
+            return COGNITIVE_TIER_1.with_details(reason=f"Override explicite user_preference: {user_preference}", is_override=True)
         if any(k in up for k in ["tier2", "tier 2", "tactique", "flash-high", "flash_high"]):
-            return COGNITIVE_TIER_2
+            return COGNITIVE_TIER_2.with_details(reason=f"Override explicite user_preference: {user_preference}", is_override=True)
         if any(k in up for k in ["tier3", "tier 3", "approfondie", "pro-high", "pro_high"]):
-            return COGNITIVE_TIER_3
+            return COGNITIVE_TIER_3.with_details(reason=f"Override explicite user_preference: {user_preference}", is_override=True)
         if "flash" in up:
             if any(k in up for k in ["low", "min", "rapide"]):
-                return COGNITIVE_TIER_1
-            return COGNITIVE_TIER_2
+                return COGNITIVE_TIER_1.with_details(reason=f"Override modèle: {user_preference}", is_override=True)
+            return COGNITIVE_TIER_2.with_details(reason=f"Override modèle: {user_preference}", is_override=True)
         if "pro" in up or "3.1" in up:
             if "low" in up:
                 return CognitiveConfig(
-                    model="gemini-3.1-pro",
-                    thinking_level="low",
-                    timeout_seconds=300,
-                    tier=2,
-                    cli_model_arg="gemini-3.1-pro-low",
-                    voice_pitch=COGNITIVE_TIER_2.voice_pitch,
-                    description="Tier 2 — Raisonnement Tactique (gemini-3.1-pro | réflexion: low)"
+                    model="gemini-3.1-pro", thinking_level="low", timeout_seconds=300, tier=2,
+                    cli_model_arg="gemini-3.1-pro-low", voice_pitch=COGNITIVE_TIER_2.voice_pitch,
+                    description="Tier 2 — Raisonnement Tactique (gemini-3.1-pro | réflexion: low)",
+                    reason=f"Override modèle pro-low: {user_preference}", is_override=True
                 )
             if any(k in up for k in ["med", "medium"]):
                 return CognitiveConfig(
-                    model="gemini-3.1-pro",
-                    thinking_level="medium",
-                    timeout_seconds=300,
-                    tier=2,
-                    cli_model_arg="gemini-3.1-pro-medium",
-                    voice_pitch=COGNITIVE_TIER_2.voice_pitch,
-                    description="Tier 2 — Raisonnement Tactique (gemini-3.1-pro | réflexion: medium)"
+                    model="gemini-3.1-pro", thinking_level="medium", timeout_seconds=300, tier=2,
+                    cli_model_arg="gemini-3.1-pro-medium", voice_pitch=COGNITIVE_TIER_2.voice_pitch,
+                    description="Tier 2 — Raisonnement Tactique (gemini-3.1-pro | réflexion: medium)",
+                    reason=f"Override modèle pro-medium: {user_preference}", is_override=True
                 )
-            return COGNITIVE_TIER_3
+            return COGNITIVE_TIER_3.with_details(reason=f"Override modèle pro: {user_preference}", is_override=True)
         if "opus" in up or "sonnet" in up or "claude" in up:
             return CognitiveConfig(
                 model="claude-3-opus" if "opus" in up else "claude-3-7-sonnet",
-                thinking_level="high",
-                timeout_seconds=600,
-                tier=3,
+                thinking_level="high", timeout_seconds=600, tier=3,
                 cli_model_arg="claude-opus-4-6-thinking" if "opus" in up else "claude-3-7-sonnet-thinking",
                 voice_pitch=COGNITIVE_TIER_3.voice_pitch,
-                description="Tier 3 — Délibération Système 2 & Haute Ingénierie (Claude Thinking)"
+                description="Tier 3 — Délibération Système 2 & Haute Ingénierie (Claude Thinking)",
+                reason=f"Override modèle Claude: {user_preference}", is_override=True
             )
 
-    # C. Détection d'intentions explicites de vitesse / intensité dans la query
     if query:
         q_lower = query.lower()
         tier1_signals = [
@@ -153,7 +154,7 @@ def resolve_cognitive_tier(
             "sans réfléchir", "juste un résumé court", "brouillon rapide", "check rapide"
         ]
         if any(sig in q_lower for sig in tier1_signals):
-            return COGNITIVE_TIER_1
+            return COGNITIVE_TIER_1.with_details(reason="Override vocal explicite: passe rapide demandée", is_override=True)
 
         tier3_signals = [
             "prends tout ton temps", "réfléchis au maximum", "réflexion maximale",
@@ -161,14 +162,14 @@ def resolve_cognitive_tier(
             "haute ingénierie", "délibération complète", "mode pro", "avec pro"
         ]
         if any(sig in q_lower for sig in tier3_signals):
-            return COGNITIVE_TIER_3
+            return COGNITIVE_TIER_3.with_details(reason="Override vocal explicite: réflexion maximale demandée", is_override=True)
 
         tier2_signals = [
             "analyse tactique", "passe tactique", "tactique", "intermédiaire",
             "flash high", "réflexion tactique", "analyse équilibrée"
         ]
         if any(sig in q_lower for sig in tier2_signals):
-            return COGNITIVE_TIER_2
+            return COGNITIVE_TIER_2.with_details(reason="Override vocal explicite: analyse tactique demandée", is_override=True)
 
     # ─── MODE 2 : Table de correspondance statique par mission_type ───
     if mission_type:
@@ -178,41 +179,33 @@ def resolve_cognitive_tier(
         tier3_missions = {"deep_research", "system_healing", "code_refactoring", "software_refactoring", "auto_guerison_systeme", "healing"}
 
         if mt in tier1_missions:
-            return COGNITIVE_TIER_1
+            return COGNITIVE_TIER_1.with_details(reason=f"Mission statique {mission_type}", is_override=False)
         if mt in tier2_missions:
-            return COGNITIVE_TIER_2
+            return COGNITIVE_TIER_2.with_details(reason=f"Mission statique {mission_type}", is_override=False)
         if mt in tier3_missions:
-            return COGNITIVE_TIER_3
+            return COGNITIVE_TIER_3.with_details(reason=f"Mission statique {mission_type}", is_override=False)
 
-    # ─── MODE 3 : Heuristique de complexité pour requêtes libres (ask_deep_reasoning) ───
-    if query:
-        q_clean = query.strip()
-        q_lower = query.lower()
+    return COGNITIVE_TIER_2.with_details(reason="Défaut tactique Tier 2 (mode synchrone)", is_override=False)
 
-        # Mots-clés d'intensité pour le Tier 3
-        high_intensity_keywords = [
-            "comparatif approfondi", "architecture", "audit", "benchmark", "refactoring",
-            "analyse de fond", "haute ingénierie", "système 2", "deep research",
-            "concurrence asynchrone", "stack trace", "auto-guérison", "post-mortem",
-            "résolution de bug critique", "deadlock", "memory leak", "race condition"
-        ]
-        has_intensity_keyword = any(kw in q_lower for kw in high_intensity_keywords)
 
-        # Présence de blocs de code ou logs techniques substantiels
-        has_code_or_logs = (
-            "```" in q_clean or
-            "traceback (most recent call last)" in q_lower or
-            ("def " in q_clean and "return " in q_clean) or
-            ("class " in q_clean and ":" in q_clean)
-        )
-        is_long_query = len(q_clean) > 350
-
-        if has_intensity_keyword or (has_code_or_logs and is_long_query):
-            return COGNITIVE_TIER_3
-
-    # En l'absence de complexité avérée, le système privilégie par défaut le TIER 2 (3.8-flash high)
-    # plutôt que le TIER 3 pour préserver les quotas 5h sur 3.1 Pro.
-    return COGNITIVE_TIER_2
+async def resolve_cognitive_tier(
+    mission_type: Optional[str] = None,
+    query: str = "",
+    user_preference: Optional[str] = None,
+    intensite_reflexion: Optional[str] = None
+) -> CognitiveConfig:
+    """Résout dynamiquement le palier cognitif (Tier 1, 2 ou 3) :
+    1. Surcharge explicite prioritaire (vitesse, modèle forcé, intensité)
+    2. Table de correspondance statique par mission_type
+    3. Classification légère via modèle Tier 1 (gemini-3.8-flash) renvoyant {"tier": 1|2|3, "reason": "..."}
+    """
+    from services.reasoning_service import resolve_cognitive_tier as _rct
+    return await _rct(
+        mission_type=mission_type,
+        query=query,
+        user_preference=user_preference,
+        intensite_reflexion=intensite_reflexion
+    )
 
 
 class TaskResult:
