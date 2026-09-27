@@ -194,6 +194,7 @@ class SupervisionService:
             }
         }
         self._tracked_windows: List[Dict[str, Any]] = []
+        self._subagents: Dict[str, Dict[str, Any]] = {}
         self._free_quota_exhausted: bool = False
         initial_is_paid = ("extended-thinking" in config.GEMINI_LIVE_MODEL) or not bool(config.GEMINI_API_KEY_FREE)
         initial_label = "Clé Payante" if initial_is_paid else "Clé Gratuite"
@@ -354,6 +355,71 @@ class SupervisionService:
         })
         self._tracked_windows = self._tracked_windows[:10]
 
+    def spawn_subagent(
+        self,
+        agent_id: str,
+        name: str,
+        role: str,
+        activity: str = "coding",
+        task: str = "",
+        model: str = ""
+    ) -> Dict[str, Any]:
+        """Déclare et initialise un sous-agent Antigravity CLI actif."""
+        now = datetime.now()
+        subagent = {
+            "id": agent_id,
+            "name": name,
+            "role": role,
+            "activity": activity,  # "coding" | "browsing" | "thinking" | "synthesis"
+            "task": task or f"Sous-agent {name} en mission",
+            "model": model or "Antigravity CLI (VPS)",
+            "status": "active",
+            "progress": 0,
+            "started_at": now.strftime("%H:%M:%S"),
+            "started_epoch": time.time()
+        }
+        self._subagents[agent_id] = subagent
+        return subagent
+
+    def update_subagent(
+        self,
+        agent_id: str,
+        activity: Optional[str] = None,
+        task: Optional[str] = None,
+        progress: Optional[int] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Met à jour l'activité, la tâche courante ou la progression d'un sous-agent."""
+        agent = self._subagents.get(agent_id)
+        if not agent:
+            return None
+        if activity:
+            agent["activity"] = activity
+        if task:
+            agent["task"] = task
+        if progress is not None:
+            agent["progress"] = max(0, min(100, int(progress)))
+        return agent
+
+    def complete_subagent(self, agent_id: str, summary: str = "") -> Optional[Dict[str, Any]]:
+        """Termine et retire un sous-agent de la constellation active."""
+        agent = self._subagents.pop(agent_id, None)
+        if agent:
+            agent["status"] = "completed"
+            agent["summary"] = summary
+            agent["progress"] = 100
+            agent["completed_at"] = datetime.now().strftime("%H:%M:%S")
+        return agent
+
+    def clear_subagents(self) -> List[str]:
+        """Réinitialise et retire tous les sous-agents actifs."""
+        cleared_ids = list(self._subagents.keys())
+        self._subagents.clear()
+        return cleared_ids
+
+    def get_active_subagents(self) -> List[Dict[str, Any]]:
+        """Retourne la liste des sous-agents en cours d'exécution."""
+        return list(self._subagents.values())
+
     def get_open_windows(self) -> List[Dict[str, Any]]:
         """Enumère toutes les fenêtres ouvertes sur l'ordinateur de l'utilisateur."""
         desktop_windows: List[Dict[str, Any]] = []
@@ -454,6 +520,7 @@ class SupervisionService:
             "voice": self._voice_state,
             "active_actions": active_actions_list,
             "running_count": running_count,
+            "subagents": self.get_active_subagents(),
             "recent_actions": self._recent_actions,
             "tools": list(self._active_tools.values()),
             "open_windows": open_windows,

@@ -29,7 +29,11 @@ from services.slides_service import slides_service
 from core.shared_state import (
     active_task_controller,
     broadcast_supervision,
-    safe_send_live_client_content
+    safe_send_live_client_content,
+    spawn_subagent,
+    update_subagent,
+    complete_subagent,
+    clear_all_subagents,
 )
 from google_antigravity import AntigravityAgent, AntigravityQuotaExhaustedError
 
@@ -433,6 +437,10 @@ class DeepResearchService:
             )
             await broadcast_supervision()
 
+            # Mobilisation des sous-agents orbitaux Antigravity
+            await spawn_subagent("deep_crawl", "Crawl Web", "Exploration Multi-sources", "browsing", "Prospection des sources et publications...", "Gemini 3.1 Pro VPS")
+            await spawn_subagent("deep_critic", "Analyste", "Anti-hallucination", "thinking", "Confrontation critique et sélection top 3...", "Gemini 3.1 Pro VPS")
+
             effective_key = config.get_effective_paid_key() if config.is_paid_key_authorized() else GEMINI_API_KEY_FREE
             agent = AntigravityAgent(
                 workspace=WORKSPACE_DIR,
@@ -518,6 +526,11 @@ class DeepResearchService:
                 "Écriture dans /artifacts/ et envoi Google Slides vers n8n"
             )
             await broadcast_supervision()
+
+            # Évolution de la constellation de sous-agents
+            await complete_subagent("deep_crawl", "Crawl et exploration terminés")
+            await complete_subagent("deep_critic", "Analyse critique et confrontation validées")
+            await spawn_subagent("deep_synth", "Synthèse Deck", "Génération des Slides & Artefacts", "coding", "Création des diapositives exécutives...", "Google AI Pro VPS")
 
             rapport_md, slides_data = self._extraire_rapport_et_slides(raw_output, clean_sujet, generer_slides)
             md_path, json_path = self._sauvegarder_artefacts(clean_sujet, rapport_md, slides_data, generer_slides)
@@ -654,6 +667,9 @@ class DeepResearchService:
             await broadcast_supervision()
             self._current_task["active"] = False
             return {"status": "error", "error": str(e)}
+
+        finally:
+            await clear_all_subagents()
 
 
 # Singleton

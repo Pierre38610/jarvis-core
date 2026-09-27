@@ -160,6 +160,91 @@ async def broadcast_jarvis_state(
             pass
 
 
+async def broadcast_subagents():
+    """Diffuse la liste complète et actualisée des sous-agents actifs."""
+    ws = active_task_controller.get("websocket")
+    if ws:
+        try:
+            await ws.send_text(json.dumps({
+                "type": "subagents_update",
+                "agents": supervision_service.get_active_subagents()
+            }))
+        except Exception:
+            pass
+
+
+async def spawn_subagent(
+    agent_id: str,
+    name: str,
+    role: str,
+    activity: str = "coding",
+    task: str = "",
+    model: str = ""
+):
+    """Spawne un sous-agent Antigravity CLI et notifie le frontend."""
+    agent = supervision_service.spawn_subagent(agent_id, name, role, activity, task, model)
+    ws = active_task_controller.get("websocket")
+    if ws:
+        try:
+            await ws.send_text(json.dumps({
+                "type": "subagent_spawn",
+                "agent": agent
+            }))
+        except Exception:
+            pass
+    await broadcast_supervision()
+    return agent
+
+
+async def update_subagent(
+    agent_id: str,
+    activity: str = None,
+    task: str = None,
+    progress: int = None
+):
+    """Met à jour un sous-agent et diffuse la transition d'activité."""
+    agent = supervision_service.update_subagent(agent_id, activity, task, progress)
+    if agent:
+        ws = active_task_controller.get("websocket")
+        if ws:
+            try:
+                await ws.send_text(json.dumps({
+                    "type": "subagent_update",
+                    "id": agent_id,
+                    "activity": agent.get("activity"),
+                    "task": agent.get("task"),
+                    "progress": agent.get("progress")
+                }))
+            except Exception:
+                pass
+        await broadcast_supervision()
+    return agent
+
+
+async def complete_subagent(agent_id: str, summary: str = ""):
+    """Marque un sous-agent comme terminé et déclenche son animation de disparition."""
+    agent = supervision_service.complete_subagent(agent_id, summary)
+    ws = active_task_controller.get("websocket")
+    if ws:
+        try:
+            await ws.send_text(json.dumps({
+                "type": "subagent_done",
+                "id": agent_id,
+                "summary": summary
+            }))
+        except Exception:
+            pass
+    await broadcast_supervision()
+    return agent
+
+
+async def clear_all_subagents():
+    """Retire tous les sous-agents et vide la constellation."""
+    supervision_service.clear_subagents()
+    await broadcast_subagents()
+    await broadcast_supervision()
+
+
 async def broadcast_paid_key_status(authorized: bool):
     """Notifie le frontend du changement d'état de la clé payante."""
     ws = active_task_controller.get("websocket")
@@ -212,7 +297,8 @@ async def stop_active_task(source: str = "user", reason: str = "Arrêt demandé 
     active_task_controller["info"]["task"] = ""
     active_task_controller["directives"] = []
 
-    # 5. Supervision
+    # 5. Supervision & Constellation
+    await clear_all_subagents()
     for act in ["antigravity_task", "browser_task", "search_web", "deep_reasoning", "deep_research"]:
         supervision_service.complete_action(act, status="cancelled", summary=reason)
     await broadcast_supervision()

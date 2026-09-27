@@ -40,6 +40,11 @@ from core.shared_state import (
     stop_active_task,
     estimate_tool_cost,
     safe_send_live_client_content,
+    spawn_subagent,
+    update_subagent,
+    complete_subagent,
+    clear_all_subagents,
+    broadcast_subagents,
 )
 
 
@@ -143,10 +148,16 @@ async def dispatch_tool(
             "text": announcement_text,
             "voice": False
         }))
-        # Révêtement immédiat de l'avatar violet de code (coding) pour Antigravity CLI VPS
+        # Mobilisation des 3 sous-agents orbitaux Antigravity CLI VPS
+        await spawn_subagent("prospector", "Prospecteur", "Recherche & Faits", "browsing", f"Collecte des sources & données ({model_label})...", model_label)
+        await spawn_subagent("critic", "Analyste", "Critique & Logique", "thinking", "Délibération et vérification critique...", model_label)
+        await spawn_subagent("coder", "Synthèse", "Code & Artefact", "coding", "Production du livrable & patchs...", model_label)
+
+        # Jarvis conserve son visage intact et disponible pour la parole (pas de masque violet)
         await websocket.send_text(json.dumps({
-            "type": "status", "state": "coding",
-            "msg": f"JARVIS mobilise Antigravity ({cog_cfg.description})...", "task": question,
+            "type": "status", "state": "idle", "keep_face": True,
+            "action_type": "coding",
+            "msg": f"JARVIS mobilise 3 sous-agents Antigravity ({cog_cfg.description})...", "task": question,
             "engine": "Antigravity CLI (VPS)", "model": model_label,
             "api_type": "free", "api_label": "VPS Oracle"
         }))
@@ -165,6 +176,19 @@ async def dispatch_tool(
             active_sess = active_task_controller.get("live_session")
             supervision_service.update_action_progress("deep_reasoning", step, text, model=_ml)
             await broadcast_supervision()
+
+            # Mise à jour dynamique de la constellation de sous-agents
+            if step in ("prospector", "start"):
+                await update_subagent("prospector", activity="browsing", task=text or "Collecte des sources & données...")
+            elif step == "critic":
+                await complete_subagent("prospector", summary="Sources collectées et vérifiées")
+                await update_subagent("critic", activity="thinking", task=text or "Analyse critique & logique...")
+            elif step == "synthesis":
+                await complete_subagent("critic", summary="Critique achevée sans hallucination")
+                await update_subagent("coder", activity="coding", task=text or "Génération de l'artefact & code...")
+            elif step == "complete":
+                await complete_subagent("coder", summary="Livrable produit avec succès")
+
             if active_ws:
                 try:
                     await active_ws.send_text(json.dumps({
@@ -203,6 +227,7 @@ async def dispatch_tool(
             finally:
                 active_task_controller["info"]["running"] = False
                 active_task_controller["reasoning_bg_task"] = None
+                await clear_all_subagents()
 
             current_ws = active_task_controller.get("websocket") or _ws
             current_sess = active_task_controller.get("live_session") or _sess

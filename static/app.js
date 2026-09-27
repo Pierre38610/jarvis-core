@@ -539,6 +539,332 @@ function getActionLabel(state) {
   }
 }
 
+// ============================================================================
+// GESTIONNAIRE DE CONSTELLATION DES SOUS-AGENTS ORBITAUX ANTIGRAVITY (HUD STARK)
+// ============================================================================
+class SubagentOrbManager {
+  constructor() {
+    this.container = document.getElementById('subagentsContainer');
+    this.subagents = new Map(); // id -> { id, name, role, activity, task, model, el, x, y }
+    this.orbitRadius = 118;
+    this.initResizeListener();
+  }
+
+  initResizeListener() {
+    window.addEventListener('resize', () => {
+      this.recalculatePositions();
+    });
+  }
+
+  hasActiveSubagents() {
+    return this.subagents.size > 0;
+  }
+
+  getActiveCount() {
+    return this.subagents.size;
+  }
+
+  getCoordinates(index, total) {
+    const isSmall = window.innerWidth < 380;
+    const r = isSmall ? 102 : 118;
+
+    if (total === 1) {
+      // 1 sous-agent : flanc supérieur droit (dégagé et visible)
+      return { x: Math.round(r * 0.94), y: Math.round(-r * 0.38) };
+    } else if (total === 2) {
+      // 2 sous-agents : flanc gauche et flanc droit équilibrés
+      if (index === 0) return { x: Math.round(-r * 0.96), y: Math.round(-r * 0.28) };
+      return { x: Math.round(r * 0.96), y: Math.round(-r * 0.28) };
+    } else if (total === 3) {
+      // 3 sous-agents : Flanc gauche, Zénith (haut), Flanc droit
+      if (index === 0) return { x: Math.round(-r * 0.98), y: Math.round(-r * 0.18) };
+      if (index === 1) return { x: 0, y: Math.round(-r * 0.96) };
+      return { x: Math.round(r * 0.98), y: Math.round(-r * 0.18) };
+    } else {
+      // 4+ sous-agents : répartition angulaire régulière sur l'arc supérieur (-155deg à -25deg)
+      const startDeg = -155;
+      const endDeg = -25;
+      const step = (endDeg - startDeg) / (total - 1);
+      const angleDeg = startDeg + (index * step);
+      const rad = angleDeg * (Math.PI / 180);
+      return { x: Math.round(r * Math.cos(rad)), y: Math.round(r * Math.sin(rad)) };
+    }
+  }
+
+  recalculatePositions() {
+    const entries = Array.from(this.subagents.values());
+    const total = entries.length;
+    entries.forEach((agent, idx) => {
+      const coords = this.getCoordinates(idx, total);
+      agent.x = coords.x;
+      agent.y = coords.y;
+      if (agent.el && !agent.el.classList.contains('satellite-done')) {
+        agent.el.style.setProperty('--target-x', `${coords.x}px`);
+        agent.el.style.setProperty('--target-y', `${coords.y}px`);
+      }
+    });
+  }
+
+  getActivityIconSvg(activity) {
+    switch (activity) {
+      case 'coding':
+        return `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 18 22 12 16 6" class="code-bracket-pulse"></polyline>
+            <polyline points="8 6 2 12 8 18" class="code-bracket-pulse"></polyline>
+            <line x1="12" y1="6" x2="12" y2="18" stroke="#4ade80" stroke-width="1.8" stroke-dasharray="2 2"></line>
+          </svg>`;
+      case 'browsing':
+      case 'research':
+        return `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="9" stroke-dasharray="3 3" opacity="0.65"></circle>
+            <circle cx="12" cy="12" r="4" fill="rgba(0, 240, 255, 0.25)"></circle>
+            <line x1="12" y1="3" x2="12" y2="21" opacity="0.45"></line>
+            <line x1="3" y1="12" x2="21" y2="12" opacity="0.45"></line>
+            <path d="M 12 12 L 19 8 A 9 9 0 0 1 21 12 Z" fill="rgba(0, 240, 255, 0.45)" class="radar-sweep-beam"></path>
+          </svg>`;
+      case 'thinking':
+      case 'analysis':
+        return `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <ellipse cx="12" cy="12" rx="9" ry="3.5" stroke="#fbbf24" stroke-dasharray="3 3" class="quantum-orbit-spin"></ellipse>
+            <ellipse cx="12" cy="12" rx="3.5" ry="9" stroke="#f59e0b" stroke-dasharray="2 3" class="quantum-orbit-spin" style="animation-direction: reverse;"></ellipse>
+            <circle cx="12" cy="12" r="2.5" fill="#fde68a" filter="drop-shadow(0 0 4px #fbbf24)"></circle>
+          </svg>`;
+      case 'synthesis':
+      case 'document':
+      default:
+        return `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13" class="doc-beam-anim"></line>
+            <line x1="16" y1="17" x2="8" y2="17" class="doc-beam-anim"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>`;
+    }
+  }
+
+  getActivityLabel(activity) {
+    switch (activity) {
+      case 'coding': return 'CODER';
+      case 'browsing':
+      case 'research': return 'RECHERCHE';
+      case 'thinking':
+      case 'analysis': return 'RÉFLEXION';
+      case 'synthesis': return 'SYNTHÈSE';
+      default: return 'AGENT';
+    }
+  }
+
+  spawn(agentData) {
+    if (!this.container) {
+      this.container = document.getElementById('subagentsContainer');
+      if (!this.container) return;
+    }
+    const id = agentData.id || `agent-${Date.now()}`;
+    const activity = agentData.activity || 'coding';
+    const name = agentData.name || 'Sous-agent';
+    const task = agentData.task || '';
+
+    // Si l'agent existe déjà, le mettre à jour
+    if (this.subagents.has(id)) {
+      this.update(id, activity, task);
+      return;
+    }
+
+    const satelliteEl = document.createElement('div');
+    satelliteEl.className = `subagent-satellite activity-${activity}`;
+    satelliteEl.id = `subagent-${id}`;
+    satelliteEl.setAttribute('role', 'status');
+    satelliteEl.setAttribute('aria-label', `${name} (${this.getActivityLabel(activity)}) : ${task}`);
+    satelliteEl.title = `${name} [${this.getActivityLabel(activity)}] : ${task || 'En mission'}`;
+
+    satelliteEl.innerHTML = `
+      <div class="satellite-halo"></div>
+      <div class="satellite-orb-inner">
+        <div class="satellite-orb-body">
+          <svg class="satellite-ring-svg" viewBox="0 0 60 60">
+            <circle cx="30" cy="30" r="26" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.45"/>
+            <circle cx="30" cy="30" r="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="24 140" opacity="0.85"/>
+          </svg>
+          <div class="satellite-core-icon">
+            ${this.getActivityIconSvg(activity)}
+          </div>
+          <span class="satellite-live-led"></span>
+        </div>
+        <div class="satellite-label-pill">
+          <span class="pill-name">${name}</span>
+          <span class="pill-act">· ${this.getActivityLabel(activity)}</span>
+        </div>
+      </div>
+    `;
+
+    // Clic / tap pour afficher l'info détaillée dans le HUD
+    satelliteEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.showAgentInfoToast(agentData);
+    });
+
+    const agentRecord = {
+      id,
+      name,
+      role: agentData.role || '',
+      activity,
+      task,
+      model: agentData.model || '',
+      el: satelliteEl
+    };
+
+    this.subagents.set(id, agentRecord);
+    this.container.appendChild(satelliteEl);
+    this.recalculatePositions();
+
+    // Synchronisation de l'état de l'avatar Jarvis
+    this.syncJarvisAvatarState();
+  }
+
+  update(id, activity, task, progress) {
+    const agent = this.subagents.get(id);
+    if (!agent) return;
+
+    if (activity && activity !== agent.activity) {
+      agent.el.classList.remove(`activity-${agent.activity}`);
+      agent.activity = activity;
+      agent.el.classList.add(`activity-${activity}`);
+      
+      const coreIcon = agent.el.querySelector('.satellite-core-icon');
+      if (coreIcon) {
+        coreIcon.innerHTML = this.getActivityIconSvg(activity);
+      }
+      const actLabel = agent.el.querySelector('.pill-act');
+      if (actLabel) {
+        actLabel.innerText = `· ${this.getActivityLabel(activity)}`;
+      }
+    }
+
+    if (task) {
+      agent.task = task;
+      agent.el.title = `${agent.name} [${this.getActivityLabel(agent.activity)}] : ${task}`;
+      agent.el.setAttribute('aria-label', `${agent.name} : ${task}`);
+    }
+
+    if (progress !== undefined && progress !== null) {
+      agent.progress = progress;
+    }
+  }
+
+  done(id, summary) {
+    const agent = this.subagents.get(id);
+    if (!agent) return;
+
+    // Déclenche l'animation de complétion / dissolution
+    agent.el.classList.add('satellite-done');
+    
+    setTimeout(() => {
+      if (agent.el && agent.el.parentNode) {
+        agent.el.parentNode.removeChild(agent.el);
+      }
+      this.subagents.delete(id);
+      this.recalculatePositions();
+      this.syncJarvisAvatarState();
+    }, 480);
+  }
+
+  clearAll() {
+    this.subagents.forEach((agent) => {
+      if (agent.el) {
+        agent.el.classList.add('satellite-done');
+        setTimeout(() => {
+          if (agent.el && agent.el.parentNode) {
+            agent.el.parentNode.removeChild(agent.el);
+          }
+        }, 480);
+      }
+    });
+    this.subagents.clear();
+    this.syncJarvisAvatarState();
+  }
+
+  sync(agentsList) {
+    if (!Array.isArray(agentsList)) {
+      this.clearAll();
+      return;
+    }
+    const currentIds = new Set(this.subagents.keys());
+    const incomingIds = new Set(agentsList.map(a => a.id));
+
+    // Supprime ceux qui ne sont plus actifs
+    currentIds.forEach(id => {
+      if (!incomingIds.has(id)) {
+        this.done(id, "Tâche achevée");
+      }
+    });
+
+    // Ajoute ou met à jour les entrants
+    agentsList.forEach(agent => {
+      if (this.subagents.has(agent.id)) {
+        this.update(agent.id, agent.activity, agent.task, agent.progress);
+      } else {
+        this.spawn(agent);
+      }
+    });
+  }
+
+  syncJarvisAvatarState() {
+    const avatarPod = document.getElementById('toggleBtn');
+    if (!avatarPod) return;
+    if (this.subagents.size > 0) {
+      avatarPod.classList.add('has-active-subagents');
+      // Garantit que le calque coding ne recouvre jamais le visage de Jarvis
+      const codingMime = document.querySelector('.mime-coding-layer');
+      if (codingMime) {
+        codingMime.style.setProperty('display', 'none', 'important');
+        codingMime.style.opacity = '0';
+      }
+    } else {
+      avatarPod.classList.remove('has-active-subagents');
+    }
+  }
+
+  showAgentInfoToast(agent) {
+    let toast = document.getElementById('hudToast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'hudToast';
+      toast.style.position = 'fixed';
+      toast.style.bottom = '85px';
+      toast.style.left = '50%';
+      toast.style.transform = 'translateX(-50%)';
+      toast.style.background = 'rgba(15, 23, 42, 0.95)';
+      toast.style.border = '1px solid #38bdf8';
+      toast.style.boxShadow = '0 0 20px rgba(56, 189, 248, 0.4)';
+      toast.style.color = '#e2e8f0';
+      toast.style.padding = '8px 16px';
+      toast.style.borderRadius = '20px';
+      toast.style.fontSize = '12px';
+      toast.style.fontFamily = 'monospace';
+      toast.style.zIndex = '9999';
+      toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+      toast.style.pointerEvents = 'none';
+      document.body.appendChild(toast);
+    }
+    const actLabel = this.getActivityLabel(agent.activity);
+    toast.innerHTML = `<span style="color:#38bdf8; font-weight:bold;">${agent.name}</span> [${actLabel}] : ${agent.task || 'En cours d\'exécution'}`;
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateX(-50%) translateY(0)';
+    if (this._toastTimer) clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(-50%) translateY(10px)';
+    }, 3500);
+  }
+}
+
+// Initialisation globale du gestionnaire de constellation
+window.subagentOrbManager = new SubagentOrbManager();
+
 function setJarvisState(state, customMsg, detail, engineInfo) {
   const isActionState = ['coding', 'browsing', 'thinking', 'emailing', 'kindle', 'music', 'media', 'downloading', 'system', 'memory', 'shopping'].includes(state);
   if (isActionState) {
@@ -555,6 +881,13 @@ function setJarvisState(state, customMsg, detail, engineInfo) {
   );
   stateBadge.className = 'state-badge';
 
+  const hasSubagents = window.subagentOrbManager && window.subagentOrbManager.hasActiveSubagents();
+  if (hasSubagents) {
+    btn.classList.add('has-active-subagents');
+  } else {
+    btn.classList.remove('has-active-subagents');
+  }
+
   // Gestion directe et stricte des calques SVG de l'avatar :
   // Masque tous les calques mime et affiche uniquement le calque ciblé
   const targetLayer = (state === 'speaking' && activeActionState) ? activeActionState.state : state;
@@ -565,10 +898,15 @@ function setJarvisState(state, customMsg, detail, engineInfo) {
   });
 
   if (!['listening', 'idle', 'offline'].includes(targetLayer)) {
-    const activeMimeLayer = document.querySelector(`.mime-${targetLayer}-layer`);
-    if (activeMimeLayer) {
-      activeMimeLayer.style.setProperty('display', 'block', 'important');
-      activeMimeLayer.style.opacity = '1';
+    // Si des sous-agents orbitent ou si keep_face est activé, ne jamais recouvrir le visage de Jarvis par la visière de code !
+    if (targetLayer === 'coding' && (hasSubagents || (engineInfo && engineInfo.keep_face))) {
+      // Visage de Jarvis préservé, pupilles, bouche et expressions libres pour parler
+    } else {
+      const activeMimeLayer = document.querySelector(`.mime-${targetLayer}-layer`);
+      if (activeMimeLayer) {
+        activeMimeLayer.style.setProperty('display', 'block', 'important');
+        activeMimeLayer.style.opacity = '1';
+      }
     }
   }
 
@@ -649,8 +987,8 @@ function setJarvisState(state, customMsg, detail, engineInfo) {
   }
 
   if (state === 'speaking') {
-    if (activeActionState) {
-      // Une action est active : garder l'animation de l'action tout en autorisant la parole
+    if (activeActionState && !hasSubagents) {
+      // Une action est active sans sous-agents : garder l'animation de l'action tout en autorisant la parole
       btn.classList.add(`state-${activeActionState.state}`);
       btn.classList.add('is-speaking');
       stateBadge.classList.add(`badge-${activeActionState.state}`);
@@ -662,7 +1000,7 @@ function setJarvisState(state, customMsg, detail, engineInfo) {
       btn.classList.add('state-speaking');
       btn.classList.add('is-speaking');
       stateBadge.classList.add('badge-speaking');
-      stateLabel.innerText = "PAROLE";
+      stateLabel.innerText = hasSubagents ? "PAROLE (SUPERVISION AGENTS)" : "PAROLE";
       statusMessage.innerText = customMsg || "JARVIS vous répond...";
       btnLabel.innerText = "COUPER";
       if (btnInterrupt) btnInterrupt.style.display = 'inline-flex';
@@ -674,8 +1012,8 @@ function setJarvisState(state, customMsg, detail, engineInfo) {
     if (state === 'listening') {
       btn.classList.add('state-listening');
       stateBadge.classList.add('badge-listening');
-      stateLabel.innerText = "À L'ÉCOUTE";
-      statusMessage.innerText = customMsg || "Parlez naturellement, JARVIS vous écoute...";
+      stateLabel.innerText = hasSubagents ? "À L'ÉCOUTE (AGENTS ACTIFS)" : "À L'ÉCOUTE";
+      statusMessage.innerText = customMsg || (hasSubagents ? "Agents Antigravity en mission, JARVIS à votre écoute..." : "Parlez naturellement, JARVIS vous écoute...");
       btnLabel.innerText = "ONLINE";
     } else if (state === 'thinking') {
       btn.classList.add('state-thinking');
@@ -684,12 +1022,17 @@ function setJarvisState(state, customMsg, detail, engineInfo) {
       statusMessage.innerText = customMsg || "JARVIS analyse votre demande...";
       btnLabel.innerText = "ONLINE";
     } else if (state === 'coding') {
-      btn.classList.add('state-coding');
+      if (!hasSubagents && !(engineInfo && engineInfo.keep_face)) {
+        btn.classList.add('state-coding');
+      }
       stateBadge.classList.add('badge-coding');
-      stateLabel.innerText = "PROGRAMMATION";
-      statusMessage.innerText = customMsg || (detail ? `Exécution : ${detail}` : "JARVIS modifie le projet (Antigravity)...");
+      stateLabel.innerText = hasSubagents ? "AGENTS EN MISSION" : "PROGRAMMATION";
+      statusMessage.innerText = customMsg || (detail ? `Exécution : ${detail}` : "Agents Antigravity en mission...");
       btnLabel.innerText = "ONLINE";
     } else if (state === 'browsing') {
+      btn.classList.add('state-browsing');
+      stateBadge.classList.add('badge-browsing');
+      stateLabel.innerText = "NAVIGATION SUR INTERNET";
       btn.classList.add('state-browsing');
       stateBadge.classList.add('badge-browsing');
       stateLabel.innerText = "NAVIGATION SUR INTERNET";
@@ -1810,6 +2153,9 @@ async function startJarvis() {
           } else if (msg.type === 'task_completed') {
             isToolExecuting = false;
             stopSilenceSender();
+            if (window.subagentOrbManager) {
+              window.subagentOrbManager.clearAll();
+            }
             // Cacher le bandeau live après complétion
             updateLiveActivityBand('idle');
             if (msg.is_error || msg.status === 'error') {
@@ -1887,6 +2233,25 @@ async function startJarvis() {
           } else if (msg.type === 'supervision_update') {
             if (msg.overview) {
               renderSupervisionOverview(msg.overview);
+              if (window.subagentOrbManager && Array.isArray(msg.overview.subagents)) {
+                window.subagentOrbManager.sync(msg.overview.subagents);
+              }
+            }
+          } else if (msg.type === 'subagent_spawn') {
+            if (window.subagentOrbManager && msg.agent) {
+              window.subagentOrbManager.spawn(msg.agent);
+            }
+          } else if (msg.type === 'subagent_update') {
+            if (window.subagentOrbManager && msg.id) {
+              window.subagentOrbManager.update(msg.id, msg.activity, msg.task, msg.progress);
+            }
+          } else if (msg.type === 'subagent_done') {
+            if (window.subagentOrbManager && msg.id) {
+              window.subagentOrbManager.done(msg.id, msg.summary);
+            }
+          } else if (msg.type === 'subagents_update') {
+            if (window.subagentOrbManager && Array.isArray(msg.agents)) {
+              window.subagentOrbManager.sync(msg.agents);
             }
           } else if (msg.type === 'chat_message_received') {
             if (typeof onServerChatMessageReceived === 'function') {
@@ -1910,6 +2275,9 @@ async function startJarvis() {
             isToolExecuting = false;
             isAwaitingToolResponse = false;
             stopSilenceSender();
+            if (window.subagentOrbManager) {
+              window.subagentOrbManager.clearAll();
+            }
             interruptPlayback();
             setJarvisState('listening', "À l'écoute...");
           } else if (msg.type === 'tool_start') {
@@ -1973,6 +2341,9 @@ async function startJarvis() {
 function disconnectJarvis(msg) {
   isConnecting = false;
   isConnected = false;
+  if (window.subagentOrbManager) {
+    window.subagentOrbManager.clearAll();
+  }
   stopLiveSpeechRecognition();
   interruptPlayback();
   isJarvisSpeaking = false;

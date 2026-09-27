@@ -784,6 +784,362 @@ body {
   100% { transform: translateY(0) rotate(-5deg); }
 }
 
+/* ========================================================================== */
+/* SATELLITES ORBITAUX HOLOGRAPHIQUES (SOUS-AGENTS ANTIGRAVITY CLI) */
+/* ========================================================================== */
+
+.subagents-orbital-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 12;
+}
+
+/* Orbe satellite d'un sous-agent */
+.subagent-satellite {
+  position: absolute;
+  width: 52px;
+  height: 52px;
+  margin-left: -26px;
+  margin-top: -26px;
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transform: translate(var(--target-x, 0px), var(--target-y, 0px));
+  transition: transform 0.65s cubic-bezier(0.34, 1.4, 0.64, 1), opacity 0.4s ease, filter 0.4s ease;
+  animation: satelliteSpawn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.subagent-satellite:hover {
+  transform: translate(var(--target-x, 0px), var(--target-y, 0px)) scale(1.14) !important;
+  z-index: 25;
+}
+
+/* Flottement orbital subtil */
+.subagent-satellite:nth-child(1) .satellite-orb-inner {
+  animation: satelliteFloatA 3.2s ease-in-out infinite alternate;
+}
+.subagent-satellite:nth-child(2) .satellite-orb-inner {
+  animation: satelliteFloatB 2.8s ease-in-out infinite alternate;
+}
+.subagent-satellite:nth-child(3) .satellite-orb-inner {
+  animation: satelliteFloatC 3.5s ease-in-out infinite alternate;
+}
+.subagent-satellite:nth-child(n+4) .satellite-orb-inner {
+  animation: satelliteFloatA 3.0s ease-in-out infinite alternate;
+}
+
+@keyframes satelliteFloatA {
+  0% { transform: translateY(0px) rotate(0deg); }
+  100% { transform: translateY(-5px) rotate(1.5deg); }
+}
+@keyframes satelliteFloatB {
+  0% { transform: translateY(0px) rotate(0deg); }
+  100% { transform: translateY(-6px) rotate(-1.5deg); }
+}
+@keyframes satelliteFloatC {
+  0% { transform: translateY(0px) rotate(0deg); }
+  100% { transform: translateY(-4px) rotate(1deg); }
+}
+
+@keyframes satelliteSpawn {
+  0% {
+    opacity: 0;
+    transform: translate(0px, 0px) scale(0.15);
+    filter: blur(8px);
+  }
+  75% {
+    opacity: 1;
+    transform: translate(var(--target-x, 0px), var(--target-y, 0px)) scale(1.12);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(var(--target-x, 0px), var(--target-y, 0px)) scale(1);
+    filter: blur(0px);
+  }
+}
+
+/* Disparition gracieuse : flash de validation vert puis shrink & dissolution */
+.subagent-satellite.satellite-done {
+  animation: satelliteDone 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+  pointer-events: none !important;
+}
+
+@keyframes satelliteDone {
+  0% {
+    opacity: 1;
+    transform: translate(var(--target-x, 0px), var(--target-y, 0px)) scale(1);
+    filter: drop-shadow(0 0 16px #4ade80);
+  }
+  35% {
+    opacity: 1;
+    transform: translate(var(--target-x, 0px), var(--target-y, 0px)) scale(1.22);
+    filter: drop-shadow(0 0 26px #4ade80) brightness(1.35);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--target-x, 0px) * 0.25), calc(var(--target-y, 0px) * 0.25)) scale(0.08);
+    filter: blur(8px);
+  }
+}
+
+/* Corps interne de l'orbe */
+.satellite-orb-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.25s ease;
+}
+
+/* Halo lumineux d'énergie */
+.satellite-halo {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.65;
+  filter: blur(6px);
+  transition: background 0.4s ease;
+}
+
+/* Disque principal */
+.satellite-orb-body {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(15, 23, 42, 0.96), rgba(7, 10, 19, 0.98));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+  transition: all 0.35s ease;
+  overflow: visible;
+}
+
+/* Anneau SVG extérieur rotatif */
+.satellite-ring-svg {
+  position: absolute;
+  inset: -5px;
+  width: calc(100% + 10px);
+  height: calc(100% + 10px);
+  overflow: visible;
+  pointer-events: none;
+  animation: satelliteRingSpin 7s linear infinite;
+}
+
+@keyframes satelliteRingSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Cœur d'icône SVG */
+.satellite-core-icon {
+  width: 25px;
+  height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  transition: all 0.3s ease;
+}
+.satellite-core-icon svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Mini LED active */
+.satellite-live-led {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+  animation: liveLedPulse 1.4s ease-in-out infinite;
+  z-index: 4;
+}
+
+@keyframes liveLedPulse {
+  0%, 100% { opacity: 0.55; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+
+/* Étiquette textuelle sous le satellite */
+.satellite-label-pill {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'SF Mono', Monaco, Menlo, Consolas, monospace;
+  font-size: 7.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
+  padding: 1.5px 6px;
+  border-radius: 999px;
+  background: rgba(11, 15, 25, 0.94);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.3s ease;
+  z-index: 3;
+}
+
+/* ─── THÈMES ET STYLES SPÉCIFIQUES AUX ACTIVITÉS ─── */
+
+/* 1. CODER (Violet électrique & Vert matrice) */
+.subagent-satellite.activity-coding .satellite-orb-body {
+  border: 1.5px solid #a855f7;
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.7), inset 0 0 10px rgba(168, 85, 247, 0.4);
+}
+.subagent-satellite.activity-coding .satellite-halo {
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.6) 0%, transparent 70%);
+}
+.subagent-satellite.activity-coding .satellite-ring-svg {
+  color: #c084fc;
+}
+.subagent-satellite.activity-coding .satellite-core-icon {
+  color: #d8b4fe;
+  filter: drop-shadow(0 0 4px #a855f7);
+}
+.subagent-satellite.activity-coding .satellite-live-led {
+  background: #4ade80;
+  color: #4ade80;
+}
+.subagent-satellite.activity-coding .satellite-label-pill {
+  border-color: #a855f7;
+  color: #d8b4fe;
+}
+.subagent-satellite.activity-coding .code-bracket-pulse {
+  animation: codeBracketPulse 1.6s ease-in-out infinite alternate;
+}
+@keyframes codeBracketPulse {
+  0% { transform: scale(0.94); opacity: 0.75; }
+  100% { transform: scale(1.06); opacity: 1; }
+}
+
+/* 2. BROWSING / RECHERCHE WEB (Cyan néon & radar) */
+.subagent-satellite.activity-browsing .satellite-orb-body {
+  border: 1.5px solid #00f0ff;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.7), inset 0 0 10px rgba(0, 240, 255, 0.4);
+}
+.subagent-satellite.activity-browsing .satellite-halo {
+  background: radial-gradient(circle, rgba(0, 240, 255, 0.6) 0%, transparent 70%);
+}
+.subagent-satellite.activity-browsing .satellite-ring-svg {
+  color: #38bdf8;
+}
+.subagent-satellite.activity-browsing .satellite-core-icon {
+  color: #38bdf8;
+  filter: drop-shadow(0 0 5px #00f0ff);
+}
+.subagent-satellite.activity-browsing .satellite-live-led {
+  background: #00f0ff;
+  color: #00f0ff;
+}
+.subagent-satellite.activity-browsing .satellite-label-pill {
+  border-color: #00f0ff;
+  color: #7dd3fc;
+}
+.subagent-satellite.activity-browsing .radar-sweep-beam {
+  transform-origin: 12px 12px;
+  animation: radarSweepSpin 2s linear infinite;
+}
+@keyframes radarSweepSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 3. THINKING / RÉFLEXION CRITIQUE (Ambre doré & synapses) */
+.subagent-satellite.activity-thinking .satellite-orb-body {
+  border: 1.5px solid #f59e0b;
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.7), inset 0 0 10px rgba(245, 158, 11, 0.4);
+}
+.subagent-satellite.activity-thinking .satellite-halo {
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.6) 0%, transparent 70%);
+}
+.subagent-satellite.activity-thinking .satellite-ring-svg {
+  color: #fbbf24;
+  animation-direction: reverse;
+}
+.subagent-satellite.activity-thinking .satellite-core-icon {
+  color: #fde68a;
+  filter: drop-shadow(0 0 5px #f59e0b);
+}
+.subagent-satellite.activity-thinking .satellite-live-led {
+  background: #fbbf24;
+  color: #fbbf24;
+}
+.subagent-satellite.activity-thinking .satellite-label-pill {
+  border-color: #f59e0b;
+  color: #fde68a;
+}
+.subagent-satellite.activity-thinking .quantum-orbit-spin {
+  transform-origin: 12px 12px;
+  animation: quantumSpin 2.6s linear infinite;
+}
+@keyframes quantumSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 4. SYNTHESIS / LIVRABLE & ARTEFACT (Vert émeraude) */
+.subagent-satellite.activity-synthesis .satellite-orb-body {
+  border: 1.5px solid #10b981;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.7), inset 0 0 10px rgba(16, 185, 129, 0.4);
+}
+.subagent-satellite.activity-synthesis .satellite-halo {
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.6) 0%, transparent 70%);
+}
+.subagent-satellite.activity-synthesis .satellite-ring-svg {
+  color: #34d399;
+}
+.subagent-satellite.activity-synthesis .satellite-core-icon {
+  color: #a7f3d0;
+  filter: drop-shadow(0 0 5px #10b981);
+}
+.subagent-satellite.activity-synthesis .satellite-live-led {
+  background: #34d399;
+  color: #34d399;
+}
+.subagent-satellite.activity-synthesis .satellite-label-pill {
+  border-color: #10b981;
+  color: #a7f3d0;
+}
+.subagent-satellite.activity-synthesis .doc-beam-anim {
+  animation: docBeamScan 1.6s ease-in-out infinite alternate;
+}
+@keyframes docBeamScan {
+  0% { transform: translateY(1px); opacity: 0.6; }
+  100% { transform: translateY(-2px); opacity: 1; }
+}
+
+/* Protection et intégrité absolue du visage de Jarvis */
+.jarvis-avatar-pod.has-active-subagents .mime-coding-layer {
+  display: none !important;
+  opacity: 0 !important;
+}
+.jarvis-avatar-pod.has-active-subagents .avatar-head-group {
+  opacity: 1 !important;
+}
+
 /* Indicateur d'état dynamique de JARVIS */
 .state-badge {
   display: inline-flex;
