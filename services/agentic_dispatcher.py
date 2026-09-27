@@ -463,9 +463,9 @@ class AgenticDispatcher:
 
                 raw_output = task_result.summary or ""
 
-                # Fallback API directe Gemini si environnement dev sans agy
-                if "Antigravity CLI n'est pas disponible" in raw_output:
-                    logger.info(f"[AgenticDispatcher] Mode dev sans binaire agy. Génération via l'API Gemini pour {mission_type}...")
+                # Fallback API directe Gemini si environnement dev sans agy ou erreur d'exécution CLI
+                if task_result.status == "error" or "Antigravity CLI n'est pas disponible" in raw_output or "introuvable" in raw_output.lower():
+                    logger.info(f"[AgenticDispatcher] Binaire agy indisponible ou erreur d'exécution. Repli sur l'API Gemini pour {mission_type}...")
                     from core.shared_state import client_paid, client_free
                     client_target = client_paid if (client_paid and config.is_paid_key_authorized()) else (client_free or client_paid)
                     if client_target:
@@ -476,6 +476,7 @@ class AgenticDispatcher:
                                 contents=prompt
                             )
                             raw_output = resp.text or ""
+                            supervision_service.update_action_progress(mission_id, "fallback_gemini", "Repli automatique sur Gemini API")
                         except Exception as fb_err:
                             logger.warning(f"[AgenticDispatcher] Erreur fallback Gemini: {fb_err}")
 

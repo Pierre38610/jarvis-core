@@ -69,11 +69,12 @@ async def test_compiler_spec_mission():
 
 @pytest.mark.asyncio
 async def test_dispatch_lancer_mission_deep_research_immediate_return():
-    """Valide le décrochage vocal instantané (< 300 ms) et le lancement asynchrone en tâche de fond."""
+    """Valide le décrochage vocal instantané (< 300 ms) et le lancement asynchrone lorsque le CLI est opérationnel."""
     mock_ws = AsyncMock()
     mock_session = AsyncMock()
 
-    with patch("core.tools.dispatcher.deep_research_service.executer_mission_complete", new_callable=AsyncMock) as mock_exec:
+    with patch("google_antigravity.verify_antigravity_cli_ready", new_callable=AsyncMock, return_value=(True, "Antigravity CLI opérationnel", "/home/opc/.local/bin/agy")), \
+         patch("core.tools.dispatcher.deep_research_service.executer_mission_complete", new_callable=AsyncMock) as mock_exec:
         mock_exec.return_value = {"status": "completed"}
 
         resp = await dispatch_tool(
@@ -95,6 +96,29 @@ async def test_dispatch_lancer_mission_deep_research_immediate_return():
         deep_task = active_task_controller.get("deep_research_task")
         assert deep_task is not None
         await asyncio.sleep(0.05)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_lancer_mission_deep_research_fails_robustly_if_cli_unavailable():
+    """Vérifie que la mission deep research n'est JAMAIS déclarée lancée si Antigravity CLI n'est pas opérationnel."""
+    mock_ws = AsyncMock()
+    mock_session = AsyncMock()
+
+    with patch("google_antigravity.verify_antigravity_cli_ready", new_callable=AsyncMock, return_value=(False, "Binaire 'agy' introuvable", None)):
+        resp = await dispatch_tool(
+            name="lancer_mission_deep_research",
+            args={
+                "consigne_utilisateur": "Prospection à Munich",
+            },
+            websocket=mock_ws,
+            session=mock_session,
+            is_paid_live=False,
+            live_display_label="Gemini Live"
+        )
+
+        assert resp["status"] == "error"
+        assert resp["error"] == "Antigravity CLI indisponible"
+        assert "Ne prétends SURTOUT PAS" in resp["instruction_to_jarvis"]
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,7 @@ os.environ["NO_PROXY"] = "127.0.0.1,localhost,::1,0.0.0.0"
 os.environ["no_proxy"] = "127.0.0.1,localhost,::1,0.0.0.0"
 import asyncio
 import shutil
+import time
 from dataclasses import dataclass
 from typing import Any, Optional, Literal, Tuple
 
@@ -351,37 +352,120 @@ def is_stop_directive(text: str) -> bool:
     return False
 
 
+def find_antigravity_binary() -> Optional[str]:
+    """Recherche déterministe du binaire Antigravity CLI (agy).
+    Vérifie le PATH ainsi que les emplacements standards connus sur le VPS Oracle et localement.
+    """
+    candidates = [
+        "agy",
+        "antigravity-cli",
+        os.path.expanduser("~/.local/bin/agy"),
+        "/home/opc/.local/bin/agy",
+        "/usr/local/bin/antigravity-cli",
+        "/usr/local/bin/agy",
+        "/usr/bin/antigravity-cli",
+        "/usr/bin/agy"
+    ]
+    if os.name == "nt":
+        candidates.extend(["agy.cmd", "agy.exe", "antigravity-cli.cmd", "antigravity-cli.exe"])
+
+    for cand in candidates:
+        if not cand:
+            continue
+        which_path = shutil.which(cand)
+        if which_path and os.path.exists(which_path) and (os.access(which_path, os.X_OK) or os.name == "nt"):
+            return which_path
+        if os.path.isabs(cand) and os.path.exists(cand) and (os.access(cand, os.X_OK) or os.name == "nt"):
+            return cand
+
+    return None
+
+
+_CLI_READY_CACHE: tuple[float, bool, str, Optional[str]] = (0.0, False, "", None)
+
+async def verify_antigravity_cli_ready(force_refresh: bool = False) -> tuple[bool, str, Optional[str]]:
+    """Vérifie de manière concrète si le binaire Antigravity CLI (agy) est présent, exécutable
+    et capable de répondre à une commande basique (--version).
+    Renvoie (is_ready: bool, message: str, binary_path: Optional[str]).
+    Utilise un cache court (30s si succès, 5s si échec) pour concilier vélocité et réactivité.
+    """
+    global _CLI_READY_CACHE
+    now = time.time()
+    cache_ttl = 30.0 if _CLI_READY_CACHE[1] else 5.0
+
+    if not force_refresh and (now - _CLI_READY_CACHE[0] < cache_ttl):
+        return _CLI_READY_CACHE[1], _CLI_READY_CACHE[2], _CLI_READY_CACHE[3]
+
+    binary = find_antigravity_binary()
+    if not binary:
+        msg = "Binaire Antigravity CLI ('agy') introuvable sur le système (vérifié dans le PATH et ~/.local/bin/agy)."
+        _CLI_READY_CACHE = (now, False, msg, None)
+        return False, msg, None
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            binary, "--version",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+        if proc.returncode == 0:
+            version_str = stdout.decode('utf-8', errors='replace').strip() or "OK"
+            msg = f"Antigravity CLI opérationnel ({binary}, version: {version_str})"
+            _CLI_READY_CACHE = (now, True, msg, binary)
+            return True, msg, binary
+        else:
+            err_str = stderr.decode('utf-8', errors='replace').strip() or f"Code sortie {proc.returncode}"
+            msg = f"Antigravity CLI a renvoyé une erreur lors du test de version : {err_str}"
+            _CLI_READY_CACHE = (now, False, msg, binary)
+            return False, msg, binary
+    except asyncio.TimeoutError:
+        msg = f"Timeout lors de l'exécution de '{binary} --version' (> 3s)."
+        _CLI_READY_CACHE = (now, False, msg, binary)
+        return False, msg, binary
+    except Exception as e:
+        msg = f"Exception lors du pré-test de '{binary}' : {str(e)}"
+        _CLI_READY_CACHE = (now, False, msg, binary)
+        return False, msg, binary
+
+
 def resolve_cli_model_args(model_name: Any = None, thinking_level: str | None = None) -> list[str]:
-    """Résout les arguments de modèle pour le binaire agy CLI (avec modèle et effort valides)."""
+    """Résout les arguments de modèle pour le binaire agy CLI (avec modèle et effort valides).
+    RÈGLE ABSOLUE : agy supporte uniquement --model et optionnellement --effort (low|medium|high|max).
+    Le drapeau --thinking est INEXISTANT dans agy et cause une erreur fatale code 2.
+    """
     if isinstance(model_name, CognitiveConfig):
         cfg = model_name
         model_name = cfg.cli_model_arg or cfg.model
         thinking_level = thinking_level or cfg.thinking_level
 
     if not model_name:
-        return ["--model", "gemini-3.8-flash-high", "--thinking", "high"]
-    
+        return ["--model", "gemini-3.8-flash-high", "--effort", "high"]
+
     m = model_name.lower().strip()
-    
-    # Claude models
+
+    # Claude models (supportés officiellement par agy: claude-sonnet-4-6, claude-opus-4-6-thinking)
     if "opus" in m:
-        return ["--model", "claude-opus-4-6-thinking", "--thinking", "high"]
+        return ["--model", "claude-opus-4-6-thinking", "--effort", "high"]
     if "sonnet" in m or "claude" in m:
-        return ["--model", "claude-3-7-sonnet-thinking", "--thinking", "high"]
-    
-    # Gemini 3.1 Pro models
+        return ["--model", "claude-sonnet-4-6", "--effort", "high"]
+
+    # Gemini 3.1 Pro models (agy: gemini-3.1-pro-high, gemini-3.1-pro-low)
     if "3.1" in m or "pro" in m:
-        th = thinking_level or ("low" if "low" in m else "medium" if ("med" in m or "medium" in m) else "high")
-        return ["--model", f"gemini-3.1-pro-{th}", "--thinking", th]
-    
-    # Gemini 3.8 Flash models
+        th = thinking_level or ("low" if "low" in m else "high")
+        effort = "low" if th == "low" else "high"
+        return ["--model", f"gemini-3.1-pro-{effort}", "--effort", effort]
+
+    # Gemini 3.8 Flash models (agy: gemini-3.8-flash-high, gemini-3.8-flash-medium, gemini-3.8-flash-low)
     if "3.8" in m or "flash" in m:
         th = thinking_level or ("low" if "low" in m else "medium" if ("med" in m or "medium" in m) else "high")
-        return ["--model", f"gemini-3.8-flash-{th}", "--thinking", th]
-        
+        effort = "low" if th == "low" else "medium" if th == "medium" else "high"
+        return ["--model", f"gemini-3.8-flash-{effort}", "--effort", effort]
+
     # Fallback générique
     th = thinking_level or ("low" if "low" in m else "high")
-    return ["--model", model_name, "--thinking", th]
+    effort = "low" if th == "low" else "high"
+    return ["--model", model_name, "--effort", effort]
 
 
 class AntigravityAgent:
@@ -436,12 +520,12 @@ class AntigravityAgent:
         """Exécute la tâche en appelant directement le binaire antigravity-cli sur le système via subprocess."""
         if self.is_cancelled:
             return TaskResult(summary="Développement arrêté à la demande de l'utilisateur.", status="cancelled", model_label=self.model_label)
-        
+
         try:
             print(f"[Antigravity CLI] Lancement de antigravity-cli pour {self.model_label} : {instruction[:60]}...")
             if on_progress:
                 await on_progress({"step": "start", "text": f"Lancement de la réflexion approfondie via Antigravity CLI avec {self.model_label}."})
-            
+
             env = os.environ.copy()
             if self.api_key:
                 env["GEMINI_API_KEY"] = self.api_key
@@ -451,19 +535,24 @@ class AntigravityAgent:
                 env["GEMINI_THINKING_LEVEL"] = self.thinking_level
             if self.requested_model:
                 env["ANTIGRAVITY_MODEL"] = self.requested_model
-                
-            binary = None
-            for cand in ["agy", "antigravity-cli", "/home/opc/.local/bin/agy", "/usr/local/bin/antigravity-cli", "/usr/bin/antigravity-cli"]:
-                if shutil.which(cand) or (os.path.isabs(cand) and os.path.exists(cand) and os.access(cand, os.X_OK)):
-                    binary = cand
-                    break
 
-            if not binary or not (shutil.which(binary) or (os.path.isabs(binary) and os.path.exists(binary))):
-                print(f"[Antigravity CLI] Binaire agy non présent dans le PATH.")
+            # Enrichir PATH pour garantir l'accès à ~/.local/bin et /usr/local/bin
+            current_path = env.get("PATH", "")
+            extra_paths = ["/home/opc/.local/bin", "/usr/local/bin", os.path.expanduser("~/.local/bin")]
+            for ep in extra_paths:
+                if ep not in current_path and os.path.exists(ep):
+                    current_path = f"{ep}:{current_path}"
+            env["PATH"] = current_path
+
+            binary = find_antigravity_binary()
+            if not binary:
+                msg = "Antigravity CLI n'est pas disponible sur le serveur (binaire 'agy' introuvable)."
+                print(f"[Antigravity CLI] {msg}")
                 return TaskResult(
-                    summary="Antigravity CLI n'est pas disponible dans l'environnement local (tourne sur le VPS Oracle).",
-                    status="completed",
-                    model_label=self.model_label
+                    summary=msg,
+                    status="error",
+                    model_label=self.model_label,
+                    error_type="binary_not_found"
                 )
 
             cmd = [

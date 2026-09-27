@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.6.0 — Instrumentation Systématique des Outils (tool_call_metrics), Historique Agrégé & Observabilité HUD.*
+> *Dernière révision majeure : Version 5.8.0 — Résilience Antigravity CLI, Drapeaux Officiels agy (--model, --effort) & Pré-contrôle Opérationnel Strict (Anti-Faux Positifs).*
 
 ---
 
@@ -658,6 +658,11 @@ L'agent interroge périodiquement `psutil` pour remonter :
   2. *Phase 2 — Sous-agent Analyste Critique* : Élimination méthodique des hallucinations, confrontation des hypothèses, vérification de cohérence logique.
   3. *Phase 3 — Sous-agent Synthèse & Production d'Artefacts* : Rédaction du livrable final structuré (`markdown_report`, `slides_schema`, `code_patch`) sauvegardé dans `/artifacts/`.
 - **Routage en 3 Tiers** : Arbitrage ordonné entre Tier 1 (`gemini-3.8-flash-low`), Tier 2 (`gemini-3.8-flash-high`) et Tier 3 (`gemini-3.1-pro-high`) avec bascule instantanée en cas de quota 429.
+- **Résilience CLI & Pré-contrôle Opérationnel Strict (Anti-Faux Positifs v5.8.0)** :
+  - *Drapeaux Officiels du Binaire `agy`* : Injonction stricte de `--model <nom_modele>` et optionnellement `--effort <low|medium|high|max>`. Bannissement formel de tout drapeau erroné non supporté tel que `--thinking` (qui provoquait une terminaison fatale `exit code 2`).
+  - *Détection Déterministe & Enrichissement PATH* : `find_antigravity_binary()` résout les emplacements connus (`~/.local/bin/agy`, `/home/opc/.local/bin/agy`, `/usr/local/bin/antigravity-cli`), et injecte dynamiquement ces répertoires dans le `PATH` du sous-processus.
+  - *Pré-contrôle Opérationnel `verify_antigravity_cli_ready()`* : Avant toute déclaration de prise en charge en tâche de fond dans `dispatcher.py` (`ask_deep_reasoning`, `launch_deep_research`), un test de viabilité pré-vol rapide est exécuté. Si le binaire est absent ou non-réactif, l'orchestrateur **refuse catégoriquement** d'émettre `launched_in_background` et transmet une consigne ferme à Aoede pour informer Pierre de l'indisponibilité immédiate du cluster sans masquer l'incident.
+  - *Propagation Non-Trompeuse des Erreurs* : Les échecs d'exécution renvoient explicitement `status="error"` avec `error_type="binary_not_found"` ou `execution_failed`, interdisant toute synthèse d'artefact maquillée ou confirmation orale hallucinée.
 
 ### 8.3. Moteur Universel Deep Research Map-Reduce (`lancer_mission_deep_research`)
 - **Fichier source** : `services/deep_research_service.py`.

@@ -246,7 +246,30 @@ async def _execute_dispatch_tool(
                 )
             }
 
-        # 2. Confirmation accordée : lancement asynchrone non-bloquant avec avatar violet (coding)
+        # 2. Confirmation accordée : vérification pré-vol de la disponibilité réelle du CLI
+        from google_antigravity import verify_antigravity_cli_ready
+        cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
+        if not cli_ok:
+            supervision_service.start_action(
+                "deep_reasoning", f"Antigravity ({cog_cfg.description})", "ask_deep_reasoning",
+                question, model_label, api_type="free", api_label="VPS Oracle",
+                cost_est="0.00 $"
+            )
+            supervision_service.complete_action("deep_reasoning", status="error", summary=f"Échec pré-contrôle Antigravity CLI: {cli_err}")
+            await broadcast_supervision()
+            return {
+                "status": "error",
+                "error": "Antigravity CLI indisponible",
+                "details": cli_err,
+                "action": "ask_deep_reasoning",
+                "instruction_to_jarvis": (
+                    f"ATTENTION : Les agents Antigravity CLI sur le VPS n'ont PAS pu être lancés et ne travaillent PAS ({cli_err}). "
+                    f"Explique immédiatement à Pierre avec ta voix Aoede avec franchise, clarté et concision que les agents Antigravity sur le VPS n'ont pas pu être initialisés ({cli_err}). "
+                    f"Ne prétends SURTOUT PAS qu'ils sont lancés ou en train de travailler."
+                )
+            }
+
+        # 3. Pré-contrôle validé : lancement asynchrone non-bloquant avec avatar violet (coding)
         active_task_controller["info"]["running"] = True
         active_task_controller["info"]["task"] = question
         active_task_controller["info"]["model"] = model_label
@@ -440,6 +463,28 @@ async def _execute_dispatch_tool(
         envoyer_email = bool(args.get("envoyer_email", False))
         destinataire_email = args.get("destinataire_email")
         generer_slides = bool(args.get("generer_slides", True))
+
+        # Pré-contrôle opérationnel Antigravity CLI : Vérifier disponibilité avant déclaration
+        from google_antigravity import verify_antigravity_cli_ready
+        cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
+        if not cli_ok:
+            supervision_service.start_action(
+                "deep_research", "Deep Research Cluster", "launch_deep_research",
+                consigne_utilisateur, "Antigravity CLI VPS", api_type="free", api_label="VPS Oracle", cost_est="0.00 $"
+            )
+            supervision_service.complete_action("deep_research", status="error", summary=f"Échec pré-contrôle Antigravity CLI: {cli_err}")
+            await broadcast_supervision()
+            return {
+                "status": "error",
+                "error": "Antigravity CLI indisponible",
+                "details": cli_err,
+                "action": "launch_deep_research",
+                "instruction_to_jarvis": (
+                    f"ATTENTION : La mission deep research n'a pas pu être engagée car le cluster Antigravity CLI sur le VPS n'est pas accessible ({cli_err}). "
+                    f"Explique directement à Pierre avec ta voix Aoede avec franchise et clarté que les agents de prospection ne peuvent pas être lancés pour cette raison. "
+                    f"Ne prétends SURTOUT PAS que les agents travaillent."
+                )
+            }
 
         async def _run_deep_research_bg():
             try:

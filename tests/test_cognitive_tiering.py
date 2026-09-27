@@ -137,14 +137,15 @@ async def test_explicit_overrides_priority_over_classifier():
         assert mock_cls.call_count == 0
 
 
-def test_resolve_cli_model_args_contains_thinking_and_model():
-    """Vérifie que la résolution des drapeaux CLI injecte --model et --thinking."""
+def test_resolve_cli_model_args_contains_effort_and_model():
+    """Vérifie que la résolution des drapeaux CLI injecte --model et --effort, et bannit strictement --thinking."""
     cfg = CognitiveConfig(model="gemini-3.8-flash", thinking_level="high", tier=2, timeout_seconds=300)
     args = resolve_cli_model_args(cfg)
     assert "--model" in args
     assert any("gemini-3.8-flash" in a for a in args)
-    assert "--thinking" in args
+    assert "--effort" in args
     assert "high" in args
+    assert "--thinking" not in args
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -280,13 +281,14 @@ async def test_dispatch_tool_ask_deep_reasoning_requires_confirmation_with_tier(
 @pytest.mark.asyncio
 async def test_dispatch_tool_ask_deep_reasoning_confirmed_launches_bg_task():
     """
-    Vérifie que lorsque confirmed_by_user=True, dispatch_tool lance la tâche d'arrière-plan
-    avec le modèle et le palier cognitif résolus.
+    Vérifie que lorsque confirmed_by_user=True et que le pré-vol CLI est validé,
+    dispatch_tool lance la tâche d'arrière-plan avec le modèle et le palier cognitif résolus.
     """
     mock_ws = AsyncMock()
     mock_session = AsyncMock()
 
-    with patch("services.reasoning_service.run_deep_reasoning", new_callable=AsyncMock) as mock_run:
+    with patch("google_antigravity.verify_antigravity_cli_ready", new_callable=AsyncMock, return_value=(True, "Antigravity CLI opérationnel", "/home/opc/.local/bin/agy")), \
+         patch("services.reasoning_service.run_deep_reasoning", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = {
             "status": "completed",
             "summary": "Analyse tactique achevée.",
@@ -308,6 +310,47 @@ async def test_dispatch_tool_ask_deep_reasoning_confirmed_launches_bg_task():
 
         assert res.get("status") == "launched_in_background"
         assert "Antigravity" in res.get("engine", "")
+
+
+@pytest.mark.asyncio
+async def test_dispatch_tool_ask_deep_reasoning_fails_robustly_if_cli_unavailable():
+    """
+    Vérifie le garde-fou inviolable de robustesse : si le binaire Antigravity CLI n'est pas opérationnel
+    sur le système, dispatch_tool REFUSE catégoriquement de déclarer que les agents sont lancés
+    et renvoie une erreur explicite avec consigne claire pour Aoede.
+    """
+    mock_ws = AsyncMock()
+    mock_session = AsyncMock()
+
+    with patch("google_antigravity.verify_antigravity_cli_ready", new_callable=AsyncMock, return_value=(False, "Binaire 'agy' introuvable sur le système", None)):
+        res = await dispatch_tool(
+            name="ask_deep_reasoning",
+            args={
+                "question": "Analyse approfondie critique",
+                "confirmed_by_user": True,
+                "intensite_reflexion": "approfondie",
+            },
+            websocket=mock_ws,
+            session=mock_session,
+            is_paid_live=False,
+            live_display_label="Gemini 3.8 Live",
+        )
+
+        assert res.get("status") == "error"
+        assert res.get("error") == "Antigravity CLI indisponible"
+        assert "introuvable" in res.get("details", "").lower()
+        assert "Ne prétends SURTOUT PAS" in res.get("instruction_to_jarvis", "")
+
+
+@pytest.mark.asyncio
+async def test_antigravity_agent_returns_error_when_binary_missing():
+    """Vérifie que run_cli_task_stream renvoie status='error' et error_type='binary_not_found' sans binaire."""
+    with patch("google_antigravity.find_antigravity_binary", return_value=None):
+        agent = AntigravityAgent(model="gemini-3.8-flash-high")
+        task_res = await agent.run_cli_task_stream("Prompt test")
+        assert task_res.status == "error"
+        assert task_res.error_type == "binary_not_found"
+        assert "introuvable" in task_res.summary.lower()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
