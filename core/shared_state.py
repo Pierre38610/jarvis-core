@@ -80,39 +80,92 @@ active_task_controller: dict = {
     "client_speaking": False,    # True tant que le navigateur joue le flux sonore
     "awaiting_tool_response": False, # True pendant l'exécution d'un outil
     "tool_response_cooldown": 0.0,   # Période de grâce après send_tool_response
+    "last_audio_chunk_time": 0.0,    # Horodatage du dernier paquet audio reçu
+    "last_turn_complete_time": 0.0,  # Horodatage du dernier turn_complete
+    "sync_resolved_actions": {},     # Actions terminées en mode synchrone {action_name: timestamp}
 }
 
 
-async def wait_until_speech_finished(timeout: float = 12.0) -> None:
+def mark_action_sync_completed(action_name: str) -> None:
+    """Enregistre qu'une action s'est exécutée de manière synchrone et a répondu via tool_response (Règle d'or de canal unique)."""
+    if not action_name:
+        return
+    sync_actions = active_task_controller.setdefault("sync_resolved_actions", {})
+    sync_actions[action_name] = time.time()
+
+
+def is_action_sync_completed(action_name: str, window_seconds: float = 60.0) -> bool:
+    """Vérifie si une action a déjà été résolue de manière synchrone via tool_response."""
+    sync_actions = active_task_controller.get("sync_resolved_actions", {})
+    resolved_at = sync_actions.get(action_name)
+    if resolved_at and (time.time() - resolved_at < window_seconds):
+        return True
+    return False
+
+
+def is_model_speaking() -> bool:
+    """Vérifie si le modèle Gemini Live est en train de parler ou si son flux audio est actif / en cours d'élocution."""
+    now = time.time()
+    if active_task_controller.get("speaking_active", False):
+        return True
+    if now < active_task_controller.get("estimated_speech_end", 0.0) + 0.35:
+        return True
+    if active_task_controller.get("client_speaking", False):
+        return True
+    if active_task_controller.get("awaiting_tool_response", False):
+        return True
+    if now < active_task_controller.get("tool_response_cooldown", 0.0):
+        return True
+    return False
+
+
+async def wait_until_speech_finished(timeout: float = 15.0, buffer_drainage_delay: float = 0.3) -> None:
     """
     Attend que J.A.R.V.I.S. ait réellement fini de prononcer sa phrase en cours
     avant d'injecter une nouvelle interaction dans la session Gemini Live.
-    Évite absolument toute coupure de parole intempestive en pleine phrase.
+    Évite absolument toute coupure de parole intempestive en pleine phrase (anti-barge-in prématuré).
+    Si le modèle parlait ou finissait d'émettre, respecte le délai de drainage du buffer audio.
     """
     start = time.time()
+    was_speaking = False
     while time.time() - start < timeout:
-        now = time.time()
-        speaking = (
-            active_task_controller.get("speaking_active", False)
-            or now < active_task_controller.get("estimated_speech_end", 0.0) + 0.35
-            or active_task_controller.get("client_speaking", False)
-        )
-        if not speaking:
+        if is_model_speaking():
+            was_speaking = True
+            await asyncio.sleep(0.1)
+        else:
             break
-        await asyncio.sleep(0.12)
-    # Pause naturelle de respiration humaine (200ms) avant de commencer la réplique suivante
-    await asyncio.sleep(0.2)
+
+    # Si le modèle était en train de parler, pause de respiration et drainage audio pour laisser les enceintes terminer
+    if was_speaking:
+        await asyncio.sleep(buffer_drainage_delay)
+    else:
+        await asyncio.sleep(0.2)
 
 
-async def safe_send_live_client_content(session, text: str, wait_if_speaking: bool = True) -> bool:
+async def safe_send_live_client_content(
+    session,
+    text: str,
+    action_key: str | None = None,
+    wait_if_speaking: bool = True,
+    drainage_delay: float = 2.0
+) -> bool:
     """
-    Injecte un message client dans la session Live en s'assurant que J.A.R.V.I.S.
-    ne se coupe pas la parole si elle est en train de parler.
+    Injecte un message client dans la session Live en s'assurant :
+    1. Du respect de la règle d'or de canal unique (interdiction formelle d'appel si déjà résolu via tool_response).
+    2. Du verrou d'élocution anti-coupure (si Aoede parle, différer de 2 à 3s pour éviter de couper sa phrase).
     """
     if not session:
         return False
+
+    # 1. Règle d'or de canal unique : interdire formellement tout doublon si l'action a déjà répondu dans tool_response
+    if action_key and is_action_sync_completed(action_key):
+        print(f"[Canal Unique] Action '{action_key}' déjà traitée de manière synchrone via tool_response. Injection client annulée pour éliminer tout bégaiement.")
+        return False
+
+    # 2. Verrou d'élocution : attendre que Aoede ait fini de parler + drainage du buffer audio (2 à 3s)
     if wait_if_speaking:
-        await wait_until_speech_finished()
+        await wait_until_speech_finished(timeout=15.0, buffer_drainage_delay=drainage_delay)
+
     try:
         await session.send_client_content(
             turns=types.Content(role="user", parts=[types.Part.from_text(text=text)]),

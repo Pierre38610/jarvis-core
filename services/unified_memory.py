@@ -152,9 +152,18 @@ class UnifiedMemoryManager:
         else:
             base_prompt = f"UTILISATEUR PRINCIPAL : {user_name}\n{contact_info}\n\n{semantic_context}".strip()
             
-        if arch_summary and arch_summary not in base_prompt:
-            return f"{base_prompt}\n\n{arch_summary}".strip()
-        return base_prompt
+        fluidity_guideline = (
+            "POSTURE RELATIONNELLE & FLUIDITÉ CONVERSATIONNELLE :\n"
+            "- Relation directe d'égal à égal avec Pierre, naturelle, complice et sans servilité.\n"
+            "- Bannis formellement toute amorce robotique répétitive en début de phrase ('C'est noté', 'C'est bien noté Pierre', 'Très bien', 'Entendu', 'C'est compris').\n"
+            "- Démarre directement par le verbe d'action ('J'ouvre...', 'Je regarde ça', 'Je m'en charge') ou réagis comme un pair sans préambule inutile."
+        )
+
+        full_prompt = f"{base_prompt}\n\n{fluidity_guideline}".strip()
+
+        if arch_summary and arch_summary not in full_prompt:
+            return f"{full_prompt}\n\n{arch_summary}".strip()
+        return full_prompt
 
     async def consolider_memoire_nocturne(self) -> Dict[str, Any]:
         """Déclenche la routine nocturne d'assainissement et de consolidation de la mémoire

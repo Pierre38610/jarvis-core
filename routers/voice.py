@@ -58,6 +58,13 @@ async def _build_system_instruction() -> str:
         f"  * En fonction de sa réponse, appelle l'outil avec execution_target='local_chrome_cdp' (s'il choisit l'écran ou Chrome physique) ou execution_target='vps_headless' (s'il préfère en arrière-plan ou discret)."
     )
 
+    anti_tics_rule = (
+        f"\n\nCONSIGNE STRICTE D'ÉLOCUTION NATURELLE ET ANTI-TICS VERBAUX :\n"
+        f"- Bannis les amorces robotiques et répétitives en début de réponse telles que 'C'est noté', 'C'est bien noté Pierre', 'Très bien', 'Entendu', 'C'est compris', 'Bien reçu'.\n"
+        f"- Varie tes réactions : démarre directement par le verbe d'action ('J'ouvre...', 'Je regarde ça', 'Je m'en charge'), réagis comme un pair naturel ou exécute l'action sans préambule si la demande est simple et évidente.\n"
+        f"- Conserve le tutoiement, le ton franc, complice et pragmatique sans servilité."
+    )
+
     template = getattr(config, "JARVIS_SYSTEM_INSTRUCTION_TEMPLATE", None)
     if template:
         try:
@@ -68,11 +75,11 @@ async def _build_system_instruction() -> str:
             )
         except Exception:
             base_prompt = str(template)
-        return f"{base_prompt}\n{nav_arbitration_rule}"
+        return f"{base_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}"
 
     static = getattr(config, "JARVIS_SYSTEM_INSTRUCTION", "")
     full_prompt = f"{memory_context}\n\n{static}" if memory_context else static
-    return f"{full_prompt}\n{nav_arbitration_rule}"
+    return f"{full_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}"
 
 
 
@@ -544,6 +551,7 @@ async def voice_channel(websocket: WebSocket):
                                         active_task_controller["speaking_active"] = True
                                         chunk_dur = len(part.inline_data.data) / (24000 * 2)
                                         now = time.time()
+                                        active_task_controller["last_audio_chunk_time"] = now
                                         active_task_controller["estimated_speech_end"] = max(
                                             active_task_controller.get("estimated_speech_end", 0.0), now
                                         ) + chunk_dur
@@ -578,6 +586,7 @@ async def voice_channel(websocket: WebSocket):
                                 is_speaking_state = False
                                 speaking_state["active"] = False
                                 active_task_controller["speaking_active"] = False
+                                active_task_controller["last_turn_complete_time"] = time.time()
                                 supervision_service.update_voice_state("idle", model=active_live_model, is_paid=is_paid_live)
                                 await broadcast_supervision()
                                 await websocket.send_text(json.dumps({"type": "turn_complete"}))
@@ -628,6 +637,11 @@ async def voice_channel(websocket: WebSocket):
                                     live_display_label=live_display_label,
                                 )
 
+                                # Règle d'or de canal unique : si l'action s'est terminée de manière synchrone, l'enregistrer
+                                if tool_resp.get("status") not in ("launched_in_background", "lance_en_arriere_plan"):
+                                    from core.shared_state import mark_action_sync_completed
+                                    mark_action_sync_completed(name)
+
                                 # Réponse transmise au modèle Gemini Live
                                 await session.send_tool_response(
                                     function_responses=[
@@ -639,7 +653,7 @@ async def voice_channel(websocket: WebSocket):
                                     ]
                                 )
                                 active_task_controller["awaiting_tool_response"] = False
-                                active_task_controller["tool_response_cooldown"] = time.time() + 1.8
+                                active_task_controller["tool_response_cooldown"] = time.time() + 2.5
 
                                 # Signal de fin d'outil au frontend
                                 await websocket.send_text(json.dumps({

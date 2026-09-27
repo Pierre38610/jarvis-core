@@ -628,9 +628,8 @@ def get_tools_list() -> list[types.Tool]:
                         "GESTION AGENDA SAMSUNG / GOOGLE CALENDAR : "
                         "Créer, décaler, consulter ou supprimer des événements et rendez-vous dans l'agenda de Pierre "
                         "(synchronisés nativement entre Google Calendar et l'application Samsung Calendar de son smartphone). "
-                        "L'opération s'exécute en arrière-plan via webhook n8n."
+                        "L'opération s'exécute via webhook n8n."
                     ),
-                    behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
@@ -665,7 +664,6 @@ def get_tools_list() -> list[types.Tool]:
                         "Note un mémo oral instantané et programme un rappel push sur le smartphone de Pierre "
                         "via n8n (Pushbullet / Web Push / Telegram Stark Bot) à une échéance ou un horaire précis."
                     ),
-                    behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
@@ -694,7 +692,6 @@ def get_tools_list() -> list[types.Tool]:
                         "Interroge en priorité la clé Redis 'jarvis:briefing:today' préparée dès 7h00 pour un retour instantané sans latence, "
                         "ou compile les données fraîches si nécessaire."
                     ),
-                    behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
@@ -716,7 +713,6 @@ def get_tools_list() -> list[types.Tool]:
                         "Si Pierre demande de réserver, prendre ou ouvrir les billets, positionne 'reserver_automatiquement' à True pour "
                         "ouvrir immédiatement toutes les pages de réservation sur son navigateur Chrome pour qu'il n'ait plus qu'à payer."
                     ),
-                    behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
@@ -760,7 +756,6 @@ def get_tools_list() -> list[types.Tool]:
                         "pour surveiller le quai de départ, l'heure et les retards sur les réseaux SNCF, SJ ou Trafikverket. "
                         "Alerte Pierre dès qu'une perturbation ou un retard supérieur à 5 minutes survient."
                     ),
-                    behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={

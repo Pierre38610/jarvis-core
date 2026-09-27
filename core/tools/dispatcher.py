@@ -301,7 +301,7 @@ async def dispatch_tool(
                         f"Présente la synthèse et les conclusions majeures à Pierre avec ta voix Aoede avec franchise, précision et éloquence."
                     )
                 try:
-                    await safe_send_live_client_content(current_sess, msg)
+                    await safe_send_live_client_content(current_sess, msg, action_key="ask_deep_reasoning", drainage_delay=2.5)
                 except Exception as notify_err:
                     print(f"[Reasoning Notification Err] {notify_err}")
 
@@ -314,7 +314,7 @@ async def dispatch_tool(
             "engine": "Antigravity DeepThinkingEngine",
             "instruction_to_jarvis": (
                 f"L'analyse approfondie multi-agents avec {model_label} est lancée en arrière-plan pour : '{question}'. "
-                f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, complice et direct que sa demande est prise en compte et que tu lances l'investigation approfondie avec Antigravity. "
+                f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, complice et direct que tu te charges de l'investigation approfondie avec Antigravity. "
                 f"Tu restes 100% disponible pour continuer à échanger avec lui pendant l'analyse."
             )
         }
@@ -324,20 +324,37 @@ async def dispatch_tool(
         sujet = args.get("sujet", "")
         criteres = args.get("criteres_particuliers", "")
         generer_slides = bool(args.get("generer_slides", True))
+        _sess_deep = session
 
-        deep_task = asyncio.create_task(
-            deep_research_service.executer_mission_complete(
-                sujet=sujet,
-                criteres=criteres,
-                generer_slides=generer_slides
-            )
-        )
+        async def _run_deep_research_bg():
+            try:
+                res = await deep_research_service.executer_mission_complete(
+                    sujet=sujet,
+                    criteres=criteres,
+                    generer_slides=generer_slides
+                )
+                _sess = active_task_controller.get("live_session") or _sess_deep
+                if _sess:
+                    final_msg = (
+                        f"[MISSION DEEP RESEARCH TERMINÉE] L'investigation sur '{sujet}' est achevée. "
+                        f"Un rapport exhaustif a été produit dans /artifacts/. "
+                        f"Présente les conclusions majeures et la synthèse exécutive à Pierre avec ta voix Aoede avec franchise et synthèse."
+                    )
+                    await safe_send_live_client_content(_sess, final_msg, action_key="lancer_mission_deep_research", drainage_delay=2.5)
+            except Exception as e:
+                print(f"[DeepResearch BG] Erreur: {e}")
+
+        deep_task = asyncio.create_task(_run_deep_research_bg())
         active_task_controller["deep_research_task"] = deep_task
 
         return {
             "status": "launched_in_background",
             "action": "deep_research",
-            "message": "Mission de Deep Research initiée en arrière-plan. Investigation multi-sources en cours."
+            "message": "Mission de Deep Research initiée en arrière-plan. Investigation multi-sources en cours.",
+            "instruction_to_jarvis": (
+                f"La mission de Deep Research sur '{sujet}' est lancée en arrière-plan. "
+                f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc et complice que tu lances l'investigation multi-sources."
+            )
         }
 
     # ─── search_web ────────────────────────────────────────────────────────────
@@ -465,8 +482,8 @@ async def dispatch_tool(
             )
         }
 
-    # ─── open_user_browser ─────────────────────────────────────────────────────
-    elif name == "open_user_browser":
+    # ─── open_user_browser / open_browser ──────────────────────────────────────
+    elif name in ("open_user_browser", "open_browser"):
         target_url = args.get("url") or "https://www.google.com"
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Ouverture de Google Chrome à l'écran.", "voice": False}))
         from services.local_agent_service import local_agent_service
@@ -476,7 +493,7 @@ async def dispatch_tool(
             res = await asyncio.to_thread(open_browser_window, target_url)
         supervision_service.track_browser_window(target_url, "Google Chrome")
         await broadcast_supervision()
-        return {"status": "completed", "result": res, "instruction_to_jarvis": f"La fenêtre Chrome est ouverte sur {target_url}. Confirme simplement et naturellement à Pierre avec ta voix Aoede que la page est affichée à l'écran."}
+        return {"status": "completed", "result": res, "instruction_to_jarvis": f"La fenêtre Chrome est ouverte sur {target_url}. Dis directement à Pierre que la page est affichée à l'écran sans amorce robotique ('J'ouvre Chrome sur...', 'C'est affiché à l'écran')."}
 
     # ─── remember_user_fact ────────────────────────────────────────────────────
     elif name == "remember_user_fact":
@@ -503,25 +520,25 @@ async def dispatch_tool(
         res = await unified_memory_manager.memorize(full_text, category=categorie or "fait", importance=2)
         return {"status": "completed", "result": res, "instruction_to_jarvis": f"L'information '{cle}' a été mémorisée durablement dans ta mémoire vectorielle. Confirme-le brièvement et naturellement avec ta voix Aoede."}
 
-    # ─── get_system_status ─────────────────────────────────────────────────────
-    elif name == "get_system_status":
+    # ─── get_system_status / get_status ────────────────────────────────────────
+    elif name in ("get_system_status", "get_status"):
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Diagnostic des ressources système en cours.", "voice": False}))
         status = await asyncio.to_thread(get_system_status)
-        return {"status": "completed", "result": status, "instruction_to_jarvis": "Voici les métriques système actuelles. Communique-les avec précision à l'utilisateur avec ta voix Aoede."}
+        return {"status": "completed", "result": status, "instruction_to_jarvis": "Voici les métriques système actuelles. Communique-les directement et avec précision à Pierre avec ta voix Aoede sans préambule superflu."}
 
-    # ─── launch_application ────────────────────────────────────────────────────
-    elif name == "launch_application":
-        app_name = args.get("app_name", "")
+    # ─── launch_application / launch_app ───────────────────────────────────────
+    elif name in ("launch_application", "launch_app"):
+        app_name = args.get("app_name") or args.get("application") or args.get("app", "")
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Lancement de {app_name}.", "voice": False}))
         from services.local_agent_service import local_agent_service
         if local_agent_service.is_connected():
             res = await local_agent_service.execute_command("launch_app", app_name=app_name)
         else:
             res = await asyncio.to_thread(launch_application, app_name)
-        return {"status": "completed", "result": res, "instruction_to_jarvis": f"L'application {app_name} est lancée sur l'écran. Dis directement à Pierre d'un ton complice et naturel que tu as lancé {app_name}."}
+        return {"status": "completed", "result": res, "instruction_to_jarvis": f"L'application {app_name} est lancée sur l'écran. Réponds directement et chaleureusement à Pierre en une seule phrase naturelle sans aucun préambule robotique (ex: 'J'ouvre {app_name}' ou 'C'est ouvert')."}
 
-    # ─── play_music_deezer ─────────────────────────────────────────────────────
-    elif name == "play_music_deezer":
+    # ─── play_music_deezer / deezer_action ─────────────────────────────────────
+    elif name in ("play_music_deezer", "deezer_action"):
         action = args.get("action") or ("choose" if args.get("query") else "playpause")
         query = args.get("query", "")
         item_type = args.get("item_type", "track")
@@ -554,10 +571,10 @@ async def dispatch_tool(
         res = await control_deezer(action=action, query=query, item_type=item_type, volume=volume, enable=enable)
         supervision_service.complete_action("play_music_deezer", status=res.get("status", "completed"), summary=res.get("message", "Deezer contrôlé avec succès"))
         await broadcast_supervision()
-        return {"status": res.get("status", "completed"), "result": res, "instruction_to_jarvis": f"{res.get('message', 'Action Deezer exécutée.')} Confirme brièvement et naturellement à Pierre avec ta voix Aoede."}
+        return {"status": res.get("status", "completed"), "result": res, "instruction_to_jarvis": f"{res.get('message', 'Action Deezer exécutée.')} Réponds directement et naturellement à Pierre en une seule prise de parole fluide sans préambule robotique."}
 
-    # ─── play_video_stremio ────────────────────────────────────────────────────
-    elif name == "play_video_stremio":
+    # ─── play_video_stremio / launch_media ─────────────────────────────────────
+    elif name in ("play_video_stremio", "launch_media"):
         title = args.get("title", "")
         content_type = args.get("content_type") or "movie"
         supervision_service.start_action("play_video_stremio", "Lecture Stremio", "play_video_stremio", f"{'Film' if content_type == 'movie' else 'Série'} : {title}", "Stremio + Torrentio", api_type="free", api_label="Local", cost_est="0.00 $")
@@ -578,7 +595,15 @@ async def dispatch_tool(
                 "title": found_t,
                 "year": year,
                 "result": res,
-                "instruction_to_jarvis": f"Stremio est ouvert sur '{found_t}' ({year}).{size_msg} Confirme directement et chaleureusement à Pierre que la vidéo est lancée."
+                "instruction_to_jarvis": f"Stremio est ouvert sur '{found_t}' ({year}).{size_msg} Dis directement à Pierre que la vidéo est lancée sans amorce robotique."
+            }
+        except Exception as e:
+            supervision_service.complete_action("play_video_stremio", status="error", summary=str(e))
+            await broadcast_supervision()
+            return {
+                "status": "error",
+                "error": str(e),
+                "instruction_to_jarvis": f"Impossible de lancer '{title}' sur Stremio ({e}). Informe brièvement Pierre avec ta voix Aoede."
             }
         except Exception as e:
             supervision_service.complete_action("play_video_stremio", status="error", summary=str(e))
@@ -752,7 +777,7 @@ async def dispatch_tool(
             supervision_service.track_browser_window(res.get("url"), res.get("title", target_url))
         await broadcast_supervision()
         await websocket.send_text(json.dumps({"type": "browser_update", "url": res.get("url", target_url), "title": res.get("title", "Page Web"), "screenshot": "/static/latest_screenshot.jpg"}))
-        return {"status": res.get("status"), "url": res.get("url"), "title": res.get("title"), "performed_actions": res.get("performed_actions", []), "detected_form_inputs": res.get("detected_form_inputs", []), "available_buttons": res.get("available_buttons", []), "content_preview": res.get("content_preview", "")[:1200], "instruction_to_jarvis": f"L'interaction sur la page {res.get('url')} est terminée. Dis d'abord à Pierre d'un ton franc et complice que sa demande a bien été prise en compte, puis résume les éléments découverts ou les actions effectuées avec ta voix Aoede."}
+        return {"status": res.get("status"), "url": res.get("url"), "title": res.get("title"), "performed_actions": res.get("performed_actions", []), "detected_form_inputs": res.get("detected_form_inputs", []), "available_buttons": res.get("available_buttons", []), "content_preview": res.get("content_preview", "")[:1200], "instruction_to_jarvis": f"L'interaction sur la page {res.get('url')} est terminée. Présente directement et simplement à Pierre avec ta voix Aoede les éléments découverts ou les actions effectuées sans amorce robotique."}
 
     # ─── prepare_web_cart_or_checkout ──────────────────────────────────────────
     elif name == "prepare_web_cart_or_checkout":
@@ -1229,7 +1254,7 @@ async def dispatch_tool(
                             f"Informe brièvement Pierre avec ta voix Aoede."
                         )
                     try:
-                        await safe_send_live_client_content(_s, inject_text)
+                        await safe_send_live_client_content(_s, inject_text, action_key="generer_presentation", drainage_delay=2.5)
                     except Exception as inj_e:
                         print(f"[Slides BG] Erreur injection Live: {inj_e}")
 
@@ -1252,7 +1277,7 @@ async def dispatch_tool(
                             f"Informe brièvement Pierre avec ta voix Aoede."
                         )
                     try:
-                        await safe_send_live_client_content(_s, inject_text)
+                        await safe_send_live_client_content(_s, inject_text, action_key="generer_presentation", drainage_delay=2.5)
                     except Exception as inj_e:
                         print(f"[Slides BG] Erreur injection Live: {inj_e}")
 
@@ -1267,9 +1292,7 @@ async def dispatch_tool(
             "instruction_to_jarvis": (
                 f"La conception de la présentation sur '{raw_titre}' est lancée en arrière-plan. "
                 f"RÈGLE STRICTE : Ne donne pas la présentation immédiatement ! "
-                f"Dis immédiatement et chaleureusement à Pierre avec ta voix Aoede que tu as bien pris en compte sa demande, "
-                f"que tu prends le temps nécessaire pour réfléchir au plan directeur, faire des recherches précises "
-                f"et trier les éléments percutants avant de générer les diapositives sur Google Slides."
+                f"Dis immédiatement et naturellement à Pierre avec ta voix Aoede que tu t'en charges et que tu lances la structuration du plan directeur pour sa présentation sur Google Slides."
             )
         }
 
@@ -1937,7 +1960,7 @@ async def dispatch_tool(
             "action": "curation_livre_synthese",
             "titre_livre": titre_livre,
             "instruction_to_jarvis": (
-                f"C'est noté Pierre. Je confie l'analyse et la rédaction de la fiche 'Synthèse & Clés de lecture' "
+                f"Je confie l'analyse et la rédaction de la fiche 'Synthèse & Clés de lecture' "
                 f"pour '{titre_livre}' à nos agents Antigravity sur le VPS. Elle sera acheminée sur ta liseuse en bonus. "
                 f"Confirme-le immédiatement à Pierre avec ta voix Aoede en moins de 300 millisecondes."
             )
