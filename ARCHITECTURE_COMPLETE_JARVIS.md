@@ -477,33 +477,40 @@ L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre 
 
 ---
 
-### 7.12. Moteur Deep Research Asynchrone (Antigravity CLI + MissionSpec + n8n + E-mail)
+### 7.12. Moteur Deep Research Asynchrone (Map-Reduce Multi-Agents Universel, Override Géographique Strict & Closed Quality Gate)
 - **Fichiers** : `services/deep_research_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `core/shared_state.py`, `services/email_service.py`, `services/briefing_service.py`, `services/slides_service.py`, `services/automation.py`.
 - **Outils exposés** : `lancer_mission_deep_research` (`behavior=NON_BLOCKING`, paramètres épurés : `consigne_utilisateur`, `envoyer_email`, `destinataire_email`), complété par `get_active_task_status`.
-- **Architecture & Pipeline d'Investigation en 4 Phases Intégrées** :
-  1. **Étape 1 : Compilateur de Contrat de Mission Dynamique (MissionSpec - Tier 1 JSON)** :
-     - Rôle capteur vocal de Gemini Live : réception de l'instruction orale intégrale brute de Pierre sans troncature (< 300 ms de temps de réponse initial).
+- **Architecture & Pipeline d'Investigation Map-Reduce en 6 Phases Intégrées** :
+  1. **Étape 1 : Compilateur de Spécification Dynamique (MissionSpec - Tier 1 JSON)** :
+     - Réception de la consigne vocale brute de Pierre sans filtrage ni troncature (< 300 ms de latence de dispatching initial).
      - Déclenchement de `compiler_spec_mission` via un LLM rapide (Tier 1 : `gemini-3.8-flash` en mode JSON strict, avec repli heuristique résilient).
-     - Génération d'une structure typée `MissionSpec` : `sujet`, `quantite_cible` (ex: 20 si demandé, défaut 5), `localisation` (ex: Malmö, Suède), `criteres_obligatoires` (ex: `politique_remuneration`, `avantages`, `inconvenients`, `localisation_exacte`, `contact`), `structure_rapport`, `notifier_email` et `email_cible`.
-  2. **Phase 1 : Cadrage & Profil Utilisateur (UnifiedMemoryManager & SQLite)** :
-     - Interrogation de `UnifiedMemoryManager` et de la base relationnelle `jarvis_memory.db` pour extraire dynamiquement le profil complet de Pierre : identité (`Pierre Cassagnettes`), spécialité d'ingénierie (IA, Deep Learning, Architectures Agentiques LLM, Ingénierie Logicielle Avancée), périmètre géographique prioritaire injecté depuis la `MissionSpec` et format recherché (stage de fin d'études / césure de 6 mois).
-     - Fusion du profil et de la `MissionSpec` dans le prompt de recherche.
-  3. **Phase 2 : Investigation Multi-Agents Antigravity CLI VPS (Tier 3 Délibératif Strict)** :
-     - Mobilisation autonome d'Antigravity CLI (`agy`) sur le VPS Oracle Cloud avec le palier TIER 3 Délibératif (`gemini-3.1-pro-high`) adossé au jeton OAuth2 Google AI Pro.
-     - **Sous-agent Prospecteur** : crawl et prospection web itérative jusqu'à avoir découvert et documenté AU MOINS `quantite_cible` entités réelles, distinctes et vérifiées.
-     - **Sous-agent Critique & Auditeur Qualité (Boucle de Contrôle & Règle de Rejet)** :
-       - Injection formelle du contrat : `quantite_cible` et `criteres_obligatoires`.
-       - Règle de rejet impitoyable : rejet formel du livrable si le volume N < `quantite_cible` ou si l'un des critères obligatoires (ex: politique de rémunération, avantages, inconvénients, contact) est omis ou incomplet sur une fiche. En cas de manquement, renvoi immédiat du Prospecteur pour collecter les données manquantes.
-       - Interdiction absolue de tout repli silencieux vers Flash : en cas de quota 5h saturé, émission d'alertes formelles vocale, Telegram et supervision avant bascule résiliente vers Tier 2.
-     - **Sous-agent Synthèse** : rédaction d'un rapport Markdown comprenant un tableau récapitulatif global des N opportunités et N fiches détaillées exhaustives.
-  4. **Phase 3 & Post-Traitement : Livrables & Livraison Déterministe Multi-Canal** :
-     - **Rapport Markdown Exhaustif** : enregistré sous `/artifacts/rapport_[sujet]_[timestamp].md`.
-     - **Schéma JSON Google Slides** : généré et validé sous `/artifacts/slides_schema_[sujet]_[timestamp].json`.
-     - **Compilation Google Slides via n8n** : envoi au webhook `document-slides` générant la présentation dans le Google Drive de Pierre.
-     - **Livraison E-mail Automatisée Déterministe (Cycle de Vie Intégré)** : si `notifier_email` est actif (détecté oralement ou flag explicite), appel immédiat de `email_service.send_email_async(...)` avec le format Stark Industries HTML (intégrant le tableau de synthèse récapitulatif) et le rapport Markdown complet joint via `resolve_attachment_path`.
-     - **Alerte Push Telegram Stark Bot (`chatId: 6849746502`)** : envoi immédiat via `briefing_service.send_telegram_alert` d'un message structuré avec les métriques validées, le résumé des opportunités phares, le statut de l'e-mail et les chemins d'artefacts.
-     - **Notification Vocale Aoede (Gemini Live)** : injection proactive d'un prompt système (`safe_send_live_client_content`) annonçant avec fierté la finalisation de la mission, le nombre exact d'entités trouvées (ex: 20) et la confirmation de l'envoi du rapport par mail.
-     - **HUD & Écran Mobile** : mise à jour instantanée du lien de consultation web (`set_browser_link`).
+     - Génération d'une structure typée `MissionSpec` : `sujet`, `quantite_cible` (ex: 20 si demandé, défaut 5), `zone_geographique_stricte` (ex: São Paulo, Tokyo, Munich, Malmö...), `exclusion_geographique`, `criteres_obligatoires` (ex: `description_activite`, `politique_remuneration`, `avantages`, `inconvenients`, `localisation_exacte`, `contact`), `strategies_recherche_locales` (extensions locales `.br`, `.de`, `.se`, `.jp`, etc.), `structure_rapport`, `notifier_email` et `email_cible`.
+  2. **Étape 2 : Règle d'Override Géographique Absolu (Consigne > Mémoire Profil)** :
+     - **Universalité géographique totale** : adaptation dynamique à n'importe quel pays ou ville du monde sans aucun biais ni échantillon hardcodé.
+     - **Bannissement automatique des villes mémoire** : dès qu'une zone géographique explicite est détectée dans la consigne, l'ensemble des localisations habituelles de la mémoire de Pierre (Grenoble, Paris, Lyon, France, Stockholm, Suède...) sont formellement désactivées, inscrites dans `exclusion_geographique` et purgées de la recherche.
+     - Les souvenirs mémoire conflictuels sont filtrés pour éliminer toute contamination de contexte.
+  3. **Étape 3 : Phase MAP — Prospection Parallèle VPS en 3 Axes Fonctionnels Universels** :
+     - Déploiement simultané via `asyncio.gather` de 3 ouvriers spécialisés autonomes s'exécutant sur Antigravity CLI VPS (Tier 3 Délibératif `gemini-3.1-pro-high`) :
+       * **Ouvrier 1 (Startups, Pépinières & Incubateurs Locaux)** : prospection des jeunes pousses, accélérateurs et pôles d'innovation émergents situés strictement dans `zone_geographique_stricte`.
+       * **Ouvrier 2 (Pôles Technologiques, Scale-ups & Laboratoires R&D Privés)** : prospection des scale-ups à forte croissance, centres d'ingénierie et laboratoires appliqués situés dans `zone_geographique_stricte`.
+       * **Ouvrier 3 (Entreprises Établies, Sièges Régionaux & Éditeurs de Logiciels)** : cartographie des grands groupes technologiques, filiales régionales et éditeurs disposant de bureaux réels dans `zone_geographique_stricte`.
+     - Mode opératoire : requêtes ciblées avec filtres de domaine locaux, scraping et extraction vérifiée de données réelles.
+  4. **Étape 4 : Phase REDUCE — Fusion, Déduplication & Normalisation** :
+     - Consolidation des retours bruts des 3 ouvriers MAP.
+     - Déduplication stricte par clé alphanumérique normalisée des noms d'entreprises.
+     - Standardisation des entités sous la structure typée `NormalizedEntity`.
+  5. **Étape 5 : Phase QUALITY GATE — Agent Critique & Boucle de Rejet Fermée** :
+     - L'agent Critique applique 3 règles d'invalidation formelles et impitoyables :
+       * *Règle 1 (Volume Strict)* : Si `nombre_entreprises_valides < quantite_cible`, REJET IMMÉDIAT.
+       * *Règle 2 (Conformité Géographique Stricte)* : Si une entité est hors de `zone_geographique_stricte` ou contient un terme d'`exclusion_geographique`, REJET ET PURGE IMMÉDIATE.
+       * *Règle 3 (Complétude des Critères)* : 100 % des fiches doivent documenter explicitement tous les `criteres_obligatoires` (description, rémunération, avantages, inconvénients, contact, adresse).
+     - *Boucle fermée de remédiation* : en cas de non-conformité, émission d'un ticket de manquement précis et relance ciblée d'ouvriers prospecteurs pour combler les manques (jusqu'à 2 itérations supplémentaires). Complété par un synthétiseur universel garantissant 100 % de conformité.
+  6. **Étape 6 : Finalisation & Livraison Déterministe Multi-Canal** :
+     - **Artefact Markdown Exhaustif** : enregistré sous `/artifacts/rapport_[sujet]_[timestamp].md` avec tableau récapitulatif global numéroté de 1 à N et N fiches détaillées.
+     - **Schéma JSON & Google Slides via n8n** : compilation automatique de la présentation Drive sous `/artifacts/slides_schema_[sujet]_[timestamp].json`.
+     - **Livraison E-mail Automatisée Déterministe** : si `notifier_email=True`, appel direct et autonome de `email_service.send_email_async(...)` avec le corps HTML Stark Industries enrichi du tableau de synthèse et le rapport Markdown complet joint en pièce jointe (`resolve_attachment_path`).
+     - **Alerte Push Telegram Stark Bot (`chatId: 6849746502`)** : message synthétique structuré avec les opportunités phares et statut de livraison.
+     - **Notification Vocale Proactive Aoede (Gemini Live)** : injection orale proactive (`safe_send_live_client_content`) annonçant oralement la fin de mission, le compte exact d'entités qualifiées et la confirmation d'envoi par courriel.
 
 ---
 

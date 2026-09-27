@@ -325,11 +325,10 @@ async def dispatch_tool(
         envoyer_email = bool(args.get("envoyer_email", False))
         destinataire_email = args.get("destinataire_email")
         generer_slides = bool(args.get("generer_slides", True))
-        _sess_deep = session
 
         async def _run_deep_research_bg():
             try:
-                res = await deep_research_service.executer_mission_complete(
+                await deep_research_service.executer_mission_complete(
                     consigne_utilisateur=consigne_utilisateur,
                     envoyer_email=envoyer_email,
                     destinataire_email=destinataire_email,
@@ -345,10 +344,10 @@ async def dispatch_tool(
         return {
             "status": "launched_in_background",
             "action": "deep_research",
-            "message": "Mission de Deep Research initiée en arrière-plan. Investigation multi-sources en cours.",
+            "message": "Mission deep research engagée en arrière-plan sur le cluster Antigravity.",
             "instruction_to_jarvis": (
-                f"La mission de Deep Research sur '{consigne_label}' est lancée en arrière-plan. "
-                f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, énergique et complice que tu lances l'investigation multi-sources."
+                f"La mission deep research sur '{consigne_label}' est engagée en arrière-plan sur le cluster Antigravity. "
+                f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, énergique et complice que tu te charges de l'investigation approfondie."
             )
         }
 

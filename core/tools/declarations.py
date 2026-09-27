@@ -75,10 +75,12 @@ def get_tools_list() -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="lancer_mission_deep_research",
                     description=(
-                        "Déclenche une recherche de fond approfondie et autonome (5 à 10 minutes) sur un sujet complexe "
-                        "(stage, analyse sectorielle, benchmark de labos ou d'entreprises). "
-                        "Compile un contrat de mission dynamique (MissionSpec), audite rigoureusement les critères, "
-                        "rédige un rapport Markdown exhaustif dans /artifacts/ et assure l'envoi automatisé par e-mail et notifications."
+                        "MOTEUR UNIVERSEL DEEP RESEARCH MAP-REDUCE MULTI-AGENTS (5 à 10 minutes) : "
+                        "Déclenche une recherche de fond approfondie et autonome sur n'importe quel sujet complexe "
+                        "(stage, prospective sectorielle, cartographie d'entreprises mondiales, benchmarks technologiques). "
+                        "Compile un contrat de mission dynamique (MissionSpec), applique un override géographique strict, "
+                        "déploie 3 ouvriers prospecteurs parallèles sur le VPS, audite rigoureusement les critères obligatoires, "
+                        "génère le rapport complet dans /artifacts/ et expédie automatiquement le résultat par e-mail et notifications."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -86,19 +88,15 @@ def get_tools_list() -> list[types.Tool]:
                         properties={
                             "consigne_utilisateur": types.Schema(
                                 type="STRING",
-                                description=(
-                                    "L'intégralité brute de la demande de Pierre, contenant tous ses critères, volumes et spécificités "
-                                    "(ex: 'Trouve 20 entreprises à Malmö pour mon stage de fin d'études en IA, avec avantages/inconvénients, "
-                                    "rémunéré ou non, localisation précise et envoie le rapport par mail')."
-                                )
+                                description="La consigne brute intégrale dictée par Pierre, sans filtrage ni altération."
                             ),
                             "envoyer_email": types.Schema(
                                 type="BOOLEAN",
-                                description="Flag explicite indiquant si Pierre a mentionné un envoi par courriel / mail / messagerie (défaut False)."
+                                description="True si la consigne orale mentionne un envoi par mail/courriel/rapport écrit (défaut False)."
                             ),
                             "destinataire_email": types.Schema(
                                 type="STRING",
-                                description="Adresse cible si mentionnée explicitement (sinon repli sur l'email utilisateur du profil SQLite)."
+                                description="E-mail de destination si précisé oralement, sinon repli automatique sur le profil utilisateur."
                             ),
                         },
                         required=["consigne_utilisateur"]

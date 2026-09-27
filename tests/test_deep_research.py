@@ -185,3 +185,91 @@ async def test_stop_active_task_cancels_deep_research():
 
     assert task.cancelled() or task.done()
     assert active_task_controller["deep_research_task"] is None
+
+
+@pytest.mark.asyncio
+async def test_geographic_override_strict_sao_paulo():
+    """Vérifie l'override géographique absolu : zéro contamination mémoire (Grenoble/Paris/Suède) pour São Paulo."""
+    test_artifacts_dir = os.path.join(os.path.dirname(__file__), "_test_scratch", "deep_research_artifacts_sp")
+    os.makedirs(test_artifacts_dir, exist_ok=True)
+    service = DeepResearchService(artifacts_dir=test_artifacts_dir)
+
+    consigne = (
+        "Trouve 20 entreprises à São Paulo, Brésil pour mon stage de fin d'études en IA, "
+        "avec politique de rémunération, avantages, inconvénients, localisation exacte et contact"
+    )
+
+    with patch("services.deep_research_service.AntigravityAgent") as MockAgentClass, \
+         patch("services.deep_research_service.briefing_service.send_telegram_alert", new_callable=AsyncMock), \
+         patch("services.deep_research_service.send_email_async", new_callable=AsyncMock), \
+         patch("services.deep_research_service.slides_service.generate_deep_research_slides") as mock_slides_gen, \
+         patch("services.deep_research_service.safe_send_live_client_content", new_callable=AsyncMock):
+
+        mock_instance = MagicMock()
+        mock_instance.run_cli_task_stream = AsyncMock(return_value=TaskResult(
+            summary="Crawl web complété.\n<!-- BEGIN_MARKDOWN_REPORT -->\n# Rapport...\n<!-- END_MARKDOWN_REPORT -->",
+            status="completed",
+            model_label="Gemini 3.1 Pro (High)"
+        ))
+        MockAgentClass.return_value = mock_instance
+        mock_slides_gen.return_value = ("Titre", "Sous-titre", [{"titre_slide": "S1"}])
+
+        res = await service.executer_mission_complete(
+            consigne_utilisateur=consigne,
+            envoyer_email=False
+        )
+
+        assert res["status"] == "completed"
+        assert res["spec"]["quantite_cible"] == 20
+        assert "São Paulo" in res["spec"]["zone_geographique_stricte"]
+
+        # Vérification des exclusions mémoire calculées
+        exclusions = res["spec"]["exclusion_geographique"]
+        assert "Grenoble" in exclusions
+        assert "Paris" in exclusions
+        assert "France" in exclusions
+        assert "Stockholm" in exclusions
+        assert "Suède" in exclusions
+
+        # Vérification du livrable Markdown
+        with open(res["artifact_markdown"], "r", encoding="utf-8") as f:
+            md_content = f.read()
+
+        # RÈGLE D'OR : ZÉRO CONTAMINATION MÉMOIRE DANS LES ENTITÉS DU RAPPORT
+        assert "| 20 |" in md_content
+        assert "### 20." in md_content
+        fiches_section = md_content.split("## 2. Tableau Récapitulatif")[1].split("## 5. Méthodologie")[0]
+
+        for forbidden in ["Grenoble", "Paris", "Lyon", "Stockholm", "Malmö", "France", "Suède"]:
+            assert forbidden.lower() not in fiches_section.lower()
+
+        assert "são paulo" in fiches_section.lower() or "brésil" in fiches_section.lower()
+
+
+@pytest.mark.asyncio
+async def test_quality_gate_closed_loop_and_criteria_completeness():
+    """Valide l'audit qualité fermé (rejet des fiches hors zone / incomplètes et complétude à 100%)."""
+    service = DeepResearchService()
+    spec = MissionSpec(
+        sujet="Cybersécurité & IA",
+        quantite_cible=5,
+        zone_geographique_stricte="Munich, Allemagne",
+        exclusion_geographique=["Grenoble", "Paris", "France", "Stockholm", "Suède"],
+        criteres_obligatoires=["description_activite", "politique_remuneration", "avantages", "inconvenients", "localisation_exacte", "contact"]
+    )
+
+    from services.deep_research_service import NormalizedEntity
+
+    # Échantillon avec une entité hors zone (Paris), une entité incomplète (sans salaire), et des valides
+    entities_sample = [
+        NormalizedEntity(nom="Munich AI Lab", localisation_exacte="Maxvorstadt, Munich, Allemagne", description_activite="Recherche IA", politique_remuneration="Oui (2200 €)", avantages="Top", inconvenients="Sélectif", contact="hr@munich.de"),
+        NormalizedEntity(nom="Paris Rogue Entity", localisation_exacte="Paris, France", description_activite="Hors zone", politique_remuneration="Oui", avantages="A", inconvenients="B", contact="c@p.fr"),
+        NormalizedEntity(nom="Incomplete Munich Entity", localisation_exacte="Schwabing, Munich, Allemagne", description_activite="Tech", politique_remuneration="N/A", avantages="A", inconvenients="B", contact="c@m.de"),
+        NormalizedEntity(nom="Siemens Munich Tech", localisation_exacte="Garching, Munich, Allemagne", description_activite="Applied AI", politique_remuneration="Oui (2000 €)", avantages="Moyens", inconvenients="Grand groupe", contact="jobs@siemens.de")
+    ]
+
+    est_conforme, valides, motifs = service._auditer_qualite(entities_sample, spec)
+    assert est_conforme is False
+    assert len(valides) == 2  # Seules les 2 entités valides et conformes sont retenues
+    assert any("Paris" in m for m in motifs)
+    assert any("politique_remuneration" in m for m in motifs)
