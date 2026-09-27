@@ -52,6 +52,44 @@ async def get_supervision_metrics(request: Request):
     return JSONResponse(content=summary)
 
 
+@router.get("/api/supervision/patches")
+async def get_supervision_patches(request: Request):
+    """Retourne le journal des patches d'auto-guérison (diff, tests, statut, release) depuis PostgreSQL."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+
+    from services.system_healing_service import system_healing_service
+    patches = await system_healing_service.get_recent_patches(limit=50)
+    return JSONResponse(content={"patches": patches, "total": len(patches)})
+
+
+@router.post("/api/supervision/patches/{patch_id}/rollback")
+async def post_supervision_patch_rollback(patch_id: str, request: Request):
+    """Déclenche le rollback instantané d'un patch appliqué vers la release précédente."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+
+    from services.system_healing_service import system_healing_service
+    res = await system_healing_service.rollback_patch(patch_id=patch_id)
+    await broadcast_supervision()
+    return JSONResponse(content=res, status_code=200 if res.get("success") else 400)
+
+
+@router.post("/api/supervision/patches/{patch_id}/approve")
+async def post_supervision_patch_approve(patch_id: str, request: Request):
+    """Valide et applique en production un patch sur fichier critique en attente d'approbation."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+
+    from services.system_healing_service import system_healing_service
+    res = await system_healing_service.approve_and_apply_patch(patch_id=patch_id)
+    await broadcast_supervision()
+    return JSONResponse(content=res, status_code=200 if res.get("success") else 400)
+
+
 
 @router.post("/api/task/directive")
 async def post_task_directive(req: DirectiveRequest, request: Request):

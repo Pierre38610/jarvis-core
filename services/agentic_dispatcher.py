@@ -144,12 +144,21 @@ class AgenticDispatcher:
                 f"DIAGNOSTIC & TRACE D'ERREUR : {ctx_str}\n"
                 f"WORKSPACE DU NOYAU : {WORKSPACE_DIR}\n\n"
                 f"Tu es l'ingénieur SRE autonome responsable de la stabilité de J.A.R.V.I.S.\n"
-                f"DIRECTIVES DE RÉSOLUTION :\n"
+                f"DIRECTIVES RIGOUREUSES DE RÉSOLUTION :\n"
                 f"1. ANALYSE DE CAUSE RACINE (RCA) : Identifie le fichier source exact, la fonction et la ligne de code responsable.\n"
-                f"2. PATCH CORRECTIF MINIMAL ET ROBUSTE : Propose le diff ou le bloc de code de remplacement exact sans régression.\n"
-                f"3. PROCÉDURE DE TEST & VALIDATION : Spécifie la commande de vérification syntaxique (`python -m py_compile ...`).\n"
-                f"4. RAPPORT EXÉCUTIF STARK : Rédige une explication limpide du bug rencontré, de son impact et de sa correction pérenne.\n"
-                f"Termine par une section '## Explication Vocale pour Aoede' (2 phrases rassurantes).\n"
+                f"2. BLOC DE PATCH MACHINE-READABLE OBLIGATOIRE :\n"
+                f"   Insère impérativement un bloc JSON structuré exact comme suit pour permettre l'application et les tests automatiques :\n"
+                f"   ```json:patch\n"
+                f"   {{\n"
+                f"     \"target_file\": \"chemin/relatif/fichier.py\",\n"
+                f"     \"search_block\": \"bloc exact existant\",\n"
+                f"     \"replace_block\": \"bloc corrigé sans régression\",\n"
+                f"     \"explanation\": \"Résumé du correctif\"\n"
+                f"   }}\n"
+                f"   ```\n"
+                f"3. TEST DE NON-RÉGRESSION : Si aucun test n'existe pour le module concerné, propose un test pytest minimal ciblé dans un bloc ```python:test ... ```.\n"
+                f"4. RAPPORT EXÉCUTIF STARK : Détaille l'impact, la cause racine et la pérennité du fix.\n"
+                f"Termine par une section '## Explication Vocale pour Aoede' (2 phrases claires).\n"
             )
 
         elif mission_type == "email_drafting":
@@ -523,8 +532,20 @@ class AgenticDispatcher:
 
                 # 4. Auto-guérison système
                 elif mission_type == "system_healing":
-                    oral_pitch = f"Pierre, j'ai diagnostiqué l'anomalie sur le système, analysé le code source et rédigé un patch de correction pour stabiliser le service."
-                    telegram_extra = f"🛠️ *Patch correctif* : `{artifact_path}`\n"
+                    try:
+                        from services.system_healing_service import system_healing_service
+                        healing_res = await system_healing_service.process_healing_patch(
+                            incident_motif=goal,
+                            raw_agent_output=raw_output,
+                            incident_context=context or {}
+                        )
+                        oral_pitch = healing_res.get("oral_pitch") or f"Pierre, l'analyse d'auto-guérison a été finalisée."
+                        telegram_extra = healing_res.get("telegram_extra") or f"🛠️ *Patch correctif* : `{artifact_path}`\n"
+                        mission_state["healing_result"] = healing_res
+                    except Exception as heal_err:
+                        logger.error(f"[AgenticDispatcher] Erreur traitement patch auto-guérison: {heal_err}", exc_info=True)
+                        oral_pitch = f"Pierre, l'analyse SRE est terminée mais une erreur est survenue lors de la validation du patch en sandbox."
+                        telegram_extra = f"⚠️ *Erreur validation patch* : {heal_err}\n"
 
                 # 5. Curation de livre
                 elif mission_type == "book_curation":

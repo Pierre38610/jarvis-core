@@ -1161,6 +1161,15 @@ def get_tools_list() -> list[types.Tool]:
                             "motif": types.Schema(
                                 type="STRING",
                                 description="Motif, module ou anomalie à inspecter et corriger (ex: 'console', 'erreur 500', 'service')"
+                            ),
+                            "action": types.Schema(
+                                type="STRING",
+                                description="Action SRE spécifique : 'heal' (défaut, auto-guérison), 'rollback' (annuler le dernier patch ou un patch spécifique), 'approve' (valider et appliquer un patch critique en attente)",
+                                enum=["heal", "rollback", "approve"]
+                            ),
+                            "patch_id": types.Schema(
+                                type="STRING",
+                                description="Identifiant spécifique du patch concerné (requis pour rollback ou approve ciblé, facultatif)"
                             )
                         }
                     )

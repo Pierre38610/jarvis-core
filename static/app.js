@@ -2508,11 +2508,13 @@ function openSupervisionModal() {
   supervisionModal.style.display = 'flex';
   fetchSupervisionOverview();
   fetchSupervisionMetrics();
+  fetchSupervisionPatches();
   
   if (!supervisionPollTimer) {
     supervisionPollTimer = setInterval(() => {
       fetchSupervisionOverview();
       fetchSupervisionMetrics();
+      fetchSupervisionPatches();
     }, 2500);
   }
 }
@@ -3019,6 +3021,170 @@ function renderSupervisionMetrics(data) {
         `;
       }).join('');
     }
+  }
+}
+
+// ─── 7. JOURNAL DES PATCHES D'AUTO-GUÉRISON & SRE ──────────────────────────────
+async function fetchSupervisionPatches() {
+  const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+  try {
+    const url = `/api/supervision/patches` + (token ? `?token=${encodeURIComponent(token)}` : '');
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      renderSupervisionPatches(data);
+    }
+  } catch (err) {
+    console.warn("[Supervision] Erreur fetch patches:", err);
+  }
+}
+
+function renderSupervisionPatches(data) {
+  const container = document.getElementById('supPatchesListContainer');
+  const countBadge = document.getElementById('supPatchesCountBadge');
+  if (!container) return;
+
+  const patches = (data && data.patches) || [];
+  if (countBadge) {
+    countBadge.innerText = `${patches.length} PATCH${patches.length > 1 ? 'ES' : ''}`;
+  }
+
+  if (patches.length === 0) {
+    container.innerHTML = `
+      <div class="sup-empty-state">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span>Aucun patch d'auto-guérison enregistré pour le moment. Système intègre.</span>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = patches.map(p => {
+    let statusBadge = '';
+    let actionButtons = '';
+
+    if (p.status === 'applied') {
+      statusBadge = '<span class="sup-patch-status-badge badge-applied">✅ APPLIQUÉ</span>';
+      actionButtons = `
+        <button class="sup-patch-btn btn-rollback" onclick="rollbackPatch('${escapeHtml(p.id)}')" title="Rollback instantané vers release précédente">
+          🔄 Rollback Instantané
+        </button>
+      `;
+    } else if (p.status === 'requires_validation') {
+      statusBadge = '<span class="sup-patch-status-badge badge-pending">⚠️ EN ATTENTE VALIDATION (PIERRE)</span>';
+      actionButtons = `
+        <button class="sup-patch-btn btn-approve" onclick="approvePatch('${escapeHtml(p.id)}')" title="Valider et appliquer le patch en production">
+          🛡️ Valider & Déployer
+        </button>
+      `;
+    } else if (p.status === 'rolled_back') {
+      statusBadge = '<span class="sup-patch-status-badge badge-rolledback">🔄 ROLLED BACK</span>';
+    } else if (p.status === 'failed_tests') {
+      statusBadge = '<span class="sup-patch-status-badge badge-failed">❌ TESTS ÉCHOUÉS</span>';
+    } else if (p.status === 'failed_syntax') {
+      statusBadge = '<span class="sup-patch-status-badge badge-failed">❌ SYNTAXE INVALIDE</span>';
+    } else {
+      statusBadge = `<span class="sup-patch-status-badge">${escapeHtml(p.status)}</span>`;
+    }
+
+    const critBadge = p.is_critical
+      ? '<span class="sup-patch-crit-badge">CRITIQUE (AUTH/CORE)</span>'
+      : '<span class="sup-patch-norm-badge">STANDARD</span>';
+
+    const testSummary = p.test_results ? (p.test_results.summary || (p.test_results.passed ? 'Succès' : 'Échec')) : 'Inconnu';
+    const duration = p.test_results && p.test_results.duration_s ? `${p.test_results.duration_s}s` : '';
+    const dateFormatted = p.created_at ? p.created_at.replace('T', ' ').substring(0, 19) : '';
+
+    return `
+      <div class="sup-patch-card" id="patch-card-${escapeHtml(p.id)}">
+        <div class="sup-patch-card-header">
+          <div class="sup-patch-title-row">
+            <span class="sup-patch-file">📄 ${escapeHtml(p.target_file)}</span>
+            ${critBadge}
+            ${statusBadge}
+          </div>
+          <span class="sup-patch-date">${escapeHtml(dateFormatted)}</span>
+        </div>
+
+        <div class="sup-patch-motif">
+          <strong>Incident :</strong> ${escapeHtml(p.incident_motif)}
+        </div>
+
+        <div class="sup-patch-meta-grid">
+          <div class="sup-patch-meta-item">
+            <span class="sup-patch-meta-label">SUITE DE TESTS :</span>
+            <span class="sup-patch-meta-value">${escapeHtml(p.test_suite || 'N/A')}</span>
+          </div>
+          <div class="sup-patch-meta-item">
+            <span class="sup-patch-meta-label">RÉSULTAT TESTS :</span>
+            <span class="sup-patch-meta-value ${p.test_results && p.test_results.passed ? 'text-ok' : 'text-fail'}">
+              ${escapeHtml(testSummary)} ${duration ? '(' + duration + ')' : ''}
+            </span>
+          </div>
+          <div class="sup-patch-meta-item">
+            <span class="sup-patch-meta-label">RELEASE :</span>
+            <span class="sup-patch-meta-value" style="font-family: monospace;">${escapeHtml(p.release_path ? p.release_path.split(/[\\/]/).pop() : 'Staging')}</span>
+          </div>
+        </div>
+
+        <div class="sup-patch-actions-row">
+          <button class="sup-patch-btn btn-diff" onclick="togglePatchDiff('${escapeHtml(p.id)}')">
+            👁️ Afficher / Masquer le Diff
+          </button>
+          ${actionButtons}
+        </div>
+
+        <div id="diff-box-${escapeHtml(p.id)}" class="sup-patch-diff-container" style="display: none;">
+          <pre class="sup-patch-diff-pre">${escapeHtml(p.patch_diff || 'Aucun diff disponible.')}</pre>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function togglePatchDiff(patchId) {
+  const box = document.getElementById(`diff-box-${patchId}`);
+  if (!box) return;
+  box.style.display = (box.style.display === 'none' || !box.style.display) ? 'block' : 'none';
+}
+
+async function rollbackPatch(patchId) {
+  if (!confirm("Voulez-vous vraiment exécuter le rollback instantané de ce patch ?")) return;
+  const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+  try {
+    const res = await fetch(`/api/supervision/patches/${encodeURIComponent(patchId)}/rollback?token=${encodeURIComponent(token)}`, {
+      method: 'POST'
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      alert("✅ Rollback instantané effectué avec succès.");
+      fetchSupervisionPatches();
+      fetchSupervisionOverview();
+    } else {
+      alert("❌ Échec du rollback : " + (data.message || 'Erreur'));
+    }
+  } catch (err) {
+    alert("❌ Erreur réseau lors du rollback : " + err);
+  }
+}
+
+async function approvePatch(patchId) {
+  if (!confirm("Autoriser le déploiement en production de ce patch critique ?")) return;
+  const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+  try {
+    const res = await fetch(`/api/supervision/patches/${encodeURIComponent(patchId)}/approve?token=${encodeURIComponent(token)}`, {
+      method: 'POST'
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      alert("✅ Patch critique validé et déployé avec succès.");
+      fetchSupervisionPatches();
+      fetchSupervisionOverview();
+    } else {
+      alert("❌ Échec de la validation : " + (data.message || 'Erreur'));
+    }
+  } catch (err) {
+    alert("❌ Erreur réseau lors de la validation : " + err);
   }
 }
 

@@ -307,6 +307,27 @@ CREATE INDEX IF NOT EXISTS idx_tool_call_metrics_created_at ON tool_call_metrics
 CREATE INDEX IF NOT EXISTS idx_tool_call_metrics_tool_name ON tool_call_metrics (tool_name);
 CREATE INDEX IF NOT EXISTS idx_tool_call_metrics_status ON tool_call_metrics (status);
 CREATE INDEX IF NOT EXISTS idx_tool_call_metrics_tier ON tool_call_metrics (cognitive_tier);
+
+-- Table du journal des patches d'auto-guérison et SRE autonome
+CREATE TABLE IF NOT EXISTS patches_auto_appliques (
+    id                  TEXT            PRIMARY KEY,
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    incident_motif      TEXT            NOT NULL,
+    target_file         TEXT            NOT NULL,
+    patch_diff          TEXT            NOT NULL,
+    test_suite          TEXT,
+    test_results        JSONB           NOT NULL DEFAULT '{}',
+    status              TEXT            NOT NULL, -- 'applied', 'requires_validation', 'rolled_back', 'failed_tests', 'failed_syntax'
+    is_critical         BOOLEAN         NOT NULL DEFAULT FALSE,
+    release_path        TEXT,
+    previous_release_path TEXT,
+    applied_at          TIMESTAMPTZ,
+    rolled_back_at      TIMESTAMPTZ,
+    details             JSONB           NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_patches_auto_appliques_created_at ON patches_auto_appliques (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_patches_auto_appliques_target_file ON patches_auto_appliques (target_file);
+CREATE INDEX IF NOT EXISTS idx_patches_auto_appliques_status ON patches_auto_appliques (status);
 ```
 
 ### 3.4. Moteur Vectoriel Qdrant & Embeddings Fastembed (`services/memory.py`)
@@ -624,7 +645,7 @@ L'agent interroge périodiquement `psutil` pour remonter :
 | **35** | `query_jarvis_architecture` | `consulter_architecture_jarvis` | `services/architecture_service.py`| Bloquant | `sujet: str`, `section: str` | Interroge interactivement le présent fichier d'architecture en temps réel. |
 | **36** | `draft_email_response` | `triage_et_brouillon_email` | `services/agentic_dispatcher.py` | Non-bloquant | `query: str`, `consigne: str` | Triage exécutif Système 2, analyse pièces jointes PDF et projet de réponse. |
 | **37** | `generate_book_summary` | `curation_livre_synthese` | `services/agentic_dispatcher.py` | Non-bloquant | `titre_livre: str` | Synthèse exécutive 2 pages 'Clés de lecture' envoyée sur Kindle en bonus. |
-| **38** | `system_self_healing` | `auto_guerison_systeme` | `services/agentic_dispatcher.py` | Non-bloquant | `motif: str` | SRE autonome : analyse cause racine, patch syntaxique et validation tests. |
+| **38** | `system_self_healing` | `auto_guerison_systeme` | `services/agentic_dispatcher.py`<br>`services/system_healing_service.py` | Non-bloquant | `motif: str`, `action: str`, `patch_id: str` | SRE autonome : analyse RCA, tests isolés en sandbox, test non-régression auto-généré, déploiement Blue/Green releases/symlink, escalade fichiers critiques (validation orale Pierre) et journalisation PostgreSQL. |
 
 ---
 
@@ -671,7 +692,7 @@ L'agent interroge périodiquement `psutil` pour remonter :
 - **Missions agentiques natives** :
   1. `transport_optimizer` : Analyse comparative confort/temps, arbitrage train de jour vs couchette de nuit, marges de sécurité aux correspondances.
   2. `spreadsheet_modeler` : Ingénierie de tableurs financiers avec formules dynamiques (`XLOOKUP`, `SUMIFS`), mise en forme corporate Stark (#1E293B) et génération directe via script Python `openpyxl`.
-  3. `system_healing` : SRE autonome sur incident, analyse de cause racine (RCA), patch de correction du code source dans `/home/opc/jarvis-core/` et validation par `py_compile`.
+  3. `system_healing` : SRE autonome sur incident, analyse de cause racine (RCA), exécution isolée de la suite de tests en sandbox temporaire (hors production), auto-génération de test minimal de non-régression si aucun test n'existe, pattern Blue/Green `releases/<timestamp>` + symlink atomique `current` permettant le rollback instantané, règle d'escalade avec validation orale de Pierre pour les fichiers critiques (`auth_service.py`, `dispatcher.py`), et journalisation complète dans la table PostgreSQL `patches_auto_appliques`.
   4. `email_drafting` : Triage des courriers complexes, décorticage de pièces jointes PDF via `pypdf`, rédaction de projets de réponse sauvegardés dans `outbox_emails/`.
   5. `book_curation` : Synthèse exécutive en 2 pages des thèses majeures d'un livre téléchargé, transmise sur Kindle.
   6. `morning_briefing` : Préparation stratégique à 6h45 croisant météo, agenda, e-mails et veille technique IA.

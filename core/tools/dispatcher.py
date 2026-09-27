@@ -2078,25 +2078,76 @@ async def _execute_dispatch_tool(
 
     # ─── auto_guerison_systeme ─────────────────────────────────────────────────
     elif name in ("system_self_healing", "auto_guerison_systeme"):
-        motif = args.get("motif") or "Analyse globale de la console et des processus"
-        from services.agentic_dispatcher import agentic_dispatcher
-        recent = console_monitor.get_recent_errors(limit=5)
-        asyncio.create_task(agentic_dispatcher.launch_agentic_mission(
-            mission_type="system_healing",
-            goal=f"Auto-guérison et inspection SRE autonome : {motif}",
-            context={"motif": motif, "recent_errors": recent}
-        ))
+        action = (args.get("action") or "heal").strip().lower()
+        patch_id = args.get("patch_id")
+        from services.system_healing_service import system_healing_service
 
-        return {
-            "status": "lance_en_arriere_plan",
-            "action": "auto_guerison_systeme",
-            "motif": motif,
-            "instruction_to_jarvis": (
-                f"Je prends les commandes Pierre. Je lance immédiatement notre agent SRE Antigravity sur le VPS "
-                f"pour inspecter le code source, isoler la cause et appliquer un patch correctif sécurisé. "
-                f"Confirme-le calmement et avec assurance à Pierre avec ta voix Aoede en moins de 300 millisecondes."
-            )
-        }
+        if action in ("rollback", "annuler"):
+            res_rb = await system_healing_service.rollback_patch(patch_id=patch_id)
+            if res_rb.get("success"):
+                return {
+                    "status": "success",
+                    "action": "rollback_patch",
+                    "patch_id": res_rb.get("patch_id"),
+                    "target_file": res_rb.get("target_file"),
+                    "instruction_to_jarvis": (
+                        f"Pierre, j'ai annulé immédiatement le patch sur '{res_rb.get('target_file')}'. "
+                        f"La version précédente a été restaurée et le symlink current rétabli avec succès."
+                    )
+                }
+            else:
+                return {
+                    "status": "error",
+                    "action": "rollback_patch",
+                    "message": res_rb.get("message", "Aucun patch éligible au rollback"),
+                    "instruction_to_jarvis": (
+                        f"Pierre, je n'ai pas pu effectuer de rollback : {res_rb.get('message')}."
+                    )
+                }
+
+        elif action in ("approve", "valider", "confirmer"):
+            res_app = await system_healing_service.approve_and_apply_patch(patch_id=patch_id)
+            if res_app.get("success"):
+                return {
+                    "status": "success",
+                    "action": "approve_patch",
+                    "patch_id": res_app.get("patch_id"),
+                    "target_file": res_app.get("target_file"),
+                    "instruction_to_jarvis": (
+                        f"Pierre, j'ai pris en compte ta validation. Le patch pour le module critique "
+                        f"'{res_app.get('target_file')}' a été déployé sous la release active avec succès."
+                    )
+                }
+            else:
+                return {
+                    "status": "error",
+                    "action": "approve_patch",
+                    "message": res_app.get("message", "Échec validation patch"),
+                    "instruction_to_jarvis": (
+                        f"Pierre, impossible de valider ce patch : {res_app.get('message')}."
+                    )
+                }
+
+        else:
+            motif = args.get("motif") or "Analyse globale de la console et des processus"
+            from services.agentic_dispatcher import agentic_dispatcher
+            recent = console_monitor.get_recent_errors(limit=5)
+            asyncio.create_task(agentic_dispatcher.launch_agentic_mission(
+                mission_type="system_healing",
+                goal=f"Auto-guérison et inspection SRE autonome : {motif}",
+                context={"motif": motif, "recent_errors": recent}
+            ))
+
+            return {
+                "status": "lance_en_arriere_plan",
+                "action": "auto_guerison_systeme",
+                "motif": motif,
+                "instruction_to_jarvis": (
+                    f"Je prends les commandes Pierre. Je lance immédiatement notre agent SRE Antigravity sur le VPS "
+                    f"pour inspecter le code source, isoler la cause et appliquer un patch correctif sécurisé. "
+                    f"Confirme-le calmement et avec assurance à Pierre avec ta voix Aoede en moins de 300 millisecondes."
+                )
+            }
 
     # ─── Outil inconnu ─────────────────────────────────────────────────────────
     else:
