@@ -1,56 +1,133 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
-> **Stark Industries AI Assistant — Document d'Analyse Intégrale & Spécifications Systèmes**
-> *Destiné à l'évaluation architecturale, au benchmark technique et à l'élaboration de propositions d'optimisation par IA.*
+> **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
+> *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
+> *Dernière révision majeure : Version 5.2.0 — Cœur Distribué, Moteur Polymorphe & Système 2 Universel.*
 
 ---
 
 ## 📑 TABLE DES MATIÈRES
 
 1. [Vue d'Ensemble & Philosophie du Projet](#1-vue-densemble--philosophie-du-projet)
+   - 1.1. Identité, Rôle & Relation d'Égal à Égal
+   - 1.2. Paradigme Opérationnel & Principes Directeurs
+   - 1.3. Les 5 Garde-Fous Inviolables
 2. [Topologie d'Infrastructure & Déploiement Hybride](#2-topologie-dinfrastructure--déploiement-hybride)
-3. [Stack Logicielle & Persistance des Données](#3-stack-logicielle--persistance-des-données)
-4. [Gouvernance des Modèles IA, Verrou Économique & Routage Cognitif en 3 Tiers](#4-gouvernance-des-modèles-ia--verrou-économique-physique)
-5. [Le Moteur Vocal Temps Réel (Gemini Live Audio)](#5-le-moteur-vocal-temps-réel-gemini-live-audio)
-6. [L'Agent Relais Local PC Windows (`jarvis_local_agent`)](#6-lagent-relais-local-pc-windows-jarvis_local_agent)
-7. [Catalogue Exhaustif des Services & Outils (Function Calling)](#7-catalogue-exhaustif-des-services--outils-function-calling)
-   - 7.1. Agent Autonome d'Ingénierie Logicielle (Antigravity IDE)
-   - 7.2. Navigation Web Autonome & E-Commerce (Browser-Use / Playwright)
-   - 7.3. Gestionnaire E-Book & Transfert Liseuses (Kindle / Kobo / Anna's Archive)
-   - 7.4. Contrôleur Média & Streaming (Deezer Web Player / Stremio)
-   - 7.5. Suite de Communication & Messagerie (Email Stark / IMAP / Chat Multimodal)
-   - 7.6. Système de Mémoire Hybride (SQLite / Vectorielle Qdrant / Fastembed)
-   - 7.7. Télémétrie, Diagnostics & Supervision Système
-   - 7.8. Automatisation des Processus Externes & Pôle Documentaire (n8n Community)
-   - 7.9. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
-   - 7.10. Système Intelligent Ferroviaire & Mobilité (France & Suède)
-   - 7.11. Connaissance Architecturale Dynamique & Auto-évaluation (ARCHITECTURE_COMPLETE_JARVIS.md)
-   - 7.12. Moteur Deep Research Asynchrone (Antigravity CLI + n8n)
-   - 7.13. Moteur Délibératif Multi-Agents Antigravity Transverse ("Système 2" Universel)
-8. [Matrice des Endpoints API REST & Contrats WebSockets](#8-matrice-des-endpoints-api-rest--contrats-websockets)
-9. [Interface Utilisateur, PWA & HUD Mobile](#9-interface-utilisateur-pwa--hud-mobile)
-10. [Analyse Critique : Forces, Dette Technique & Pistes d'Amélioration](#10-analyse-critique--forces-dette-technique--pistes-damélioration)
+   - 2.1. Schéma d'Architecture Globale
+   - 2.2. Le Serveur Cloud Central (Oracle Cloud VPS ARM64)
+   - 2.3. Le PC Physique Windows 11 & Rôle Exécutant
+   - 2.4. Topologie Réseau, Tunnels Cloudflare & Résilience Réseau
+   - 2.5. Pipeline de Déploiement Continu & Synchronisation (`sync_deploy.py`)
+3. [Stack Logicielle, Conteneurs Docker & Persistance des Données](#3-stack-logicielle-conteneurs-docker--persistance-des-données)
+   - 3.1. Matrice des Conteneurs Docker (`docker-compose.yml`)
+   - 3.2. Mécanisme de Cache, Présence & Pub/Sub (`services/cache.py`)
+   - 3.3. Schéma Relationnel PostgreSQL 16 (`db/schema.sql`)
+   - 3.4. Moteur Vectoriel Qdrant & Embeddings Fastembed (`services/memory.py`)
+   - 3.5. Mémoire Locale Structurée SQLite (`jarvis_memory.db`)
+   - 3.6. Façade Unifiée de Mémoire Long-Terme (`services/unified_memory.py`)
+4. [Architecture de Sécurité, Cryptographie & Gestion des Appareils](#4-architecture-de-sécurité-cryptographie--gestion-des-appareils)
+   - 4.1. Moteur d'Authentification Cryptographique (`services/auth_service.py` & `auth.py`)
+   - 4.2. Tokens JWT Signés (HMAC-SHA256) & Gestion des Clés Secrètes
+   - 4.3. Registre des Terminaux & Empreintes Matérielles (`authorized_devices.json`)
+   - 4.4. Protocole de Pairage QR Code Zero-Touch à Usage Unique
+   - 4.5. Révocation Instantanée & Blacklist Redis
+   - 4.6. Migration Rétrocompatible Transparente des Anciens Jetons
+5. [Gouvernance des Modèles IA, Verrou Économique & Routage Cognitif en 3 Tiers](#5-gouvernance-des-modèles-ia-verrou-économique--routage-cognitif-en-3-tiers)
+   - 5.1. Répartition Bimodale des Clés API (Gratuite vs Payante)
+   - 5.2. Verrou Physique Applicatif & Double Consentement Oral
+   - 5.3. Routage Cognitif Dynamique en 3 Paliers (Tiers 1, 2, 3)
+   - 5.4. Protocole de Résilience Quota-Aware & Dégradation Gracieuse (429)
+6. [Le Moteur Vocal Temps Réel (Gemini Live Audio)](#6-le-moteur-vocal-temps-réel-gemini-live-audio)
+   - 6.1. Protocole Audio Full-Duplex & Streaming PCM
+   - 6.2. Assemblage Dynamique de l'Instruction Système & Contexte
+   - 6.3. Modèles Vocaux Actifs & Permutation à Chaud
+   - 6.4. Boucle de Traitement des Outils Asynchrone Non-Bloquante (< 300 ms)
+   - 6.5. Règle d'Or de Canal Unique & Verrou d'Élocution Anti-Coupure
+   - 6.6. Gestion des Interruptions (Barge-In) & Gating Micro
+7. [L'Agent Relais Local PC Windows (`jarvis_local_agent`)](#7-lagent-relais-local-pc-windows-jarvis_local_agent)
+   - 7.1. Problématique Résolue & Rôle Exécutant Physique
+   - 7.2. Protocole WebSocket RPC & Reconnexion Résiliente
+   - 7.3. Catalogue des 10 Actions Locales Supportées
+   - 7.4. Journalisation Auto-Flush & Interception Globale des Crashs
+   - 7.5. Exécution Silencieuse VBScript & Scripts d'Automatisation Windows
+   - 7.6. Télémétrie Matérielle Réelle (psutil)
+8. [Catalogue Matriciel & Fiches des 41 Outils (Function Calling)](#8-catalogue-matriciel--fiches-des-41-outils-function-calling)
+   - 8.1. Matrice Globale Exhaustive des 41 Outils Déclarés
+   - 8.2. Moteur Multi-Agents Antigravity CLI sur VPS (`ask_deep_reasoning`, `guide_active_task`, `stop_current_action`)
+   - 8.3. Moteur Universel Deep Research Map-Reduce (`lancer_mission_deep_research`)
+   - 8.4. Moteur Délibératif Système 2 Transverse (Missions Spécialisées)
+   - 8.5. Navigation Web Autonome, E-Commerce & Chrome CDP
+   - 8.6. Pôle Documentaire & Présentations Google Slides Polymorphes v1
+   - 8.7. Mobilité & Système Ferroviaire Intelligent (France & Suède)
+   - 8.8. Gestionnaire E-Book, Liseuses Physiques & Send to Kindle
+   - 8.9. Contrôleur Média & Streaming (Deezer Web Player & Stremio)
+   - 8.10. Suite de Communication & Messagerie Stark
+   - 8.11. Système de Mémoire Hybride (SQLite, Qdrant & Fastembed)
+   - 8.12. Télémétrie, Diagnostics & Supervision Système
+   - 8.13. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
+   - 8.14. Connaissance Architecturale Dynamique & Auto-évaluation
+9. [Matrice des Endpoints API REST & Protocoles WebSockets](#9-matrice-des-endpoints-api-rest--protocoles-websockets)
+   - 9.1. Endpoints HTTP / REST FastAPI
+   - 9.2. Contrat WebSocket Audio Gemini Live (`/ws`)
+   - 9.3. Contrat WebSocket Relais Agent Local PC (`/ws/local-agent`)
+   - 9.4. Contrat WebSocket Deezer Controller (`127.0.0.1:8765`)
+10. [Cycle de Vie, Supervision & Événements des Sous-Agents](#10-cycle-de-vie-supervision--événements-des-sous-agents)
+    - 10.1. Cycle de Vie d'un Sous-Agent
+    - 10.2. Diffusion Temps Réel & Structure des Événements
+    - 10.3. Visualisation dans le HUD Mobile
+11. [Interface Utilisateur, PWA & HUD Mobile Stark Industries](#11-interface-utilisateur-pwa--hud-mobile-stark-industries)
+    - 11.1. Principes Ergonomiques & Design System Cyberpunk
+    - 11.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
+    - 11.3. Machine à États Visuelle
+    - 11.4. Tiroirs, Modals Interactifs & Vues Dédiées
+12. [Analyse Critique : Forces, Dette Technique & Pistes d'Amélioration](#12-analyse-critique--forces-dette-technique--pistes-damélioration)
+    - 12.1. Forces Majeures de l'Architecture Actuelle
+    - 12.2. Points d'Attention & Dette Technique
+    - 12.3. Pistes d'Évolution Stratégique & Prochaines Étapes
 
 ---
 
 ## 1. VUE D'ENSEMBLE & PHILOSOPHIE DU PROJET
 
-### 1.1. Identité et Rôle
-**J.A.R.V.I.S.** (*Just A Rather Very Intelligent System*) est un orchestrateur d'intelligence artificielle ubiquitaire conçu pour assister **Pierre Cassagnettes**. Inspiré de l'assistant emblématique de Stark Industries, le système fonctionne comme un **binôme d'égal à égal** :
-- **Ton et personnalité** : Franc, direct, complice, naturel et pragmatique. Aucun formalisme servile, aucune flatterie artificielle ("zéro lèche-cul"). Il utilise un tutoiement naturel et constructif.
-- **Identité vocale** : Voix féminine naturelle **Aoede** fournie par Gemini Live. Élocution humaine complète (aucune synthèse vocale robotique locale de type SAPI ou Windows SpeechSynth).
-- **Annonce systématique d'action** : Tout ordre déclenchant un traitement asynchrone fait l'objet d'une confirmation orale immédiate ("*C'est bien noté Pierre, je lance la recherche...*") pour éliminer l'incertitude utilisateur.
+### 1.1. Identité, Rôle & Relation d'Égal à Égal
+**J.A.R.V.I.S.** (*Just A Rather Very Intelligent System*) est un orchestrateur d'intelligence artificielle ubiquitaire de niveau exécutif conçu pour assister **Pierre Cassagnettes**. Directement inspiré de l'assistant emblématique de Tony Stark, le système incarne une philosophie de collaboration symbiotique :
 
-### 1.2. Paradigme Opérationnel
-Jarvis ne se limite pas à un simple chatbot conversationnel ou à un wrapper LLM :
-1. **Agentique et outillé** : Il pilote de vrais navigateurs web, télécharge des fichiers, manipule le système de fichiers, exécute des commandes terminal, inspecte le code, écrit des applications et contrôle les périphériques locaux.
-2. **Asynchrone et non-bloquant** : Les tâches lourdes (programmation avec Antigravity, navigation web complexe) tournent en tâche de fond (`asyncio.create_task`), permettant à l'utilisateur de continuer à dialoguer oralement avec Jarvis pendant l'exécution.
-3. **Pilotable en direct** : L'utilisateur peut guider une tâche en cours (`guide_active_task`) ou l'interrompre physiquement à tout moment (`stop_current_action`).
+- **Positionnement d'égal à égal** : Jarvis n'est pas un sous-fifre servile ni un simple chatbot passif. Il opère comme un binôme d'élite, brillant, direct, complice et pragmatique.
+- **Éradication de la flatterie artificielle ("Zéro lèche-cul")** : Aucune courbette, aucun "À vos ordres", aucune flatterie feinte. Le tutoiement est naturel, fluide et constructif. Si une proposition de Pierre peut être optimisée ou simplifiée, Jarvis le lui signale immédiatement avec franchise.
+- **Identité vocale humaine Aoede** : Restitution sonore féminine chaleureuse, vivante et spontanée fournie par l'API Gemini Live Audio. Aucune voix synthétique locale (pas de SAPI, eSpeak ou Windows SpeechSynth).
+- **Éradication des tics verbaux & Amorces directes** : Interdiction formelle des préambules répétitifs ("C'est noté", "Très bien Pierre", "Entendu", "C'est compris", "En tant qu'IA"). Pour les actions immédiates, Jarvis commence directement par le verbe d'action ou donne le résultat final sans fioriture.
+
+### 1.2. Paradigme Opérationnel & Principes Directeurs
+1. **Agentique & Outillé** : Jarvis dispose de vraies mains numériques. Il pilote des navigateurs web (Cloud headless et Chrome local physique), lit et écrit sur le système de fichiers, inspecte du code, produit des applications complètes, manipule des bases de données et contrôle les périphériques locaux.
+2. **Asynchrone & Non-Bloquant (< 300 ms)** : Pour toute tâche délibérative ou lourde, le dispatcheur renvoie immédiatement un accusé de réception préliminaire (`launched_in_background`). Jarvis confirme la prise en charge à l'oral en moins de 300 ms avec sa voix Aoede, tandis que la mission s'exécute en tâche de fond (`asyncio.create_task`). Pierre peut continuer à dialoguer librement sans gel du flux audio.
+3. **Pilotable en Direct** : Grâce à l'outil `guide_active_task`, l'utilisateur peut réorienter ou enrichir en direct une tâche en cours d'exécution.
+4. **Prise d'Initiative Proactive (Moteur Système 2)** : Dès qu'une requête nécessite de la réflexion, de l'optimisation fine ou un croisement de sources, Jarvis propose ou engage proactivement les agents Antigravity sur le VPS plutôt que de se contenter de réponses réflexes de surface.
+
+### 1.3. Les 5 Garde-Fous Inviolables
+Pour garantir une sécurité absolue et une maîtrise totale de l'environnement :
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                          LES 5 GARDE-FOUS INVIOLABLES DE J.A.R.V.I.S.                  │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ 1. IMPOSSIBILITÉ PHYSIQUE CLÉ PAYANTE : Verrouillage matériel côté serveur si non-coché│
+│ 2. AUCUN PAIEMENT BANCAIRE AUTOMATIQUE : Arrêt strict avant l'étape de transaction     │
+│ 3. AUCUN TÉLÉCHARGEMENT SANS ACCORD : Consentement oral explicite préalable requis     │
+│ 4. INTERDICTION DE CODER À L'ORAL : Récitation de code bannie du flux audio vocal      │
+│ 5. ARRÊT PHYSIQUE IMMÉDIAT : Interruption instantanée sur mot-clé ('stop', 'annule')   │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Impossibilité Physique sur la Clé Payante** : Si l'encoche n'est pas cochée par Pierre sur le HUD, la fonction `get_effective_paid_key()` renvoie `""`. Aucune requête payante n'est techniquement possible au niveau réseau/code.
+2. **Zéro Paiement Bancaire Automatique** : Lors de commandes e-commerce (`prepare_web_cart_or_checkout`) ou de réservations ferroviaires (`reserver_billet_train_local`), l'agent recherche le produit, remplit le panier et les coordonnées de Pierre, puis **s'arrête impérativement** avant l'étape de validation d'achat pour que Pierre valide lui-même son paiement.
+3. **Accord Préalable Obligatoire sur Téléchargement** : Avant de rapatrier un fichier ou un livre (`download_file`), Jarvis énonce la provenance et la taille estimée et attend la validation orale explicite de Pierre.
+4. **Interdiction de Réciter du Code à l'Oral** : Les flux audio vocaux ne doivent jamais être pollués par la lecture de syntaxes informatiques, backticks ou symboles. Tout développement est délégué aux agents Antigravity CLI sur le VPS.
+5. **Arrêt Physique Immédiat (`stop_current_action`)** : Dès que Pierre prononce un ordre d'interruption ("arrête", "stop", "annule", "laisse tomber"), l'orchestrateur coupe physiquement les sous-processus et les tâches de fond sans délai.
 
 ---
 
 ## 2. TOPOLOGIE D'INFRASTRUCTURE & DÉPLOIEMENT HYBRIDE
 
-Le système repose sur une architecture distribuée scindée entre un serveur Cloud central et un agent local PC.
+### 2.1. Schéma d'Architecture Globale
 
 ```
                          ┌────────────────────────────────────────────────────────┐
@@ -76,6 +153,7 @@ Le système repose sur une architecture distribuée scindée entre un serveur Cl
 │  │                              FastAPI Backend Core (App.py - Port 8000)                             │  │
 │  │   • Endpoint WebSocket Gemini Live (/ws)            • Routage des requêtes REST (/api/*)          │  │
 │  │   • Supervision & Notifications (/ws/supervision)   • Relais Agent Local PC (/ws/local-agent)     │  │
+│  │   • Moteur Délibératif Antigravity CLI VPS          • Moteur Deep Research Map-Reduce             │  │
 │  └──────────────────┬─────────────────────────────┬────────────────────────────┬─────────────────────┘  │
 │                     │                             │                            │                        │
 │                     ▼                             ▼                            ▼                        │
@@ -87,14 +165,14 @@ Le système repose sur une architecture distribuée scindée entre un serveur Cl
 │                     │                                                                                   │
 │                     ▼                                                                                   │
 │          ┌──────────────────────┐                                                                       │
-│          │     N8N COMMUNITY    │                                                                       │
-│          │    127.0.0.1:5678    │                                                                       │
-│          │ Workflows auto / web │                                                                       │
+│          │     N8N COMMUNITY    │  (Port 5678 - Montage volume /home/opc/jarvis-core/downloads)         │
+│          │ Workflows documents, │  (Slides polymorphes, tableurs xlsx, surveillance trains Trafikverket)│
+│          │ agenda et calendrier │                                                                       │
 │          └──────────────────────┘                                                                       │
 └────────────────────────────────────────────────────▲────────────────────────────────────────────────────┘
                                                      │
                                                      │ WebSocket Sécurisé (/ws/local-agent)
-                                                     │ Heartbeat & Télémétrie
+                                                     │ Heartbeat & Télémétrie Hardware
                                                      │
 ┌────────────────────────────────────────────────────┴────────────────────────────────────────────────────┐
 │                                     PC PERSONNEL WINDOWS 11 (LOCAL)                                     │
@@ -102,8 +180,9 @@ Le système repose sur une architecture distribuée scindée entre un serveur Cl
 │   ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐   │
 │   │                         Agent Relais Local (jarvis_local_agent.py)                              │   │
 │   │   • Lancement d'applications physiques (VS Code, VLC, Stremio, Notepad, Calculatrice, Terminal) │   │
-│   │   • Contrôle du navigateur Google Chrome local (avec extensions et profils utilisateurs)       │   │
-│   │   • Télémétrie matérielle physique (CPU réel, RAM réelle, état batterie, processus)            │   │
+│   │   • Contrôle Chrome CDP persistant port 9222 (profil réel, cookies Google/Amazon, sessions)    │   │
+│   │   • Télémétrie matérielle physique (CPU réel, RAM réelle, état batterie, processus actifs)     │   │
+│   │   • Extraction sécurisée de fichiers locaux pour pièces jointes (fetch_file base64)            │   │
 │   └──────────────────┬──────────────────────────────────────────────┬───────────────────────────────┘   │
 │                      │                                              │                                   │
 │                      ▼                                              ▼                                   │
@@ -115,113 +194,197 @@ Le système repose sur une architecture distribuée scindée entre un serveur Cl
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.1. Le Serveur Cloud Central (Oracle Cloud VPS)
+### 2.2. Le Serveur Cloud Central (Oracle Cloud VPS)
 - **Hébergement** : Instance Oracle Cloud Infrastructure (OCI) Always Free tier.
-- **Ressources** : Architecture ARM64 (Ampere A1), 4 cœurs virtuels OCPU, 24 Go de mémoire vive.
-- **Rôle** : Cerveau applicatif permanent, héberge le serveur FastAPI, la session Gemini Live Audio, les bases de données (Redis, Postgres, Qdrant), et le moteur de messagerie.
+- **Ressources matérielles** : Architecture ARM64 (`aarch64` Ampere Altra), 4 cœurs virtuels OCPU, 24 Go de mémoire vive physique, stockage SSD NVMe.
+- **Système d'exploitation** : Ubuntu 22.04 LTS.
+- **Adresse IP publique** : `158.178.206.213`.
+- **Rôle fonctionnel** : Cerveau applicatif permanent disponible 24h/24. Il héberge le serveur FastAPI, orchestre les sessions Gemini Live Audio, exécute les agents Antigravity CLI sur VPS, fait tourner la stack Docker (Redis, Postgres, Qdrant, n8n) et gère la messagerie SMTP/IMAP.
 
-### 2.2. Le PC Physique Windows 11
-- **Rôle** : Exécutant local de bureau. Comme le serveur cloud ne possède aucun écran physique ni affichage graphique, toutes les opérations nécessitant une interface graphique (lancer VS Code, ouvrir Google Chrome à l'écran, lancer un film dans Stremio, piloter Deezer ou détecter une liseuse USB) sont déléguées à l'agent local.
+### 2.3. Le PC Physique Windows 11 & Rôle Exécutant
+- **Rôle fonctionnel** : Exécutant matériel de bureau. Ne disposant d'aucun affichage graphique direct sur le VPS Cloud, toute opération nécessitant une interface visuelle à l'écran (ouvrir VS Code, manipuler Google Chrome avec sessions authentifiées, lancer un film dans Stremio, piloter Deezer ou détecter une liseuse branchée en USB) est déléguée à l'agent local.
 
-### 2.3. Topologie Réseau & Tunnels
-Pour garantir l'accessibilité mobile sécurisée sans exposer les ports de la machine :
-1. **Tunnel Principal** : Cloudflare Zero Trust via `cloudflared.exe`. Multiplexage HTTPS/HTTP/2 sortant vers `jarvis.signalcraftapps.com`. Aucun port d'entrée ouvert sur le pare-feu.
-2. **Repli 1 (Quick Tunnel)** : En cas d'indisponibilité du domaine permanent, repli dynamique sur un sous-domaine éphémère `*.trycloudflare.com`.
-3. **Repli 2 (Wi-Fi Direct LAN)** : Détection intelligente de l'interface réseau active (Wi-Fi vs Ethernet) en ignorant les adaptateurs virtuels et VPN d'entreprise (Cisco AnyConnect, TAP, Proton). Utilisé si le port Cloudflare 7844 est filtré.
+### 2.4. Topologie Réseau, Tunnels Cloudflare & Résilience Réseau
+Le système utilise `tunnel_launcher.py` pour assurer une accessibilité permanente sans ouvrir le moindre port d'entrée sur la box ou le routeur :
+1. **Tunnel Principal (Cloudflare Zero Trust)** : Établi via `cloudflared.exe` avec jeton d'authentification (`CLOUDFLARE_TUNNEL_TOKEN`). Il multiplexe le trafic HTTPS/WSS sortant vers le nom d'hôte officiel `jarvis.signalcraftapps.com`. Aucun port d'écoute externe n'est requis sur le pare-feu.
+2. **Repli 1 (Quick Tunnel)** : En cas d'indisponibilité du nom de domaine officiel, repli dynamique instantané sur un sous-domaine éphémère `*.trycloudflare.com`.
+3. **Repli 2 (Wi-Fi Direct LAN avec Filtrage Avancé)** : Détection intelligente de l'adresse IPv4 physique active via inspection `ipconfig /all`. Le script filtre et ignore formellement les adaptateurs virtuels et VPNs d'entreprise (Cisco AnyConnect, TAP Windows, ProtonVPN, OpenVPN). Utilisé si le port Cloudflare 7844 est filtré sur le réseau local.
+4. **Vérification Stricte de Joignabilité** : Le lanceur effectue une requête HTTP de sonde réelle pour éliminer à 100% l'erreur 1033 ("Tunnel indisponible"). Les URLs validées sont écrites dans `tunnel_url.txt` et `static/tunnel_url.json`.
 
-### 2.4. Pipeline de Déploiement Continu (`sync_deploy.py`)
-Le script `sync_deploy.py` (ou `sync_deploy.bat`) assure un cycle de mise en production instantané :
-1. **Git Automation** : `git add .`, création du commit horodaté et `git push origin main`.
-2. **Archive incrémentale** : Génération d'une archive `tar.gz` en mémoire excluant les artefacts lourds (`venv`, `.git`, profils Chrome, logs).
-3. **Téléversement SFTP** : Connexion SSH via `paramiko` avec clé privée Ed25519 vers le VPS (`158.178.206.213`).
-4. **Application & Redémarrage** : Extraction dans `/home/opc/jarvis-core`, relance sans coupure perceptible du service systemd (`sudo systemctl restart jarvis`), et vérification du statut actif.
-
----
-
-## 3. STACK LOGICIELLE & PERSISTANCE DES DONNÉES
-
-### 3.1. Composants de l'Infrastructure Docker
-
-| Service | Image Conteneur | Port Local | Rôle Principal |
-| :--- | :--- | :--- | :--- |
-| **Redis 7** | `redis:alpine` | `127.0.0.1:6379` | Cache clé/valeur haute vitesse, TTL, Heartbeat présence des devices, Pub/Sub temps réel. |
-| **PostgreSQL 16** | `postgres:16-alpine` | `127.0.0.1:5432` | Persistance relationnelle des conversations et des métadonnées mémoires (schéma `schema.sql`). |
-| **Qdrant** | `qdrant/qdrant:latest` | `127.0.0.1:6333` | Moteur vectoriel de recherche sémantique (RAG) avec distance cosinus. |
-| **n8n** | `n8nio/n8n:latest` | `127.0.0.1:5678` | Moteur d'automatisation no-code Community Edition, déclenché par webhooks locaux (montage volume partagé `/home/opc/jarvis-core/downloads` pour génération directe de fichiers). |
-
-*Règle de sécurité stricte : tous les conteneurs Docker sont isolés et bindés exclusivement sur `127.0.0.1`. Aucun port n'est accessible publiquement sur internet.*
-
-### 3.2. Mécanisme de Cache & Présence (`services/cache.py`)
-Le service `CacheService` implémente un modèle asynchrone avec **dégradation gracieuse** :
-- **Sérialisation automatique** : Stockage automatique d'objets JSON complexes avec expiration (TTL).
-- **Heartbeat & Présence des Équipements** : Enregistrement de l'état du PC local (`pc_status`), des smartphones et tablettes sous la clé `jarvis:presence:{device_name}` (TTL typique 300 s).
-- **Pub/Sub** : Diffusion d'événements internes sur le canal `jarvis:events:presence`.
-- **Fallback mémoire RAM** : Si Redis est temporairement éteint ou inaccessible, l'application bascule automatiquement sur un dictionnaire Python en mémoire vive sans générer d'erreur bloquante.
-
-### 3.3. Double Couche de Mémoire Persistante
-
-```
-                     ┌────────────────────────────────────────────────────────┐
-                     │              REQUÊTE DE RECHERCHE MÉMOIRE              │
-                     └───────────────────────────┬────────────────────────────┘
-                                                 │
-                                 ┌───────────────┴───────────────┐
-                                 ▼                               ▼
-                     ┌──────────────────────┐        ┌──────────────────────┐
-                     │    PROFIL & FAITS    │        │  SOUVENIRS SÉMANTIQUES│
-                     │    COURTS (SQLite)   │        │   (Qdrant + Postgres)│
-                     └──────────┬───────────┘        └──────────┬───────────┘
-                                │                               │
-                                ▼                               ▼
-                     • Nom, adresse, email           • fastembed BAAI/bge-small
-                     • Pointure (42), mensurations   • Embeddings locaux 384 dim
-                     • Clé payante autorisée (T/F)   • Recherche cosinus > 0.30
-                     • Préférences de ton            • Fallback ILIKE SQL
-```
-
-1. **Mémoire Locale SQLite (`jarvis_memory.db`)** :
-   - Table `user_profile` : Données de configuration et profil utilisateur immuable (prénom, nom, email par défaut, adresse postale, pointure de chaussure, taille de vêtement, email Kindle, flag de clé payante).
-   - Table `memories` : Stockage rapide des faits généraux.
-   - Table `chat_messages` : Historique des messages textuels et analyses multimodales.
-2. **Mémoire Vectorielle Long-Terme (`services/memory.py`)** :
-   - **Modèle d'embedding** : `BAAI/bge-small-en-v1.5` exécuté via la bibliothèque `fastembed`. Modèle local léger optimisé CPU/ARM, sans frais d'API externe. Dimension : 384.
-   - **Indexation vectorielle (Qdrant)** : Stockage des vecteurs avec métadonnées (`content`, `category`, `importance`, `created_at`).
-   - **Persistance structurée (PostgreSQL)** : Table `memories` typée avec enum (`préférence`, `fait`, `tâche`, `habitude`, `projet`, `contact`, `général`).
-   - **Injection au démarrage de session** : Construction automatique du bloc de contexte mémoire injecté dans le prompt système de Gemini Live au lancement.
+### 2.5. Pipeline de Déploiement Continu & Synchronisation (`sync_deploy.py`)
+Le déploiement en production est automatisé par le script `sync_deploy.py` (déclenchable via `sync_deploy.bat "Message de commit"`) :
+1. **Contrôle Git & Commit** : Exécute `git add .`, produit un commit horodaté et pousse sur GitHub (`git push origin main`).
+2. **Génération d'Archive en Mémoire** : Compile à la volée une archive `tar.gz` en mémoire vive (`io.BytesIO`) en excluant automatiquement les dossiers lourds et sensibles (`venv`, `.git`, `.jarvis_chrome_profile`, `.jarvis_shopping_profile`, logs, caches pytest).
+3. **Téléversement SFTP Sécurisé** : Établit une liaison SSH via `paramiko` avec clé privée cryptographique Ed25519 vers le VPS Oracle (`158.178.206.213`).
+4. **Extraction & Relance sans Coupure** : Décompresse les fichiers dans `/home/opc/jarvis-core`, applique les permissions d'exécution, redémarre le service systemd (`sudo systemctl restart jarvis`) et vérifie le statut actif (`active (running)`).
 
 ---
 
-## 4. GOUVERNANCE DES MODÈLES IA & VERROU ÉCONOMIQUE PHYSIQUE
+## 3. STACK LOGICIELLE, CONTENEURS DOCKER & PERSISTANCE DES DONNÉES
 
-### 4.1. Répartition Bimodale des Clés API
-Jarvis opère avec deux configurations de clés Gemini distinctes pour garantir à la fois réactivité et maîtrise des coûts :
-- **Clé Gratuite (`GEMINI_API_KEY_FREE`)** : Utilisée prioritairement pour le flux vocal continu standard (`gemini-3.8-live`), les recherches web simples et les tâches ne nécessitant pas de grand modèle.
-- **Clé Payante (`GEMINI_API_KEY_PAID`)** : Mobilisée pour `gemini-3.8-live-extended-thinking`, `gemini-3.8-flash` (zéro latence), les agents Antigravity lourds (`gemini-3.1-pro-preview`, `claude-3-7-sonnet`, `claude-3-opus`) et Browser-Use.
+### 3.1. Matrice des Conteneurs Docker (`docker-compose.yml`)
 
-### 4.2. Règle d'Impossibilité Physique & Double Consentement
-Le système applique un protocole de sécurité financière strict pour éviter toute facturation imprévue :
-1. **L'Encoche Applicative (Switch UI)** : L'utilisateur active ou désactive l'autorisation dans l'interface HUD (persistée dans SQLite via `paid_key_authorized`).
-   - **Impossibilité Physique** : Si l'encoche est décochée, la fonction `get_effective_paid_key()` renvoie une chaîne vide `""`. Les requêtes payantes sont physiquement impossibles au niveau du code backend.
-2. **Consentement Oral Explicite** : Même si l'encoche est activée, dès qu'une action payante substantielle est sollicitée, Jarvis interrompt l'exécution immédiate, évalue le coût prévisionnel (ex: `~0.03 $`), et demande confirmation orale à Pierre avec sa voix Aoede :
+| Service | Image Conteneur | Port Local | Volumes Persistants | Rôle & Spécificités Techniques |
+| :--- | :--- | :--- | :--- | :--- |
+| **Redis 7** | `redis:alpine` | `127.0.0.1:6379` | `redis_data:/data` | Cache clé/valeur haute performance, TTL, états de présence des appareils (`jarvis:presence:*`), Pub/Sub temps réel, blacklist de révocation JWT. Mémoire max : 2 Go (LRU). |
+| **PostgreSQL 16**| `postgres:16-alpine` | `127.0.0.1:5432` | `postgres_data:/var/lib/postgresql/data` | Persistance relationnelle des conversations et des métadonnées mémoires (schéma `schema.sql`). |
+| **Qdrant** | `qdrant/qdrant:latest` | `127.0.0.1:6333` | `qdrant_data:/qdrant/storage` | Moteur vectoriel pour recherche sémantique RAG (Distance Cosinus, collection `jarvis_memories`, vecteurs 384 dim). |
+| **n8n Community**| `n8nio/n8n:latest` | `127.0.0.1:5678` | `n8n_data:/home/node/.n8n`<br>`/home/opc/jarvis-core/downloads` | Moteur d'automatisation no-code. Montage direct du dossier de téléchargement partagé pour générer des fichiers XLSX et interagir avec Google Slides, Calendar, Telegram. |
+
+*Règle de sécurité inviolable : Tous les conteneurs sont strictement liés sur `127.0.0.1`. Aucun port n'est exposé publiquement sur l'interface réseau externe.*
+
+### 3.2. Mécanisme de Cache, Présence & Pub/Sub (`services/cache.py`)
+Le service `CacheService` implémente un modèle asynchrone fondé sur `redis.asyncio` avec **dégradation gracieuse intégrale** :
+- **Sérialisation JSON Transparente** : Stockage et désérialisation automatique des dictionnaires et listes complexes avec expiration (TTL).
+- **Heartbeat & Présence des Équipements** : Enregistrement de la présence du PC local (`pc_status`), des smartphones et tablettes sous `jarvis:presence:{device_name}` (TTL typique 300 s).
+- **Pub/Sub Temps Réel** : Canal de diffusion `jarvis:events:presence` pour notifier les autres sous-systèmes des changements d'état matériel.
+- **Mode Dégradé Local en RAM** : Si le serveur Redis est temporairement arrêté ou inaccessible, le service bascule instantanément sur un dictionnaire Python en mémoire vive sans bloquer ni lever d'exception critique.
+
+### 3.3. Schéma Relationnel PostgreSQL 16 (`db/schema.sql`)
+La persistance relationnelle est orchestrée par PostgreSQL 16 avec extension cryptographique `pgcrypto` :
+
+```sql
+-- Extension UUID pour identifiants uniques
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- Table des conversations
+CREATE TABLE IF NOT EXISTS conversations (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    started_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ended_at    TIMESTAMPTZ,
+    summary     TEXT        NOT NULL DEFAULT '',
+    tags        TEXT[]      DEFAULT '{}'
+);
+
+-- Enum des catégories de mémoire long-terme
+CREATE TYPE memory_category AS ENUM (
+    'préférence', 'fait', 'tâche', 'habitude', 'projet', 'contact', 'général'
+);
+
+-- Table des souvenirs long-terme liés à Qdrant
+CREATE TABLE IF NOT EXISTS memories (
+    id              UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
+    category        memory_category NOT NULL DEFAULT 'fait',
+    content         TEXT            NOT NULL,
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    qdrant_id       UUID,
+    conversation_id UUID            REFERENCES conversations(id) ON DELETE SET NULL,
+    importance      SMALLINT        NOT NULL DEFAULT 1 CHECK (importance BETWEEN 1 AND 5),
+    metadata        JSONB           NOT NULL DEFAULT '{}'
+);
+```
+
+### 3.4. Moteur Vectoriel Qdrant & Embeddings Fastembed (`services/memory.py`)
+- **Modèle d'embedding local** : `BAAI/bge-small-en-v1.5` exécuté via la bibliothèque `fastembed`. Modèle ultra-léger et optimisé pour processeurs CPU/ARM64, s'exécutant à coût zéro sans appel API externe. Dimension vectorielle : **384**.
+- **Collection vectorielle** : `jarvis_memories` indexée avec métrique `Distance.COSINE`.
+- **Compatibilité Multi-Versions Qdrant** : Prise en charge native des versions modernes de `qdrant-client` (>= 1.10.0) via `client.query_points(...)` et extraction de `ScoredPoint`, avec rétrocompatibilité automatique sur l'ancienne méthode `.search(...)`.
+- **Résilience de Conversion Vectorielle** : Conversion robuste gérant à la fois les générateurs, tableaux `numpy.ndarray` et itérables Python.
+- **Seuil de pertinence** : Filtre cosinus > 0.30 avec repli automatique sur une recherche textuelle SQL `ILIKE`.
+
+### 3.5. Mémoire Locale Structurée SQLite (`jarvis_memory.db`)
+Fichier SQLite local assurant la persistance rapide hors-cloud :
+1. **Table `user_profile`** : Données de configuration immuables de Pierre Cassagnettes (`nom`, `prénom`, `email` par défaut, `adresse`, `pointure` de chaussure : 42, `taille` de vêtement, `kindle_email`, et état du switch `paid_key_authorized`).
+2. **Table `memories`** : Stockage relationnel simple pour consultation textuelle directe.
+3. **Table `chat_messages`** : Historique complet des conversations écrites multimodales et métadonnées d'images.
+
+### 3.6. Façade Unifiée de Mémoire Long-Terme (`services/unified_memory.py`)
+La classe `UnifiedMemoryManager` fusionne harmonieusement les deux couches :
+- **Déduplication & Arbitrage** : Si une information correspond à une clé de profil reconnue (`pointure`, `adresse`, etc.), elle est enregistrée dans SQLite `user_profile`. Les autres faits sont indexés dans Qdrant et PostgreSQL en arrière-plan non-bloquant.
+- **Injection Dynamique au Démarrage de Session** : Méthode `build_live_context_prompt()` qui agrège le profil de Pierre, les faits récents et le résumé de l'architecture pour constituer le bloc d'instruction injecté dans Gemini Live au démarrage de chaque flux vocal.
+
+---
+
+## 4. ARCHITECTURE DE SÉCURITÉ, CRYPTOGRAPHIE & GESTION DES APPAREILS
+
+### 4.1. Moteur d'Authentification Cryptographique (`services/auth_service.py` & `auth.py`)
+J.A.R.V.I.S. met en œuvre une infrastructure d'authentification robuste conforme aux standards Stark Industries :
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        INFRASTRUCTURE D'AUTHENTIFICATION STARK                         │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ • Mot de passe maître chiffré dans .env (JARVIS_PASSWORD)                              │
+│ • Tokens JWT signés HMAC-SHA256 avec claims standard (jti, iat, exp, device_id, role)  │
+│ • Génération automatique d'une clé secrète JWT_SECRET_KEY forte (64 octets urlsafe)    │
+│ • Pairage QR Code zero-touch instantané avec ticket à usage unique (TTL 300 s)         │
+│ • Révocation immédiate et blacklistage de tokens/appareils via Redis                   │
+│ • Migration transparente des anciens tokens en clair sans rupture de session           │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.2. Tokens JWT Signés (HMAC-SHA256) & Gestion des Clés Secrètes
+- **Algorithme de signature** : HMAC-SHA256 (`HS256`).
+- **Structure du Payload JWT** :
+  ```json
+  {
+    "device_id": "dev_a1b2c3d4e5f6",
+    "device_name": "iPhone 15 Pro de Pierre",
+    "role": "admin",
+    "iat": 1740000000,
+    "exp": 1747776000,
+    "jti": "jwt_tok_9f8e7d6c5b4a"
+  }
+  ```
+- **Durée de validité** : 90 jours par défaut (`JWT_EXPIRATION_DAYS`).
+- **Génération Sécurisée de la Clé Secrète** : Si `JWT_SECRET_KEY` est absente de `.env`, `AuthService` génère une clé cryptographique de 64 octets aléatoires encodés en URL-safe (`secrets.token_urlsafe(64)` soit 86 caractères) et la persiste immédiatement dans le fichier `.env`.
+
+### 4.3. Registre des Terminaux & Empreintes Matérielles (`authorized_devices.json`)
+Chaque appareil autorisé fait l'objet d'un profilage enregistré :
+- `device_id` (identifiant unique persistant généré côté client).
+- `device_name` (libellé lisible, ex: "PC Windows Bureau", "Pixel 8 Pro").
+- `ip_address` (dernière adresse IP observée).
+- `user_agent` (signature de navigateur/OS).
+- `registered_at` et `last_seen` (horodatages de traçabilité).
+- `status` (`approved` ou `revoked`).
+
+### 4.4. Protocole de Pairage QR Code Zero-Touch à Usage Unique
+Pour connecter un smartphone en 2 secondes sans saisir le mot de passe maître sur écran tactile :
+1. Le client déjà connecté demande un ticket de pairage (`GET /api/auth-qr`).
+2. Le serveur génère un ticket aléatoire unique (`qr_ticket_{secrets.token_hex(16)}`), l'enregistre dans Redis sous `jarvis:qr_ticket:{ticket}` avec un TTL strict de **300 secondes (5 minutes)**, et génère un QR code à l'écran.
+3. Le smartphone scanne le QR code, qui déclenche un `POST /api/auth-qr` avec le ticket.
+4. Le serveur valide le ticket, le **consomme immédiatement** (suppression de Redis pour empêcher toute réutilisation), enregistre l'appareil et émet le token JWT signé.
+
+### 4.5. Révocation Instantanée & Blacklist Redis
+- En cas de perte ou de compromission d'un appareil, l'administrateur déclenche `POST /api/auth/revoke`.
+- Le token (`jti`) et/ou l'identifiant matériel (`device_id`) sont inscrits dans Redis sous `jarvis:revoked_tokens:{jti}` et `jarvis:revoked_devices:{device_id}`.
+- Tout appel subséquent (REST ou WebSocket) est rejeté immédiatement avec code HTTP 401. En cas de panne Redis, un set en mémoire vive assure la continuité du contrôle.
+
+### 4.6. Migration Rétrocompatible Transparente des Anciens Jetons
+Pour éviter toute déconnexion intempestive lors de la mise à jour du moteur d'authentification :
+- Lorsqu'une requête arrive avec un ancien token hexadécimal en clair issu de `authorized_devices.json`, `AuthService` valide l'ancien token, émet à la volée un nouveau JWT signé, met à jour le cookie client et purge l'ancien token de la base.
+- Un cache de transition (`_migrated_tokens_cache`) prévient toute condition de course lors de requêtes simultanées.
+
+---
+
+## 5. GOUVERNANCE DES MODÈLES IA, VERROU ÉCONOMIQUE & ROUTAGE COGNITIF EN 3 TIERS
+
+### 5.1. Répartition Bimodale des Clés API (Gratuite vs Payante)
+Jarvis opère avec deux configurations de clés Gemini distinctes pour concilier performance continue et maîtrise budgétaire :
+- **Clé Gratuite (`GEMINI_API_KEY_FREE`)** : Réservée au flux vocal continu standard (`gemini-3.8-live`), aux recherches web élémentaires et aux diagnostics légers.
+- **Clé Payante (`GEMINI_API_KEY_PAID`)** : Déployée pour `gemini-3.8-live-extended-thinking`, `gemini-3.8-flash` haute vitesse, les agents Antigravity lourds (`gemini-3.1-pro-preview`, `claude-3-7-sonnet`, `claude-3-opus`) et la navigation visuelle Browser-Use.
+
+### 5.2. Verrou Physique Applicatif & Double Consentement Oral
+1. **L'Encoche Matérielle Applicative (Switch UI)** : L'utilisateur active ou désactive l'autorisation dans l'interface HUD (persistée dans SQLite via `paid_key_authorized`). Si la case est décochée, `get_effective_paid_key()` renvoie une chaîne vide `""`. Aucune requête payante ne peut physiquement être émise.
+2. **Double Consentement Oral Explicite** : Même lorsque l'encoche est cochée, dès qu'une action payante substantielle est sollicitée, Jarvis interrompt l'exécution immédiate, évalue le coût estimatif (ex: `~0.03 $`) et demande confirmation orale à Pierre :
    > *"Pierre, pour analyser cette architecture avec Gemini 3.1 Pro, j'ai besoin de mobiliser la clé payante (~0.03 $). M'autorises-tu à continuer ?"*
-3. **Détection d'Épuisement de Quotas (429 / ResourceExhausted)** :
-   Si la clé gratuite sature, le système ne bascule JAMAIS en douce sur la clé payante. Il prévient Pierre et attend son arbitrage.
+3. **Détection d'Épuisement de Quotas (429 / ResourceExhausted)** : Si la clé gratuite sature, le système ne bascule JAMAIS en douce sur la clé payante sans accord explicite.
 
-### 4.3. Routage Cognitif Dynamique en 3 Paliers (Tiers) & Résilience Quota Antigravity CLI
-Pour concilier puissance délibérative, zéro latence sur les requêtes simples et préservation stricte du quota glissant de 5 heures Google AI Pro, Antigravity CLI intègre un routeur cognitif en 3 paliers (`CognitiveConfig`) :
+### 5.3. Routage Cognitif Dynamique en 3 Paliers (Tiers 1, 2, 3)
+Pour préserver le quota glissant de 5 heures Google AI Pro tout en garantissant des temps de réponse adaptés :
 
 | Palier (Tier) | Modèle Résolu | Réflexion (Thinking) | Cibles Principales & Cas d'Usage | Latence Typique | Impact Quota 5h |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **TIER 1 — Rapidité & Économie** | `gemini-3.8-flash` | `low` (ou minimal) | `doc_sync`, `book_curation`, `email_simple`, `log_check`, diagnostics routine | 1 à 3 secondes | Négligeable (0 % Pro) |
-| **TIER 2 — Raisonnement Tactique** | `gemini-3.8-flash` | `high` (renforcé) | `transport_optimizer`, `spreadsheet_modeler`, `email_analysis`, `memory_consolidation`, requêtes libres par défaut | 4 à 10 secondes | Nul sur le quota 3.1 Pro |
-| **TIER 3 — Délibération Système 2** | `gemini-3.1-pro` | `high` (délibératif) | `deep_research` multi-sources, `system_healing` critique, `code_refactoring`, concurrence asynchrone | 20 à 60 secondes | Consommation mesurée sur Pro |
+| **TIER 1 — Rapidité & Économie** | `gemini-3.8-flash` | `low` (ou minimal) | `doc_sync`, `book_curation`, `email_simple`, diagnostics de routine, vérifications d'état. | 1 à 3 secondes | Négligeable (0 % Pro) |
+| **TIER 2 — Raisonnement Tactique** | `gemini-3.8-flash` | `high` (renforcé) | `transport_optimizer`, `spreadsheet_modeler`, `email_drafting`, `memory_consolidation`, requêtes libres par défaut. | 4 à 10 secondes | Nul sur le quota 3.1 Pro |
+| **TIER 3 — Délibération Système 2** | `gemini-3.1-pro` | `high` (délibératif) | `deep_research` multi-sources, `system_healing` critique, `code_refactoring`, ingénierie complexe. | 20 à 60 secondes | Consommation mesurée sur Pro |
 
-#### Mécanismes d'Arbitrage Ordonnés
-1. **Surcharge Explicite (Overriding)** : Si l'utilisateur exprime une consigne de vitesse/modèle ("*Fais une passe rapide avec Flash*", "*Prends tout ton temps et réfléchis au maximum*") ou passe le paramètre `intensite_reflexion` (`rapide` -> T1, `tactique` -> T2, `approfondie` -> T3) dans `ask_deep_reasoning`, ce choix prévaut immédiatement.
-2. **Table de Correspondance Statique par `mission_type`** : Résolution automatique selon le type de mission (`doc_sync`, `transport_optimizer`, `deep_research`...).
-3. **Heuristique de Complexité pour Requêtes Libres** : Analyse du prompt, taille (> 600 chars), présence de blocs de code ou logs, et mots-clés d'intensité technique (`architecture`, `benchmark`, `audit`, `refactor`, `race condition`). En l'absence de complexité avérée, le routeur applique **par défaut le TIER 2** (`gemini-3.8-flash-high`) plutôt que le Tier 3, évitant ainsi l'épuisement prématuré du quota Pro.
+#### Mécanismes d'Arbitrage Ordonnés (`resolve_cognitive_tier`)
+1. **Surcharge Explicite (Overriding)** : La consigne de l'utilisateur ("*Fais une passe rapide avec Flash*", "*Prends tout ton temps et réfléchis au maximum*") ou le paramètre `intensite_reflexion` (`rapide` -> T1, `tactique` -> T2, `approfondie` -> T3) prévaut immédiatement.
+2. **Table de Correspondance Statique par `mission_type`** : Résolution automatique selon le type de mission.
+3. **Heuristique de Complexité pour Requêtes Libres** : Analyse du prompt, taille (> 600 caractères), présence de blocs de code ou logs, mots-clés d'intensité (`architecture`, `benchmark`, `audit`, `refactor`). Par défaut, le routeur applique le **TIER 2** (`gemini-3.8-flash-high`) pour préserver les quotas Pro.
 
-#### Protocole de Résilience & Dégradation Gracieuse Quota-Aware (429)
+### 5.4. Protocole de Résilience Quota-Aware & Dégradation Gracieuse (429)
 En cas de saturation du quota 5h sur `gemini-3.1-pro` :
 1. **Interception Immédiate** : Détection de l'exception `AntigravityQuotaExhaustedError` ou code HTTP 429 / `ResourceExhausted`.
 2. **Fallback Transparent Instantané** : Relance automatique de la tâche sur le TIER 2 (`gemini-3.8-flash` avec thinking `high`) sans annulation de la mission.
@@ -231,462 +394,477 @@ En cas de saturation du quota 5h sur `gemini-3.1-pro` :
 
 ---
 
-## 5. LE MOTEUR VOCAL TEMPS RÉEL (GEMINI LIVE AUDIO)
+## 6. LE MOTEUR VOCAL TEMPS RÉEL (GEMINI LIVE AUDIO)
 
-### 5.1. Protocole Audio Full-Duplex
-Le cœur interactionnel de Jarvis repose sur un canal WebSocket bidirectionnel `/ws` branché sur l'API officielle Gemini Live :
-- **Format audio** : Flux PCM linéaire 16-bit, 16 kHz / 24 kHz mono.
-- **Barge-in / Interruptibilité** : Si l'utilisateur commence à parler pendant que Jarvis est en train d'émettre de l'audio, le flux modèle est immédiatement interrompu côté client et serveur pour écouter l'ordre entrant.
-- **Gating Micro & Silence Sender** : Lorsqu'un outil est en cours de démarrage, un mécanisme de gating et d'injection de trames de silence empêche les bruits résiduels de parasiter l'orchestrateur.
+### 6.1. Protocole Audio Full-Duplex & Streaming PCM
+Le cœur vocal de Jarvis repose sur un canal WebSocket bidirectionnel `/ws` connecté directement à l'API officielle Gemini Live de Google :
+- **Format audio montant & descendant** : Flux PCM linéaire 16-bit, 16 kHz ou 24 kHz mono sans compression destructrice.
+- **Streaming Bidirectionnel Permanent** : L'utilisateur parle naturellement sans appuyer sur un bouton (Push-to-Talk optionnel), et Jarvis émet ses réponses audio au fil de la génération de tokens.
 
-### 5.2. Boucle de Traitement des Outils (Non-Bloquante)
-Dans les architectures classiques, l'appel d'un outil bloque la boucle de parole du modèle jusqu'à la fin de l'exécution. Jarvis utilise un paradigme asynchrone non-bloquant :
-1. Gemini Live émet un `tool_call` (ex: `ask_deep_reasoning`).
-2. Le backend renvoie **instantanément** un résultat préliminaire au modèle : `{"status": "launched_in_background"}`.
-3. Le modèle répond immédiatement à Pierre à voix haute : *"C'est bien noté Pierre, je m'en occupe et je lance nos agents Antigravity CLI sur le VPS."*
+### 6.2. Assemblage Dynamique de l'Instruction Système & Contexte
+À chaque établissement de connexion vocale, la fonction `_build_system_instruction()` compile dynamiquement :
+1. Le gabarit d'identité Stark Industries (`JARVIS_SYSTEM_INSTRUCTION_TEMPLATE`).
+2. Le bloc de mémoire unifiée extrait par `unified_memory_manager.build_live_context_prompt()` (profil de Pierre, faits marquants, préférences).
+3. L'arbitrage de présence du PC Windows (`is_pc_connected()`) dictant les règles de navigation (écran Chrome local vs VPS headless).
+4. La directive stricte d'élocution humaine et d'éradication des amorces robotiques.
+5. Le résumé architectural dynamique extrait de `ARCHITECTURE_COMPLETE_JARVIS.md`.
+
+### 6.3. Modèles Vocaux Actifs & Permutation à Chaud
+- **Modèle Standard** : `gemini-3.8-live` (faible latence, conversation continue fluide).
+- **Modèle avec Réflexion Étendue** : `gemini-3.8-live-extended-thinking` (raisonnement analytique direct au fil de l'eau).
+- **Permutation Dynamique** : L'utilisateur peut permuter de modèle à la volée via l'interface HUD (`/api/live-model`). La session intercepte l'exception interne `ModelSwitchRequested`, ferme proprement le canal et réinitialise la session Live avec le nouveau modèle sans coupure côté client.
+
+### 6.4. Boucle de Traitement des Outils Asynchrone Non-Bloquante (< 300 ms)
+Dans les architectures classiques, l'appel d'un outil bloque la parole du modèle jusqu'à la fin de l'exécution. Jarvis utilise un paradigme asynchrone non-bloquant :
+1. Gemini Live émet un `tool_call` (ex: `ask_deep_reasoning`, `lancer_mission_deep_research`, `generer_presentation`).
+2. Le dispatcheur (`core/tools/dispatcher.py`) renvoie **instantanément** un accusé de réception préliminaire : `{"status": "launched_in_background"}`.
+3. Le modèle confirme oralement à Pierre en moins de 300 ms avec sa voix Aoede : *"Je m'en charge Pierre, je lance l'investigation sur le VPS."*
 4. La tâche lourde s'exécute en arrière-plan via `asyncio.create_task`.
-5. Pendant ce temps, Pierre peut continuer à poser des questions ou discuter avec Jarvis.
-6. Lorsque la tâche se termine, le backend injecte un message système dans le flux Gemini Live (`send_client_content`) pour que Jarvis annonce le résultat final à l'oral.
+5. Pierre et Jarvis continuent à dialoguer normalement pendant l'exécution.
+6. À la fin de la tâche, le backend injecte une notification via `safe_send_live_client_content` pour restitution vocale finale.
+
+### 6.5. Règle d'Or de Canal Unique & Verrou d'Élocution Anti-Coupure
+Pour éliminer les bugs de bégaiement ("stuttering") ou les coupures intempestives en pleine phrase :
+1. **Règle d'Or de Canal Unique (`mark_action_sync_completed` & `is_action_sync_completed`)** : Si une action s'est exécutée de manière synchrone et a déjà fourni son résultat via le message officiel `tool_response`, l'injection parallèle d'un `send_client_content` est formellement bloquée.
+2. **Verrou d'Élocution & Drainage Audio (`wait_until_speech_finished`)** : Avant d'injecter un message dans la session Live, le serveur vérifie si Aoede est en train de parler (`is_model_speaking()`). Si oui, le système temporise jusqu'à la fin de l'élocution plus un délai de vidange du tampon audio (0,3 à 2,0 secondes).
+
+### 6.6. Gestion des Interruptions (Barge-In) & Gating Micro
+- Si l'utilisateur commence à parler pendant qu'Aoede restitue une réponse, le frontend et le backend détectent immédiatement l'interruption (barge-in), coupent la lecture sonore côté client et purgent les tampons pour écouter la nouvelle instruction.
+- Un système de gating et d'injection de trames de silence évite que des bruits résiduels de fond ne réveillent inopinément le modèle.
 
 ---
 
-## 6. L'AGENT RELAIS LOCAL PC WINDOWS (`jarvis_local_agent`)
+## 7. L'AGENT RELAIS LOCAL PC WINDOWS (`jarvis_local_agent`)
 
-### 6.1. Problématique Résolue
-Un serveur distant (VPS Oracle dans le cloud) ne peut pas interagir directement avec l'environnement physique de l'utilisateur : il n'a pas accès au bureau Windows, ne peut pas ouvrir de fenêtre Chrome, ne peut pas lancer de logiciel local et ne peut pas lire l'état matériel réel de la machine.
+### 7.1. Problématique Résolue & Rôle Exécutant Physique
+Un serveur VPS distant n'a pas accès à l'écran physique, aux périphériques USB, ni au navigateur réel de l'utilisateur. L'agent `jarvis_local_agent.py` s'exécute en arrière-plan sur le PC Windows 11 de Pierre et fait le pont entre le Cloud et le poste de travail.
 
-### 6.2. Fonctionnement du Relais WebSocket
-L'agent `jarvis_local_agent.py` s'exécute sur le PC portable ou fixe de Pierre :
-- **Liaison ascendante** : Il établit une connexion WebSocket sortante persistante vers `wss://jarvis.signalcraftapps.com/ws/local-agent` avec reconnexion automatique en boucle.
-- **Protocole Request / Response** :
-  - Le VPS envoie un paquet JSON : `{"req_id": "cmd_123", "action": "open_app", "params": {"app_name": "vscode"}}`.
-  - L'agent local l'exécute localement et renvoie : `{"req_id": "cmd_123", "result": {"status": "success"}}`.
-- **Télémétrie en temps réel** : Remontée périodique de l'utilisation CPU locale, RAM, batterie et état des processus vers le VPS.
-- **Catalogue d'Applications Locales Supportées** :
-  - *Développement* : Visual Studio Code (`code`), Terminaux Windows (`wt.exe`, `powershell`, `cmd`).
-  - *Multimédia* : VLC Media Player, Spotify, Stremio.
-  - *Bureautique & Outils* : Word, Excel, PowerPoint, Bloc-notes, Calculatrice, Explorateur de fichiers, Paint, Gestionnaire des tâches.
+### 7.2. Protocole WebSocket RPC & Reconnexion Résiliente
+- **Liaison WebSocket Sécurisée** : L'agent établit une connexion sortante permanente vers `wss://jarvis.signalcraftapps.com/ws/local-agent`.
+- **Boucle de Reconnexion Automatique** : En cas de coupure réseau ou de mise en veille du PC, l'agent tente indéfiniment de se reconnecter avec backoff exponentiel.
+- **Format des Requêtes RPC** :
+  ```json
+  {"req_id": "req_101", "action": "open_browser", "params": {"url": "https://amazon.fr"}}
+  ```
+- **Format des Réponses RPC** :
+  ```json
+  {"req_id": "req_101", "result": {"status": "success", "message": "Chrome ouvert à l'écran"}}
+  ```
+
+### 7.3. Catalogue des 10 Actions Locales Supportées
+
+| Action RPC | Description & Rôle Opérationnel | Paramètres Principaux |
+| :--- | :--- | :--- |
+| `launch_app` | Ouvre une application Windows physique installée (VS Code, VLC, Terminal, Calculatrice, Bloc-notes, Stremio...). | `app_name: str` |
+| `open_browser` | Ouvre Google Chrome à l'écran avec le profil connecté de Pierre sur une URL donnée. | `url: str`, `new_window: bool` |
+| `launch_media` | Déclenche la lecture d'un flux multimédia ou d'une vidéo dans VLC ou Stremio. | `title: str`, `content_type: str` |
+| `deezer_action`| Relais direct vers le contrôleur Deezer local (port 8765). | `action: str`, `query: str`, `volume: int` |
+| `prepare_train_checkout` | Ouvre simultanément les onglets de réservation ferroviaire préremplis (Omio / Trainline) pour chaque segment de voyage. | `segments: list[dict]`, `urls: list[str]` |
+| `prepare_web_cart_or_checkout` | Prépare un panier d'achat sur Chrome local avec profil connecté et s'arrête avant le paiement. | `url: str`, `product: str` |
+| `interact_web_page` | Interagit avec une page web ouverte dans Chrome local via Playwright ou CDP. | `url: str`, `instruction: str` |
+| `execute_cdp_browser_action` | Pilote l'instance réelle Google Chrome via Chrome DevTools Protocol (`http://localhost:9222`). | `action: str`, `selector: str`, `text: str` |
+| `get_status` | Relève instantanément la télémétrie matérielle physique (CPU, RAM, batterie, processus). | Aucun |
+| `fetch_file` | Extrait et encode en base64 un fichier local du PC pour transmission au serveur VPS (pièces jointes e-mail). | `file_path: str` |
+
+### 7.4. Journalisation Auto-Flush & Interception Globale des Crashs
+- **Classe `AutoFlushStream`** : Encapsule les flux standards pour garantir un encodage strict UTF-8 et un forçage d'écriture immédiat sur disque (`buffering=1`, `flush()` systématique) dans `jarvis_agent.log`.
+- **Intercepteur Global `sys.excepthook`** : Capture toute exception non gérée, extrait la trace complète d'erreur (`traceback`) et l'écrit avec horodatage dans le fichier de log pour éliminer tout crash silencieux.
+
+### 7.5. Exécution Silencieuse VBScript & Scripts d'Automatisation Windows
+- `start_agent_silent.vbs` : Lance l'agent via `wscript.exe` de manière 100% invisible en arrière-plan, sans ouvrir aucune invite de commande noire à l'écran.
+- `install_autostart.bat` : Inscrit l'agent au démarrage automatique de Windows via la base de registre (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`).
+- `uninstall_autostart.bat` : Supprime l'inscription du registre.
+- `start_local_agent.bat` & `stop_agent.bat` : Démarrage et arrêt manuel de secours.
+- `view_logs.bat` : Visualisation en temps réel du journal d'exécution.
+
+### 7.6. Télémétrie Matérielle Réelle (psutil)
+L'agent interroge périodiquement `psutil` pour remonter :
+- Utilisation processeur globale (`psutil.cpu_percent`).
+- Utilisation de la mémoire vive (`psutil.virtual_memory`).
+- État de la batterie (`psutil.sensors_battery` : pourcentage, branchement secteur).
+- Top des processus consommateurs en mémoire et en calcul.
 
 ---
 
-## 7. CATALOGUE EXHAUSTIF DES SERVICES & OUTILS (FUNCTION CALLING)
+## 8. CATALOGUE MATRICIEL & FICHES DES 41 OUTILS (FUNCTION CALLING)
 
-### 7.1. Moteur Multi-Agents Antigravity CLI sur VPS (Ingénierie & Raisonnement Approfondi)
-- **Fichiers** : `google_antigravity.py`, `services/reasoning_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`.
+### 8.1. Matrice Globale Exhaustive des 41 Outils Déclarés
+
+| # | Nom de l'Outil | Service Exécutant | Mode d'Exécution | Arguments Obligatoires / Clés | Rôle Opérationnel & Impact Système |
+| :- | :--- | :--- | :--- | :--- | :--- |
+| **1** | `stop_current_action` | `core/shared_state.py` | Bloquant (Immédiat) | `reason: str` | Arrêt physique d'urgence de toute tâche, agent ou navigation en cours. |
+| **2** | `guide_active_task` | `core/shared_state.py` | Non-bloquant | `directive: str` | Injection d'une consigne d'orientation en direct dans la tâche active. |
+| **3** | `ask_deep_reasoning` | `services/reasoning_service.py` | Non-bloquant | `question: str`, `intensite_reflexion` | Moteur délibératif multi-agents Antigravity CLI sur VPS (Tiers 1, 2, 3). |
+| **4** | `lancer_mission_deep_research` | `services/deep_research_service.py` | Non-bloquant | `consigne_utilisateur: str` | Moteur Deep Research Map-Reduce (5-10 min, 3 axes, Quality Gate). |
+| **5** | `search_web` | `services/browser_service.py` | Bloquant | `query: str` | Recherche web rapide via DuckDuckGo avec extraction de liens. |
+| **6** | `run_browser_task` | `services/browser_service.py` | Non-bloquant | `goal: str`, `execution_target` | Navigation web autonome via agent vision Browser-Use ou Playwright. |
+| **7** | `open_user_browser` | `services/browser_service.py` | Bloquant | `url: str`, `reason: str` | Ouvre Google Chrome directement à l'écran du PC de Pierre. |
+| **8** | `set_browser_link` | `core/shared_state.py` | Bloquant | `url: str`, `title: str` | Positionne le lien actif cliquable dans le HUD mobile. |
+| **9** | `remember_user_fact` | `services/unified_memory.py` | Bloquant | `fact: str`, `category: str` | Mémorise un fait ou une préférence dans la mémoire unifiée. |
+| **10** | `recall_user_memories` | `services/unified_memory.py` | Bloquant | `query: str` | Recherche sémantique par distance cosinus dans Qdrant et SQLite. |
+| **11** | `memoriser_information` | `services/unified_memory.py` | Bloquant | `cle: str`, `valeur: str` | Enregistre une paire clé/valeur structurée dans le profil de Pierre. |
+| **12** | `get_system_status` | `services/system_service.py` | Bloquant | Aucun | Diagnostic complet des ressources système (CPU, RAM, disques, PC). |
+| **13** | `launch_application` | `services/system_service.py` | Bloquant | `app_name: str` | Lance une application Windows sur le PC local de Pierre. |
+| **14** | `play_music_deezer` | `services/media_service.py` | Bloquant | `action: str`, `query: str`, `volume` | Contrôle total du lecteur Deezer Web officiel via bridge WebSocket. |
+| **15** | `play_video_stremio` | `services/media_service.py` | Bloquant | `title: str`, `content_type: str` | Lance un film ou une série en streaming 1080p fluide sur Stremio. |
+| **16** | `send_email` | `services/email_service.py` | Bloquant | `subject: str`, `body: str`, `attachments` | Envoie un courriel Stark Industries avec pièces jointes résolues. |
+| **17** | `read_emails` | `services/email_service.py` | Bloquant | `count: int`, `query: str`, `unread_only` | Consulte la boîte Gmail de Pierre via IMAP et résume les messages. |
+| **18** | `check_console_errors` | `services/console_monitor.py` | Bloquant | `filter_level: str` | Analyse les logs de console, diagnostique les erreurs et propose un patch. |
+| **19** | `interact_web_page` | `services/browser_service.py` | Non-bloquant | `url: str`, `instruction: str` | Interagit avec une page web spécifique (formulaire, scraping profond). |
+| **20** | `prepare_web_cart_or_checkout` | `services/browser_service.py` | Non-bloquant | `url: str`, `product: str` | Ajoute un produit au panier et préremplit les coordonnées de Pierre (sans payer). |
+| **21** | `download_file` | `services/download_service.py` | Non-bloquant | `url: str`, `filename: str` | Télécharge un fichier après obtention de l'accord oral préalable. |
+| **22** | `send_to_ereader` | `services/download_service.py` | Bloquant | `file_path: str` | Copie un ebook sur une liseuse physique USB connectée (Kindle/Kobo). |
+| **23** | `search_and_download_ebook` | `services/download_service.py` | Non-bloquant | `query: str`, `language: str` | Recherche et télécharge un EPUB sur Anna's Archive avec contrôle de langue. |
+| **24** | `send_page_to_kindle` | `services/browser_service.py` | Non-bloquant | `url: str`, `title: str` | Extrait un article web épuré et l'envoie sur la Kindle de Pierre. |
+| **25** | `send_file_to_kindle` | `services/browser_service.py` | Non-bloquant | `file_path: str` | Dépose un livre sur Amazon Send to Kindle via Playwright connecté. |
+| **26** | `list_chrome_extensions` | `services/browser_service.py` | Bloquant | Aucun | Énumère les extensions installées dans le profil Chrome de Pierre. |
+| **27** | `executer_action_externe` | `services/automation.py` | Non-bloquant | `service: str`, `action: str`, `params` | Déclenche un webhook générique d'automatisation sur n8n. |
+| **28** | `generer_fichier_tableur` | `services/automation.py` | Non-bloquant | `donnees: list`, `nom_fichier: str` | Génère un classeur Excel `.xlsx` complet via openpyxl ou n8n. |
+| **29** | `generer_presentation` | `services/slides_service.py` | Non-bloquant | `sujet: str`, `theme: str`, `nb_slides` | Conçoit une présentation Google Slides experte polymorphe v1. |
+| **30** | `get_active_task_status` | `services/supervision_service.py`| Bloquant | Aucun | Permet à Jarvis d'expliquer oralement l'état et l'avancement d'une tâche de fond. |
+| **31** | `notion_enregistrer` | `services/automation.py` | Non-bloquant | `titre: str`, `type_entree: str`, `contenu` | Enregistre une note, to-do list ou fiche de veille dans Notion via n8n. |
+| **32** | `agenda_gerer_evenement` | `services/briefing_service.py` | Non-bloquant | `action: str`, `titre: str`, `date_heure` | Crée, décale ou consulte des événements sur Google/Samsung Calendar. |
+| **33** | `creer_rappel_push` | `services/briefing_service.py` | Non-bloquant | `message: str`, `echeance: str` | Programme une notification push instantanée ou différée sur Telegram Stark Bot. |
+| **34** | `demander_morning_briefing` | `services/briefing_service.py` | Bloquant | Aucun | Restitue le briefing matinal compilé (météo, agenda, e-mails urgents, trains). |
+| **35** | `rechercher_train` | `services/transport_service.py`| Bloquant | `origine: str`, `destination: str`, `date` | Calcule un itinéraire ferroviaire France/Suède avec deep links directs Omio. |
+| **36** | `surveiller_train` | `services/transport_service.py`| Non-bloquant | `numero_train: str`, `date: str` | Active la veille proactive 10 min sur Trafikverket/SNCF avec alertes directes. |
+| **37** | `reserver_billet_train_local` | `services/transport_service.py`| Non-bloquant | `trajet_data: dict` | Ouvre simultanément les onglets de réservation Chrome sur le PC local. |
+| **38** | `consulter_architecture_jarvis` | `services/architecture_service.py`| Bloquant | `section: str`, `query: str` | Interroge interactivement le présent fichier d'architecture en temps réel. |
+| **39** | `triage_et_brouillon_email` | `services/agentic_dispatcher.py` | Non-bloquant | `email_id: str`, `instructions: str` | Triage exécutif Système 2, analyse de pièces jointes et brouillon de réponse. |
+| **40** | `curation_livre_synthese` | `services/agentic_dispatcher.py` | Non-bloquant | `titre_livre: str`, `ebook_path: str` | Rédige une fiche de lecture exécutive de 2 pages envoyée sur Kindle en bonus. |
+| **41** | `auto_guerison_systeme` | `services/agentic_dispatcher.py` | Non-bloquant | `incident_log: str`, `composant: str` | SRE autonome : analyse cause racine, patch syntaxique et validation de tests. |
+
+---
+
+### 8.2. Moteur Multi-Agents Antigravity CLI sur VPS
+- **Fichiers sources** : `google_antigravity.py`, `services/reasoning_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`.
 - **Outils exposés** : `ask_deep_reasoning`, `guide_active_task`, `stop_current_action`.
-- **Moteur sous-jacent** : Harnais Google Antigravity CLI (`agy` / `antigravity-cli` exécuté sur le VPS Oracle Cloud ARM64) orchestré par `AutonomousReasoningEngine` et `run_cli_task_stream`.
-- **Architecture Multi-Agents Délibérative (Système 2 en 3 Phases)** :
-  1. **Sous-agent Prospecteur / Web & Sources** : Collecte des faits historiques, métriques vérifiées, données techniques et sources contradictoires.
-  2. **Sous-agent Analyste / Critique** : Élimination méthodique des hallucinations, confrontation des chiffres clés et validation de la structure logique.
-  3. **Sous-agent Synthèse & Production d'Artefact** : Rédaction isolée du livrable dans le format strict demandé (`slides_schema`, `markdown_report`, `code_patch`, `json_benchmark`) et persistance automatique sur disque dans le répertoire `/artifacts/`.
-- **Gouvernance de Session & Quotas 5 Heures** :
-  - **Authentification Cloud Zéro-Coût** : Sur le VPS Oracle Cloud ARM64 (`aarch64`), le CLI s'exécute directement adossé au jeton OAuth2 de session de Pierre (`/home/opc/.gemini/antigravity-cli/antigravity-oauth-token`, compte Google AI Pro), ne générant aucun surcoût d'API.
-  - **Interception du Quota 5h (429 / Rate Limit)** : Détection continue des saturations de session dans les flux `stderr` et levée propre de `AntigravityQuotaExhaustedError`, relayée vocalement à Pierre par Aoede pour arbitrage (bascule API ou temporisation).
-- **Règle Fondamentale d'Initiative & Double Consentement Oral** :
-  - Jarvis a l'initiative proactive de proposer le moteur Antigravity pour toute tâche complexe (architecture, benchmark, refactoring, analyse stratégique).
-  - **Garde-fou inviolable** : Jarvis **DOIT TOUJOURS DEMANDER CONFIRMATION** à Pierre avant d'exécuter la réflexion approfondie (*"Pierre, pour analyser cette question en profondeur avec notre moteur multi-agents Antigravity, m'autorises-tu à lancer cette réflexion ?"*).
-  - L'exécution n'est engagée qu'après accord oral ou validation écran (`confirmed_by_user=True`).
-- **Protocole Vocal Immédiat & Non-Bloquant (< 300 ms)** :
-  - Le dispatcheur renvoie instantanément un accusé de réception préliminaire (`launched_in_background`), permettant à Aoede de confirmer oralement l'engagement du moteur sans aucune latence perçue.
-  - La réflexion tourne en arrière-plan (`asyncio.create_task`), notifie les étapes dans `supervision_service` ("Phase 1 : Prospecteur...", "Phase 2 : Analyse critique...", "Phase 3 : Synthèse..."), et injecte la synthèse vocale finale dans le flux Live.
+- **Principe d'exécution** : S'exécute directement sur le serveur Cloud Ubuntu ARM64 adossé au jeton OAuth2 Google AI Pro de Pierre (`/home/opc/.gemini/antigravity-cli/antigravity-oauth-token`), garantissant un coût d'API nul.
+- **Pipeline Délibératif Système 2 en 3 Phases** :
+  1. *Phase 1 — Sous-agent Prospecteur* : Exploration approfondie, recherche web contradictoire, collecte de données techniques et chiffres vérifiés.
+  2. *Phase 2 — Sous-agent Analyste Critique* : Élimination méthodique des hallucinations, confrontation des hypothèses, vérification de cohérence logique.
+  3. *Phase 3 — Sous-agent Synthèse & Production d'Artefacts* : Rédaction du livrable final structuré (`markdown_report`, `slides_schema`, `code_patch`) sauvegardé dans `/artifacts/`.
+- **Routage en 3 Tiers** : Arbitrage ordonné entre Tier 1 (`gemini-3.8-flash-low`), Tier 2 (`gemini-3.8-flash-high`) et Tier 3 (`gemini-3.1-pro-high`) avec bascule instantanée en cas de quota 429.
 
-### 7.2. Navigation Web Autonome & E-Commerce (Browser-Use / Playwright / Chrome CDP)
-- **Fichier** : `services/browser_service.py` & `jarvis_local_agent.py`.
-- **Outils exposés** : `search_web`, `run_browser_task`, `interact_web_page`, `prepare_web_cart_or_checkout`, `open_user_browser`, `set_browser_link`, `download_ebook_annas_archive`.
-- **Routage Intelligent Hybride (VPS Cloud vs Chrome Local CDP)** :
-  - Orchestré par le flag typé `execution_target: Literal["vps_headless", "local_gui", "local_chrome_cdp"]` présent sur l'ensemble des fonctions de navigation.
-  - **Mode Headless VPS (`vps_headless`)** : Les opérations légères (scraping, lecture d'articles, vérification de liens, recherche DuckDuckGo, téléchargement d'EPUB sur Anna's Archive) ou discrètes s'exécutent en tâche de fond sur le serveur Cloud VPS via Playwright headless sans solliciter le PC de Pierre.
-  - **Mode Chrome Local CDP (`local_chrome_cdp`)** : Pilotage direct de l'instance réelle Google Chrome de Pierre sur son PC Windows via le Chrome DevTools Protocol (CDP) persistant (`http://localhost:9222`, `playwright.chromium.connect_over_cdp`). Conserve 100% de son profil utilisateur (`User Data`), ses sessions déjà connectées (Google, Amazon, etc.), ses cookies et ses extensions actives (ex: Send to Kindle).
-  - **Mode GUI PC Local (`local_gui`)** : Délégation historique pour ouverture de fenêtres d'applications ou affichages fenêtrés simples via l'agent relais local.
-- **Arbitrage Dynamique de Présence & Dialogue Vocal (Gemini Live Aoede)** :
-  - **Détection temps réel** : Contrôle instantané de la présence du PC de Pierre via `is_pc_connected()` (WebSocket actif `/ws/local-agent` et Redis `jarvis:presence:pc_status`).
-  - **PC Hors-ligne** : Si l'ordinateur de Pierre est éteint ou déconnecté, Jarvis route automatiquement l'ordre sur `execution_target='vps_headless'` sans poser de question superflue.
-  - **PC En ligne** : Si l'ordinateur est allumé et connecté, Aoede demande naturellement à Pierre : *"Ton PC est allumé Pierre. Tu veux que j'agisse directement sur ton Chrome à l'écran ou je gère ça discrètement en arrière-plan ?"*. Selon la réponse de Pierre, Jarvis appelle l'outil avec `execution_target='local_chrome_cdp'` ou `execution_target='vps_headless'`.
-  - **Résilience & Fallback automatique gracieuse** : En cas d'échec de liaison CDP ou de dépassement de délai (timeout 10s), Jarvis bascule automatiquement sur le Playwright headless du VPS Cloud tout en prévenant Pierre avec tact : *"Pierre, ton PC ne répond plus, je bascule sur mon navigateur cloud en secours."*.
+### 8.3. Moteur Universel Deep Research Map-Reduce (`lancer_mission_deep_research`)
+- **Fichier source** : `services/deep_research_service.py`.
+- **Architecture opérationnelle en 6 étapes intégrées** :
+  1. *Étape 1 : Compilateur de Spécification Dynamique* (`MissionSpec`) via Tier 1 Flash en mode JSON strict. Extrait les entités cibles, la quantité (défaut 5), la localisation géographique stricte et les critères obligatoires.
+  2. *Étape 2 : Override Géographique Absolu*. Dès qu'une zone géographique est spécifiée dans la consigne orale de Pierre, l'ensemble des localisations mémoire par défaut (Grenoble, Paris, Lyon, France, Stockholm, Suède...) sont formellement bannies (`exclusion_geographique`), éliminant tout biais de contexte.
+  3. *Étape 3 : Phase MAP — Prospection Parallèle VPS en 3 Axes Fonctionnels Universels*. Déploiement simultané via `asyncio.gather` de 3 ouvriers spécialisés sur Antigravity CLI :
+     - *Ouvrier 1 (Startups & Incubateurs locaux)*.
+     - *Ouvrier 2 (Pôles technologiques, Scale-ups & R&D privés)*.
+     - *Ouvrier 3 (Grands groupes, filiales et éditeurs établis)*.
+  4. *Étape 4 : Phase REDUCE — Fusion, Déduplication & Normalisation*. Fusion des retours bruts, déduplication stricte par clé normalisée et structuration sous la dataclass `NormalizedEntity`.
+  5. *Étape 5 : Phase QUALITY GATE — Boucle de Rejet Fermée*. L'agent critique applique 3 règles éliminatoires :
+     - Règle 1 : Volume strict (`nombre_valide >= quantite_cible`).
+     - Règle 2 : Conformité géographique stricte (zéro entité hors zone).
+     - Règle 3 : Complétude des critères (100% des critères obligatoires documentés).
+     En cas de manquement, relance ciblée d'ouvriers prospecteurs pour combler les fiches (jusqu'à 2 itérations).
+  6. *Étape 6 : Livraison Déterministe Multi-Canal* :
+     - Artefact Markdown dans `/artifacts/rapport_[sujet]_[timestamp].md`.
+     - Schéma Google Slides n8n dans `/artifacts/slides_schema_[sujet]_[timestamp].json`.
+     - Expédition du courriel HTML Stark avec pièce jointe si demandé.
+     - Alerte push structurée sur le Telegram Stark Bot (`chatId: 6849746502`).
+     - Notification vocale proactive Aoede dans la session Live.
+
+### 8.4. Moteur Délibératif Système 2 Transverse (Missions Spécialisées)
+- **Fichier source** : `services/agentic_dispatcher.py`.
+- **Missions agentiques natives** :
+  1. `transport_optimizer` : Analyse comparative confort/temps, arbitrage train de jour vs couchette de nuit, marges de sécurité aux correspondances.
+  2. `spreadsheet_modeler` : Ingénierie de tableurs financiers avec formules dynamiques (`XLOOKUP`, `SUMIFS`), mise en forme corporate Stark (#1E293B) et génération directe via script Python `openpyxl`.
+  3. `system_healing` : SRE autonome sur incident, analyse de cause racine (RCA), patch de correction du code source dans `/home/opc/jarvis-core/` et validation par `py_compile`.
+  4. `email_drafting` : Triage des courriers complexes, décorticage de pièces jointes PDF via `pypdf`, rédaction de projets de réponse sauvegardés dans `outbox_emails/`.
+  5. `book_curation` : Synthèse exécutive en 2 pages des thèses majeures d'un livre téléchargé, transmise sur Kindle.
+  6. `morning_briefing` : Préparation stratégique à 6h45 croisant météo, agenda, e-mails et veille technique IA.
+  7. `memory_consolidation` : Assainissement nocturne, détection de contradictions et réconciliation du Knowledge Graph.
+  8. `doc_sync` : Détection continue du décalage (drift) entre le code réel et `ARCHITECTURE_COMPLETE_JARVIS.md`.
+
+### 8.5. Navigation Web Autonome, E-Commerce & Chrome CDP
+- **Fichiers sources** : `services/browser_service.py`, `jarvis_local_agent.py`.
+- **Routage Hybride Typé (`execution_target`)** :
+  - `vps_headless` : Exécution discrète sur le serveur Cloud via Playwright headless (recherche, scraping, e-books).
+  - `local_chrome_cdp` : Pilotage direct du Chrome physique de Pierre via Chrome DevTools Protocol port 9222 (`playwright.chromium.connect_over_cdp`). Conserve 100% des cookies, sessions Google/Amazon et extensions.
+  - `local_gui` : Ouverture fenêtrée d'applications à l'écran.
+- **Arbitrage de Présence PC** : Si le PC est éteint, repli automatique sur `vps_headless`. Si le PC est allumé, Jarvis demande poliment à Pierre s'il préfère agir à l'écran ou en arrière-plan.
+- **Assistant d'Achat Sécurisé (`prepare_web_cart_or_checkout`)** : Remplit le panier, saisit l'adresse et s'arrête strictement avant le paiement.
+
+### 8.6. Pôle Documentaire & Présentations Google Slides Polymorphes v1
+- **Fichiers sources** : `services/slides_service.py`, `services/automation.py`, `docs/n8n_workflows/documents_suite.json`.
+- **Présentations Google Slides Élaborées (`generer_presentation`)** :
+  - *Nombre de diapositives libre & adaptatif* : Plus aucun plafond fixe de 6 slides. Calé sur la consigne de Pierre ou calculé selon la complexité (3 à 14+ slides).
+  - *7 Layouts Visuels Polymorphes (16:9 Widescreen 720x405 PT)* : `hero_title`, `key_metrics`, `cards_grid`, `split_compare`, `timeline_steps`, `quote_highlight`, `conclusion_call_to_action`.
+  - *Conformité Google Slides API v1* : Utilisation exclusive du type de forme officiel `ROUND_RECTANGLE` (évitant tout rejet HTTP 400).
+  - *Élimination de la slide blanche initiale* : Suppression automatique de la diapositive vierge par défaut via son `objectId`.
+  - *5 Thèmes Esthétiques* : `stark`, `corporate`, `dark`, `gold`/`bitcoin`, `cyber`.
+- **Tableurs Excel Avancés (`generer_fichier_tableur`)** : Création de classeurs `.xlsx` stylisés avec formules natives et KPIs.
+- **Intégration Notion (`notion_enregistrer`)** : Prise de notes rapides, items to-do et fiches de veille créées directement dans la base de données Notion de Pierre via webhook n8n.
+
+### 8.7. Mobilité & Système Ferroviaire Intelligent (France & Suède)
+- **Fichiers sources** : `services/transport_service.py`, `routers/transport.py`, `jarvis_local_agent.py`, `docs/n8n_workflows/train_monitoring.json`.
 - **Capacités** :
-  - **Recherche web enrichie** : Recherche DuckDuckGo avec extraction intelligente de deep links de transport (SNCF Connect, Trainline, Skyscanner, Booking).
-  - **Agent autonome Vision (Browser-Use)** : Agent web autonome guidé par modèle vision (Gemini Flash Vision) capable de naviguer de manière indépendante sur des sites dynamiques, de remplir des formulaires complexes et de contourner les bannières de cookies.
-  - **Repli Playwright direct** : Si Browser-Use échoue, bascule sur un script Playwright direct avec capture d'écran périodique (`/static/latest_screenshot.jpg`).
-  - **Assistant d'achat autonome sécurisé (`prepare_web_cart_or_checkout`)** :
-    - Recherche de produits (Amazon, Fnac, Decathlon, etc.).
-    - Ajout au panier de la référence exacte.
-    - Préremplissage automatique des coordonnées de Pierre Cassagnettes (nom, prénom, adresse, code postal, téléphone, pointure 42).
-    - **Garde-fou bancaire absolu** : L'agent s'arrête STRICTEMENT avant l'étape de paiement final et ouvre Chrome à l'écran pour que Pierre valide lui-même son achat.
+  - *Décomposition Multi-Segments (Grand Nord Arctique / Laponie)* : Découpage intelligent des trajets sans train direct (ex: Malmö ↔ Kiruna) en 2 billets avec escale sécurisée à Stockholm Central (SJ Snabbtåg de jour + SJ Nattåg couchette de nuit).
+  - *Deep Links Directs & Réservables* : Génération d'URLs profondes Omio (`https://www.omio.fr/trains/...`) et Trainline affichant immédiatement les trains réels avec bouton 'Réserver', sans redirection vers une page d'accueil vide.
+  - *Réservation Multi-Onglets Parallèles sur PC Local (`reserver_billet_train_local`)* : Ouvre simultanément chaque segment dans un onglet distinct Google Chrome sur l'écran de Pierre.
+  - *Surveillance Temps Réel n8n (`surveiller_train`)* : Scrute toutes les 10 minutes les flux Trafikverket Open Data et SNCF. En cas de retard > 5 min ou annulation, alerte vocale immédiate dans Gemini Live et alerte Telegram.
 
-### 7.3. Gestionnaire E-Book & Transfert Liseuses (Kindle / Kobo / Anna's Archive)
-- **Fichiers** : `services/download_service.py`, `services/browser_service.py`.
-- **Outils exposés** : `download_file`, `search_and_download_ebook`, `send_to_ereader`, `send_page_to_kindle`, `send_file_to_kindle`, `list_chrome_extensions`.
+### 8.8. Gestionnaire E-Book, Liseuses Physiques & Send to Kindle
+- **Fichiers sources** : `services/download_service.py`, `services/browser_service.py`.
 - **Capacités** :
-  - **Moteur E-Book Anna's Archive** : Recherche automatique par titre/auteur, détection et filtrage de la langue demandée (FR ou EN), vérification de validité structurelle du conteneur EPUB (`mimetype`, `META-INF/container.xml`).
-  - **Détection Liseuse USB** : Analyse automatique des lecteurs de disques montés sous Windows pour identifier les périphériques Kindle, Kobo ou Bookeen et y copier directement les fichiers.
-  - **Amazon Send to Kindle Web Direct** : Automatisation Playwright sur `amazon.com/sendtokindle` avec profil persistant connecté (`.jarvis_shopping_profile`) pour téléverser sans friction des fichiers jusqu'à 200 Mo.
-  - **Extension Chrome Send to Kindle** : Détection des extensions installées dans le profil Chrome de Pierre et envoi d'articles web épurés sans publicité.
-  - **Garde-fou de téléchargement** : Obligation d'obtenir l'accord oral préalable de Pierre avant de lancer un téléchargement (taille et provenance annoncées).
+  - *Moteur Anna's Archive* : Scraping et téléchargement direct d'ouvrages avec filtrage strict de la langue demandée (FR ou EN) et validation de l'arborescence EPUB (`mimetype`, `META-INF/container.xml`).
+  - *Détection Liseuse USB* : Détecte les périphériques de stockage amovibles montés sous Windows pour y copier directement les fichiers.
+  - *Amazon Send to Kindle Web Direct* : Téléversement automatisé Playwright sur `amazon.com/sendtokindle` avec profil persistant connecté (`.jarvis_shopping_profile`) supportant des fichiers jusqu'à 200 Mo.
+  - *Extension Send to Kindle* : Détection automatique des extensions Chrome installées sur la machine de Pierre.
 
-### 7.4. Contrôleur Média & Streaming (Deezer Web Player / Stremio)
-- **Fichiers** : `deezer_bridge.py`, `services/media_service.py`.
-- **Outils exposés** : `play_music_deezer`, `play_video_stremio`.
-- **Contrôle Deezer 100% sans compte développeur payant** :
-  - **Bridge WebSocket bidirectionnel** (`127.0.0.1:8765`) couplé à un userscript Tampermonkey (`deezer_controller.user.js`) injecté sur l'onglet `deezer.com`.
-  - **Contrôles supportés** : Lecture, pause, bascule, morceau suivant, morceau précédent, activation/désactivation aléatoire (*shuffle*), réglage précis du volume (0-100%).
-  - **Résolution sémantique intelligente** : Détection automatique des intentions vocales :
-    - *"Mets mon Flow"* -> navigation instantanée vers `/channels/flow`.
-    - *"Mets mes coups de cœur"* -> lecture de `/channels/loved-tracks`.
-    - *"Joue Daft Punk"* -> recherche via l'API publique Deezer et sélection du morceau ou de l'album optimal.
+### 8.9. Contrôleur Média & Streaming (Deezer Web Player & Stremio)
+- **Fichiers sources** : `deezer_bridge.py`, `services/media_service.py`.
+- **Deezer Web Player 100% Zéro-Coût** :
+  - Bridge WebSocket bidirectionnel local sur le port `8765`.
+  - Userscript Tampermonkey (`static/deezer_controller.user.js`) injecté sur l'onglet `deezer.com`.
+  - Résolution sémantique : "Mets mon Flow" -> `/channels/flow`, "Mes coups de cœur" -> `/channels/loved-tracks`, recherche d'artistes/titres et contrôle du volume.
 - **Cinéma & Séries Stremio** :
-  - Recherche du titre via l'API Stremio (Cinemeta).
-  - Sélection automatisée du meilleur flux vidéo 1080p le plus fluide et léger (via scraper Torrentio).
-  - Lancement immédiat de l'application Stremio sur la vidéo ciblée via protocole URI `stremio:///detail/...`.
+  - Interrogation de l'API Cinemeta et résolution de flux 1080p légers via Torrentio.
+  - Lancement direct de l'application Stremio via protocole URI `stremio:///detail/...`.
 
-### 7.5. Suite de Communication & Messagerie (Email Stark / IMAP / Chat Multimodal)
-- **Fichiers** : `services/email_service.py`, `services/chat_service.py`.
-- **Outils exposés** : `send_email`, `read_emails`, API `/api/chat/*`.
-- **Envoi d'E-mails (SMTP & Smart Attachment Pipeline)** :
-  - Génération de rapports HTML élégants au format **Stark Industries Executive Report** (palette sombre, typographie soignée, badges d'état).
-  - **Moteur de Résolution Universelle des Pièces Jointes (`resolve_attachment_path`)** : Résolution automatique et résiliente des documents (PDF, ebooks EPUB, tableurs Excel XLSX, documents Word, etc.) depuis `downloads/`, `downloads/ebooks/`, `static/`, `artifacts/`, `my-project/`, les dossiers système Windows (`Downloads`, `Documents`, `Desktop`) ou via URLs distantes.
-  - **Support des requêtes floues et mots-clés temporels** : Capacité de cibler des fichiers par nom partiel, titre sans extension ou mots-clés (`'latest'`, `'dernier'`, `'dernier_ebook'`).
-  - **Relais Fichier Hybride PC-VPS (`fetch_file`)** : Si le serveur VPS doit envoyer une pièce jointe située sur le PC Windows de Pierre, l'agent local `jarvis_local_agent` extrait le fichier et le transmet de façon sécurisée (base64) pour inclusion immédiate dans le courriel.
-  - **Garde-fou anti-mail vide** : Si une pièce jointe est expressément demandée par Pierre mais introuvable, l'envoi d'un courriel vide est strictement bloqué (`attachment_not_found`) et Jarvis en informe vocalement Pierre pour lui demander l'emplacement exact.
-  - Archivage local systématique de tous les courriels émis dans `outbox_emails/`.
-- **Lecture d'E-mails (IMAP Gmail)** :
-  - Connexion SSL sécurisée à la boîte de réception de Pierre (`pierrecassagnettes@gmail.com`).
-  - Filtrage par mot-clé, expéditeur ou statut non lu.
-  - Décodage des en-têtes MIME, extraction de snippets textuels et détection des pièces jointes pour restitution orale par Jarvis.
-- **Messagerie & Analyse Multimodale (Chat Drawer)** :
-  - Interface de clavardage permettant à l'utilisateur d'envoyer des captures d'écran, photos de schémas ou pannes techniques.
-  - Traitement multimodal par **Gemini 3.8 Flash** : OCR complet, identification des composants, diagnostic pas-à-pas et réponse structurée en Markdown.
+### 8.10. Suite de Communication & Messagerie Stark
+- **Fichiers sources** : `services/email_service.py`, `services/chat_service.py`.
+- **Émission SMTP Stark Industries** :
+  - Gabarit HTML corporate sombre haute définition (palette Stark, typographie soignée, badges d'état).
+  - *Moteur de Résolution Universelle des Pièces Jointes (`resolve_attachment_path`)* : Résolution floue de fichiers PDF, EPUB, XLSX depuis `downloads/`, `artifacts/`, `my-project/`, les dossiers système Windows (`Downloads`, `Documents`) ou URLs distantes.
+  - *Relais Fichier PC-VPS (`fetch_file`)* : Rapatriement base64 d'un document local depuis le PC de Pierre pour inclusion immédiate dans un courriel envoyé par le Cloud.
+  - Garde-fou anti-mail vide si une pièce jointe demandée est introuvable.
+  - Archivage systématique dans `outbox_emails/`.
+- **Réception IMAP Gmail** : Consultation sécurisée de `pierrecassagnettes@gmail.com` avec décodage MIME et synthèse vocale des e-mails urgents.
+- **Messagerie Multimodale Vision** : Analyse de captures d'écran, schémas techniques et photos via Gemini 3.8 Flash Vision avec rendu Markdown.
 
-### 7.6. Système de Mémoire Hybride
-- **Fichiers** : `services/unified_memory.py` (Façade), `services/memory_service.py` (SQLite), `services/memory.py` (Vectoriel).
-- **Outils exposés** : `remember_user_fact`, `recall_user_memories`, `memoriser_information`.
-- **Façade Unifiée (`UnifiedMemoryManager`)** : Orchestration transparente avec déduplication des données de profil immuables dans SQLite, et double indexation asynchrone non-bloquante pour la recherche sémantique (Qdrant) avec dégradation gracieuse (fallback SQLite textuel).
-- **Compatibilité Moteur Vectoriel Qdrant & Embeddings** :
-  - Support natif des versions modernes de `qdrant-client` (>= 1.10.0) via `query_points(...)` (extraction de `points` de type `ScoredPoint`) et rétrocompatibilité automatique sur l'ancienne méthode `.search(...)`.
-  - Résilience de conversion vectorielle (`_embed`) gérant à la fois les tableaux générateurs (`numpy.ndarray.tolist()`) et les structures itérables Python natives.
+### 8.11. Système de Mémoire Hybride (SQLite, Qdrant & Fastembed)
+- **Fichiers sources** : `services/unified_memory.py`, `services/memory_service.py`, `services/memory.py`.
+- Façade transparente orchestrant les faits immuables (profil SQLite) et les souvenirs sémantiques RAG (Qdrant + Fastembed local 384 dim).
+- Seuil de similarité cosinus > 0.30 et dégradation gracieuse textuelle en cas d'indisponibilité vectorielle.
 
-### 7.7. Télémétrie, Diagnostics & Supervision Système
-- **Fichiers** : `services/system_service.py`, `services/supervision_service.py`, `services/console_monitor.py`.
-- **Outils exposés** : `get_system_status`, `launch_application`, `check_console_errors`.
-- **Supervision en temps réel (`SupervisionService`)** :
-  - Enregistre et diffuse l'état d'activité de chaque outil (ID action, nom de l'outil, modèle IA, coût estimé, horodatage, étapes de progression).
-  - Énumération des fenêtres ouvertes sur le PC Windows (via `EnumWindows` sous Windows).
-  - Détection et agrégation des erreurs consoles et exceptions Python (`ConsoleMonitor`) avec diagnostic automatisé et suggestions de réparation.
+### 8.12. Télémétrie, Diagnostics & Supervision Système
+- **Fichiers sources** : `services/system_service.py`, `services/supervision_service.py`, `services/console_monitor.py`.
+- Traçabilité en temps réel des actions engagées, des sous-agents déployés, des clés API sollicitées et de la consommation estimée.
+- Inspection continue des exceptions Python (`ConsoleMonitor`) avec diagnostic automatisé et suggestions de réparation.
 
-### 7.8. Automatisation des Processus Externes, Pôle Documentaire & Présentations Avancées (n8n Community)
-- **Fichiers** : `services/automation.py`, `services/slides_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `docs/N8N_GUIDE.md`, `docs/n8n_workflows/documents_suite.json`.
-- **Outils exposés** : `executer_action_externe`, `generer_fichier_tableur`, `generer_presentation`, `notion_enregistrer`, `get_active_task_status`.
-- **Pôle Documentaire & Présentations Google Slides Élaborées** :
-  1. **Génération de tableurs Excel (.xlsx) (`generer_fichier_tableur`)** :
-     - Convertit des listes JSON de données (comptabilité, budgets, benchmarks, listes de suivi) en classeurs Excel `.xlsx` propres.
-     - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/document-spreadsheet`.
-     - Nœuds n8n : Webhook -> Formater Données -> Spreadsheet File (binaire xlsx) -> Enregistrer dans `/home/opc/jarvis-core/downloads/` -> Respond to Webhook.
-     - Accès immédiat au fichier généré via le point de montage `/downloads/<nom_fichier>`.
-   2. **Génération de présentations Google Slides Expertes, Polymorphes & Débridées (`generer_presentation`, `services/slides_service.py`)** :
-      - **Moteur d'investigation multi-agents (`AutonomousReasoningEngine`) & Schéma Polymorphe** : Plutôt que de créer un deck rigide ou précipité, le service s'appuie sur le moteur délibératif universel (`required_artifact="slides_schema"`). Ce dernier active les sous-agents Prospecteur (chiffres vérifiés, faits historiques), Critique (élimination des hallucinations et validation de cohérence) et Synthèse pour générer un plan directeur exhaustif sauvegardé dans `/artifacts/`.
-      - **Disparition définitive du plafond de 6 slides fixes (Nombre Libre & Adaptatif)** : Le nombre de diapositives n'est plus bridé. Il est calculé dynamiquement par l'IA selon la complexité et l'envergure du sujet, ou calé rigoureusement sur la consigne vocale explicite de Pierre (ex: "fais un deck de 3 slides" -> 3 slides ; sujet stratégique vaste -> 8 à 14 slides).
-      - **Multi-layouts visuels polymorphes (Zéro monotonie)** : Alternance dynamique au fil des diapositives entre 7 modèles spécialisés calculés au pixel près en 16:9 widescreen (720x405 PT) :
-        * `hero_title` : Accroche percutante avec grand titre, sous-titre contextuel et barre lumineuse.
-        * `key_metrics` : Indicateurs clés géants (1 à 4 métriques avec valeur d'impact, label et sous-texte).
-        * `cards_grid` : Grilles modernes aérées de 2, 3 ou 4 cartes avec badges, titres et descriptions.
-        * `split_compare` : Analyse comparative 2 colonnes Avant / Après ou Frictions / Cible Stark.
-        * `timeline_steps` : Feuille de route chronologique ou étapes séquentielles par phases.
-        * `quote_highlight` : Mise en exergue de principes fondamentaux ou citations d'autorité.
-        * `conclusion_call_to_action` : Synthèse finale percutante orientée décision et plan d'action immédiat.
-      - **Conformité stricte Google Slides API v1** : Utilisation exclusive du type de forme officiel `ROUND_RECTANGLE` (remplaçant définitivement le type invalide `ROUNDED_RECTANGLE`) évitant tout rejet HTTP 400 du batchUpdate, et palette adaptée aux thèmes (`stark`, `corporate`, `dark`, `gold`/`bitcoin`, `cyber`).
-      - **Élimination de la diapositive blanche par défaut** : La requête Google Slides `batchUpdate` génère les nouvelles diapositives enrichies puis supprime systématiquement la diapositive vierge initiale ("Cliquez ici pour ajouter un titre") via son `objectId`.
-      - **Pipeline n8n 2.x hybride & Moteur géométrique JavaScript** : Le nœud n8n "Préparer Requêtes Batch Slides" calcule en temps réel la géométrie des cartes selon le layout choisi et transmet le batchUpdate sécurisé par OAuth2 (`googleSlidesOAuth2Api`), avec vérification stricte du dispatcheur Jarvis (`batch_applied`).
-  3. **Prise de notes et to-do Notion (`notion_enregistrer`)** :
-     - Ajoute des entrées structurées (notes rapides `note`, items de to-do list `todo`, fiches de veille `veille`, fiches projet `projet`) avec étiquettes dans Notion.
-     - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/notion-entry`.
-     - Nœuds n8n : Webhook -> Formater Entrée Notion -> Notion Database Page Create -> Respond to Webhook.
-  4. **Suivi d'Activité & Explication Vocale en Direct (`get_active_task_status`)** :
-     - Permet à Jarvis d'interroger en direct l'état des opérations en arrière-plan (recherche documentaire, structuration du plan, génération Google Slides ou tâches Antigravity).
-     - Lorsque Pierre demande oralement *"Qu'est-ce que tu es en train de faire ?"* ou *"Où en es-tu ?"*, Jarvis invoque cet outil et explique avec sa voix Aoede avec précision et naturel l'étape en cours et son avancement.
-- **Passerelle vers n8n & Function Calling Gemini Live** :
-  - **Déclaration formelle** : Intégrés dans `core/tools/declarations.py` avec `behavior=types.Behavior.NON_BLOCKING`.
-  - **Exécution asynchrone non-bloquante** : Le dispatcheur (`core/tools/dispatcher.py`) renvoie instantanément un accusé de réception pour que Jarvis confirme immédiatement à l'oral avec sa voix Aoede le lancement du travail, puis délègue la requête au webhook HTTP local en tâche de fond (`asyncio.create_task`).
-  - **Mise à jour HUD & Retour vocal final** : Durant la génération, le HUD affiche la progression, et dès la finalisation, l'URL de la présentation est projetée à l'écran (`set_browser_link`) et annoncée oralement par Jarvis.
-  - **Résilience absolue** : Gestion systématique des exceptions (timeout 30s, erreurs de connexion, JSON malformé) évitant tout crash du canal vocal principal.
-  - Workflows n8n exportables et packagés dans `docs/n8n_workflows/documents_suite.json`.
+### 8.13. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
+- **Fichiers sources** : `services/briefing_service.py`, `routers/briefing.py`, `docs/n8n_workflows/time_and_briefing.json`.
+- Synchronisation bidirectionnelle Google Calendar / Samsung Calendar via n8n.
+- Prise de note vocale et rappel push instantané ou différé sur smartphone via le Telegram Stark Bot (`chatId: 6849746502`).
+- Compilation automatique du Morning Briefing à 7h00 (météo Open-Meteo, rendez-vous du jour, e-mails non lus, état des serveurs) mis en cache dans Redis (`jarvis:briefing:today`).
 
-### 7.9. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
-- **Fichiers** : `services/briefing_service.py`, `routers/briefing.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `docs/n8n_workflows/time_and_briefing.json`.
-- **Outils exposés** : `agenda_gerer_evenement`, `creer_rappel_push`, `demander_morning_briefing`.
-- **Architecture & Fonctionnalités** :
-  1. **Agenda Samsung & Google Calendar (`agenda_gerer_evenement`)** :
-     - Création, décalage et consultation des événements synchronisés nativement entre Google Calendar et l'application Samsung Calendar du smartphone de Pierre.
-     - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/agenda-event`.
-     - Intégration directe avec le nœud officiel Google Calendar n8n avec synchronisation bidirectionnelle.
-  2. **Capture Vocale & Rappels Push Mobiles (`creer_rappel_push`)** :
-     - Prise de note orale instantanée et programmation d'un rappel push ou notification immédiate sur smartphone via le Stark Bot Telegram de Pierre.
-     - Webhook n8n dédié : `POST http://127.0.0.1:5678/webhook/schedule-push-reminder` (liaison hôte 127.0.0.1).
-     - Architecture n8n : Webhook -> Code (calcul du délai d'attente : immédiat 1s si `maintenant`/`immédiat`, ou temporisé à échéance) -> Nœud Wait -> Nœud Telegram officiel Stark Bot (`chatId: 6849746502`).
-     - Paramètre `echeance` optionnel : valeur par défaut `maintenant` pour les notifications instantanées. Aliases de routage direct supportés (`telegram`, `telegram-notification`, `envoyer_notification_telegram`).
-  3. **Morning Briefing Stark Industries (`demander_morning_briefing`)** :
-     - Routine quotidienne compilée à 7h00 (via Cron n8n ou sur demande) agrégeant :
-       * Météo locale en temps réel (Open-Meteo avec dégradation locale gracieuse).
-       * Rendez-vous du jour issus de l'agenda mis en cache.
-       * E-mails urgents non lus via IMAP Gmail (`services/email_service.py`).
-       * État de santé des systèmes et présence des périphériques (`CacheService` / `SystemService`).
-     - Résumé d'impact de 3-4 phrases courtes et percutantes au ton Stark Industries / Aoede.
-     - Mise en cache Redis sous `jarvis:briefing:today` (TTL 16 heures).
-     - Restitution vocale sans aucune latence au premier "Bonjour" de la journée.
-  - Workflows n8n packagés dans `docs/n8n_workflows/time_and_briefing.json`.
-
-### 7.10. Système Intelligent Ferroviaire & Mobilité (France & Suède)
-- **Fichiers** : `services/transport_service.py`, `routers/transport.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `jarvis_local_agent.py`, `docs/n8n_workflows/train_monitoring.json`.
-- **Outils exposés** : `rechercher_train`, `surveiller_train`, `reserver_billet_train_local`.
-- **Capacités & Architecture** :
-  1. **Recherche d'Itinéraires & Décomposition Multi-Segments (`rechercher_train`)** :
-     - Supporte l'ensemble des gares françaises (Paris, Lyon, Marseille, Bordeaux, Lille, Nantes, Strasbourg...) et suédoises (Malmö, Stockholm, Göteborg, Lund, Uppsala, Kiruna, Abisko, Narvik, Gällivare, Luleå, etc.).
-     - **Décomposition multi-trains / multi-billets (Grand Nord Arctique & Laponie)** : Lorsqu'aucun train direct n'existe pour traverser la Suède (ex: Malmö ↔ Kiruna, Göteborg ↔ Abisko), le système segmente automatiquement le voyage en 2 billets distincts avec correspondance sécurisée à Stockholm Central :
-       * *Segment 1 (Jour)* : Train à grande vitesse SJ Snabbtåg (ex: Malmö Central 09:04 → Stockholm Central 13:35).
-       * *Correspondance* : Escale confortable et sécurisée à Stockholm Central (~2h45 pour le déjeuner et le transfert de quai).
-       * *Segment 2 (Nuit)* : Train de nuit couchette arctique SJ Nattåg 94 (ex: Stockholm Central 16:20 → Kiruna 09:15 J+1).
-      - **Génération d'URLs de réservation directe et fonctionnelle (zéro redirection sur page d'accueil vide)** :
-        * Les portails comme `sj.se` étant des SPAs fermées qui ignorent les query params d'URL en accès direct, Jarvis génère désormais des liens profonds sur les agrégateurs ferroviaires agréés Suède / Europe :
-          - **Omio Suède** : `https://www.omio.fr/trains/{orig_slug}-{dest_slug}` (ex: `malmo-stockholm` et `stockholm-kiruna`), affichant directement les trains SJ Snabbtåg et SJ Nattåg disponibles avec bouton 'Réserver'.
-          - **Trainline** : `https://www.thetrainline.com/fr/billets-de-train/{orig_slug}-a-{dest_slug}` pour la comparaison tarifaire.
-          - **Google Maps Transit & Trafikverket** pour le suivi temps réel.
-        * Élimination stricte des pages d'accueil neutres (`sj.se/en`) et des articles de blog statiques (`/travel-info/sj-night-train.html`).
-      - **Option `reserver_automatiquement: bool`** : Permet à Jarvis d'enchaîner directement la recherche avec l'ouverture automatique de tous les onglets de réservation dans le navigateur de Pierre.
-      - **Mémoire d'Itinéraire en Session (`_last_search`)** : `TransportService` mémorise le dernier trajet multi-segments recherché. Si Pierre dit ensuite "Réserve-les", Jarvis retrouve instantanément les gares, dates et URLs sans que Pierre ait besoin de répéter sa demande.
-     - **Dispatching non-bloquant** : Jarvis confirme immédiatement la prise en charge à voix haute avec sa voix Aoede, annonce les détails des trains et de la correspondance, et pousse le deep link direct sur l'interface PWA via l'événement `browser_update` / `set_browser_link`.
-  2. **Surveillance Proactive en Temps Réel (`surveiller_train`)** :
-     - Déclenche une boucle de veille asynchrone orchestrée par n8n (`docs/n8n_workflows/train_monitoring.json`).
-     - Interroge toutes les 10 minutes les flux Trafikverket Open Data (requêtes XML/JSON) ou SNCF GTFS-RT jusqu'au départ du train.
-     - Évalue les retards, annulations et changements de voie/quai de départ.
-     - Dès qu'un retard dépasse 5 minutes ou qu'une annulation est signalée :
-       * Déclenche un webhook entrant sur Jarvis (`POST /api/train/alert`).
-       * Injection instantanée dans la session Gemini Live active pour qu'Aoede prévienne oralement Pierre en direct.
-       * Alerte push visuelle sur le HUD mobile et courriel exécutif Stark en copie de secours.
-  3. **Préparation Sécurisée de Réservation Multi-Onglets (`reserver_billet_train_local`)** :
-     - **Respect absolu de l'isolation de sécurité** : exploration et calcul d'itinéraires sur le VPS cloud ; ouverture transactionnelle exclusivement sur le PC Windows physique de Pierre via `execution_target="local_gui"`.
-     - Délégué à `jarvis_local_agent.py` sur le PC Windows de Pierre via le canal WebSocket `/ws/local-agent` (action `prepare_train_checkout`) avec fallback de lancement Chrome local.
-     - **Support multi-billets en onglets parallèles** : Ouvre simultanément chaque page de réservation dans un onglet distinct Google Chrome (ex: Onglet 1 pour le SJ Snabbtåg + Onglet 2 pour le SJ Nattåg couchette vers Kiruna).
-      - **Assainissement automatique des URLs** : Si des liens obsolètes de blog ou de page d'accueil sans paramètres sont reçus, le service les remplace automatiquement à chaud par les liens directs Omio/Trainline de chaque segment.
-      - **Garde-fou bancaire inviolable & Expérience zéro-friction** : Les pages s'ouvrent directement sur les trajets préremplis avec les offres disponibles ; Pierre n'a plus qu'à choisir ses places/couchettes, s'authentifier et payer (zéro saisie d'itinéraires requise, zéro prélèvement automatique non consenti).
+### 8.14. Connaissance Architecturale Dynamique & Auto-évaluation
+- **Fichier source** : `services/architecture_service.py`.
+- Surveillance en temps réel de l'empreinte `mtime` du fichier maître `ARCHITECTURE_COMPLETE_JARVIS.md`.
+- Rechargement instantané en mémoire vive (< 5 ms) sans redémarrage de serveur lors de toute modification.
+- Outil interactif `consulter_architecture_jarvis` permettant à Jarvis d'interroger ses propres spécifications techniques pour répondre précisément à Pierre sur son fonctionnement.
 
 ---
 
-### 7.11. Connaissance Architecturale Dynamique & Auto-évaluation (ARCHITECTURE_COMPLETE_JARVIS.md)
-- **Fichiers** : `services/architecture_service.py`, `services/unified_memory.py`, `services/memory_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`.
-- **Outils exposés** : `consulter_architecture_jarvis`.
-- **Capacités & Architecture** :
-  1. **Hot-Reload Dynamique par Horodatage (`mtime`)** :
-     - Le service `ArchitectureKnowledgeService` surveille l'horodatage de dernière modification (`os.path.getmtime`) du fichier maître `ARCHITECTURE_COMPLETE_JARVIS.md`.
-     - À chaque consultation ou nouveau démarrage de session vocale ou écrite, si le document a été modifié sur le disque, il est rechargé et ré-analysé en mémoire vive en moins de 5 ms sans redémarrage de serveur.
-  2. **Injection Systémique dans le Prompt de Session & Mémoire** :
-     - Une synthèse structurée et vivante (identité Stark, relation d'égal à égal, topologie hybride Cloud VPS + PC local Windows, catalogue des 10 capacités, 5 garde-fous inviolables) est automatiquement injectée au démarrage dans `_build_system_instruction()` et `unified_memory_manager.build_live_context_prompt()`.
-     - Garantit que Jarvis a conscience en temps réel de ce qu'il est, comment il fonctionne et ce dont il est capable ou non.
-  3. **Outil de Consultation Interactive (`consulter_architecture_jarvis`)** :
-     - Permet à Jarvis d'interroger à tout moment des chapitres spécifiques (ex: section `2` topologie, section `7.4` Deezer, section `8` endpoints) ou de rechercher par mots-clés dans les spécifications techniques complètes.
-     - Fournit une réponse exacte et documentée lorsque Pierre l'interroge sur sa stack technique ou ses capacités.
+## 9. MATRICE DES ENDPOINTS API REST & PROTOCOLES WEBSOCKETS
 
----
+### 9.1. Endpoints HTTP / REST FastAPI
 
-### 7.12. Moteur Deep Research Asynchrone (Map-Reduce Multi-Agents Universel, Override Géographique Strict & Closed Quality Gate)
-- **Fichiers** : `services/deep_research_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`, `core/shared_state.py`, `services/email_service.py`, `services/briefing_service.py`, `services/slides_service.py`, `services/automation.py`.
-- **Outils exposés** : `lancer_mission_deep_research` (`behavior=NON_BLOCKING`, paramètres épurés : `consigne_utilisateur`, `envoyer_email`, `destinataire_email`), complété par `get_active_task_status`.
-- **Architecture & Pipeline d'Investigation Map-Reduce en 6 Phases Intégrées** :
-  1. **Étape 1 : Compilateur de Spécification Dynamique (MissionSpec - Tier 1 JSON)** :
-     - Réception de la consigne vocale brute de Pierre sans filtrage ni troncature (< 300 ms de latence de dispatching initial).
-     - Déclenchement de `compiler_spec_mission` via un LLM rapide (Tier 1 : `gemini-3.8-flash` en mode JSON strict, avec repli heuristique résilient).
-     - Génération d'une structure typée `MissionSpec` : `sujet`, `quantite_cible` (ex: 20 si demandé, défaut 5), `zone_geographique_stricte` (ex: São Paulo, Tokyo, Munich, Malmö...), `exclusion_geographique`, `criteres_obligatoires` (ex: `description_activite`, `politique_remuneration`, `avantages`, `inconvenients`, `localisation_exacte`, `contact`), `strategies_recherche_locales` (extensions locales `.br`, `.de`, `.se`, `.jp`, etc.), `structure_rapport`, `notifier_email` et `email_cible`.
-  2. **Étape 2 : Règle d'Override Géographique Absolu (Consigne > Mémoire Profil)** :
-     - **Universalité géographique totale** : adaptation dynamique à n'importe quel pays ou ville du monde sans aucun biais ni échantillon hardcodé.
-     - **Bannissement automatique des villes mémoire** : dès qu'une zone géographique explicite est détectée dans la consigne, l'ensemble des localisations habituelles de la mémoire de Pierre (Grenoble, Paris, Lyon, France, Stockholm, Suède...) sont formellement désactivées, inscrites dans `exclusion_geographique` et purgées de la recherche.
-     - Les souvenirs mémoire conflictuels sont filtrés pour éliminer toute contamination de contexte.
-  3. **Étape 3 : Phase MAP — Prospection Parallèle VPS en 3 Axes Fonctionnels Universels** :
-     - Déploiement simultané via `asyncio.gather` de 3 ouvriers spécialisés autonomes s'exécutant sur Antigravity CLI VPS (Tier 3 Délibératif `gemini-3.1-pro-high`) :
-       * **Ouvrier 1 (Startups, Pépinières & Incubateurs Locaux)** : prospection des jeunes pousses, accélérateurs et pôles d'innovation émergents situés strictement dans `zone_geographique_stricte`.
-       * **Ouvrier 2 (Pôles Technologiques, Scale-ups & Laboratoires R&D Privés)** : prospection des scale-ups à forte croissance, centres d'ingénierie et laboratoires appliqués situés dans `zone_geographique_stricte`.
-       * **Ouvrier 3 (Entreprises Établies, Sièges Régionaux & Éditeurs de Logiciels)** : cartographie des grands groupes technologiques, filiales régionales et éditeurs disposant de bureaux réels dans `zone_geographique_stricte`.
-     - Mode opératoire : requêtes ciblées avec filtres de domaine locaux, scraping et extraction vérifiée de données réelles.
-  4. **Étape 4 : Phase REDUCE — Fusion, Déduplication & Normalisation** :
-     - Consolidation des retours bruts des 3 ouvriers MAP.
-     - Déduplication stricte par clé alphanumérique normalisée des noms d'entreprises.
-     - Standardisation des entités sous la structure typée `NormalizedEntity`.
-  5. **Étape 5 : Phase QUALITY GATE — Agent Critique & Boucle de Rejet Fermée** :
-     - L'agent Critique applique 3 règles d'invalidation formelles et impitoyables :
-       * *Règle 1 (Volume Strict)* : Si `nombre_entreprises_valides < quantite_cible`, REJET IMMÉDIAT.
-       * *Règle 2 (Conformité Géographique Stricte)* : Si une entité est hors de `zone_geographique_stricte` ou contient un terme d'`exclusion_geographique`, REJET ET PURGE IMMÉDIATE.
-       * *Règle 3 (Complétude des Critères)* : 100 % des fiches doivent documenter explicitement tous les `criteres_obligatoires` (description, rémunération, avantages, inconvénients, contact, adresse).
-     - *Boucle fermée de remédiation* : en cas de non-conformité, émission d'un ticket de manquement précis et relance ciblée d'ouvriers prospecteurs pour combler les manques (jusqu'à 2 itérations supplémentaires). Complété par un synthétiseur universel garantissant 100 % de conformité.
-  6. **Étape 6 : Finalisation & Livraison Déterministe Multi-Canal** :
-     - **Artefact Markdown Exhaustif** : enregistré sous `/artifacts/rapport_[sujet]_[timestamp].md` avec tableau récapitulatif global numéroté de 1 à N et N fiches détaillées.
-     - **Schéma JSON & Google Slides via n8n** : compilation automatique de la présentation Drive sous `/artifacts/slides_schema_[sujet]_[timestamp].json`.
-     - **Livraison E-mail Automatisée Déterministe** : si `notifier_email=True`, appel direct et autonome de `email_service.send_email_async(...)` avec le corps HTML Stark Industries enrichi du tableau de synthèse et le rapport Markdown complet joint en pièce jointe (`resolve_attachment_path`).
-     - **Alerte Push Telegram Stark Bot (`chatId: 6849746502`)** : message synthétique structuré avec les opportunités phares et statut de livraison.
-     - **Notification Vocale Proactive Aoede (Gemini Live)** : injection orale proactive (`safe_send_live_client_content`) annonçant oralement la fin de mission, le compte exact d'entités qualifiées et la confirmation d'envoi par courriel.
+| Méthode | Route | Description & Rôle Opérationnel | Authentification | Payload / Paramètres Types | Réponse Type |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **GET** | `/` | Sert l'application PWA principale (`index.html`). | Ouvert | Aucun | Fichier HTML statique |
+| **POST** | `/api/auth` | Vérifie le mot de passe maître et émet le jeton JWT. | Mot de passe | `{"password": "..."}` | `{"status": "ok", "token": "jwt..."}` |
+| **GET** | `/api/auth-qr` | Émet un ticket unique de pairage QR Code (TTL 300 s). | Ouvert | Aucun | `{"status": "ok", "ticket": "qr_..."}` |
+| **POST** | `/api/auth-qr` | Enregistre l'appareil après scan du QR code. | Ticket QR | `{"ticket": "qr_..."}` | `{"status": "ok", "token": "jwt..."}` |
+| **POST** | `/api/auth/revoke` | Révoque immédiatement un token JWT ou un appareil via Redis. | Token JWT | `{"token_id": "...", "device_id": "..."}` | `{"status": "ok"}` |
+| **GET** | `/api/verify` | Valide le jeton d'enregistrement (avec migration si ancien). | Token JWT / Cookie | Query param `?token=` ou Cookie | `{"authorized": true, "device_name": "..."}` |
+| **GET** | `/api/tunnel-info` | Retourne l'URL du tunnel Cloudflare et l'IP LAN. | Token JWT | Aucun | `{"tunnel_url": "https://...", "lan_ip": "..."}` |
+| **POST** | `/api/send-email` | Envoie un courriel (Stark HTML ou libre). | Token JWT | `{"subject": "...", "body": "...", "attachments": []}` | `{"status": "sent"}` |
+| **GET** | `/api/emails/inbox`| Lit les courriels reçus via Gmail IMAP. | Token JWT | `count: int`, `query: str`, `unread_only: bool` | `{"emails": [...]}` |
+| **GET** | `/api/emails/outbox`| Liste les courriels archivés dans le dossier sortant. | Token JWT | Aucun | `{"emails": [...]}` |
+| **GET** | `/api/emails/preview/{id}`| Prévisualise le rendu HTML d'un courriel archivé. | Ouvert | Path param `email_id` | Document HTML |
+| **GET** | `/api/downloads` | Liste les fichiers et e-books téléchargés. | Token JWT | Aucun | `{"downloads": [], "ebooks": []}` |
+| **GET** | `/downloads/*` | Téléchargement direct des fichiers générés (.xlsx, .md). | Ouvert | Chemin du fichier | Flux binaire |
+| **POST** | `/api/media/deezer/control` | Contrôle direct de Deezer (play, pause, next, volume). | Token JWT | `{"action": "play", "query": "..."}` | `{"status": "success"}` |
+| **GET** | `/api/media/deezer/status` | Retourne l'état du lecteur Deezer (titre, artiste, pochette).| Token JWT | Aucun | `{"status": "playing", "track": "..."}` |
+| **GET** | `/api/media/deezer/userscript`| Sert le script Tampermonkey pour le navigateur. | Ouvert | Aucun | Fichier JS |
+| **GET** | `/api/browser/extensions` | Énumère les extensions Chrome installées sur la machine. | Token JWT | Aucun | `[{"id": "...", "name": "Send to Kindle"}]` |
+| **POST** | `/api/browser/send-to-kindle` | Envoie un article web nettoyé sur la liseuse Kindle. | Token JWT | `{"url": "...", "title": "..."}` | `{"status": "sent"}` |
+| **POST** | `/api/browser/upload-and-send-to-kindle` | Upload multipart d'un EPUB/PDF vers Amazon Send to Kindle. | Token JWT | Multipart form-data (`file`) | `{"status": "uploaded"}` |
+| **GET** | `/api/browser/kindle-status` | Vérifie si la session Amazon Web est connectée. | Token JWT | Aucun | `{"connected": true}` |
+| **POST** | `/api/browser/open-kindle-login` | Ouvre Chrome sur la page de connexion Send to Kindle. | Token JWT | Aucun | `{"status": "opened"}` |
+| **POST** | `/api/open-chrome-profile` | Ouvre Chrome avec le profil persistant de Jarvis. | Token JWT | `{"url": "..."}` | `{"status": "opened"}` |
+| **GET** | `/api/supervision/overview` | Données complètes de supervision (tâches, logs, appareils). | Token JWT | Aucun | `{"actions": [], "subagents": []}` |
+| **GET** | `/api/supervision/windows` | Liste des fenêtres d'applications ouvertes à l'écran. | Token JWT | Aucun | `{"windows": [...]}` |
+| **POST** | `/api/task/directive` | Injecte une consigne en direct dans la tâche active. | Token JWT | `{"directive": "..."}` | `{"status": "adapted"}` |
+| **POST** | `/api/task/stop` | Interruption physique d'urgence de la tâche active. | Token JWT | `{"reason": "..."}` | `{"status": "stopped"}` |
+| **GET** | `/api/chat/history` | Historique de la messagerie multimodale écrite. | Token JWT | Aucun | `{"messages": [...]}` |
+| **POST** | `/api/chat/message` | Envoi d'un message texte + photo pour analyse vision. | Token JWT | Multipart (`message`, `image`) | `{"reply": "Markdown..."}` |
+| **POST** | `/api/chat/clear` | Efface l'historique de clavardage. | Token JWT | Aucun | `{"status": "cleared"}` |
+| **GET/POST**| `/api/live-model` | Lecture ou permutation à chaud du modèle vocal Live. | Token JWT | `{"model": "gemini-3.8-live-extended-thinking"}`| `{"current_model": "..."}` |
+| **GET/POST**| `/api/settings/paid-key` | État et verrouillage de l'encoche de clé payante. | Token JWT | `{"authorized": true}` | `{"paid_key_authorized": true}` |
+| **POST** | `/api/paid-consent` | Approbation ou refus d'une demande de coût payant. | Token JWT | `{"consent": true}` | `{"status": "acknowledged"}` |
+| **GET** | `/api/local-agent/status` | Statut de connexion et télémétrie du PC local Windows. | Token JWT | Aucun | `{"connected": true, "telemetry": {}}` |
+| **POST** | `/api/briefing/compile` | Déclenche la compilation du Morning Briefing. | Token JWT | Aucun | `{"status": "compiled"}` |
+| **GET** | `/api/briefing/today` | Récupère le Morning Briefing compilé du jour. | Token JWT | Aucun | `{"briefing": "..."}` |
+| **GET** | `/api/agenda/today` | Récupère les rendez-vous du jour en cache. | Token JWT | Aucun | `{"events": [...]}` |
+| **POST** | `/api/train/search` | Recherche de trajets ferroviaires et deep links directs. | Token JWT | `{"origin": "...", "destination": "...", "date": "..."}`| `{"segments": [], "deep_links": []}`|
+| **POST** | `/api/train/monitor` | Active la surveillance proactive n8n d'un train. | Token JWT | `{"train_number": "...", "date": "..."}` | `{"status": "monitoring"}` |
+| **POST** | `/api/train/alert` | Webhook de réception d'alerte de retard n8n. | Secret n8n | `{"train": "...", "delay_min": 15}` | `{"status": "broadcasted"}` |
+| **POST** | `/api/train/reserve-local` | Préparation de réservation multi-onglets sur PC local. | Token JWT | `{"segments": [...]}` | `{"status": "opened_locally"}` |
 
----
-
-### 7.13. Moteur Délibératif Multi-Agents Antigravity Transverse ("Système 2" Universel)
-- **Fichiers** : `services/agentic_dispatcher.py`, `services/transport_service.py`, `services/automation.py`, `services/console_monitor.py`, `services/email_service.py`, `services/download_service.py`, `services/briefing_service.py`, `services/unified_memory.py`, `services/architecture_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`.
-- **Outils exposés** : `rechercher_train` (`optimiser_avec_agent`), `generer_fichier_tableur` (`modele_avance_agent`), `triage_et_brouillon_email`, `curation_livre_synthese`, `auto_guerison_systeme`, `ask_deep_reasoning`.
-- **Vision & Rôle Fondamental** :
-  - Évolution majeure de l'agent Antigravity CLI sur le VPS Oracle Cloud (`gemini-3.1-pro-high` via OAuth2 Google AI Pro) : historiquement restreint au code brut ou au Deep Research, il devient le **moteur de raisonnement délibératif "Système 2" universel de J.A.R.V.I.S.**
-  - Jarvis ne se contente plus de réponses réflexes "Système 1" (Gemini Flash 1-shot) ou de scripts rigides : il **prend proactivement l'initiative** de mobiliser les agents Antigravity dès qu'une tâche nécessite de la réflexion, de l'optimisation fine, du croisement de données ou une valeur ajoutée supérieure.
-- **Règles Impératives d'Architecture** :
-  1. **Réactivité vocale immédiate (< 300 ms)** : confirmation orale instantanée par Aoede ("*Je m'en charge Pierre, je délègue l'analyse à nos agents...*").
-  2. **Exécution asynchrone non-bloquante (`asyncio.create_task`)** : la mission s'exécute en arrière-plan sur le VPS sans geler ni saturer le flux audio Live. Pierre continue à dialoguer normalement avec Aoede.
-  3. **Notification proactive multicanale** : annonce vocale de synthèse d'Aoede quand la mission s'achève (si session Live active), alerte complète sur le Telegram Stark Bot (`chatId: 6849746502`), et livrables dans `/artifacts/` ou `/downloads/`.
-- **Catalogue des 8 Missions Agentiques Spécialisées** :
-  1. **Mobilité & Transports Intelligents (`transport_optimizer`)** : analyse comparative multi-critères (trains de jour SJ Snabbtåg vs train de nuit SJ Nattåg, confort des compartiments couchettes, marges de sécurité aux correspondances à Stockholm Central ou Paris Gare de Lyon, risques statistiques de retard).
-  2. **Data Analyst & Modélisation de Tableurs (`spreadsheet_modeler`)** : génération autonome de scripts Python (`pandas`, `openpyxl`) pour concevoir de vrais modèles financiers et comptables avec formules dynamiques (`XLOOKUP`, `SOMME.SI.ENS`, marges, variances), ratios clés, graphiques vectoriels et exports `.xlsx` prêts dans `/downloads/`.
-  3. **Auto-Guérison Système & SRE Autonome (`system_healing`)** : déclenchement autonome sur exception critique récurrente ou erreur 500, inspection du code source dans `/home/opc/jarvis-core/`, diagnostic approfondi et écriture de patch correctif validé par tests.
-  4. **Triage Exécutif & Brouillons d'E-mails (`email_drafting`)** : analyse des fils de discussion complexes, extraction de pièces jointes PDF via `pypdf`, et rédaction autonome d'un projet de réponse argumenté (ton Stark Industries) sauvegardé dans `outbox_emails/`.
-  5. **Curation Culturelle & Guides de Lecture (`book_curation`)** : extraction de la table des matières et des thèses fondamentales de tout nouvel ouvrage téléchargé, rédaction d'une fiche exécutive de 2 pages "Synthèse & Clés de lecture", transmise directement sur la liseuse Kindle en bonus du livre complet.
-  6. **Briefing Matinal Stratégique Prédictif (`morning_briefing`)** : déclenchement à 6h45 pour une véritable préparation de mission croisant l'agenda, les documents récents, l'historique des contacts, les retards de transport temps réel (Trafikverket / SNCF) et une veille ciblée sur l'actualité IA de pointe.
-  7. **Consolidation Nocturne de la Mémoire (`memory_consolidation`)** : routine d'assainissement nocturne, détection de faits contradictoires ou obsolètes, fusion des représentations vectorielles dans Qdrant et Postgres, et structuration des liens logiques dans le Knowledge Graph.
-  8. **Synchronisation Continue de la Documentation (`doc_sync`)** : comparaison continue entre le code réel des routeurs/services et `ARCHITECTURE_COMPLETE_JARVIS.md`, avec mise à jour autonome de la documentation dès qu'un endpoint ou une capacité évolue.
-  9. **Routage Cognitif Dynamique en 3 Tiers & Résilience Quota 429** : chaque mission résout son intensité cognitive via `resolve_cognitive_tier` :
-     - **TIER 1 (Flash low, 1-3s)** : `doc_sync`, `book_curation`, `email_simple`, `log_check`.
-     - **TIER 2 (Flash high, 4-10s)** : `transport_optimizer`, `spreadsheet_modeler`, `email_drafting`, `memory_consolidation`, requêtes libres standard.
-     - **TIER 3 (Pro high, 20-60s)** : `system_healing`, `deep_research`, `code_refactoring`.
-     - **Bascule Quota-Aware (429)** : bascule transparente instantanée de Tier 3 vers Tier 2 (`gemini-3.8-flash-high`) avec notification vocale Aoede et alerte Telegram sans blocage de mission.
-
----
-
-## 8. MATRICE DES ENDPOINTS API REST & CONTRATS WEBSOCKETS
-
-### 8.0. Architecture Modulaire des Routeurs (`routers/` & `core/`)
-Le serveur principal `App.py` est allégé (< 190 lignes) et instancie l'application FastAPI, configure les middlewares, initialise le cycle de vie (`startup`/`shutdown`) et monte les sous-routeurs étanches :
-- **`routers/voice.py`** : Canal vocal WebSocket `/ws` (Gemini Live full-duplex, streaming PCM bidirectionnel, barge-in, gestion de quota gratuit/payant, injection dynamique de mémoire long-terme).
-- **`routers/local_agent.py`** : WebSocket `/ws/local-agent` et statut `/api/local-agent/status` pour le pilotage du PC Windows de Pierre.
-- **`routers/chat.py`** : Endpoints `/api/chat/*` pour la messagerie écrite multimodale et l'analyse visuelle de photos/captures.
-- **`routers/media.py`** : Endpoints Deezer Web Player (`/api/media/deezer/*`) et ponts multimédia.
-- **`routers/browser.py`** : Endpoints de navigation, extensions Chrome, Send to Kindle, téléchargements et gestion des emails (`/api/emails/*`, `/api/send-email`).
-- **`routers/supervision.py`** : Endpoints `/api/supervision/*` (overview, fenêtres ouvertes) et injection de directives/arrêts d'urgence (`/api/task/*`).
-- **`routers/briefing.py`** : Endpoints du Morning Briefing (`/api/briefing/*`) et de l'agenda synchronisé (`/api/agenda/*`).
-- **`routers/transport.py`** : Endpoints de mobilité et transports ferroviaires (`/api/train/search`, `/api/train/monitor`, `/api/train/alert`, `/api/train/reserve-local`).
-- **`routers/settings.py`** : Configuration dynamique (`/api/live-model`, `/api/settings/paid-key`, `/api/paid-consent`, `/api/tunnel-info`).
-- **`core/shared_state.py`** : État partagé, clients API Gemini, gestion des exceptions de quota, diffusion temps réel.
-- **`core/tools/declarations.py`** : Déclarations formelles des schémas d'outils Gemini Live Function Calling.
-- **`core/tools/dispatcher.py`** : Routeur de dispatching asynchrone non-bloquant des appels d'outils vers les services métier.
-
-### 8.1. Endpoints HTTP / REST
-
-
-| Méthode | Route | Description & Rôle | Authentification |
-| :--- | :--- | :--- | :--- |
-| **GET** | `/` | Sert l'application PWA principale (`index.html`) | Ouvert |
-| **POST** | `/api/auth` | Authentification maître par mot de passe & émission JWT | Mot de passe |
-| **GET** | `/api/auth-qr` | Génération d'un ticket unique de pairage QR Code éphémère (TTL 5 min Redis) | Ouvert |
-| **POST** | `/api/auth-qr` | Enregistrement d'un nouvel appareil via ticket QR Code unique (émission JWT) | Ticket QR |
-| **POST** | `/api/auth/revoke` | Révocation immédiate d'un token JWT ou d'un appareil via Redis | Token |
-| **GET** | `/api/verify` | Vérifie la validité du token JWT (avec migration transparente si ancien token) | Token |
-| **GET** | `/api/tunnel-info` | Retourne les URLs du tunnel Cloudflare et l'IP LAN | Token |
-| **POST** | `/api/send-email` | Envoi d'un courriel (format Stark Industries ou libre) | Token |
-| **GET** | `/api/emails/inbox` | Lecture des e-mails reçus via IMAP | Token |
-| **GET** | `/api/emails/outbox` | Liste des courriels archivés dans le dossier sortant | Token |
-| **GET** | `/api/downloads` | Liste des fichiers téléchargés sur le serveur | Token |
-| **GET** | `/downloads/*` | Téléchargement direct des fichiers générés (tableurs .xlsx, présentations .pptx) | Ouvert |
-| **POST** | `/api/media/deezer/control` | Contrôle direct de Deezer (play, pause, next, volume) | Token |
-| **GET** | `/api/media/deezer/status` | Retourne l'état du lecteur Deezer (titre, artiste, pochette) | Token |
-| **GET** | `/api/media/deezer/userscript` | Fournit le script Tampermonkey pour le navigateur | Ouvert |
-| **GET** | `/api/browser/extensions` | Liste les extensions Chrome installées sur la machine | Token |
-| **POST** | `/api/browser/send-to-kindle`| Envoie une page web nettoyée sur la liseuse Kindle | Token |
-| **POST** | `/api/browser/upload-and-send-to-kindle` | Upload multipart d'un EPUB/PDF vers Amazon Send to Kindle | Token |
-| **GET** | `/api/browser/kindle-status` | Vérifie si la session Amazon Web est connectée | Token |
-| **GET** | `/api/supervision/overview` | Données complètes de supervision (tâches, logs, devices) | Token |
-| **GET** | `/api/supervision/windows` | Liste des fenêtres d'applications ouvertes à l'écran | Token |
-| **POST** | `/api/task/directive` | Injection d'une consigne en direct dans la tâche de code | Token |
-| **POST** | `/api/task/stop` | Interruption d'urgence de la tâche active | Token |
-| **GET** | `/api/chat/history` | Historique de la messagerie multimodale écrite | Token |
-| **POST** | `/api/chat/message` | Envoi d'un message texte + photo pour analyse vision | Token |
-| **POST** | `/api/chat/clear` | Effacement de l'historique de chat | Token |
-| **GET/POST**| `/api/live-model` | Lecture et permutation dynamique du modèle vocal Live | Token |
-| **GET/POST**| `/api/settings/paid-key` | État et verrouillage de l'encoche de clé payante | Token |
-| **POST** | `/api/paid-consent` | Approbation/refus d'une requête de coût payant | Token |
-| **GET** | `/api/local-agent/status` | Statut de connexion du PC local physique de Pierre | Token |
-| **POST** | `/api/briefing/compile` | Compilation et mise en cache du Morning Briefing (déclenché par cron n8n à 07:00) | Token |
-| **GET** | `/api/briefing/today` | Récupération instantanée du Morning Briefing compilé du jour | Token |
-| **GET** | `/api/agenda/today` | Consultation des rendez-vous d'agenda du jour mis en cache | Token |
-| **POST** | `/api/train/search` | Recherche d'itinéraires et deep links trains (France & Suède) | Token |
-| **POST** | `/api/train/monitor` | Déclenchement de la surveillance proactive d'un train via n8n | Token |
-| **POST** | `/api/train/alert` | Webhook de réception d'alerte perturbation ferroviaire n8n | Ouvert (Secret) |
-| **POST** | `/api/train/reserve-local` | Préparation de réservation sur le PC local Windows | Token |
-
-### 8.2. Canaux WebSockets
-
-#### 1. Canal Voix Principal (`/ws`)
-- **Rôle** : Liaison full-duplex streaming audio entre le microphone/haut-parleur du client et Gemini Live.
+### 9.2. Contrat WebSocket Audio Gemini Live (`/ws`)
+- **URL** : `wss://jarvis.signalcraftapps.com/ws?token={jwt_token}`
 - **Messages montants (Client -> Serveur)** :
-  - Chunks audio PCM (`realtime_input`).
-  - Événements de contrôle (`mic_mute`, `mic_unmute`).
+  - Chunks audio micro : `{"realtime_input": {"media_chunks": [{"data": "base64_pcm...", "mime_type": "audio/pcm"}]}}`
+  - Contrôle micro : `{"type": "mic_mute"}` / `{"type": "mic_unmute"}`
 - **Messages descendants (Serveur -> Client)** :
-  - Chunks audio Gemini Live.
-  - Changements d'état de l'avatar (`status` : idle, listening, speaking, thinking, coding, browsing, kindle, music).
-  - Événements d'outils (`tool_start`, `task_progress_oral`, `task_completed`, `task_cancelled`).
-  - Demandes d'autorisation payante (`paid_consent_request`).
-  - Mises à jour de capture d'écran du navigateur (`browser_update`).
+  - Chunks audio modèle : `{"audio": "base64_pcm..."}`
+  - Changement d'état de l'avatar : `{"type": "status", "state": "thinking|speaking|coding|browsing...", "msg": "..."}`
+  - Supervision & Sous-agents : `{"type": "supervision_update", "overview": {...}}`, `{"type": "subagent_spawn", "agent": {...}}`, `{"type": "subagents_update", "agents": [...]}`
+  - Mise à jour navigateur : `{"type": "browser_update", "url": "...", "title": "...", "screenshot": "..."}`
+  - Demande d'arbitrage payant : `{"type": "paid_consent_request", "action": "...", "cost_est": "~0.03 $"}`
+  - Annonce textuelle discrète : `{"type": "jarvis_announcement", "text": "...", "voice": false}`
 
-#### 2. Canal Relais Agent Local PC (`/ws/local-agent`)
-- **Rôle** : Dialogue permanent entre le VPS Cloud et le script `jarvis_local_agent.py` sur le PC Windows.
-- **Fonctionnalités** : Ordres d'exécution de commandes système, télémétrie matérielle et retours d'exécution.
+### 9.3. Contrat WebSocket Relais Agent Local PC (`/ws/local-agent`)
+- **URL** : `wss://jarvis.signalcraftapps.com/ws/local-agent?token={jwt_token}`
+- **Messages VPS -> PC Local** :
+  ```json
+  {
+    "req_id": "rpc_98765",
+    "action": "launch_app",
+    "params": {"app_name": "vscode"}
+  }
+  ```
+- **Messages PC Local -> VPS** :
+  ```json
+  {
+    "req_id": "rpc_98765",
+    "result": {
+      "status": "success",
+      "pid": 14208,
+      "message": "Visual Studio Code lancé avec succès"
+    }
+  }
+  ```
+- **Heartbeat & Télémétrie périodique (toutes les 15 s)** :
+  ```json
+  {
+    "type": "heartbeat",
+    "cpu_percent": 12.4,
+    "ram_percent": 48.2,
+    "battery": {"percent": 98, "power_plugged": true}
+  }
+  ```
+
+### 9.4. Contrat WebSocket Deezer Controller (`127.0.0.1:8765`)
+- Pont bidirectionnel local avec l'onglet Chrome `deezer.com` injecté par Tampermonkey.
+- Schéma d'ordre : `{"action": "play|pause|next|prev|shuffle|volume", "query": "...", "volume": 75}`.
+- Schéma d'état retourné : `{"status": "playing", "track": "Around the World", "artist": "Daft Punk", "album": "Homework", "cover": "https://..."}`.
 
 ---
 
-## 9. INTERFACE UTILISATEUR, PWA & HUD MOBILE
+## 10. CYCLE DE VIE, SUPERVISION & ÉVÉNEMENTS DES SOUS-AGENTS
 
-### 9.1. Principes de Design & Ergonomie
-L'interface de Jarvis a été développée selon des standards graphiques d'inspiration cyberpunk et Stark Industries :
-- **Dark Mode Profond** : Palette articulée autour des noirs profonds (`#070B14`, `#0B0F19`), de bleus cyan électriques (`#38bdf8`, `#0284c7`) et d'accents violets/ambrés.
-- **Avatar Vectoriel SVG Animé** : Tête holographique cyberpunk dotée de pupilles réactives, d'un visualiseur audio et d'un anneau énergétique tournant. Les filtres de lueur SVG changent dynamiquement de couleur selon l'activité (cyan pour le repos, violet pour la réflexion, vert pour le code, ambre pour Deezer, indigo pour Kindle).
-- **Halo Audio Réactif** : Utilisation de la Web Audio API pour mesurer le volume en temps réel et pulser le réacteur proportionnellement à l'intensité de la voix.
+### 10.1. Cycle de Vie d'un Sous-Agent
+Dans le cadre de missions Système 2 ou Deep Research, Jarvis instancie des sous-agents spécialisés via `spawn_subagent` :
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│ [●] STARK AI CORE     V 3.0 AUTONOMOUS AGENT      [KINDLE] [CHAT] [●]  │
-├────────────────────────────────────────────────────────────────────────┤
-│  ⚡ CLÉ PAYANTE : [  ON  ] 🔒 VERROUILLÉE                              │
-├────────────────────────────────────────────────────────────────────────┤
-│                                                                        │
-│                                ( ✦ )                                   │
-│                        AVATAR HOLOGRAPHIQUE                            │
-│                        Réacteur Arc Animé                              │
-│                                                                        │
-│                [ ÉTAT : DÉVELOPPEMENT EN COURS... ]                    │
-│                                                                        │
-├────────────────────────────────────────────────────────────────────────┤
-│  ACTIVITÉ RÉCENTE :                                                    │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │ ⚡ Implémentation du code dans main.py...                         │  │
-│  │ Modèle : Gemini 3.8 Flash (High) | Clé Payante (~0.005 $)        │  │
-│  │ [ STOP ] [ GUIDER EN DIRECT : "Ajoute un bouton de retour..." ]  │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-├────────────────────────────────────────────────────────────────────────┤
-│  LIEN ACTIF : [ OUVRIR LE TRAIN PARIS-LYON 14H08 ]                     │
-├────────────────────────────────────────────────────────────────────────┤
-│   [ 🎙️ MICROPHONE ACTIF ]              [ ⚙️ SUPERVISION COMPLÈTE ]     │
-└────────────────────────────────────────────────────────────────────────┘
+                  ┌───────────────────────────────┐
+                  │       SPAWN_SUBAGENT          │
+                  │ (Attribution ID, rôle, tâche) │
+                  └───────────────┬───────────────┘
+                                  │
+                                  ▼
+                  ┌───────────────────────────────┐
+                  │       UPDATE_SUBAGENT         │
+                  │ (Progression, logs, métriques)│
+                  └───────────────┬───────────────┘
+                                  │
+                                  ▼
+                  ┌───────────────────────────────┐
+                  │      COMPLETE_SUBAGENT        │
+                  │ (Artefact produit, statut OK) │
+                  └───────────────┬───────────────┘
+                                  │
+                                  ▼
+                  ┌───────────────────────────────┐
+                  │     CLEAR_ALL_SUBAGENTS       │
+                  │ (Purge et archivage en fin)   │
+                  └───────────────────────────────┘
 ```
 
-### 9.2. Composants & Modals Interactifs
-- **Modal de Supervision Globale** : Affiche les actions en cours d'exécution, l'historique des requêtes API, la répartition des coûts, l'état de présence des machines (PC local, Mobile) et les fenêtres Windows actives.
-- **Drawer Messagerie Multimodale** : Fenêtre latérale permettant de converser par écrit, d'uploader des photos par glisser-déposer ou via la caméra du smartphone, avec rendu Markdown complet et zoom sur les images.
-- **Modal Send to Kindle Dédié** : Zone de dépôt rapide de fichiers EPUB/PDF pour téléversement direct vers la liseuse de Pierre avec statut de connexion Amazon en direct.
-- **Modal d'Arbitrage Économique** : Dialogue d'alerte s'ouvrant automatiquement dès qu'une action payante requiert un consentement explicite.
+### 10.2. Diffusion Temps Réel & Structure des Événements
+Chaque transition d'état d'un sous-agent émet un événement WebSocket vers le frontend :
+```json
+{
+  "type": "subagent_spawn",
+  "agent": {
+    "agent_id": "worker_incubators_174000",
+    "name": "Ouvrier 1 — Pépinières & Startups",
+    "role": "Prospecteur Régional",
+    "activity": "research",
+    "task": "Cartographie des incubateurs à São Paulo",
+    "model": "gemini-3.1-pro-high",
+    "status": "running",
+    "progress": 35,
+    "started_at": 1740001200
+  }
+}
+```
+
+### 10.3. Visualisation dans le HUD Mobile
+Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans le modal de supervision du HUD, avec indicateurs lumineux de progression, modèle sollicité et statut en direct.
 
 ---
 
-## 10. ANALYSE CRITIQUE : FORCES, DETTE TECHNIQUE & PISTES D'AMÉLIORATION
+## 11. INTERFACE UTILISATEUR, PWA & HUD MOBILE STARK INDUSTRIES
 
-> *Cette section met en lumière les points névralgiques du système afin de permettre à une intelligence artificielle d'évaluation de formuler des recommandations d'évolution ciblées et pertinentes.*
+### 11.1. Principes Ergonomiques & Design System Cyberpunk
+- **Identité Visuelle** : Palette sombre profonde (`#070B14`, `#0B0F19`), cyan électrique Stark (`#38bdf8`, `#0284c7`), accents ambre et violet néon.
+- **Typographie** : Polices modernes géométriques sans-serif d'inspiration high-tech.
+- **Responsive PWA** : Conçue pour une expérience native sur smartphone (iOS Safari / Android Chrome) et desktop avec support PWA (`manifest.json`, installation sur écran d'accueil).
+- **Version affichée dans l'en-tête** : `V 5.2.0 EXHAUSTIVE SYSTEM SPECIFICATIONS & DISTRIBUTED CORE`.
 
-### 10.1. Forces Majeures de l'Architecture Actuelle
-1. **Résilience et Dégradation Gracieuse** : Presque aucun composant n'est un point de défaillance unique. Si Redis tombe, la RAM prend le relais. Si Qdrant est hors-ligne, SQLite assure la mémoire. Si Browser-Use échoue, Playwright prend le relais.
-2. **Hybridation Cloud / Edge Réussie** : La séparation claire entre le serveur Cloud (pensée, mémoire, routage) et l'agent local Windows (mains physiques, applications locales, audio) offre le meilleur des deux mondes.
-3. **Exécution Asynchrone Non-Bloquante** : La capacité de Jarvis à répondre immédiatement à la voix tout en lançant des développements lourds en arrière-plan procure une expérience utilisateur d'une fluidité exceptionnelle.
-4. **Garde-Fous Économiques et de Sécurité** : Le principe d'impossibilité physique sur la clé payante et l'interdiction absolue de procéder au paiement automatique dans les paniers e-commerce rendent le système sûr et prévisible.
-5. **Raisonnement Délibératif Système 2 & Multi-Agents Universel (`DeepThinkingEngine`)** :
-   - Découplage de la réflexion approfondie en 3 phases spécialisées (Prospecteur, Critique, Synthèse) utilisable de façon transverse pour le code, la recherche stratégique, les Google Slides et les benchmarks techniques.
-   - Génération décorrélée des artefacts isolés sauvegardés dans `/artifacts/` sans pollution de mémoire vive.
-   - Interception robuste du quota 5h Antigravity CLI avec bascule propre et annonce vocale Aoede.
-   - Règle d'initiative avec confirmation obligatoire garantissant que Jarvis propose la réflexion approfondie pour les tâches lourdes sans jamais engager de traitement imprévu sans validation de Pierre.
+### 11.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
+- **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
+- **Réactivité Sonore Web Audio API** : Mesure l'amplitude du signal micro et audio en temps réel pour faire pulser la lueur du réacteur proportionnellement à l'intensité de la voix.
+
+### 11.3. Machine à États Visuelle
+L'avatar adapte ses filtres de lueur SVG et ses anneaux rotatifs selon l'état système :
+- `idle` : Cyan doux pulsant lentement (repos, écoute passive).
+- `listening` : Cyan électrique vif réactif à la voix de Pierre.
+- `speaking` : Pulsation au rythme de la voix Aoede.
+- `thinking` : Violet délibératif pulsant rapidement (moteur Système 2).
+- `coding` : Vert matrice (génération de code ou Antigravity CLI).
+- `browsing` : Bleu cobalt (navigation autonome Browser-Use / Chrome CDP).
+- `kindle` : Indigo feutré (transfert ou lecture d'e-book).
+- `music` : Ambre doré vibrant (Deezer Web Player actif).
+- `media` : Pourpre profond (lecture cinéma Stremio).
+
+### 11.4. Tiroirs, Modals Interactifs & Vues Dédiées
+1. **Modal de Supervision Globale** : Vue synoptique affichant les actions en cours, les sous-agents actifs, la télémétrie matérielle physique du PC Windows, les fenêtres d'applications ouvertes et la consommation des clés API.
+2. **Drawer Messagerie Multimodale (Chat Drawer)** : Tiroir coulissant permettant d'échanger par écrit, de glisser-déposer des captures d'écran ou de photographier une panne avec la caméra du smartphone pour analyse visuelle immédiate par Gemini 3.8 Flash.
+3. **Modal Send to Kindle Dédié** : Zone de glisser-déposer pour téléversement direct de fichiers EPUB/PDF vers la liseuse de Pierre avec statut de connexion Amazon en direct.
+4. **Modal d'Arbitrage Économique** : Fenêtre d'alerte s'ouvrant automatiquement dès qu'une action payante requiert un consentement explicite.
+5. **Modal de Pairage QR Code** : Affichage du QR code à usage unique pour enrôlement instantané d'un nouveau terminal mobile.
 
 ---
 
-*Document généré pour le projet J.A.R.V.I.S. Core — Stark Industries.*
+## 12. ANALYSE CRITIQUE : FORCES, DETTE TECHNIQUE & PISTES D'AMÉLIORATION
+
+### 12.1. Forces Majeures de l'Architecture Actuelle
+1. **Résilience et Dégradation Gracieuse Systémique** : Zéro point de défaillance unique (SPOF). Si Redis tombe, la RAM prend le relais. Si Qdrant est inaccessible, SQLite assure la recherche textuelle. Si le PC local est éteint, le Cloud headless prend le relais. Si le quota 3.1 Pro est atteint, le Tier 2 Flash-high finalise la tâche.
+2. **Hybridation Cloud / Edge Réussie** : Répartition optimale entre le VPS Cloud toujours actif (cerveau permanent, RAG, sessions Gemini Live) et l'agent local Windows 11 (mains physiques, applications locales, audio, Chrome CDP).
+3. **Réactivité Vocale Non-Bloquante (< 300 ms)** : Confirmation orale instantanée d'Aoede couplée à l'exécution de fond, éliminant tout sentiment de latence pour l'utilisateur.
+4. **Garde-Fous Économiques et Financiers Inviolables** : Impossibilité physique d'engager des frais sans encoche active et arrêt strict avant toute transaction bancaire.
+5. **Raisonnement Délibératif Système 2 Universel** : Pipeline multi-agents complet (Prospecteur, Critique, Synthèse) capable d'adresser aussi bien le code, les transports, les Google Slides que les audits stratégiques.
+
+### 12.2. Points d'Attention & Dette Technique
+1. **Gestion de Concurrence sur Profils Chrome Locaux** : Lorsque Chrome CDP est sollicité alors que Pierre navigue manuellement, des verrous de profil temporaires peuvent survenir si Chrome n'est pas lancé avec le flag de débogage distant adéquat.
+2. **Volumétrie des Logs en Longue Session** : Le fichier `jarvis_agent.log` sur Windows nécessite la mise en place d'une rotation automatique des journaux (`RotatingFileHandler`).
+3. **Dépendance Réseau Cloudflare** : Bien que le tunnel Zero Trust soit exceptionnellement stable, un filtrage d'entreprise sur le port 7844 impose le repli Wi-Fi local.
+
+### 12.3. Pistes d'Évolution Stratégique & Prochaines Étapes
+1. **Anticipation Proactive d'Agenda & Trajets** : Déclenchement automatique de la recherche de trains et de l'optimisation des correspondances dès qu'un rendez-vous extérieur est créé sur Google Calendar.
+2. **Pont Domotique Home Assistant** : Extension du catalogue d'outils pour piloter les luminaires et thermostats connectés de Pierre.
+3. **Modèles Locaux On-Premise de Secours (Ollama / Llama 3)** : Intégration d'un LLM local sur le PC Windows pour garantir des fonctions vocales de base même en cas de coupure internet totale.
+
+---
+
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.2.0.*
