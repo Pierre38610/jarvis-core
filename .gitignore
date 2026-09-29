@@ -44,10 +44,12 @@ downloads/
 .jarvis_shopping_profile/
 
 # Testing & QA temp
+.cache/
 .pytest_cache/
 .pytest_temp/
 pytest-cache-files-*/
 tests/_test_scratch/
+tests/scratch_healing/
 my-project/
 
 artifacts/

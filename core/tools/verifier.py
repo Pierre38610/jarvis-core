@@ -129,11 +129,11 @@ async def verify_calendar_event(
     titre: str,
     date_debut: str,
     event_id: Optional[str] = None,
-) -> Tuple[bool, str]:
+) -> Tuple[bool, str, Optional[str]]:
     """Relit l'événement créé dans le cache ou le service d'agenda pour confirmer son inscription.
     
     Returns:
-        (verified, evidence_or_error)
+        (verified, evidence_or_error, event_id)
     """
     from services.cache import cache_service
     cached_agenda = await cache_service.get("jarvis:agenda:today")
@@ -148,13 +148,14 @@ async def verify_calendar_event(
         ev_title = str(ev.get("titre") or ev.get("summary") or "").strip().lower()
         ev_id = str(ev.get("id") or ev.get("event_id") or "")
         if (event_id and ev_id == str(event_id)) or (t_clean and t_clean in ev_title):
-            return True, f"Événement '{titre}' ({date_debut}) vérifié dans l'agenda"
+            matched_id = ev_id or event_id
+            return True, f"Événement '{titre}' ({date_debut}) vérifié dans l'agenda", matched_id
 
     # Si l'event_id est retourné par l'API mais pas encore dans le cache du jour
     if event_id and str(event_id).strip():
-        return True, f"Événement '{titre}' ID {event_id} confirmé par l'API Agenda"
+        return True, f"Événement '{titre}' ID {event_id} confirmé par l'API Agenda", str(event_id)
 
-    return False, f"Impossible de retrouver l'événement '{titre}' dans l'agenda après écriture."
+    return False, f"Impossible de retrouver l'événement '{titre}' dans l'agenda après écriture.", None
 
 
 def verify_saved_memory(

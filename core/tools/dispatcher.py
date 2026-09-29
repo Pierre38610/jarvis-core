@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 import time
+from typing import Any, Optional
 
 from google.genai import types
 
@@ -1395,30 +1396,37 @@ async def _execute_dispatch_tool(
             )
         )
 
-    # ─── generer_presentation ─────────────────────────────────────────────────
+    # ─── generate_presentation / generer_presentation ─────────────────────────
     elif name in ("generate_presentation", "generer_presentation"):
         from services.slides_service import slides_service
 
-        raw_titre = (args.get("titre") or "Présentation").strip()
+        # ── Extraction des nouveaux paramètres enrichis ──────────────────────
+        raw_titre = (args.get("titre") or args.get("sujet") or "Présentation").strip()
         sujet = (args.get("sujet") or raw_titre).strip()
-        theme = (args.get("theme") or "stark").strip().lower()
-        slides = args.get("slides") or []
+        consignes = (args.get("consignes") or sujet).strip()
+        nb_slides_raw = args.get("nb_slides")
+        nb_slides = int(nb_slides_raw) if nb_slides_raw is not None and str(nb_slides_raw).isdigit() else None
+        public = (args.get("public") or "").strip() or None
+        ton = (args.get("ton") or args.get("theme") or "stark").strip().lower()
+        langue = (args.get("langue") or "fr").strip()
+        recherche_approfondie = bool(args.get("recherche_approfondie") or args.get("deep_research") or False)
+        slides_legacy = args.get("slides") or []
 
         # Enregistrement de l'action dans supervision_service et slides_service
         supervision_service.start_action(
             "generer_presentation",
             f"Présentation : {raw_titre}",
             "generer_presentation",
-            f"Recherche et conception de la présentation '{raw_titre}' (thème: {theme})",
-            "Slides Intelligence Engine",
+            f"Conception dynamique de la présentation '{raw_titre}' (thème: {ton})",
+            "Slides Intelligence Engine v5.15",
             api_type="free",
             api_label="Local n8n",
             cost_est="0.00 $"
         )
         supervision_service.update_action_progress(
             "generer_presentation",
-            "Étape 1/4 : Structuration du plan",
-            f"Conception du fil conducteur narratif et des axes thématiques pour '{raw_titre}'"
+            "Étape 1/4 : Génération de l'outline LLM",
+            f"Création du plan narratif dynamique pour '{raw_titre}'"
         )
         await broadcast_supervision()
 
@@ -1426,101 +1434,129 @@ async def _execute_dispatch_tool(
             "active": True,
             "action_id": "generer_presentation",
             "topic": raw_titre,
-            "step": "Étape 1/4 : Structuration du plan directeur",
-            "details": f"Élaboration de l'architecture des diapositives sur {sujet}",
+            "step": "Étape 1/4 : Génération de l'outline LLM",
+            "details": f"Élaboration de l'architecture dynamique des diapositives sur {sujet}",
             "started_at": time.time(),
-            "slides_count": len(slides),
+            "slides_count": nb_slides or 0,
             "presentation_url": ""
         }
 
         await websocket.send_text(json.dumps({
             "type": "jarvis_announcement",
-            "text": f"Recherche et structuration de la présentation '{raw_titre}'...",
+            "text": f"Génération de l'outline et conception de la présentation '{raw_titre}'...",
             "voice": False
         }))
         await websocket.send_text(json.dumps({
             "type": "status",
             "state": "document",
-            "msg": f"Présentation — Recherche sur {raw_titre}...",
+            "msg": f"Slides — Outline IA sur : {raw_titre}...",
             "task": f"Slides : {raw_titre}",
-            "engine": "Slides Intelligence",
-            "model": "Deep Research Engine",
+            "engine": "Slides Intelligence v5.15",
+            "model": "Gemini Draft Engine",
             "api_type": "free",
             "api_label": "Local n8n"
         }))
 
         _t_init = raw_titre
-        _sujet = sujet
-        _th = theme
-        _sl_init = list(slides)
+        _sjt = sujet
+        _cons = consignes
+        _nb = nb_slides
+        _pub = public
+        _ton = ton
+        _lang = langue
+        _deep = recherche_approfondie
+        _sl_legacy = list(slides_legacy)
         _sess = session
         _ws = websocket
 
-        async def _run_slides_bg(_tit=_t_init, _sjt=_sujet, _thm=_th, _sl=_sl_init, _s=_sess, _w=_ws):
+        async def _run_slides_bg(
+            _tit=_t_init, _sjt=_sjt, _cons=_cons, _nb=_nb, _pub=_pub, _thm=_ton,
+            _lang=_lang, _deep=_deep, _sl=_sl_legacy, _s=_sess, _w=_ws
+        ):
+            effective_titre = _tit
             try:
                 from services.automation import executer_action_externe as n8n_exec
                 from services.automation import build_slides_payload
 
-                # 1. Étape 1 : Structuration du plan directeur
-                slides_service._current_task["step"] = "Étape 1/4 : Structuration du plan directeur"
-                slides_service._current_task["details"] = f"Conception de la structure narrative pour {_tit}"
+                # ── Étape 1 : Outline LLM dynamique ou outline hérité ──────────
+                slides_service._current_task["step"] = "Étape 1/4 : Génération de l'outline LLM"
+                slides_service._current_task["details"] = f"Conception du plan narratif pour {_tit}"
                 supervision_service.update_action_progress(
                     "generer_presentation",
-                    "Étape 1/4 : Structuration du plan",
-                    f"Conception du plan narratif en diapositives structurées sur {_sjt}"
+                    "Étape 1/4 : Outline LLM",
+                    f"Rédaction du plan sur {_sjt} selon les consignes vocales"
                 )
                 await broadcast_supervision()
-                await asyncio.sleep(1.2)
+                await asyncio.sleep(0.5)
 
-                # 2. Étape 2 : Recherche documentaire approfondie & Chiffres clés
-                slides_service._current_task["step"] = "Étape 2/4 : Recherche documentaire & Chiffres clés"
-                slides_service._current_task["details"] = f"Recherche de données factuelles, métriques et actualités vérifiées sur {_sjt}"
-                supervision_service.update_action_progress(
-                    "generer_presentation",
-                    "Étape 2/4 : Recherche & Chiffres clés",
-                    f"Agrégation des faits marquants, jalons historiques et métriques d'impact sur {_sjt}"
-                )
-                await broadcast_supervision()
+                # Recherche approfondie si demandée
+                research_ctx = ""
+                if _deep:
+                    try:
+                        from services.deep_research_service import deep_research_service
+                        research_ctx = await deep_research_service.quick_search(_sjt)
+                    except Exception as e:
+                        print(f"[Slides BG] deep research context error: {e}")
 
-                # Si les slides n'étaient pas spécifiées ou incomplètes, le moteur produit la recherche experte
-                if not _sl or len(_sl) < 2:
-                    gen_titre, gen_sub, gen_slides = await slides_service.generate_deep_research_slides(
-                        sujet=_sjt, titre=_tit, theme=_thm
-                    )
-                    effective_titre = gen_titre
-                    effective_sub = gen_sub
-                    effective_slides = gen_slides
+                if _sl and len(_sl) >= 2:
+                    # Outline hérité (compatibilité ascendante avec ancienne API)
+                    outline = {"title": _tit, "subtitle": _cons, "theme": _thm, "slides": _sl}
                 else:
-                    effective_titre = _tit
-                    effective_sub = f"Dossier stratégique et analyse d'impact sur {_sjt}"
-                    effective_slides = _sl
+                    # Génération dynamique via LLM
+                    outline = await slides_service.generate_presentation_outline(
+                        sujet=_sjt,
+                        consignes=_cons,
+                        nb_slides=_nb,
+                        public=_pub,
+                        ton=_thm,
+                        langue=_lang,
+                        recherche_approfondie=_deep,
+                        research_context=research_ctx,
+                    )
 
-                await asyncio.sleep(1.2)
+                effective_titre = outline.get("title") or _tit
+                effective_sub = outline.get("subtitle") or f"Présentation générée par J.A.R.V.I.S. sur {_sjt}"
+                effective_slides = outline.get("slides") or []
+                effective_theme = outline.get("theme") or _thm
+                expected_outline_count = len(effective_slides)
 
-                # 3. Étape 3 : Tri et synthèse des informations
-                slides_service._current_task["step"] = "Étape 3/4 : Tri et synthèse des informations"
-                slides_service._current_task["details"] = f"Sélection des arguments clés et mise en valeur des métriques pour {len(effective_slides)} diapositives"
+                slides_service._current_task["slides_count"] = expected_outline_count
+
+                # ── Étape 2 : Recherche & Enrichissement ─────────────────────
+                slides_service._current_task["step"] = "Étape 2/4 : Enrichissement du contenu"
+                slides_service._current_task["details"] = f"{expected_outline_count} diapositives générées — enrichissement en cours"
                 supervision_service.update_action_progress(
                     "generer_presentation",
-                    "Étape 3/4 : Tri & Synthèse",
-                    f"Sélection des arguments percutants ({len(effective_slides)} slides) et notes d'orateur"
+                    "Étape 2/4 : Enrichissement",
+                    f"{expected_outline_count} slides préparées pour {_sjt}"
                 )
                 await broadcast_supervision()
                 await asyncio.sleep(1.0)
 
-                # 4. Étape 4 : Mise en page esthétique & Envoi Google Slides via n8n
-                slides_service._current_task["step"] = "Étape 4/4 : Mise en page Google Slides"
-                slides_service._current_task["details"] = f"Application du thème {_thm} et génération sur Google Slides"
+                # ── Étape 3 : Mise en page ────────────────────────────────────
+                slides_service._current_task["step"] = "Étape 3/4 : Mise en page visuelle"
+                slides_service._current_task["details"] = f"Application du thème {effective_theme} et construction des layouts"
                 supervision_service.update_action_progress(
                     "generer_presentation",
-                    "Étape 4/4 : Génération Google Slides",
-                    f"Application de la charte visuelle (thème {_thm}) et création dans Google Slides"
+                    "Étape 3/4 : Layouts & Thème",
+                    f"Application de la charte visuelle (thème {effective_theme}) — {expected_outline_count} slides"
+                )
+                await broadcast_supervision()
+                await asyncio.sleep(0.8)
+
+                # ── Étape 4 : Envoi via n8n Google Slides ─────────────────────
+                slides_service._current_task["step"] = "Étape 4/4 : Création Google Slides"
+                slides_service._current_task["details"] = f"Envoi vers Google Slides via n8n"
+                supervision_service.update_action_progress(
+                    "generer_presentation",
+                    "Étape 4/4 : Google Slides",
+                    f"Création dans Google Slides ({expected_outline_count} slides, thème {effective_theme})"
                 )
                 await broadcast_supervision()
 
                 payload = build_slides_payload(
                     titre=effective_titre,
-                    theme=_thm,
+                    theme=effective_theme,
                     slides=effective_slides,
                     subtitle=effective_sub
                 )
@@ -1537,25 +1573,51 @@ async def _execute_dispatch_tool(
                     or "https://docs.google.com/presentation"
                 )
 
-                # Vérification post-exécution (Requirement 3: GET presentations.get, compter les slides)
-                if is_ok:
-                    min_req = max(1, len(effective_slides) if _sl else 1)
-                    v_ok, v_detail, v_count = await verify_presentation_slides(presentation_id, min_slides=min_req)
-                    if not v_ok:
-                        is_ok = False
-                        res["error"] = f"Échec de vérification des slides : {v_detail} ({v_count} slides)"
+                # ── Persistance de l'ID en Redis et RAM ───────────────────────
+                if presentation_id:
+                    slides_service._last_presentation_id = presentation_id
+                    try:
+                        from services.cache import cache_service
+                        await cache_service.set("jarvis:slides:last_presentation_id", presentation_id, ttl=604800)
+                    except Exception as cache_err:
+                        print(f"[Slides BG] Cache write error: {cache_err}")
+
+                # ── Vérification post-exécution avec expected_outline_count ───
+                v_verified = False
+                v_titles: list = []
+                v_evidence = presentation_url
+                if is_ok and presentation_id:
+                    try:
+                        vres = await slides_service.verify_presentation(
+                            presentation_id,
+                            min_slides=1,
+                            expected_outline_count=expected_outline_count
+                        )
+                        v_verified = bool(vres.verified)
+                        v_evidence = vres.evidence or presentation_url
+                        v_titles = list(getattr(vres, 'titles', []))
+                        if not v_verified:
+                            is_ok = False
+                            res["error"] = f"Vérification partielle : {vres.count}/{expected_outline_count} slides créées"
+                    except Exception as ve:
+                        print(f"[Slides BG] Verify error: {ve}")
 
                 slides_service._current_task["active"] = False
                 slides_service._current_task["presentation_url"] = presentation_url
+                slides_service._current_task["titles"] = v_titles
 
                 supervision_service.complete_action(
                     "generer_presentation",
-                    status="completed" if is_ok else "error",
-                    summary=f"Présentation '{effective_titre}' créée ({len(effective_slides)} slides, style {_thm})" if is_ok else f"Échec création présentation: {res.get('error') or raw_result.get('reply') or 'Erreur Slides'}"
+                    status="completed" if is_ok else "partial" if presentation_id else "error",
+                    summary=(
+                        f"Présentation '{effective_titre}' créée ({expected_outline_count} slides, {effective_theme}) — vérifiée: {v_verified}"
+                        if is_ok else
+                        f"Présentation partielle : {res.get('error') or raw_result.get('reply') or 'Erreur Slides'}"
+                    )
                 )
                 await broadcast_supervision()
 
-                # Mise à jour du lien interactif dans le HUD PWA
+                # ── HUD PWA ───────────────────────────────────────────────────
                 if _w and presentation_url:
                     try:
                         await _w.send_text(json.dumps({
@@ -1568,22 +1630,23 @@ async def _execute_dispatch_tool(
                             "state": "idle",
                             "msg": f"Présentation prête : {effective_titre}",
                             "task": effective_titre,
-                            "engine": "Google Slides",
+                            "engine": "Google Slides v5.15",
                             "model": "Aoede Voix Active"
                         }))
                     except Exception:
                         pass
 
-                # Annonce orale complète à Pierre
+                # ── Annonce orale ─────────────────────────────────────────────
                 if _s:
                     if is_ok:
+                        titles_str = ", ".join(v_titles[:3]) + ("..." if len(v_titles) > 3 else "") if v_titles else ""
                         inject_text = (
-                            f"[PRÉSENTATION GOOGLE SLIDES PRÊTE] La présentation complète sur '{effective_titre}' "
-                            f"est finalisée avec {len(effective_slides)} diapositives structurées et esthétiques (style {_thm}). "
-                            f"Elle intègre les données historiques, l'architecture technique, les métriques clés et les perspectives d'avenir. "
-                            f"Lien d'accès Google Slides : {presentation_url}. "
-                            f"Annonce-le chaleureusement et fièrement à Pierre avec ta voix Aoede, résume-lui en 2 phrases les points forts "
-                            f"et dis-lui qu'il peut cliquer directement sur le bouton affiché sur son écran pour l'ouvrir dans son navigateur."
+                            f"[PRÉSENTATION GOOGLE SLIDES PRÊTE] La présentation sur '{effective_titre}' "
+                            f"est finalisée avec {expected_outline_count} diapositives sur-mesure (thème {effective_theme}). "
+                            f"{'Titres : ' + titles_str + '. ' if titles_str else ''}"
+                            f"Lien Google Slides : {presentation_url}. "
+                            f"Annonce-le avec enthousiasme à Pierre avec ta voix Aoede, résume les thèmes couverts en 2 phrases "
+                            f"et dis-lui de cliquer sur le bouton affiché pour l'ouvrir."
                         )
                     else:
                         err = res.get("error", "Erreur lors de la création Google Slides")
@@ -1602,12 +1665,15 @@ async def _execute_dispatch_tool(
                 supervision_service.complete_action("generer_presentation", status="error", summary=str(bg_err))
                 await broadcast_supervision()
                 if _s:
-                    from google_antigravity import AntigravityQuotaExhaustedError
-                    if isinstance(bg_err, AntigravityQuotaExhaustedError) or "Quota 5h" in str(bg_err):
+                    try:
+                        from google_antigravity import AntigravityQuotaExhaustedError
+                        is_quota = isinstance(bg_err, AntigravityQuotaExhaustedError) or "Quota 5h" in str(bg_err)
+                    except Exception:
+                        is_quota = False
+                    if is_quota:
                         inject_text = (
-                            "[QUOTA ÉPUISÉ] Le quota 5h de l'API Antigravity est atteint pour la recherche approfondie. "
-                            "Explique immédiatement à Pierre à l'oral avec ta voix Aoede que le quota gratuit de réflexion "
-                            "est épuisé, et demande-lui directement s'il t'autorise à basculer sur la clé payante pour terminer la présentation."
+                            "[QUOTA ÉPUISÉ] Le quota de l'API est atteint pour la recherche approfondie. "
+                            "Informe Pierre avec ta voix Aoede et demande-lui s'il autorise la clé payante."
                         )
                     else:
                         inject_text = (
@@ -1624,15 +1690,15 @@ async def _execute_dispatch_tool(
         return ToolResult.started(
             task_id="generer_presentation",
             action="generer_presentation",
-            user_message=f"Je lance la recherche et la conception de la présentation '{raw_titre}' en arrière-plan.",
-            evidence=f"Recherche et diapositives ({theme}) lancées en arrière-plan",
+            user_message=f"Je lance la conception sur-mesure de '{raw_titre}' : outline IA, {nb_slides or 'auto'} slides, thème {ton}.",
+            evidence=f"Outline + Google Slides ({ton}) lancés en arrière-plan",
             titre=raw_titre,
-            theme=theme,
-            slides_count=len(slides),
+            theme=ton,
+            slides_count=nb_slides or 0,
             instruction_to_jarvis=(
-                f"La conception de la présentation sur '{raw_titre}' est lancée en arrière-plan. "
-                f"RÈGLE STRICTE : Ne donne pas la présentation immédiatement ! "
-                f"Dis immédiatement et naturellement à Pierre avec ta voix Aoede que tu t'en charges et que tu lances la structuration du plan directeur pour sa présentation sur Google Slides."
+                f"La conception sur-mesure de '{raw_titre}' est lancée (outline LLM dynamique, thème {ton}). "
+                f"RÈGLE STRICTE : Ne lis pas la présentation immédiatement ! "
+                f"Dis naturellement à Pierre avec ta voix Aoede que tu génères le plan narratif personnalisé selon ses consignes."
             )
         )
 
@@ -2483,6 +2549,41 @@ async def _execute_dispatch_tool(
         except Exception:
             pass
         return result
+
+    # ─── modify_presentation ─────────────────────────────────────────────────
+    elif name in ("modify_presentation", "modifier_presentation"):
+        from services.slides_service import slides_service
+
+        instruction = (args.get("instruction") or "").strip()
+        presentation_id = (args.get("presentation_id") or "last").strip()
+        result = await slides_service.modify_presentation(
+            presentation_id=presentation_id,
+            instruction=instruction,
+        )
+        if result.get("status") == "done":
+            return ToolResult.done(
+                action="modifier_presentation",
+                user_message=result.get("user_message", "Présentation modifiée."),
+                evidence=result.get("evidence", ""),
+                verified=result.get("verified", True),
+                presentation_id=result.get("presentation_id", ""),
+                presentation_url=result.get("presentation_url", ""),
+                action_detail=result.get("action", ""),
+                details=result.get("details", ""),
+                instruction_to_jarvis=(
+                    f"La modification de la présentation a été effectuée : {result.get('details', '')}. "
+                    f"Confirme chaleureusement à Pierre avec ta voix Aoede que sa présentation est mise à jour."
+                )
+            )
+        return ToolResult.failed(
+            action="modifier_presentation",
+            user_message=result.get("message", "Échec de la modification."),
+            evidence=result.get("evidence", ""),
+            instruction_to_jarvis=(
+                f"Impossible de modifier la présentation : {result.get('message', '')}. "
+                f"Informe Pierre avec ta voix Aoede."
+            )
+        )
 
     # ─── Outil inconnu ─────────────────────────────────────────────────────────
     else:

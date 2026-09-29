@@ -755,53 +755,75 @@ def get_tools_list() -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="generate_presentation",
                     description=(
-                        "Conçoit une présentation Google Slides complète et stylisée (5 à 8 diapositives polymorphes, thèmes Stark, Bitcoin/Gold, Corporate, Cyber) "
-                        "avec mise en page soignée, métriques clés et lien direct généré en arrière-plan. "
-                        "À UTILISER QUAND : Pierre demande de créer un diaporama ou une présentation Google Slides sur un sujet donné. "
+                        "Conçoit une présentation Google Slides sur-mesure dont le nombre de diapositives, la structure narrative, le contenu et le style découlent fidèlement de la demande. "
+                        "À UTILISER QUAND l'utilisateur veut une présentation. Recopie sa demande complète dans `consignes`. NE PAS inventer nb_slides s'il ne l'a pas précisé. "
                         "NE JAMAIS UTILISER QUAND : Pierre demande un fichier tableur Excel (utiliser 'generate_spreadsheet'), "
-                        "ni pour un simple rapport textuel de recherche (utiliser 'launch_deep_research')."
+                        "ni pour modifier une présentation existante (utiliser 'modify_presentation')."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
-                            "titre": types.Schema(
-                                type="STRING",
-                                description="Titre ou sujet général de la présentation (ex: 'Bitcoin : Révolution Monétaire', 'Intelligence Artificielle 2026')"
-                            ),
                             "sujet": types.Schema(
                                 type="STRING",
-                                description="Thématique ou sujet détaillé à analyser et développer si distinct du titre"
+                                description="Le sujet ou thème principal de la présentation (ex: 'Histoire de Rome', 'Architecture Microservices', 'Bitcoin')"
                             ),
-                            "theme": types.Schema(
+                            "consignes": types.Schema(
                                 type="STRING",
-                                description="Thème esthétique : 'stark' (défaut, sombre futuriste Stark Industries), 'bitcoin' ou 'gold' (noir/or prestige crypto), 'corporate' (blanc/bleu exécutif), 'cyber' (néon/violet), 'dark' (minimaliste sombre)"
+                                description="Recopie mot pour mot et fidèlement tout ce que l'utilisateur veut voir dans la présentation (consigne brute intégrale)."
                             ),
-                            "slides": types.Schema(
-                                type="ARRAY",
-                                items=types.Schema(
-                                    type="OBJECT",
-                                    properties={
-                                        "titre_slide": types.Schema(type="STRING", description="Titre de la diapositive"),
-                                        "category": types.Schema(type="STRING", description="Section ou catégorie (ex: 'HISTOIRE', 'ARCHITECTURE', 'MARCHÉ')"),
-                                        "points": types.Schema(type="ARRAY", items=types.Schema(type="STRING"), description="Liste des points clés ou faits vérifiés"),
-                                        "key_metric": types.Schema(
-                                            type="OBJECT",
-                                            properties={
-                                                "label": types.Schema(type="STRING", description="Libellé du chiffre clé (ex: 'PLAFOND')"),
-                                                "value": types.Schema(type="STRING", description="Valeur du chiffre clé (ex: '21M BTC')"),
-                                                "desc": types.Schema(type="STRING", description="Explication concise du chiffre clé"),
-                                            },
-                                            description="Chiffre clé ou métrique majeure mise en exergue"
-                                        ),
-                                        "notes": types.Schema(type="STRING", description="Notes d'orateur ou texte explicatif"),
-                                    },
-                                    required=["titre_slide", "points"]
-                                ),
-                                description="Liste optionnelle de diapositives pré-structurées. Si omise, Jarvis élabore lui-même le plan et effectue les recherches."
+                            "nb_slides": types.Schema(
+                                type="INTEGER",
+                                description="Nombre exact de diapositives demandé par l'utilisateur si spécifié. Laisser null/omettre si non précisé (NE PAS inventer un chiffre)."
+                            ),
+                            "public": types.Schema(
+                                type="STRING",
+                                description="Public cible de la présentation si mentionné (ex: 'investisseurs', 'étudiants', 'direction technique', 'grand public')."
+                            ),
+                            "ton": types.Schema(
+                                type="STRING",
+                                description="Ton et style souhaités : 'corporate', 'créatif', 'sobre', 'pitch', 'stark', 'dark', 'gold', 'cyber'."
+                            ),
+                            "langue": types.Schema(
+                                type="STRING",
+                                description="Langue de rédaction de la présentation (par défaut 'fr')."
+                            ),
+                            "recherche_approfondie": types.Schema(
+                                type="BOOLEAN",
+                                description="Si True, active une recherche web/documentaire approfondie avant d'établir le plan."
+                            ),
+                            "titre": types.Schema(
+                                type="STRING",
+                                description="Titre optionnel de la présentation si spécifié explicitement."
                             ),
                         },
-                        required=["titre"]
+                        required=["sujet", "consignes"]
+                    )
+                ),
+
+                # ─── 27. modify_presentation ──────────────────────────────────────────
+                types.FunctionDeclaration(
+                    name="modify_presentation",
+                    description=(
+                        "Modifie une présentation Google Slides existante selon une instruction vocale ou textuelle précise "
+                        "(ex: 'ajoute une slide sur les risques', 'supprime la slide 3', 'change le titre de la 2'). "
+                        "À UTILISER QUAND : Pierre souhaite modifier, enrichir ou réorganiser une présentation Google Slides déjà générée. "
+                        "NE JAMAIS UTILISER QUAND : Pierre demande de créer une nouvelle présentation à partir de zéro (utiliser 'generate_presentation')."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "instruction": types.Schema(
+                                type="STRING",
+                                description="Instruction précise de modification (ex: 'ajoute une slide sur les risques', 'supprime la slide 3', 'change le titre de la 2')."
+                            ),
+                            "presentation_id": types.Schema(
+                                type="STRING",
+                                description="Identifiant Google Slides de la présentation ou 'last' pour cibler la dernière présentation créée (défaut 'last')."
+                            ),
+                        },
+                        required=["instruction"]
                     )
                 ),
 

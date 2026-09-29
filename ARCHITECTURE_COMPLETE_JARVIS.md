@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.13.0 — Machine à États SpeechState, Accusé Client playback_finished & Garantie Anti-Coupure d'Élocution Aoede.*
+> *Dernière révision majeure : Version 5.15.0 — Slides Dynamiques LLM : outline sur-mesure, 9 layouts polymorphes, modify_presentation, verification post-execution avec expected_outline_count. à États SpeechState, Accusé Client playback_finished & Garantie Anti-Coupure d'Élocution Aoede.*
 
 ---
 

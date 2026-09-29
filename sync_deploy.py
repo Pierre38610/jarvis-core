@@ -29,7 +29,7 @@ USER = "opc"
 EXCLUDE_DIRS = {
     "venv", ".git", ".jarvis_chrome_profile", ".jarvis_shopping_profile",
     ".browseruse", ".antigravity_save", "downloads", "__pycache__", "clés ssh", "my-project",
-    "releases", "current"
+    "releases", "current", ".cache", ".pytest_cache"
 }
 EXCLUDE_FILES = {
     "cloudflared.exe", "jarvis_memory.db", ".env"
