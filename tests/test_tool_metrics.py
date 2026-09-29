@@ -157,7 +157,7 @@ async def test_dispatch_tool_records_metrics_on_error_status():
         live_display_label="Gemini Flash"
     )
 
-    assert res.get("status") == "error"
+    assert res.get("status") in ("error", "failed")
     last_record = metrics_service._memory_buffer[-1]
     assert last_record["tool_name"] == "outil_inexistant_xyz"
     assert last_record["status"] == "failure"

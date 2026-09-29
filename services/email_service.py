@@ -18,7 +18,7 @@ import email
 from email.header import decode_header
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid, parsedate_to_datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 logger = logging.getLogger("jarvis.email_service")
 
@@ -711,8 +711,10 @@ def send_email(
         server.send_message(msg)
         server.quit()
 
+        msg_id_str = str(msg["Message-ID"])
         meta_info = {
             "id": email_id,
+            "message_id": msg_id_str,
             "timestamp": timestamp,
             "status": "sent",
             "recipient": recipient,
@@ -723,10 +725,11 @@ def send_email(
         with open(archive_meta_path, "w", encoding="utf-8") as f:
             json.dump(meta_info, f, indent=2, ensure_ascii=False)
 
-        print(f"[Email Service] E-mail envoyé avec succès à {recipient} !")
+        print(f"[Email Service] E-mail envoyé avec succès à {recipient} (Message-ID: {msg_id_str}) !")
         return {
             "status": "sent",
             "email_id": email_id,
+            "message_id": msg_id_str,
             "recipient": recipient,
             "subject": subject,
             "attachments_count": len(resolved_attachments),
@@ -783,6 +786,60 @@ async def send_email_async(
         include_screenshot=include_screenshot,
         is_html_report=is_html_report
     )
+
+
+async def verify_email_in_sent_box(
+    email_id: str,
+    message_id: Optional[str] = None,
+    recipient: Optional[str] = None,
+    subject: Optional[str] = None,
+) -> Tuple[bool, str, Optional[str]]:
+    """Vérifie l'envoi effectif du courriel (relecture IMAP dans les éléments envoyés ou validation Message-ID)."""
+    # 1. Vérification d'un flag d'échec simulé (pour tests de non-régression)
+    if os.environ.get("JARVIS_SIMULATE_EMAIL_VERIFY_FAIL") == "1":
+        return False, "", "Échec simulé : courriel non trouvé dans les éléments envoyés après émission."
+
+    # 2. Relecture IMAP si identifiants configurés
+    if IMAP_USER and IMAP_PASSWORD:
+        try:
+            import imaplib
+            mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
+            mail.login(IMAP_USER, IMAP_PASSWORD)
+            sent_boxes = ['"[Gmail]/Sent Mail"', '"[Gmail]/Messages envoy&AOk-s"', 'Sent', 'INBOX.Sent']
+            found = False
+            for box in sent_boxes:
+                try:
+                    st, _ = mail.select(box, readonly=True)
+                    if st == "OK":
+                        search_q = f'(HEADER Message-ID "{message_id}")' if message_id else f'(TO "{recipient}")'
+                        st_s, data = mail.search(None, search_q)
+                        if st_s == "OK" and data and data[0]:
+                            found = True
+                            break
+                except Exception:
+                    continue
+            mail.logout()
+            if found:
+                return True, f"Message-ID: {message_id} confirmé dans le dossier Envoyés", None
+            return False, "", f"Courriel non retrouvé dans le dossier Envoyés (Message-ID: {message_id})"
+        except Exception as imap_err:
+            logger.warning(f"[EmailService] Relecture IMAP échouée: {imap_err}")
+            return False, "", f"Échec de relecture IMAP dans les éléments envoyés ({imap_err})"
+
+    # 3. Mode hors-ligne / fallback outbox : vérifie l'archive locale et le message_id
+    if email_id:
+        archive_meta_path = os.path.join(EMAIL_OUTBOX_DIR, f"{email_id}.json")
+        if os.path.exists(archive_meta_path):
+            try:
+                with open(archive_meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                if meta.get("status") == "sent":
+                    ev_mid = message_id or meta.get("message_id") or email_id
+                    return True, f"Message-ID: {ev_mid} archivé et validé", None
+            except Exception:
+                pass
+
+    return False, "", "Envoi non confirmé par relecture de la boîte d'envoi."
 
 
 def list_outbox_emails() -> List[Dict[str, Any]]:

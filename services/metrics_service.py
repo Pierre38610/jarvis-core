@@ -34,6 +34,24 @@ class MetricsService:
         # Buffer mémoire circulaire ultra-rapide pour fallback hors-ligne et calculs instantanés
         self._memory_buffer: deque = deque(maxlen=buffer_size)
         self._schema_ensured: bool = False
+        self._claimed_success_without_verification: int = 0
+
+    def record_claimed_success_without_verification(self, tool_name: str = "") -> None:
+        """Incrémente le compteur d'alerte lorsqu'un succès est affirmé sans vérification indépendante."""
+        self._claimed_success_without_verification += 1
+        logger.warning(
+            f"[MetricsService] Succès sans vérification pour '{tool_name}' (total: {self._claimed_success_without_verification})"
+        )
+
+    def increment_claimed_success_without_verification(self) -> None:
+        self.record_claimed_success_without_verification()
+
+    def get_claimed_success_without_verification_count(self) -> int:
+        return self._claimed_success_without_verification
+
+    @property
+    def claimed_success_without_verification(self) -> int:
+        return self._claimed_success_without_verification
 
     async def _get_pg_pool(self):
         """Récupère le pool PostgreSQL depuis vector_memory."""
@@ -92,6 +110,10 @@ class MetricsService:
     ) -> Dict[str, Any]:
         """Ajoute immédiatement un enregistrement dans le buffer circulaire mémoire O(1)."""
         ts = created_at or datetime.now(timezone.utc)
+        meta = metadata or {}
+        if str(status).lower() in ("done", "success", "completed") and not meta.get("verified", False):
+            self._claimed_success_without_verification += 1
+
         record = {
             "created_at": ts,
             "tool_name": tool_name,
@@ -100,7 +122,7 @@ class MetricsService:
             "cognitive_tier": cognitive_tier,
             "cost_est": float(cost_est),
             "is_paid_key": bool(is_paid_key),
-            "metadata": metadata or {},
+            "metadata": meta,
         }
         self._memory_buffer.append(record)
         return record
@@ -347,6 +369,7 @@ class MetricsService:
                 "total_calls": total_calls,
                 "total_failures": total_failures,
                 "total_timeouts": total_timeouts,
+                "claimed_success_without_verification": self._claimed_success_without_verification,
                 "global_failure_rate": global_failure_rate,
                 "total_cost": total_cost,
                 "top_tools": top_tools,
@@ -472,6 +495,7 @@ class MetricsService:
             "total_calls": total_calls,
             "total_failures": total_failures,
             "total_timeouts": total_timeouts,
+            "claimed_success_without_verification": self._claimed_success_without_verification,
             "global_failure_rate": global_failure_rate,
             "total_cost": round(total_cost, 4),
             "top_tools": top_tools,

@@ -138,10 +138,10 @@ class TestSynchronousQuickTools:
             live_display_label="Gemini 3.8 Flash"
         )
 
-        assert res.get("status") == "success"
+        assert res.get("status") in ("success", "done")
         assert res.get("action") == "rechercher_train"
         assert "instruction_to_jarvis" in res
-        assert res.get("status") not in ("lance_en_arriere_plan", "launched_in_background")
+        assert res.get("status") not in ("lance_en_arriere_plan", "launched_in_background", "started")
         assert "Paris" in res.get("instruction_to_jarvis")
 
     @pytest.mark.asyncio
@@ -160,8 +160,8 @@ class TestSynchronousQuickTools:
                 is_paid_live=False,
                 live_display_label="Gemini 3.8 Flash"
             )
-            assert res.get("status") in ("success", "completed")
-            assert res.get("status") not in ("lance_en_arriere_plan", "launched_in_background")
+            assert res.get("status") in ("success", "completed", "done")
+            assert res.get("status") not in ("lance_en_arriere_plan", "launched_in_background", "started")
             assert "instruction_to_jarvis" in res
 
     @pytest.mark.asyncio
@@ -179,8 +179,8 @@ class TestSynchronousQuickTools:
             is_paid_live=False,
             live_display_label="Gemini 3.8 Flash"
         )
-        assert res.get("status") in ("success", "completed")
-        assert res.get("status") not in ("lance_en_arriere_plan", "launched_in_background")
+        assert res.get("status") in ("success", "completed", "done")
+        assert res.get("status") not in ("lance_en_arriere_plan", "launched_in_background", "started")
 
     @pytest.mark.asyncio
     async def test_open_browser_returns_synchronously(self):
@@ -198,8 +198,8 @@ class TestSynchronousQuickTools:
                 is_paid_live=False,
                 live_display_label="Gemini 3.8 Flash"
             )
-            assert res.get("status") in ("success", "completed")
-            assert res.get("status") not in ("lance_en_arriere_plan", "launched_in_background")
+            assert res.get("status") in ("success", "completed", "done")
+            assert res.get("status") not in ("lance_en_arriere_plan", "launched_in_background", "started")
 
 
 class TestHeavyAsyncTasks:
@@ -218,5 +218,5 @@ class TestHeavyAsyncTasks:
             is_paid_live=False,
             live_display_label="Gemini 3.8 Flash"
         )
-        assert res.get("status") in ("lance_en_arriere_plan", "launched_in_background")
+        assert res.get("status") in ("lance_en_arriere_plan", "launched_in_background", "started")
         assert res.get("action") == "generer_presentation"

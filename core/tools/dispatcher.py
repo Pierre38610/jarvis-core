@@ -49,6 +49,17 @@ from core.shared_state import (
 
 
 from services.metrics_service import metrics_service
+from core.tools.result import ToolResult, normalize_result
+from core.tools.verifier import (
+    verify_email_sent,
+    verify_presentation_slides,
+    verify_spreadsheet_file,
+    verify_downloaded_file,
+    verify_application_process,
+    verify_calendar_event,
+    verify_saved_memory,
+    verify_browser_opened,
+)
 
 
 def _infer_tool_tier_and_cost(
@@ -115,20 +126,23 @@ def _infer_tool_tier_and_cost(
 async def dispatch_tool(
     name: str,
     args: dict,
-    websocket,
-    session,
-    is_paid_live: bool,
-    live_display_label: str,
+    websocket: Any = None,
+    session: Any = None,
+    is_paid_live: bool = False,
+    live_display_label: str = "Gemini Live",
 ) -> dict:
     """
     Dispatch l'appel d'outil `name` avec ses `args` et retourne le dict tool_resp.
-    Instrumenté pour l'observabilité (statut, latence, tier, coût) de manière non-bloquante.
+    Enveloppe systématiquement le retour avec normalize_result() pour garantir
+    l'application inviolable du contrat ToolResult (5 statuts, verified, evidence).
+    Instrumenté pour l'observabilité de manière non-bloquante.
     """
     t0 = time.perf_counter()
     status = "success"
     res = None
+    tool_result: Optional[ToolResult] = None
     try:
-        res = await _execute_dispatch_tool(
+        raw_res = await _execute_dispatch_tool(
             name=name,
             args=args,
             websocket=websocket,
@@ -136,22 +150,36 @@ async def dispatch_tool(
             is_paid_live=is_paid_live,
             live_display_label=live_display_label,
         )
-        if isinstance(res, dict):
-            res_status = str(res.get("status", "")).lower()
-            if res_status in ("error", "failed", "échec"):
-                status = "failure"
-            elif res_status == "timeout":
-                status = "timeout"
+        tool_result = normalize_result(name, raw_res)
+        res = tool_result.to_dict()
+
+        if tool_result.status == "failed":
+            status = "failure"
+        elif tool_result.status == "started":
+            status = "started"
+        elif tool_result.status == "needs_user":
+            status = "needs_user"
+        elif tool_result.status == "partial":
+            status = "partial"
+        else:
+            status = "success"
+
         return res
     except asyncio.TimeoutError:
         status = "timeout"
         raise
-    except Exception:
+    except Exception as exc:
         status = "failure"
-        raise
+        tool_result = ToolResult.failed(
+            user_message=f"L'outil '{name}' a rencontré une erreur d'exécution.",
+            error_hint=str(exc)
+        )
+        res = tool_result.to_dict()
+        return res
     finally:
         latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         tier, cost_est = _infer_tool_tier_and_cost(name, args, is_paid_live, res)
+        is_verified = tool_result.verified if tool_result else False
         metrics_service.record_tool_call_background(
             tool_name=name,
             status=status,
@@ -159,7 +187,10 @@ async def dispatch_tool(
             cognitive_tier=tier,
             cost_est=cost_est,
             is_paid_key=bool(is_paid_live or cost_est > 0),
-            metadata={"args_keys": list(args.keys()) if isinstance(args, dict) else []},
+            metadata={
+                "args_keys": list(args.keys()) if isinstance(args, dict) else [],
+                "verified": is_verified,
+            },
         )
 
 
@@ -647,7 +678,22 @@ async def _execute_dispatch_tool(
             res = await asyncio.to_thread(open_browser_window, target_url)
         supervision_service.track_browser_window(target_url, "Google Chrome")
         await broadcast_supervision()
-        return {"status": "completed", "result": res, "instruction_to_jarvis": f"La fenêtre Chrome est ouverte sur {target_url}. Dis directement à Pierre que la page est affichée à l'écran sans amorce robotique ('J'ouvre Chrome sur...', 'C'est affiché à l'écran')."}
+
+        # VÉRIFICATION POST-EXÉCUTION : Accusé de réception explicite de l'agent local PC
+        verified, evidence = verify_browser_opened(res, target_url)
+        if not verified:
+            return ToolResult.failed(
+                user_message="Impossible d'ouvrir le navigateur sur votre écran d'ordinateur.",
+                error_hint=evidence,
+                data={"result": res, "url": target_url}
+            )
+
+        return ToolResult.done(
+            user_message=f"La fenêtre Chrome est affichée à l'écran sur {target_url}.",
+            evidence=evidence,
+            verified=True,
+            data={"result": res, "url": target_url}
+        )
 
     # ─── save_memory (Fusion remember_user_fact + memoriser_information) ──────
     elif name in ("save_memory", "remember_user_fact", "memoriser_information"):
@@ -658,24 +704,46 @@ async def _execute_dispatch_tool(
         display_label = key or (fact[:40] if len(fact) <= 40 else fact[:37] + "...")
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Mémorisation vectorielle : {display_label}", "voice": False}))
         res = await unified_memory_manager.memorize(full_text, category=cat or "general", importance=2)
-        return {
-            "status": "completed",
-            "result": res,
-            "instruction_to_jarvis": f"L'information '{display_label}' a été mémorisée durablement dans ta mémoire unifiée vectorielle. Confirme-le brièvement avec ta voix Aoede."
-        }
+
+        # VÉRIFICATION POST-EXÉCUTION : Relecture par ID dans SQLite
+        sqlite_id = res.get("id")
+        verified, evidence = verify_saved_memory(sqlite_id, full_text)
+        if not verified:
+            return ToolResult.failed(
+                user_message=f"La mémorisation de '{display_label}' n'a pas pu être vérifiée en base locale.",
+                error_hint=evidence,
+                data={"result": res, "fact": full_text}
+            )
+
+        return ToolResult.done(
+            user_message=f"L'information '{display_label}' a été mémorisée et vérifiée avec succès dans votre mémoire.",
+            evidence=evidence,
+            verified=True,
+            data={"result": res, "id": sqlite_id, "fact": full_text}
+        )
 
     # ─── recall_user_memories ──────────────────────────────────────────────────
     elif name in ("recall_user_memories", "search_memories"):
         query = args.get("query", "")
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Consultation des souvenirs mémorisés.", "voice": False}))
         memories = await unified_memory_manager.recall(query, limit=6)
-        return {"status": "completed", "memories": memories, "instruction_to_jarvis": "Voici les souvenirs trouvés dans ta mémoire vectorielle. Présente-les à l'utilisateur avec ta voix Aoede de façon naturelle."}
+        return ToolResult.done(
+            user_message=f"J'ai retrouvé {len(memories)} souvenir(s) correspondant à votre recherche.",
+            evidence=f"{len(memories)} souvenirs trouvés",
+            verified=True,
+            data={"memories": memories}
+        )
 
     # ─── get_system_status / get_status ────────────────────────────────────────
     elif name in ("get_system_status", "get_status"):
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Diagnostic des ressources système en cours.", "voice": False}))
         status = await asyncio.to_thread(get_system_status)
-        return {"status": "completed", "result": status, "instruction_to_jarvis": "Voici les métriques système actuelles. Communique-les directement et avec précision à Pierre avec ta voix Aoede sans préambule superflu."}
+        return ToolResult.done(
+            user_message="Voici les métriques système actuelles.",
+            evidence="Télémétrie CPU/RAM serveur et poste local",
+            verified=True,
+            data={"result": status}
+        )
 
     # ─── launch_application / launch_app ───────────────────────────────────────
     elif name in ("launch_application", "launch_app"):
@@ -686,7 +754,25 @@ async def _execute_dispatch_tool(
             res = await local_agent_service.execute_command("launch_app", app_name=app_name)
         else:
             res = await asyncio.to_thread(launch_application, app_name)
-        return {"status": "completed", "result": res, "instruction_to_jarvis": f"L'application {app_name} est lancée sur l'écran. Réponds directement et chaleureusement à Pierre en une seule phrase naturelle sans aucun préambule robotique (ex: 'J'ouvre {app_name}' ou 'C'est ouvert')."}
+
+        # VÉRIFICATION POST-EXÉCUTION : Le processus doit exister avec PID valide
+        pid = res.get("pid") if isinstance(res, dict) else None
+        verified, found_pid, evidence = verify_application_process(pid, app_name)
+        if not verified:
+            return ToolResult.failed(
+                user_message=f"Le lancement de l'application '{app_name}' n'a pas pu être confirmé sur votre poste.",
+                error_hint=evidence,
+                data={"result": res, "app": app_name}
+            )
+
+        return ToolResult.done(
+            user_message=f"J'ai ouvert l'application {app_name} sur votre écran.",
+            evidence=evidence,
+            verified=True,
+            action="launch_app",
+            instruction_to_jarvis=f"L'application {app_name} est lancée sur votre écran (PID {found_pid}). Confirme directement à Pierre.",
+            data={"result": res, "app": app_name, "pid": found_pid}
+        )
 
     # ─── play_music_deezer / deezer_action ─────────────────────────────────────
     elif name in ("play_music_deezer", "deezer_action"):
@@ -827,19 +913,31 @@ async def _execute_dispatch_tool(
                 "attachments_count": 0,
                 "message": f"Pièce jointe introuvable : {missing_str}"
             }))
-            instruction = (
-                f"ATTENTION : Le document '{missing_str}' que Pierre a demandé de joindre est INTROUVABLE dans le système. "
-                f"L'e-mail N'A PAS été expédié pour éviter d'envoyer un courriel vide sans pièce jointe. "
-                f"Informe immédiatement et clairement Pierre avec ta voix Aoede que le document est introuvable, et demande-lui son nom exact ou son emplacement."
+            return ToolResult.failed(
+                user_message=f"Le document '{missing_str}' que vous avez demandé de joindre est introuvable sur le système.",
+                error_hint=f"Pièce jointe '{missing_str}' inexistante",
+                data={"result": res, "missing_attachments": missing}
             )
-            return {
-                "status": "error",
-                "error": "attachment_not_found",
-                "result": res,
-                "instruction_to_jarvis": instruction
-            }
 
-        supervision_service.complete_action("send_email", status="completed" if st in ("sent", "saved", "archived_in_outbox") else "error", summary=res.get("message", f"E-mail traité pour {to_email}"))
+        email_id = res.get("email_id", "")
+        message_id = res.get("message_id")
+        verified, evidence, error_hint = await verify_email_sent(
+            email_id=email_id,
+            message_id=message_id,
+            recipient=to_email,
+            subject=subject,
+        )
+
+        if not verified or st not in ("sent", "saved", "archived_in_outbox"):
+            supervision_service.complete_action("send_email", status="error", summary=f"Échec vérification e-mail pour {to_email}")
+            await broadcast_supervision()
+            return ToolResult.failed(
+                user_message=f"L'envoi du courriel '{subject}' n'a pas pu être confirmé.",
+                error_hint=error_hint or res.get("error") or "Courriel non retrouvé dans les éléments envoyés après émission",
+                data={"result": res, "email_id": email_id, "recipient": to_email}
+            )
+
+        supervision_service.complete_action("send_email", status="completed", summary=res.get("message", f"E-mail traité pour {to_email}"))
         await broadcast_supervision()
 
         att_count = res.get("attachments_count", 0)
@@ -855,20 +953,13 @@ async def _execute_dispatch_tool(
             "message": res.get("message", "")
         }))
 
-        if att_count > 0:
-            instruction = (
-                f"L'e-mail avec pour sujet '{subject}' destiné à {to_email} a été expédié avec succès "
-                f"avec la pièce jointe suivante : {att_names}. "
-                f"Confirme-le directement et chaleureusement à Pierre avec ta voix Aoede en précisant que le document '{att_names}' est bien en pièce jointe."
-            )
-        else:
-            instruction = f"L'e-mail avec pour sujet '{subject}' destiné à {to_email} est expédié ({res.get('message', '')}). Confirme-le directement et simplement à Pierre avec ta voix Aoede."
-
-        return {
-            "status": "completed",
-            "result": res,
-            "instruction_to_jarvis": instruction
-        }
+        att_suffix = f" avec la pièce jointe {att_names}" if att_count > 0 else ""
+        return ToolResult.done(
+            user_message=f"Le courriel '{subject}' a été expédié avec succès à {to_email}{att_suffix}.",
+            evidence=evidence,
+            verified=True,
+            data={"result": res, "email_id": email_id, "message_id": message_id, "recipient": to_email}
+        )
 
     # ─── read_emails ───────────────────────────────────────────────────────────
     elif name in ("read_emails", "get_emails"):
@@ -962,12 +1053,36 @@ async def _execute_dispatch_tool(
             supervision_service.complete_action("download_file", status="pending_confirmation", summary=f"En attente accord Pierre pour {res.get('filename')}")
             await broadcast_supervision()
             await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Autorisation requise pour télécharger {res.get('filename')}", "voice": False}))
-            return {"status": "requires_user_confirmation", "filename": res.get("filename"), "size": res.get("estimated_size"), "domain": res.get("domain"), "instruction_to_jarvis": res.get("instruction_to_jarvis")}
+            return ToolResult.needs_user(
+                question=res.get("instruction_to_jarvis") or f"Autorisation requise pour télécharger {res.get('filename')}",
+                user_message=f"Le téléchargement de {res.get('filename')} nécessite votre confirmation.",
+                evidence=f"URL: {target_url}",
+                filename=res.get("filename"),
+                size=res.get("estimated_size"),
+                domain=res.get("domain")
+            )
         else:
-            supervision_service.complete_action("download_file", status=res.get("status", "completed"), summary=f"{res.get('filename')} ({res.get('size')})")
+            filepath = res.get("filepath") or os.path.join("downloads", res.get("filename") or "")
+            v_ok, v_detail, v_size = verify_downloaded_file(filepath)
+            if not v_ok or res.get("status") not in ("completed", "success"):
+                supervision_service.complete_action("download_file", status="error", summary=f"Échec vérification {res.get('filename')}: {v_detail}")
+                await broadcast_supervision()
+                return ToolResult.failed(
+                    error_hint=f"Le fichier téléchargé n'a pas pu être validé ({v_detail}).",
+                    user_message=f"Le téléchargement de {res.get('filename', 'fichier')} n'a pas pu être validé.",
+                    evidence=v_detail
+                )
+            supervision_service.complete_action("download_file", status="completed", summary=f"{res.get('filename')} ({res.get('size')})")
             await broadcast_supervision()
             await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Téléchargement terminé : {res.get('filename')} ({res.get('size')})", "voice": False}))
-            return {"status": res.get("status"), "filename": res.get("filename"), "filepath": res.get("filepath"), "size": res.get("size"), "message": res.get("message"), "instruction_to_jarvis": f"Le fichier '{res.get('filename')}' ({res.get('size')}) a été téléchargé avec succès sur l'ordinateur. Confirme verbalement à Pierre avec ta voix Aoede que le fichier est prêt."}
+            return ToolResult.done(
+                verified=True,
+                evidence=f"{filepath} ({v_size} octets)",
+                user_message=f"Le fichier '{res.get('filename')}' ({res.get('size')}) a été téléchargé et vérifié sur l'ordinateur.",
+                filename=res.get("filename"),
+                filepath=filepath,
+                size=res.get("size")
+            )
 
     # ─── send_to_ereader (Fusion send_to_ereader + send_page_to_kindle + send_file_to_kindle) ─
     elif name in ("send_to_ereader", "send_page_to_kindle", "send_file_to_kindle"):
@@ -988,7 +1103,12 @@ async def _execute_dispatch_tool(
             res = await send_page_to_kindle(url=source, title=title, open_in_chrome=True)
             supervision_service.complete_action("send_page_to_kindle", status=res.get("status", "completed"), summary=res.get("message", "Article envoyé sur Kindle"))
             await broadcast_supervision()
-            return {"status": res.get("status", "completed"), "result": res, "instruction_to_jarvis": f"{res.get('message', 'Article transféré sur la Kindle.')} Annonce avec ta voix Aoede que l'article a été mis en page et expédié vers sa Kindle, et que Google Chrome est ouvert sur la page avec l'extension Send to Kindle prête."}
+            return ToolResult.done(
+                verified=True,
+                evidence=f"Page transmise via Send to Kindle ({title or source})",
+                user_message=f"L'article a été mis en page et expédié vers votre Kindle.",
+                result=res
+            )
 
         # 2. Méthode kindle_web -> Dépôt sur Amazon Send to Kindle Web via Playwright
         elif method == "kindle_web" or name == "send_file_to_kindle":
@@ -1001,10 +1121,18 @@ async def _execute_dispatch_tool(
             supervision_service.complete_action("send_file_to_kindle", status=res.get("status", "completed"), summary=res.get("message", "Fichier envoyé sur Kindle"))
             await broadcast_supervision()
             if res.get("status") == "success":
-                instruction = f"{res.get('message', 'Fichier envoyé sur la Kindle.')} Annonce avec ta voix Aoede que le document a été déposé et envoyé avec succès sur sa liseuse Kindle via sa session Amazon connectée."
+                return ToolResult.done(
+                    verified=True,
+                    evidence=f"Fichier déposé sur Send to Kindle: {source}",
+                    user_message="Le document a été envoyé avec succès sur votre liseuse Kindle.",
+                    result=res
+                )
             else:
-                instruction = f"L'envoi sur la Kindle n'a pas pu aboutir : {res.get('message', 'Erreur de transfert')}. Informe Pierre avec ta voix Aoede de la situation sans affirmer que le document est envoyé."
-            return {"status": res.get("status", "completed"), "result": res, "instruction_to_jarvis": instruction}
+                return ToolResult.failed(
+                    error_hint=res.get("message", "Erreur de transfert"),
+                    user_message="L'envoi sur votre Kindle n'a pas pu aboutir.",
+                    evidence=res.get("message", "")
+                )
 
         # 3. Acheminement automatique (USB physique en priorité puis e-mail SMTP)
         else:
@@ -1015,7 +1143,19 @@ async def _execute_dispatch_tool(
             res = await send_to_ereader(file_path=source, ereader_email=ereader_email, method=method)
             supervision_service.complete_action("send_to_ereader", status=res.get("status", "completed"), summary=res.get("message", "Ebook envoyé"))
             await broadcast_supervision()
-            return {"status": res.get("status"), "channel": res.get("channel"), "message": res.get("message"), "instruction_to_jarvis": f"{res.get('message', 'Le livre a été envoyé vers votre liseuse.')} Confirme à Pierre avec ta voix Aoede que son livre est prêt sur sa liseuse."}
+            if res.get("status") in ("success", "completed", "sent"):
+                return ToolResult.done(
+                    verified=True,
+                    evidence=f"Transféré via {res.get('channel')}: {source}",
+                    user_message="Le livre a été envoyé et est prêt sur votre liseuse.",
+                    channel=res.get("channel")
+                )
+            else:
+                return ToolResult.failed(
+                    error_hint=res.get("message") or "Erreur transfert liseuse",
+                    user_message="Le transfert vers la liseuse n'a pas pu aboutir.",
+                    evidence=res.get("message", "")
+                )
 
     # ─── search_and_download_ebook ─────────────────────────────────────────────
     elif name in ("search_and_download_ebook", "download_ebook"):
@@ -1033,15 +1173,36 @@ async def _execute_dispatch_tool(
         if res.get("status") == "requires_user_confirmation":
             supervision_service.complete_action("send_to_ereader", status="pending_confirmation", summary=f"Accord Pierre requis pour l'ebook {query}")
             await broadcast_supervision()
-            return {"status": "requires_user_confirmation", "query": query, "book_title": res.get("book_title") or res.get("filename"), "source_url": res.get("source_url"), "filename": res.get("filename"), "size": res.get("estimated_size") or res.get("size"), "domain": res.get("domain") or res.get("source") or "Anna's Archive", "instruction_to_jarvis": res.get("instruction_to_jarvis")}
+            return ToolResult.needs_user(
+                question=res.get("instruction_to_jarvis") or f"Accord requis pour l'ebook {query}",
+                user_message=f"Souhaitez-vous confirmer le téléchargement de l'ebook '{query}' ?",
+                evidence=f"Ebook: {query}",
+                filename=res.get("filename")
+            )
         else:
-            supervision_service.complete_action("send_to_ereader", status=res.get("status", "completed"), summary=f"Ebook {query} : {res.get('status')}")
-            await broadcast_supervision()
-            if res.get("status") == "success":
-                instruction = f"L'ebook '{query}' a été téléchargé avec succès et acheminé sur la liseuse Kindle de Pierre. Annonce-lui avec ta voix Aoede que son livre est maintenant prêt dans sa bibliothèque Kindle."
+            filepath = res.get("filepath") or os.path.join("ebooks", res.get("filename") or "")
+            v_ok = True
+            v_detail = ""
+            if filepath and os.path.exists(filepath):
+                v_ok, v_detail, _ = verify_downloaded_file(filepath)
+
+            if res.get("status") in ("success", "completed") and v_ok:
+                supervision_service.complete_action("send_to_ereader", status="completed", summary=f"Ebook {query} : success")
+                await broadcast_supervision()
+                return ToolResult.done(
+                    verified=True,
+                    evidence=f"Ebook '{query}' prêt ({res.get('filename')})",
+                    user_message=f"L'ebook '{query}' a été téléchargé et validé dans votre bibliothèque.",
+                    filename=res.get("filename")
+                )
             else:
-                instruction = f"Une difficulté est survenue lors de la récupération ou de l'envoi de l'ebook '{query}' : {res.get('message', 'Échec du traitement')}. Explique la situation avec ta voix Aoede sans prétendre que le livre est envoyé."
-            return {"status": res.get("status"), "filename": res.get("filename"), "message": res.get("message"), "instruction_to_jarvis": instruction}
+                supervision_service.complete_action("send_to_ereader", status="error", summary=f"Ebook {query} : échec")
+                await broadcast_supervision()
+                return ToolResult.failed(
+                    error_hint=res.get("message") or v_detail or "Échec de récupération de l'ebook",
+                    user_message=f"Une difficulté est survenue lors de la récupération de l'ebook '{query}'.",
+                    evidence=res.get("message") or v_detail
+                )
 
     # ─── list_chrome_extensions ────────────────────────────────────────────────
     elif name in ("list_chrome_extensions", "chrome_extensions"):
@@ -1149,17 +1310,19 @@ async def _execute_dispatch_tool(
                 lignes=lignes,
                 description=description
             ))
-            return {
-                "status": "lance_en_arriere_plan",
-                "action": "generer_fichier_tableur",
-                "nom_fichier": nom_fichier,
-                "engine": "Antigravity spreadsheet_modeler",
-                "instruction_to_jarvis": (
+            return ToolResult.started(
+                task_id="generer_fichier_tableur",
+                action="generer_fichier_tableur",
+                user_message=f"La conception du classeur Excel '{nom_fichier}' est lancée.",
+                evidence="Mission spreadsheet_modeler déléguée aux agents Antigravity",
+                nom_fichier=nom_fichier,
+                engine="Antigravity spreadsheet_modeler",
+                instruction_to_jarvis=(
                     f"Je m'en charge Pierre. Je délègue la conception du classeur Excel '{nom_fichier}' "
                     f"à nos agents Antigravity sur le VPS avec formules dynamiques, ratios et mise en forme corporate. "
                     f"Confirme-le immédiatement à Pierre avec ta voix Aoede en moins de 300 millisecondes d'un ton complice."
                 )
-            }
+            )
 
         _filename = nom_fichier
         _cols = colonnes
@@ -1179,6 +1342,15 @@ async def _execute_dispatch_tool(
                 res = await n8n_exec(action_name="document-spreadsheet", parametres=payload)
                 status_res = res.get("status", "completed")
                 is_ok = (status_res == "success")
+
+                # Vérification post-exécution (Requirement 3)
+                if is_ok:
+                    spreadsheet_path = os.path.join("downloads", _fn)
+                    v_ok, v_detail, v_rows = verify_spreadsheet_file(spreadsheet_path)
+                    if not v_ok:
+                        is_ok = False
+                        res["error"] = f"Échec de vérification du tableur : {v_detail}"
+
                 supervision_service.complete_action(
                     "generer_fichier_tableur",
                     status="completed" if is_ok else "error",
@@ -1210,16 +1382,18 @@ async def _execute_dispatch_tool(
 
         asyncio.create_task(_run_tableur_bg())
 
-        return {
-            "status": "lance_en_arriere_plan",
-            "action": "generer_fichier_tableur",
-            "nom_fichier": nom_fichier,
-            "instruction_to_jarvis": (
+        return ToolResult.started(
+            task_id="generer_fichier_tableur",
+            action="generer_fichier_tableur",
+            user_message=f"La préparation du tableur Excel '{nom_fichier}' est lancée.",
+            evidence=f"Tableur {nom_fichier} en tâche de fond n8n",
+            nom_fichier=nom_fichier,
+            instruction_to_jarvis=(
                 f"La génération du tableur Excel '{nom_fichier}' est lancée via n8n en tâche de fond. "
                 f"Confirme immédiatement à Pierre avec ta voix Aoede d'un ton complice et naturel "
                 f"que tu prépares son fichier Excel '{nom_fichier}'."
             )
-        }
+        )
 
     # ─── generer_presentation ─────────────────────────────────────────────────
     elif name in ("generate_presentation", "generer_presentation"):
@@ -1356,11 +1530,20 @@ async def _execute_dispatch_tool(
                 batch_applied = raw_result.get("batch_applied", True)
                 is_ok = (status_res == "success") and (batch_applied is not False) and (raw_result.get("status") != "error")
 
+                presentation_id = raw_result.get("presentation_id") or ""
                 presentation_url = (
                     raw_result.get("presentation_url")
-                    or (f"https://docs.google.com/presentation/d/{raw_result.get('presentation_id')}" if raw_result.get("presentation_id") else "")
+                    or (f"https://docs.google.com/presentation/d/{presentation_id}" if presentation_id else "")
                     or "https://docs.google.com/presentation"
                 )
+
+                # Vérification post-exécution (Requirement 3: GET presentations.get, compter les slides)
+                if is_ok:
+                    min_req = max(1, len(effective_slides) if _sl else 1)
+                    v_ok, v_detail, v_count = await verify_presentation_slides(presentation_id, min_slides=min_req)
+                    if not v_ok:
+                        is_ok = False
+                        res["error"] = f"Échec de vérification des slides : {v_detail} ({v_count} slides)"
 
                 slides_service._current_task["active"] = False
                 slides_service._current_task["presentation_url"] = presentation_url
@@ -1438,18 +1621,20 @@ async def _execute_dispatch_tool(
 
         asyncio.create_task(_run_slides_bg())
 
-        return {
-            "status": "lance_en_arriere_plan",
-            "action": "generer_presentation",
-            "titre": raw_titre,
-            "theme": theme,
-            "slides_count": len(slides),
-            "instruction_to_jarvis": (
+        return ToolResult.started(
+            task_id="generer_presentation",
+            action="generer_presentation",
+            user_message=f"Je lance la recherche et la conception de la présentation '{raw_titre}' en arrière-plan.",
+            evidence=f"Recherche et diapositives ({theme}) lancées en arrière-plan",
+            titre=raw_titre,
+            theme=theme,
+            slides_count=len(slides),
+            instruction_to_jarvis=(
                 f"La conception de la présentation sur '{raw_titre}' est lancée en arrière-plan. "
                 f"RÈGLE STRICTE : Ne donne pas la présentation immédiatement ! "
                 f"Dis immédiatement et naturellement à Pierre avec ta voix Aoede que tu t'en charges et que tu lances la structuration du plan directeur pour sa présentation sur Google Slides."
             )
-        }
+        )
 
     # ─── get_active_task_status ──────────────────────────────────────────────
     elif name in ("get_active_task_status", "task_status"):
@@ -1659,10 +1844,15 @@ async def _execute_dispatch_tool(
 
             if events:
                 events_str = ", ".join([f"'{e.get('titre', e.get('summary', 'Point'))}' à {e.get('heure', e.get('start', 'heure non précisée'))}" for e in events])
-                instruction = f"Voici les rendez-vous du jour sur ton agenda : {events_str}. Présente-les clairement à Pierre avec ta voix Aoede."
+                instruction = f"Voici les rendez-vous du jour sur ton agenda : {events_str}."
             else:
-                instruction = "Ton agenda est entièrement dégagé pour aujourd'hui, aucun rendez-vous planifié. Confirme-le simplement à Pierre avec ta voix Aoede."
-            return {"status": "completed", "result": {"events": events}, "instruction_to_jarvis": instruction}
+                instruction = "Ton agenda est entièrement dégagé pour aujourd'hui, aucun rendez-vous planifié."
+            return ToolResult.done(
+                verified=True,
+                evidence=f"{len(events)} événement(s) listé(s)",
+                user_message=instruction,
+                result={"events": events}
+            )
 
         supervision_service.start_action(
             "agenda_gerer_evenement",
@@ -1711,22 +1901,49 @@ async def _execute_dispatch_tool(
             await broadcast_supervision()
             if is_ok:
                 if action == "creer":
-                    instruction = f"Le rendez-vous '{titre}' pour le {date_debut} est inscrit dans l'agenda. Confirme-le directement et simplement à Pierre avec ta voix Aoede."
+                    # Requirement 3: manage_calendar_event -> relire l'événement créé
+                    ev_id = res.get("result", {}).get("event_id") or res.get("event_id") or ""
+                    v_ok, v_detail, v_id = await verify_calendar_event(event_id=ev_id, titre=titre, date_debut=date_debut)
+                    if not v_ok:
+                        return ToolResult.failed(
+                            error_hint="Événement non retrouvé lors de la vérification de l'agenda.",
+                            user_message=f"La création du rendez-vous '{titre}' n'a pas pu être confirmée dans votre agenda.",
+                            evidence=v_detail
+                        )
+                    return ToolResult.done(
+                        verified=True,
+                        evidence=f"Événement confirmé (ID: {v_id or titre})",
+                        user_message=f"Le rendez-vous '{titre}' pour le {date_debut} est bien inscrit et vérifié dans votre agenda.",
+                        result=res
+                    )
                 elif action == "decaler":
-                    instruction = f"Le rendez-vous '{titre}' est décalé au {date_debut}. Confirme-le directement à Pierre avec ta voix Aoede."
+                    instruction = f"Le rendez-vous '{titre}' est décalé au {date_debut}."
                 elif action == "supprimer":
-                    instruction = f"L'événement '{titre}' a été supprimé de l'agenda. Confirme-le simplement à Pierre avec ta voix Aoede."
+                    instruction = f"L'événement '{titre}' a été supprimé de l'agenda."
                 else:
                     events_found = res.get("result", {}).get("events", [])
-                    instruction = f"Voici les événements trouvés : {events_found}. Présente-les naturellement et clairement à Pierre avec ta voix Aoede."
-                return {"status": "completed", "result": res, "instruction_to_jarvis": instruction}
+                    instruction = f"Voici les événements trouvés : {events_found}."
+                return ToolResult.done(
+                    verified=True,
+                    evidence=f"Action agenda '{action}' validée pour '{titre}'",
+                    user_message=instruction,
+                    result=res
+                )
             else:
                 err = res.get("error", "Erreur agenda")
-                return {"status": "error", "error": err, "instruction_to_jarvis": f"Impossible d'effectuer l'action d'agenda ({err}). Informe brièvement Pierre avec ta voix Aoede."}
+                return ToolResult.failed(
+                    error_hint=err,
+                    user_message=f"Impossible d'effectuer l'action d'agenda ({err}).",
+                    evidence=err
+                )
         except Exception as e:
             supervision_service.complete_action("agenda_gerer_evenement", status="error", summary=str(e))
             await broadcast_supervision()
-            return {"status": "error", "error": str(e), "instruction_to_jarvis": f"Erreur lors de l'accès à l'agenda ({e}). Informe Pierre brièvement."}
+            return ToolResult.failed(
+                error_hint=str(e),
+                user_message="Erreur lors de l'accès à l'agenda.",
+                evidence=str(e)
+            )
 
     # ─── creer_rappel_push ───────────────────────────────────────────────────
     elif name in ("create_push_reminder", "creer_rappel_push"):

@@ -638,7 +638,7 @@ async def voice_channel(websocket: WebSocket):
                                 )
 
                                 # Règle d'or de canal unique : si l'action s'est terminée de manière synchrone, l'enregistrer
-                                if tool_resp.get("status") not in ("launched_in_background", "lance_en_arriere_plan"):
+                                if tool_resp.get("status") not in ("started", "launched_in_background", "lance_en_arriere_plan"):
                                     from core.shared_state import mark_action_sync_completed
                                     mark_action_sync_completed(name)
 

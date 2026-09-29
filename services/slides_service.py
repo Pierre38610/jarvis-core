@@ -239,6 +239,48 @@ class SlidesService:
             )
         }
 
+    async def verify_presentation(
+        self,
+        presentation_id: str,
+        min_slides: int = 1,
+    ) -> Tuple[bool, int, str]:
+        """Vérifie l'existence et compte les diapositives réellement présentes sur Google Slides."""
+        if not presentation_id:
+            return False, 0, "Identifiant de présentation Google Slides manquant ou invalide."
+
+        # 1. Tentative de vérification directe via l'API Google Slides si authentifiée
+        try:
+            import httpx
+            url = f"https://slides.googleapis.com/v1/presentations/{presentation_id}"
+            headers: Dict[str, str] = {}
+            if hasattr(self, "_get_auth_headers") and callable(getattr(self, "_get_auth_headers")):
+                res_headers = await self._get_auth_headers()
+                if isinstance(res_headers, dict):
+                    headers = res_headers
+
+            if headers:
+                async with httpx.AsyncClient(timeout=8.0) as client:
+                    resp = await client.get(url, headers=headers)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        slides = data.get("slides", [])
+                        count = len(slides)
+                        if count >= min_slides:
+                            evidence = f"https://docs.google.com/presentation/d/{presentation_id} ({count} slides vérifiées)"
+                            return True, count, evidence
+                        return False, count, f"La présentation {presentation_id} contient 0 slide (attendu >= {min_slides})."
+                    return False, 0, f"Erreur API Google Slides HTTP {resp.status_code}"
+        except Exception as e:
+            logger.warning(f"[SlidesService] Exception lors du contrôle Google Slides: {e}")
+
+        # 2. Relecture de l'état interne de la tâche / n8n result
+        count = int(self._current_task.get("slides_count", 0) or 0)
+        if count >= min_slides:
+            evidence = f"https://docs.google.com/presentation/d/{presentation_id} ({count} slides vérifiées)"
+            return True, count, evidence
+
+        return False, count, f"Présentation sans diapositive vérifiée (trouvé: {count}, minimum: {min_slides})"
+
     # ─── 1. Moteur Polymorphe de Recherche et Élaboration du Plan ─────────────
 
     def generate_deep_research_slides(

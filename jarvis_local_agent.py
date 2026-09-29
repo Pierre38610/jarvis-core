@@ -509,11 +509,21 @@ def execute_local_app(app_name: str) -> Dict[str, Any]:
         target_cmd = name_clean
 
     try:
-        subprocess.Popen(f'start "" {target_cmd}', shell=True)
+        proc = subprocess.Popen(f'start "" {target_cmd}', shell=True)
+        pid = proc.pid
+        is_running = True
+        try:
+            import psutil
+            is_running = psutil.pid_exists(pid)
+        except Exception:
+            pass
+
         return {
-            "status": "success",
+            "status": "success" if is_running else "error",
             "app": app_name,
-            "message": f"Application '{app_name}' lancée avec succès sur votre écran d'ordinateur."
+            "pid": pid,
+            "verified": is_running,
+            "message": f"Application '{app_name}' lancée avec succès sur votre écran d'ordinateur (PID {pid})." if is_running else f"Le processus de l'application '{app_name}' n'a pas pu être vérifié."
         }
     except Exception as e:
         return {

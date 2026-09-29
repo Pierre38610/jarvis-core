@@ -2,7 +2,7 @@
 
 import sqlite3
 import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from config import DB_PATH
 
 class MemoryService:
@@ -72,6 +72,21 @@ class MemoryService:
             "fact": fact_clean,
             "category": category
         }
+
+    def get_memory_by_id(self, memory_id: Any) -> Optional[Dict[str, Any]]:
+        """Relit un souvenir précis par son identifiant unique pour vérification formelle."""
+        if memory_id is None:
+            return None
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id, category, fact, created_at FROM memories WHERE id = ?", (memory_id,))
+                row = cursor.fetchone()
+                if row:
+                    return {"id": row["id"], "category": row["category"], "fact": row["fact"], "date": row["created_at"]}
+        except Exception as e:
+            print(f"[Memory] Erreur lors de la relecture du souvenir {memory_id}: {e}")
+        return None
 
     def search_memories(self, query: str, limit: int = 6) -> List[Dict[str, Any]]:
         """Recherche les souvenirs pertinents selon des mots-clés."""

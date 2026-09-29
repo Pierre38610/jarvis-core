@@ -288,7 +288,7 @@ class TestDispatchDocumentTools:
                 live_display_label="Gratuit"
             )
 
-            assert resp["status"] == "lance_en_arriere_plan"
+            assert resp["status"] in ("lance_en_arriere_plan", "started")
             assert resp["action"] == "generer_fichier_tableur"
             assert resp["nom_fichier"] == "compta.xlsx"
             assert "instruction_to_jarvis" in resp
@@ -313,7 +313,7 @@ class TestDispatchDocumentTools:
                 live_display_label="Gratuit"
             )
 
-            assert resp["status"] == "lance_en_arriere_plan"
+            assert resp["status"] in ("lance_en_arriere_plan", "started")
             assert resp["action"] == "generer_presentation"
             assert resp["titre"] == "Projet Stark"
             assert resp["slides_count"] == 1
@@ -339,7 +339,7 @@ class TestDispatchDocumentTools:
                 live_display_label="Gratuit"
             )
 
-            assert resp["status"] == "lance_en_arriere_plan"
+            assert resp["status"] in ("lance_en_arriere_plan", "started")
             assert resp["action"] == "notion_enregistrer"
             assert resp["titre"] == "Idée Jarvis"
 
@@ -361,7 +361,7 @@ class TestDispatchDocumentTools:
             is_paid_live=False,
             live_display_label="Gratuit"
         )
-        assert resp_idle["status"] == "completed"
+        assert resp_idle["status"] in ("completed", "done")
         assert resp_idle["has_active_task"] is False
         assert "veille active" in resp_idle["instruction_to_jarvis"]
 
@@ -385,7 +385,7 @@ class TestDispatchDocumentTools:
             is_paid_live=False,
             live_display_label="Gratuit"
         )
-        assert resp_active["status"] == "completed"
+        assert resp_active["status"] in ("completed", "done")
         assert resp_active["has_active_task"] is True
         assert resp_active["topic"] == "Bitcoin"
         assert "Étape 2/4" in resp_active["step"]

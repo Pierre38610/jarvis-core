@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.11.0 — Architecture Complète, Spécifications Systèmes, Double Moteur Deep Research & Guide d'Ingénierie IA.*
+> *Dernière révision majeure : Version 5.12.0 — Contrat Universel ToolResult, Moteur de Vérification Post-Exécution & Élimination Structurelle des Fausses Confirmations Vocales.*
 
 ---
 
@@ -71,6 +71,7 @@
    - 8.13. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
    - 8.14. Connaissance Architecturale Dynamique & Auto-évaluation
    - 8.15. SRE Autonome & Auto-Guérison Système (`services/system_healing_service.py`)
+   - 8.16. Contrat Universel ToolResult & Moteur de Vérification d'Effet Réel (Zero Unverified Claims)
 9. [Matrice des Endpoints API REST & Protocoles WebSockets](#9-matrice-des-endpoints-api-rest--protocoles-websockets)
    - 9.1. Endpoints HTTP / REST FastAPI (Exhaustif)
    - 9.2. Contrat WebSocket Audio Gemini Live (`/ws`)
@@ -690,6 +691,7 @@ Arbitrage automatique entre faits de profil (SQLite) et mémoire vectorielle RAG
 
 ### 8.12. Télémétrie, Observabilité & Métriques des Outils (`services/metrics_service.py`)
 Consignation non-bloquante de chaque appel d'outil dans PostgreSQL `tool_call_metrics` (statut, latence, tier, coût, arguments). Exposition sur `/api/supervision/metrics` avec fenêtres temporelles 24h, 7j, 30j.
+Comprend également le compteur d'intégrité `claimed_success_without_verification` : incrémenté automatiquement par `normalize_result()` dès qu'un outil prétend à un succès terminé (`status="done"`) sans qu'une vérification indépendante matérielle n'ait pu être attestée (`verified=False`).
 
 ### 8.13. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
 Synchronisation bidirectionnelle Google/Samsung Calendar via n8n. Rappels push instantanés via Telegram Stark Bot (`chatId: 6849746502`). Briefing matinal compilé dans Redis (`jarvis:briefing:today`).
@@ -704,6 +706,43 @@ Synchronisation bidirectionnelle Google/Samsung Calendar via n8n. Rappels push i
 - Auto-génération de test minimal de non-régression si aucun test n'existe pour le module ciblé.
 - **Règle d'Escalade Fichiers Critiques** : Si un fichier sensible (`CRITICAL_FILES = {"auth_service.py", "dispatcher.py", "auth.py", "declarations.py", "security.py"}`) est touché, le patch passe au statut `requires_validation` et attend l'approbation orale explicite de Pierre.
 - Déploiement Blue/Green atomique (`releases/<timestamp>` + symlink `current`), rollback instantané en 1 clic ou commande vocale. Persistance PostgreSQL + SQLite.
+
+### 8.16. Contrat Universel ToolResult & Moteur de Vérification d'Effet Réel (Zero Unverified Claims)
+Afin de rendre structurellement impossible que Jarvis annonce oralement un succès non prouvé, la version 5.12.0 unifie l'intégralité des 38 outils sous un contrat canonique strict :
+
+1. **La Dataclass Canonique `ToolResult` (`core/tools/result.py`)** :
+   - `status ∈ {"done", "failed", "started", "partial", "needs_user"}` (5 valeurs cardinales exhaustives, validation immédiate en `__post_init__`).
+   - `verified: bool` : `True` **uniquement** si une vérification indépendante post-exécution a matériellement réussi.
+   - `evidence: str` : Preuve matérielle tangible du résultat (URL Google Slides vérifiée, message-id SMTP/IMAP, chemin physique et taille en octets d'un téléchargement, PID actif d'un processus Windows, ID d'événement calendrier, etc.).
+   - `user_message: str` : Synthèse concise rédigée en français pour restitution orale naturelle via la voix Live Aoede.
+   - `task_id: Optional[str]` : Identifiant de la tâche asynchrone pour les statuts `started`.
+   - `error_hint: Optional[str]` : Cause technique probable et action suggérée en cas de `failed`.
+   - `data: dict` : Dictionnaire métier préservant la compatibilité descendante avec l'UI PWA et les tests.
+
+2. **Couche d'Enveloppe & Migration Progressive (`normalize_result`)** :
+   - Dans `core/tools/dispatcher.py`, tout résultat d'outil passe obligatoirement par `normalize_result()`.
+   - Les anciens statuts disparates (`sent`, `generated`, `opened_locally`, `cart_ready`, `lance_en_arriere_plan`, etc.) sont traduits vers les 5 statuts canoniques via `LEGACY_STATUS_MAPPING`.
+   - Un avertissement explicite (`logger.warning("[ToolResult] Format legacy détecté...")`) est consigné pour chaque outil renvoyant un format historique non migré.
+   - Si un outil legacy renvoie un statut converti en `done` sans avoir positionné `verified=True`, le compteur `claimed_success_without_verification` est automatiquement incrémenté dans `metrics_service`.
+
+3. **Moteur de Vérification Post-Exécution (`core/tools/verifier.py`)** :
+   Chaque outil produisant un effet externe fait l'objet d'une contre-vérification matérielle avant validation du résultat. Si la vérification échoue, le statut bascule irrévocablement en `failed` même si l'appel d'API initial a renvoyé un code 200 :
+   - `send_email` : Relecture effective du courriel dans le dossier IMAP `Sent` ou confirmation du `message_id` cryptographique retourné par le serveur de messagerie.
+   - `generate_presentation` : Appel de l'API Google Slides (`presentations.get`) sur l'ID généré pour compter les diapositives réellement présentes (`slide_count >= min_slides`).
+   - `generate_spreadsheet` : Contrôle de l'existence physique du fichier `.xlsx` sur le disque et comptage effectif des lignes (`rows > 0`).
+   - `download_file` / `search_and_download_ebook` : Vérification `os.path.exists()` et validation que la taille du fichier est strictement supérieure à 0 octet.
+   - `launch_application` : Récupération du PID réel auprès du PC Windows et validation de son existence active en mémoire via `psutil.pid_exists(pid)`.
+   - `manage_calendar_event` : Relecture de l'événement créé ou modifié dans le calendrier.
+   - `save_memory` : Relecture immédiate de la mémoire mémorisée par ID dans la base locale SQLite.
+   - `open_user_browser` : Attente d'un accusé de réception explicite de `jarvis_local_agent.py` sur le poste physique (pas uniquement émission WebSocket).
+
+4. **Protocole d'Élocution Vocale Gemini Live (`config.py`)** :
+   Le prompt système interdit formellement de masquer un échec ou d'extrapoler sur une tâche non vérifiée. L'élocution est gouvernée par le statut strict du `ToolResult` :
+   - `done` + `verified=True` : Jarvis annonce l'accomplissement avec certitude et cite l'evidence matérielle.
+   - `done` + `verified=False` : Jarvis précise avec prudence que l'opération a été transmise mais que la confirmation matérielle n'est pas encore établie.
+   - `started` : Jarvis indique exclusivement que le traitement a été lancé en arrière-plan et attend l'injection du résultat final.
+   - `failed` : Jarvis énonce clairement l'échec, indique la cause probable (`error_hint`) et propose immédiatement une alternative sans minimiser.
+   - `needs_user` : Jarvis pose la question ou demande la validation requise et attend la réponse de l'utilisateur.
 
 ---
 
@@ -1039,4 +1078,4 @@ Pour ajouter un 39e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.11.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.12.0.*

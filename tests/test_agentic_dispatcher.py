@@ -92,7 +92,7 @@ async def test_tool_dispatcher_rechercher_train_agentic():
             live_display_label="Gemini Flash"
         )
 
-        assert res["status"] == "success"
+        assert res["status"] in ("success", "done")
         assert res.get("agent_optimization_launched") is True
         mock_trajet.assert_called_once()
         assert mock_trajet.call_args[1].get("optimiser_avec_agent") is True
@@ -112,7 +112,7 @@ async def test_tool_dispatcher_generer_fichier_tableur_agentic():
             live_display_label="Gemini Flash"
         )
 
-        assert res["status"] == "lance_en_arriere_plan"
+        assert res["status"] in ("lance_en_arriere_plan", "started")
         assert res["nom_fichier"] == "budget_stark.xlsx"
         assert "spreadsheet_modeler" in res["engine"]
 
@@ -134,7 +134,7 @@ async def test_tool_dispatcher_agentic_extensions():
                 is_paid_live=False,
                 live_display_label="Gemini Flash"
             )
-            assert res_mail["status"] == "lance_en_arriere_plan"
+            assert res_mail["status"] in ("lance_en_arriere_plan", "started")
             assert "Inria" in res_mail["subject"]
 
     # 2. curation_livre_synthese
@@ -147,7 +147,7 @@ async def test_tool_dispatcher_agentic_extensions():
             is_paid_live=False,
             live_display_label="Gemini Flash"
         )
-        assert res_curation["status"] == "lance_en_arriere_plan"
+        assert res_curation["status"] in ("lance_en_arriere_plan", "started")
         assert res_curation["titre_livre"] == "Deep Learning with Python"
 
     # 3. auto_guerison_systeme
@@ -160,5 +160,5 @@ async def test_tool_dispatcher_agentic_extensions():
             is_paid_live=False,
             live_display_label="Gemini Flash"
         )
-        assert res_heal["status"] == "lance_en_arriere_plan"
+        assert res_heal["status"] in ("lance_en_arriere_plan", "started")
         assert "Erreur 500" in res_heal["motif"]

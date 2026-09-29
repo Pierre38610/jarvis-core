@@ -351,7 +351,7 @@ async def test_tool_dispatcher_system_self_healing_actions():
             is_paid_live=False,
             live_display_label="Gemini Flash"
         )
-        assert res["status"] == "success"
+        assert res["status"] in ("success", "done")
         assert res["action"] == "rollback_patch"
         assert "annulé immédiatement" in res["instruction_to_jarvis"]
 
@@ -365,6 +365,6 @@ async def test_tool_dispatcher_system_self_healing_actions():
             is_paid_live=False,
             live_display_label="Gemini Flash"
         )
-        assert res_app["status"] == "success"
+        assert res_app["status"] in ("success", "done")
         assert res_app["action"] == "approve_patch"
         assert "pris en compte ta validation" in res_app["instruction_to_jarvis"]
