@@ -1,9 +1,18 @@
 """services/deep_research_service.py
 Moteur Asynchrone de Deep Research Universel pour J.A.R.V.I.S. - Stark Industries.
-Architecture Map-Reduce Multi-Agents Universelle avec Override Géographique Strict
-et Audit Qualité Fermé (Closed Quality Gate).
 
-Flux opérationnel en 6 étapes :
+Deux moteurs disponibles, sélectionnés automatiquement :
+  A. Moteur Gemini Web (nouveau, prioritaire) :
+     Automatisation directe de gemini.google.com via Chrome CDP / Playwright.
+     Zéro vision – interactions par coordonnées mémorisées et inspection DOM.
+     Livraison : affichage sur l'écran (PC connecté) ou snapshot HTML + email Stark.
+     Point d'entrée : launch_deep_research_gemini_web(topic, live_session)
+
+  B. Moteur Map-Reduce Multi-Agents (legacy, repli) :
+     Architecture Map-Reduce VPS avec Antigravity CLI et audit qualité fermé.
+     Activé si le moteur Gemini Web échoue ou si `use_legacy_engine=True`.
+
+Flux opérationnel moteur B (legacy) en 6 étapes :
 1. Compilateur de Spécification Dynamique (Tier 1 Flash JSON mode) -> MissionSpec
 2. Override Géographique Absolu (interdiction et purge totale des villes mémoire si zone explicite)
 3. Phase MAP : Prospection Parallèle VPS en 3 Axes Fonctionnels Universels (Startups, Scale-ups/R&D, Grands Groupes)
@@ -1460,5 +1469,50 @@ class DeepResearchService:
             await clear_all_subagents()
 
 
-# Singleton
+# Singleton moteur legacy
 deep_research_service = DeepResearchService()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Point d'entrée unifié Deep Research (Gemini Web prioritaire + repli legacy)
+# ──────────────────────────────────────────────────────────────────────────────
+
+async def launch_deep_research_gemini_web(
+    topic: str,
+    live_session: Any = None,
+    use_legacy_engine: bool = False,
+) -> Dict[str, Any]:
+    """
+    Point d'entrée non-bloquant pour le Deep Research via Gemini Web.
+
+    Logique de sélection du moteur :
+      1. Si `use_legacy_engine=False` (défaut) → Moteur Gemini Web (CDP/Playwright).
+      2. Si le moteur Web échoue ou si `use_legacy_engine=True` → Moteur Map-Reduce legacy.
+
+    Retourne immédiatement {status: launched_in_background} pour permettre
+    à Aoede d'accuser réception en moins de 300 ms.
+    """
+    if use_legacy_engine:
+        logger.info("[DR] Délégation au moteur Map-Reduce legacy sur demande explicite.")
+        return {"status": "legacy_engine", "message": "Délégué au moteur Map-Reduce legacy."}
+
+    try:
+        from services.gemini_web_automator import gemini_deep_research_engine
+        return await gemini_deep_research_engine.launch(
+            topic=topic,
+            live_session=live_session,
+        )
+    except ImportError as e:
+        logger.error(f"[DR] Import GeminiWebAutomator impossible : {e}. Repli vers moteur legacy.")
+        return {
+            "status": "error",
+            "error": "Service gemini_web_automator introuvable.",
+            "fallback": "legacy",
+        }
+    except Exception as e:
+        logger.error(f"[DR] Erreur moteur Gemini Web : {e}. Repli vers moteur legacy.", exc_info=True)
+        return {
+            "status": "error",
+            "error": str(e),
+            "fallback": "legacy",
+        }

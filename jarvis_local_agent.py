@@ -813,8 +813,20 @@ async def agent_loop():
                             result = get_local_metrics()
                         elif action == "fetch_file":
                             result = execute_fetch_file(params)
+                        elif action == "gemini_deep_research":
+                            # Lance une recherche Deep Research via Gemini Web sur le navigateur local
+                            try:
+                                from services.gemini_web_automator import gemini_deep_research_engine
+                                topic = params.get("topic", "")
+                                result = await gemini_deep_research_engine.launch(
+                                    topic=topic,
+                                    live_session=None,
+                                )
+                            except Exception as e:
+                                result = {"status": "error", "message": f"Erreur gemini_deep_research local : {e}"}
                         else:
                             result = {"status": "error", "message": f"Action inconnue : {action}"}
+
 
                         print(f"  -> Résultat : {result.get('message', result.get('status'))}", flush=True)
 
