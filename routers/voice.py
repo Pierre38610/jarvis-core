@@ -35,6 +35,7 @@ from core.shared_state import (
 )
 from core.tools.declarations import get_tools_list
 from core.tools.dispatcher import dispatch_tool
+from services import task_planner as _task_planner_mod
 
 router = APIRouter()
 
@@ -693,6 +694,62 @@ async def voice_channel(websocket: WebSocket):
                                     "state": t_meta.get("state", "listening")
                                 }))
 
+                                # ── Boucle de completion plan multi-etapes ──────────
+                                # Met a jour le step correspondant si un plan est actif
+                                try:
+                                    _plan = _task_planner_mod.get_active_plan()
+                                    if _plan and name not in ("get_plan_status", "mark_plan_step"):
+                                        # Associer ce tool_call au step running le plus recent
+                                        _running = _plan.running_steps()
+                                        _step_target = _running[0] if _running else None
+                                        if _step_target is None:
+                                            _pend = _plan.pending_steps()
+                                            _step_target = _pend[0] if _pend else None
+                                        if _step_target:
+                                            _task_planner_mod.update_step_with_tool_result(
+                                                _step_target.id, tool_resp
+                                            )
+                                        # Broadcast HUD
+                                        _hud = _task_planner_mod.get_plan_hud_payload(_plan)
+                                        await broadcast_supervision()
+                                        await websocket.send_text(json.dumps({
+                                            "type": "plan_update",
+                                            "plan": _hud
+                                        }))
+                                        # Injection continuation ou rapport final
+                                        await asyncio.sleep(0.4)  # buffer drainage
+                                        _done_n = _plan.done_count() + _plan.failed_count()
+                                        if _plan.is_complete():
+                                            _final_msg = _task_planner_mod.build_final_report_prompt(_plan)
+                                            if _final_msg and session:
+                                                try:
+                                                    await safe_send_live_client_content(
+                                                        session,
+                                                        text_content=_final_msg,
+                                                        priority=2,
+                                                        role="user",
+                                                        turn_complete=True
+                                                    )
+                                                except Exception as _pe:
+                                                    print(f"[Plan] Injection rapport final: {_pe}")
+                                            _task_planner_mod.clear_active_plan()
+                                        elif _plan.pending_steps():
+                                            _cont_msg = _task_planner_mod.build_continuation_prompt(_plan, _done_n)
+                                            if _cont_msg and session and _plan._injection_count < 10:
+                                                _plan._injection_count += 1
+                                                try:
+                                                    await safe_send_live_client_content(
+                                                        session,
+                                                        text_content=_cont_msg,
+                                                        priority=2,
+                                                        role="user",
+                                                        turn_complete=True
+                                                    )
+                                                except Exception as _ce:
+                                                    print(f"[Plan] Injection continuation: {_ce}")
+                                except Exception as _plan_exc:
+                                    print(f"[Plan] Erreur boucle completion: {_plan_exc}")
+
             except (WebSocketDisconnect, WebSocketDisconnected, asyncio.CancelledError, ModelSwitchRequested, QuotaExhaustedError):
                 raise
             except Exception as e:
@@ -901,6 +958,11 @@ async def voice_channel(websocket: WebSocket):
                 pass
 
         print("[Voice Channel] FINALLY: Nettoyage session et références terminé.")
+        # Nettoyage du plan multi-etapes actif pour eviter les plans zombies
+        try:
+            _task_planner_mod.clear_active_plan()
+        except Exception:
+            pass
         if active_task_controller.get("websocket") == websocket:
             active_task_controller["websocket"] = None
         if active_task_controller.get("live_session") == session:

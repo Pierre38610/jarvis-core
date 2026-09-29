@@ -2461,7 +2461,31 @@ async def _execute_dispatch_tool(
                 )
             }
 
+
+    # ─── get_plan_status ────────────────────────────────────────────────────────
+    elif name == "get_plan_status":
+        from services.task_planner import get_plan_status as _get_plan_status
+        return _get_plan_status()
+
+    # ─── mark_plan_step ─────────────────────────────────────────────────────────
+    elif name == "mark_plan_step":
+        from services.task_planner import mark_plan_step as _mark_plan_step
+        step_id = str(args.get("step_id", ""))
+        status = str(args.get("status", "done"))
+        note = str(args.get("note", ""))
+        result = _mark_plan_step(step_id=step_id, status=status, note=note)
+        # Broadcast HUD si plan actif
+        try:
+            from services.task_planner import get_plan_hud_payload
+            hud = get_plan_hud_payload()
+            if hud.get("plan_active"):
+                await broadcast_supervision()
+        except Exception:
+            pass
+        return result
+
     # ─── Outil inconnu ─────────────────────────────────────────────────────────
     else:
         return {"status": "error", "message": f"Outil inconnu : {name}"}
+
 

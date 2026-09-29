@@ -1175,6 +1175,52 @@ def get_tools_list() -> list[types.Tool]:
                         }
                     )
                 ),
+
+                # ─── 39. get_plan_status ──────────────────────────────────────────────────
+                types.FunctionDeclaration(
+                    name="get_plan_status",
+                    description=(
+                        "Consulte l'état de la checklist du plan multi-étapes en cours. "
+                        "À UTILISER QUAND : Une consigne multi-actions a été lancée et tu veux connaître "
+                        "les étapes restantes avant d'annoncer que tout est fait. "
+                        "RÈGLE ABSOLUE : Tu ne dis JAMAIS 'c'est fait' pour l'ensemble si get_plan_status renvoie pending_count > 0. "
+                        "NE JAMAIS UTILISER QUAND : Aucun plan multi-étapes n'a été créé (consigne simple)."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={}
+                    )
+                ),
+
+                # ─── 40. mark_plan_step ──────────────────────────────────────────────────
+                types.FunctionDeclaration(
+                    name="mark_plan_step",
+                    description=(
+                        "Marque manuellement une étape du plan multi-étapes avec un statut et une note. "
+                        "À UTILISER QUAND : Une étape du plan ne nécessite pas d'outil Jarvis "
+                        "(ex: réponse orale, information déjà connue, étape déléguée à l'utilisateur). "
+                        "NE JAMAIS UTILISER QUAND : L'étape a déjà été traitée par un outil (le dispatcher met à jour automatiquement)."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "step_id": types.Schema(
+                                type="STRING",
+                                description="L'identifiant de l'étape à mettre à jour (ex: '1', '2', '3')"
+                            ),
+                            "status": types.Schema(
+                                type="STRING",
+                                description="Nouveau statut de l'étape",
+                                enum=["done", "failed", "skipped", "pending"]
+                            ),
+                            "note": types.Schema(
+                                type="STRING",
+                                description="Note courte expliquant le résultat ou la raison (optionnel)"
+                            ),
+                        },
+                        required=["step_id", "status"]
+                    )
+                ),
             ]
         )
     ]
