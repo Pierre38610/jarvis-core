@@ -50,21 +50,149 @@ WMO_WEATHER_CODES: Dict[int, str] = {
     99: "Orage violent avec grêle",
 }
 
+# Table des coordonnées pour les principales villes connues (fallback instantané sans requête réseau)
+KNOWN_CITIES_COORDS: Dict[str, tuple[float, float, str]] = {
+    "grenoble": (45.1885, 5.7245, "Grenoble"),
+    "echirolles": (45.1432, 5.7196, "Échirolles"),
+    "meylan": (45.2089, 5.7797, "Meylan"),
+    "saint-martin-d'heres": (45.1764, 5.7589, "Saint-Martin-d'Hères"),
+    "paris": (48.8566, 2.3522, "Paris"),
+    "lyon": (45.7640, 4.8357, "Lyon"),
+    "marseille": (43.2965, 5.3698, "Marseille"),
+    "toulouse": (43.6047, 1.4442, "Toulouse"),
+    "nice": (43.7102, 7.2620, "Nice"),
+    "nantes": (47.2184, -1.5536, "Nantes"),
+    "strasbourg": (48.5734, 7.7521, "Strasbourg"),
+    "montpellier": (43.6108, 3.8767, "Montpellier"),
+    "bordeaux": (44.8378, -0.5792, "Bordeaux"),
+    "lille": (50.6292, 3.0573, "Lille"),
+    "rennes": (48.1173, -1.6778, "Rennes"),
+    "reims": (49.2583, 4.0317, "Reims"),
+    "saint-etienne": (45.4397, 4.3872, "Saint-Étienne"),
+    "toulon": (43.1242, 5.9280, "Toulon"),
+    "dijon": (47.3220, 5.0415, "Dijon"),
+    "angers": (47.4784, -0.5632, "Angers"),
+    "stockholm": (59.3293, 18.0686, "Stockholm"),
+    "malmo": (55.6050, 13.0038, "Malmö"),
+    "malmö": (55.6050, 13.0038, "Malmö"),
+    "goteborg": (57.7089, 11.9746, "Göteborg"),
+    "göteborg": (57.7089, 11.9746, "Göteborg"),
+    "kiruna": (67.8558, 20.2253, "Kiruna"),
+    "londres": (51.5074, -0.1278, "Londres"),
+    "london": (51.5074, -0.1278, "Londres"),
+    "bruxelles": (50.8503, 4.3517, "Bruxelles"),
+    "geneve": (46.2044, 6.1432, "Genève"),
+    "genève": (46.2044, 6.1432, "Genève"),
+    "berlin": (52.5200, 13.4050, "Berlin"),
+    "madrid": (40.4168, -3.7038, "Madrid"),
+    "barcelone": (41.3879, 2.1699, "Barcelone"),
+    "rome": (41.9028, 12.4964, "Rome")
+}
 
-async def get_local_weather(city: Optional[str] = None) -> Dict[str, Any]:
-    """Récupère les prévisions météo locales avec dégradation gracieuse et mise en cache."""
-    cache_key = "jarvis:weather:current"
+
+async def geocode_city(city: str) -> Optional[tuple[float, float, str]]:
+    """Résout le nom d'une ville en coordonnées (lat, lon, nom officiel)."""
+    clean_city = (city or "").strip().lower()
+    if not clean_city:
+        return None
+    for k, v in KNOWN_CITIES_COORDS.items():
+        if k in clean_city or clean_city in k:
+            return v[0], v[1], v[2]
+
+    # Tentative via l'API de géocodage gratuite Open-Meteo
+    try:
+        url = f"https://geocoding-api.open-meteo.com/v1/search?name={clean_city}&count=1&language=fr&format=json"
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("results")
+                if results and len(results) > 0:
+                    r0 = results[0]
+                    return float(r0["latitude"]), float(r0["longitude"]), r0.get("name", city)
+    except Exception:
+        pass
+    return None
+
+
+async def reverse_geocode(lat: float, lon: float) -> Optional[str]:
+    """Tente de déduire le nom de la commune ou ville à partir des coordonnées GPS."""
+    # 1. Vérification dans la table locale de proximité (< 15 km)
+    for name, (c_lat, c_lon, display_name) in KNOWN_CITIES_COORDS.items():
+        if abs(c_lat - lat) < 0.12 and abs(c_lon - lon) < 0.12:
+            return display_name
+
+    # 2. Appel reverse géocodage public gratuit BigDataCloud
+    try:
+        url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={lat}&longitude={lon}&localityLanguage=fr"
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                city = data.get("city") or data.get("locality") or data.get("principalSubdivision")
+                if city:
+                    return str(city)
+    except Exception:
+        pass
+    return None
+
+
+async def get_local_weather(
+    city: Optional[str] = None,
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None
+) -> Dict[str, Any]:
+    """Récupère les prévisions météo pour la position actuelle ou la ville spécifiée.
+    Ordre de priorité pour la localisation :
+    1. Coordonnées directes (latitude, longitude) si fournies.
+    2. Position de l'appareil enregistrée en cache Redis ('jarvis:device:location').
+    3. Ville en mémoire (où Pierre se trouve actuellement, déterminé par memory_service).
+    4. Ville de résidence dans le profil (autofill).
+    5. Fallback par défaut ('Grenoble').
+    """
+    target_city = (city or "").strip()
+    lat: Optional[float] = latitude
+    lon: Optional[float] = longitude
+
+    # 1. Si aucune coordonnée ni ville n'est fournie, vérifier la position de l'appareil dans Redis
+    if lat is None or lon is None:
+        cached_loc = await cache_service.get("jarvis:device:location")
+        if cached_loc and isinstance(cached_loc, dict):
+            try:
+                lat = float(cached_loc.get("latitude"))
+                lon = float(cached_loc.get("longitude"))
+                if not target_city and cached_loc.get("city"):
+                    target_city = str(cached_loc.get("city"))
+            except (ValueError, TypeError):
+                pass
+
+    # 2. Si toujours pas de coordonnées, vérifier où est l'utilisateur en mémoire
+    if (lat is None or lon is None) and not target_city:
+        mem_loc = memory_service.get_current_user_location()
+        target_city = mem_loc.get("city", "Grenoble")
+
+    # 3. Résolution des coordonnées si la ville est connue mais pas lat/lon
+    if (lat is None or lon is None) and target_city:
+        geo = await geocode_city(target_city)
+        if geo:
+            lat, lon, official_name = geo
+            target_city = official_name
+
+    # 4. Si nous avons lat/lon mais pas de nom de ville, tenter une reverse géolocalisation
+    if (lat is not None and lon is not None) and not target_city:
+        rev_city = await reverse_geocode(lat, lon)
+        target_city = rev_city or "votre secteur"
+
+    # Fallback ultime sur Grenoble si échec complet
+    if lat is None or lon is None:
+        lat, lon = 45.1885, 5.7245
+        if not target_city:
+            target_city = "Grenoble"
+
+    cache_key = f"jarvis:weather:{round(lat, 2)}_{round(lon, 2)}"
     cached = await cache_service.get(cache_key)
     if cached and isinstance(cached, dict):
         return cached
-
-    target_city = (city or "Grenoble").strip()
-    # Coordonnées par défaut : Grenoble / Isère (Pierre38610)
-    lat, lon = 45.1885, 5.7245
-
-    # Si Paris
-    if "paris" in target_city.lower():
-        lat, lon = 48.8566, 2.3522
 
     weather_data = {
         "city": target_city,
@@ -73,11 +201,13 @@ async def get_local_weather(city: Optional[str] = None) -> Dict[str, Any]:
         "description": "Conditions calmes et température clémente",
         "humidity": "55%",
         "wind_speed": "12 km/h",
+        "latitude": lat,
+        "longitude": lon,
     }
 
     try:
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
-        async with httpx.AsyncClient(timeout=2.5) as client:
+        async with httpx.AsyncClient(timeout=3.0) as client:
             resp = await client.get(url)
             if resp.status_code == 200:
                 data = resp.json()
@@ -94,17 +224,94 @@ async def get_local_weather(city: Optional[str] = None) -> Dict[str, Any]:
                     "description": f"{WMO_WEATHER_CODES.get(code, 'Ciel dégagé')} avec vent à {round(wind)} km/h" if wind else "Conditions optimales",
                     "humidity": f"{humidity}%" if humidity is not None else "50%",
                     "wind_speed": f"{round(wind)} km/h" if wind is not None else "10 km/h",
+                    "latitude": lat,
+                    "longitude": lon,
                 }
     except Exception as exc:
         logger.debug("[BriefingService] Erreur météo extérieure (mode local actif) : %s", exc)
 
-    # Cache météo pour 1 heure (3600 secondes)
     try:
-        await cache_service.set(cache_key, weather_data, ttl=3600)
+        await cache_service.set(cache_key, weather_data, ttl=1800)
     except Exception:
         pass
 
     return weather_data
+
+
+async def get_top_news_24h(limit: int = 5) -> Dict[str, Any]:
+    """Récupère les actualités les plus importantes des dernières 24 heures via flux RSS d'actualités.
+    Mise en cache Redis pour 1 heure (TTL 3600s).
+    """
+    cache_key = "jarvis:news:top24h"
+    cached = await cache_service.get(cache_key)
+    if cached and isinstance(cached, dict) and cached.get("items"):
+        return cached
+
+    news_sources = [
+        "https://news.google.com/rss?hl=fr&gl=FR&ceid=FR:fr",
+        "https://www.francetvinfo.fr/titres.rss",
+        "https://www.lemonde.fr/rss/une.xml"
+    ]
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+    }
+
+    news_items = []
+    for src in news_sources:
+        try:
+            async with httpx.AsyncClient(timeout=3.5, headers=headers, follow_redirects=True) as client:
+                resp = await client.get(src)
+                if resp.status_code == 200 and resp.text:
+                    import xml.etree.ElementTree as ET
+                    root = ET.fromstring(resp.text)
+                    for item in root.findall(".//item")[:limit]:
+                        raw_title = item.findtext("title") or ""
+                        link = item.findtext("link") or ""
+                        pub_date = item.findtext("pubDate") or ""
+
+                        source = ""
+                        clean_title = raw_title
+                        if " - " in raw_title:
+                            parts = raw_title.rsplit(" - ", 1)
+                            clean_title = parts[0].strip()
+                            source = parts[1].strip()
+
+                        if clean_title and len(clean_title) > 5:
+                            news_items.append({
+                                "title": clean_title,
+                                "source": source,
+                                "link": link,
+                                "published": pub_date
+                            })
+                    if news_items:
+                        break
+        except Exception as exc:
+            logger.debug("[BriefingService] Erreur récupération RSS source '%s': %s", src, exc)
+
+    if not news_items:
+        news_items = [
+            {
+                "title": "Actualité des dernières 24 heures : innovations technologiques et suivi de l'écosystème IA.",
+                "source": "Jarvis Newsroom",
+                "link": "",
+                "published": datetime.datetime.now().isoformat()
+            }
+        ]
+
+    result = {
+        "status": "success",
+        "count": len(news_items),
+        "items": news_items[:limit],
+        "updated_at": datetime.datetime.now().isoformat()
+    }
+
+    try:
+        await cache_service.set(cache_key, result, ttl=3600)
+    except Exception:
+        pass
+
+    return result
 
 
 class BriefingService:
@@ -118,10 +325,10 @@ class BriefingService:
 
         Étapes :
         1. Vérifie si le briefing est déjà présent en cache Redis (sauf si force_refresh=True).
-        2. Interroge CacheService pour l'état système et les rendez-vous mis en cache.
-        3. Récupère la météo locale et les non-lus IMAP via EmailService.
-        4. Formate un résumé concis au ton Stark Industries (3-4 phrases d'impact).
-        5. Stocke le résultat dans Redis sous `jarvis:briefing:today` (TTL 16 heures).
+        2. Récupère la localisation actuelle (GPS appareil ou mémoire utilisateur).
+        3. Interroge concurremment : météo locale, actualités 24h, rendez-vous du jour (lecture seule), e-mails IMAP, état système.
+        4. Formate un résumé d'impact au ton Stark Industries avec Aoede.
+        5. Met en cache dans Redis sous `jarvis:briefing:today` (TTL 16 heures).
         """
         # 1. Vérification du cache Redis
         if not force_refresh:
@@ -132,25 +339,40 @@ class BriefingService:
 
         logger.info("[BriefingService] Compilation d'un nouveau Morning Briefing...")
 
-        # Profil utilisateur pour la ville de résidence
-        autofill = memory_service.get_user_autofill_profile()
-        city = autofill.get("city") or "Grenoble"
-
         # 2. Collecte concurrente et asynchrone des métriques
         system_task = asyncio.to_thread(get_system_status)
         pc_status_task = cache_service.get_device_presence("pc_status")
-        weather_task = get_local_weather(city)
+        device_location_task = cache_service.get("jarvis:device:location")
+        news_task = get_top_news_24h(limit=5)
         emails_task = read_received_emails_async(max_count=5, unread_only=True)
         cached_agenda_task = cache_service.get("jarvis:agenda:today")
 
-        sys_info, pc_status, weather, email_res, cached_agenda = await asyncio.gather(
+        sys_info, pc_status, device_location, news_res, email_res, cached_agenda = await asyncio.gather(
             system_task,
             pc_status_task,
-            weather_task,
+            device_location_task,
+            news_task,
             emails_task,
             cached_agenda_task,
             return_exceptions=True
         )
+
+        # Résolution de la localisation actuelle pour la météo
+        lat: Optional[float] = None
+        lon: Optional[float] = None
+        current_city: Optional[str] = None
+
+        if not isinstance(device_location, Exception) and isinstance(device_location, dict):
+            lat = device_location.get("latitude")
+            lon = device_location.get("longitude")
+            current_city = device_location.get("city")
+
+        # Si pas de coordonnées reçues par l'appareil, vérifier où est l'utilisateur dans sa mémoire
+        if (lat is None or lon is None) and not current_city:
+            mem_loc = memory_service.get_current_user_location()
+            current_city = mem_loc.get("city", "Grenoble")
+
+        weather = await get_local_weather(city=current_city, latitude=lat, longitude=lon)
 
         # Normalisation de l'état système
         pc_online = False
@@ -162,11 +384,16 @@ class BriefingService:
         # Normalisation de la météo
         if isinstance(weather, Exception) or not isinstance(weather, dict):
             weather = {
-                "city": city,
+                "city": current_city or "Grenoble",
                 "temperature": "18°C",
                 "condition": "Ciel dégagé",
                 "description": "Conditions idéales"
             }
+
+        # Normalisation des actualités des dernières 24h
+        top_news_items = []
+        if not isinstance(news_res, Exception) and isinstance(news_res, dict):
+            top_news_items = news_res.get("items", [])
 
         # Normalisation des e-mails
         unread_count = 0
@@ -180,27 +407,15 @@ class BriefingService:
                 if any(w in subj for w in ["urgent", "important", "alerte", "rappel", "sécurité", "action requise"]):
                     urgent_count += 1
 
-        # Normalisation des rendez-vous d'agenda
+        # Normalisation des rendez-vous d'agenda (LECTURE SEULE STRICTE - AUCUNE CRÉATION)
+        # Ne JAMAIS appeler trigger_webhook("agenda-event") ici, l'agenda est uniquement consulté
         agenda_events: List[Dict[str, Any]] = []
         if not isinstance(cached_agenda, Exception) and isinstance(cached_agenda, list):
             agenda_events = cached_agenda
         elif not isinstance(cached_agenda, Exception) and isinstance(cached_agenda, dict) and "events" in cached_agenda:
             agenda_events = cached_agenda["events"]
-        else:
-            # Tentative rapide via le webhook n8n agenda si disponible
-            try:
-                from services.automation import trigger_webhook
-                agenda_fetch = await asyncio.wait_for(
-                    trigger_webhook("agenda-event", {"action": "consulter", "filtre": "aujourdhui"}),
-                    timeout=2.0
-                )
-                if isinstance(agenda_fetch, dict) and "events" in agenda_fetch:
-                    agenda_events = agenda_fetch["events"]
-                    await cache_service.set("jarvis:agenda:today", agenda_events, ttl=7200)
-            except Exception:
-                pass
 
-        # 3. Synthèse au ton Stark Industries (3-4 phrases percutantes, digne de Tony Stark & Aoede)
+        # 3. Synthèse au ton Stark Industries (concise, rythmée, digne de Tony Stark & Aoede)
         # Phrase 1 : Salutation & Statut système
         phrase_sys = (
             f"Bonjour Pierre. Tous les systèmes sont opérationnels, PC de commandement connecté et synchronisé."
@@ -208,7 +423,7 @@ class BriefingService:
             f"Bonjour Pierre. Systèmes centraux opérationnels, liaison cloud active."
         )
 
-        # Phrase 2 : Météo locale
+        # Phrase 2 : Météo à la position actuelle
         ville_label = weather.get("city", "votre secteur")
         condition_label = weather.get("condition", "dégagé").lower()
         temp_label = weather.get("temperature", "tempérée")
@@ -223,7 +438,18 @@ class BriefingService:
         else:
             phrase_agenda = "Votre agenda est entièrement dégagé pour aujourd'hui."
 
-        # Phrase 4 : Courriels & Tâches
+        # Phrase 4 : Actualités des dernières 24 heures
+        if top_news_items and len(top_news_items) >= 2:
+            t1 = top_news_items[0].get("title", "")
+            t2 = top_news_items[1].get("title", "")
+            phrase_news = f"Sur le front des actualités des dernières 24 heures : {t1}, et {t2}."
+        elif top_news_items:
+            t1 = top_news_items[0].get("title", "")
+            phrase_news = f"Dans l'actualité des dernières 24 heures : {t1}."
+        else:
+            phrase_news = "Flux d'actualités calme sur les dernières 24 heures."
+
+        # Phrase 5 : Courriels & Tâches
         if urgent_count > 0:
             phrase_emails = f"À noter : {unread_count} courriel(s) non lu(s), dont {urgent_count} classé(s) urgent(s). Tous les voyants sont au vert, prêt pour vos directives."
         elif unread_count > 0:
@@ -234,7 +460,7 @@ class BriefingService:
             phrase_emails = "Messagerie à jour, aucun message urgent. Tous les voyants sont au vert, prêt pour vos directives."
 
         # Assemblage final du discours d'impact
-        discours_oral = f"{phrase_sys} {phrase_meteo} {phrase_agenda} {phrase_emails}"
+        discours_oral = f"{phrase_sys} {phrase_meteo} {phrase_agenda} {phrase_news} {phrase_emails}"
 
         briefing_payload = {
             "status": "success",
@@ -242,6 +468,14 @@ class BriefingService:
             "compiled_at": datetime.datetime.now().isoformat(),
             "texte_oral": discours_oral,
             "meteo": weather,
+            "actualites": {
+                "count": len(top_news_items),
+                "items": top_news_items
+            },
+            "news": {
+                "count": len(top_news_items),
+                "items": top_news_items
+            },
             "agenda": {
                 "count": len(agenda_events),
                 "events": agenda_events,

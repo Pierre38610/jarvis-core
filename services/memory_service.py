@@ -129,6 +129,59 @@ class MemoryService:
             if v:
                 self.set_profile_value(k, str(v))
 
+    def get_current_user_location(self) -> Dict[str, Any]:
+        """Détermine la localisation actuelle de l'utilisateur à partir de la mémoire et du profil.
+        Priorités :
+        1. Clé explicite 'current_city' ou 'current_location' dans user_profile.
+        2. Souvenirs récents mentionnant la localisation actuelle ('en ce moment à', 'actuellement à', 'séjour à', etc.).
+        3. Ville de résidence dans autofill / profil ('city' ou 'user_city').
+        4. Fallback par défaut ('Grenoble').
+        """
+        profile = self.get_profile()
+
+        # 1. Vérification clé explicite dans user_profile
+        for k in ("current_city", "current_location", "temporary_city"):
+            val = profile.get(k, "").strip()
+            if val:
+                return {"city": val, "source": "user_profile"}
+
+        # 2. Recherche dans les souvenirs récents
+        memories = self.search_memories("actuellement en ce moment déplacement voyage séjour suis ville", limit=20)
+        import re
+        city_regexes = [
+            r"(?:actuellement|en ce moment|suis|séjourne|parti)\s+(?:à|a|au|en)\s+([A-ZÀ-ÖØ-ö][a-zà-öø-ÿ\-]+(?:\s+[A-ZÀ-ÖØ-ö][a-zà-öø-ÿ\-]+)?)",
+            r"(?:voyage|déplacement|séjour|vacances)\s+(?:à|a|au|en)\s+([A-ZÀ-ÖØ-ö][a-zà-öø-ÿ\-]+(?:\s+[A-ZÀ-ÖØ-ö][a-zà-öø-ÿ\-]+)?)",
+            r"(?:ville actuelle|localisation actuelle)\s*:\s*([A-ZÀ-ÖØ-ö][a-zà-öø-ÿ\-]+)",
+        ]
+
+        stopwords = {"parisienne", "france", "suède", "espagne", "italie", "train", "gare", "l'hôtel", "hôtel", "maison", "bureau", "travail", "cours"}
+        for m in memories:
+            fact = m.get("fact", "")
+            for pattern in city_regexes:
+                match = re.search(pattern, fact, re.IGNORECASE)
+                if match:
+                    extracted = match.group(1).strip()
+                    if extracted.lower() not in stopwords and len(extracted) >= 3:
+                        return {"city": extracted.capitalize(), "source": "memory", "fact": fact}
+
+        # 3. Ville de résidence dans autofill / profil
+        autofill_city = profile.get("city") or profile.get("user_city") or ""
+        if autofill_city.strip():
+            return {"city": autofill_city.strip(), "source": "autofill"}
+
+        # 4. Fallback par défaut
+        return {"city": "Grenoble", "source": "default"}
+
+    def set_current_user_location(self, city: str) -> Dict[str, Any]:
+        """Enregistre ou met à jour la localisation actuelle de Pierre dans le profil et la mémoire."""
+        city_clean = (city or "").strip()
+        if not city_clean:
+            return {"status": "error", "message": "Nom de ville vide"}
+
+        self.set_profile_value("current_city", city_clean)
+        self.add_memory(f"Pierre est actuellement à {city_clean}.", category="localisation")
+        return {"status": "success", "city": city_clean}
+
     def build_system_memory_context(self) -> str:
         """Construit un résumé textuel concis à injecter dans le prompt système de J.A.R.V.I.S."""
         profile = self.get_profile()

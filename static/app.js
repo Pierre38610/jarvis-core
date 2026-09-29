@@ -29,11 +29,39 @@ function setCookie(name, val, days) {
   document.cookie = `${name}=${encodeURIComponent(val)};expires=${d.toUTCString()};path=/;SameSite=Lax${secure}`;
 }
 
+function syncDeviceLocation() {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token');
+        fetch('/api/device/location', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+            token: token
+          })
+        }).catch(err => console.debug('[Location] Sync error:', err));
+      },
+      (err) => {
+        console.debug('[Location] Info geoloc:', err.message);
+      },
+      { timeout: 8000, maximumAge: 300000 }
+    );
+  }
+}
+
 function showMainUI() {
   authScreen.style.opacity = '0';
   setTimeout(() => {
     authScreen.style.display = 'none';
     mainScreen.style.display = 'flex';
+    syncDeviceLocation();
   }, 400);
 }
 

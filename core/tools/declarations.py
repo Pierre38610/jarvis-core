@@ -868,23 +868,23 @@ def get_tools_list() -> list[types.Tool]:
                     description=(
                         "Gère les événements sur l'agenda Google / Samsung Calendar de Pierre (créer, consulter, décaler, supprimer des rendez-vous). "
                         "À UTILISER QUAND : Pierre demande d'ajouter, vérifier ou modifier un rendez-vous dans son calendrier. "
-                        "NE JAMAIS UTILISER QUAND : Il s'agit d'un simple rappel push ou mémo sans créneau d'agenda (utiliser 'create_push_reminder'), "
-                        "ni pour le point général du matin (utiliser 'get_morning_briefing')."
+                        "NE JAMAIS UTILISER QUAND : Il s'agit du briefing matinal (utiliser 'get_morning_briefing'), "
+                        "ni d'un simple rappel push sans créneau d'agenda (utiliser 'create_push_reminder')."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
                             "action": types.Schema(
                                 type="STRING",
-                                description="Action sur l'agenda : 'creer' (ajouter un événement), 'consulter' (voir les rendez-vous), 'decaler' (modifier horaire/date), 'supprimer' (annuler)"
+                                description="Action sur l'agenda : 'consulter' (voir les rendez-vous sans rien créer), 'creer' (ajouter un nouvel événement), 'decaler' (modifier horaire/date), 'supprimer' (annuler)"
                             ),
                             "titre": types.Schema(
                                 type="STRING",
-                                description="Titre ou intitulé de l'événement / rendez-vous"
+                                description="Titre ou intitulé du rendez-vous (requis uniquement pour créer, décaler ou supprimer)"
                             ),
                             "date_debut": types.Schema(
                                 type="STRING",
-                                description="Date et heure de début au format ISO ou clair (ex: '2026-09-28T14:30:00', 'demain 10h')"
+                                description="Date et heure de début au format ISO ou clair (ex: '2026-09-28T14:30:00', 'demain 10h'). Requis pour créer ou décaler."
                             ),
                             "date_fin": types.Schema(
                                 type="STRING",
@@ -895,7 +895,7 @@ def get_tools_list() -> list[types.Tool]:
                                 description="Description détaillée, lieu ou notes pour l'événement (optionnel)"
                             ),
                         },
-                        required=["action", "titre", "date_debut"]
+                        required=["action"]
                     )
                 ),
 
@@ -932,9 +932,10 @@ def get_tools_list() -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="get_morning_briefing",
                     description=(
-                        "Restitue la routine matinale Stark Industries compilée (météo locale, rendez-vous du jour, e-mails urgents non lus, état des transports). "
+                        "Restitue la routine matinale Stark Industries compilée (météo à la position actuelle ou en mémoire, rendez-vous du jour en lecture seule, actualités des dernières 24 heures, e-mails urgents non lus). "
                         "Interroge en priorité la clé Redis 'jarvis:briefing:today' préparée dès 7h00 pour un retour instantané sans latence. "
                         "À UTILISER QUAND : Pierre demande son briefing du matin, le résumé du jour ou son récapitulatif quotidien. "
+                        "NOTE IMPORTANTE : Cette action est en lecture seule absolue et n'ajoute JAMAIS aucun événement à l'agenda. "
                         "NE JAMAIS UTILISER QUAND : Pierre pose une question ciblée uniquement sur son agenda (utiliser 'manage_calendar_event') "
                         "ou souhaite juste lire ses emails (utiliser 'read_emails')."
                     ),

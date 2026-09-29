@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.8.0 — Résilience Antigravity CLI, Drapeaux Officiels agy (--model, --effort) & Pré-contrôle Opérationnel Strict (Anti-Faux Positifs).*
+> *Dernière révision majeure : Version 5.9.0 — Briefing Matinal : Météo Géolocalisée (GPS appareil & Mémoire temporelle), Actualités 24h & Sécurisation Anti-Création Agenda.*
 
 ---
 

@@ -83,3 +83,71 @@ async def get_today_agenda_endpoint(request: Request):
         "count": len(events),
         "events": events
     }
+
+
+class DeviceLocationRequest(BaseModel):
+    latitude: float
+    longitude: float
+    city: Optional[str] = None
+    accuracy: Optional[float] = None
+    token: Optional[str] = None
+
+
+@router.post("/api/device/location")
+async def update_device_location_endpoint(payload: DeviceLocationRequest, request: Request):
+    """Enregistre la position GPS précise transmise par le navigateur (Smartphone ou PC) de Pierre.
+    Met en cache Redis sous 'jarvis:device:location' avec TTL de 24 heures.
+    """
+    token = payload.token or request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    auth_header = request.headers.get("Authorization", "")
+    if not token and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1].strip()
+
+    client_ip = request.client.host if (request and request.client) else ""
+    is_local = client_ip in ("127.0.0.1", "::1", "localhost", "172.17.0.1", "172.18.0.1")
+
+    if not is_local and not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+
+    import datetime
+    from services.briefing_service import reverse_geocode
+    city_name = payload.city
+    if not city_name:
+        city_name = await reverse_geocode(payload.latitude, payload.longitude)
+
+    data = {
+        "latitude": payload.latitude,
+        "longitude": payload.longitude,
+        "city": city_name or "votre position actuelle",
+        "accuracy": payload.accuracy,
+        "updated_at": datetime.datetime.now().isoformat(),
+        "source": "device_gps"
+    }
+
+    await cache_service.set("jarvis:device:location", data, ttl=86400)
+    logger.info(f"[BriefingRouter] Position de l'appareil mise à jour : {data['city']} ({payload.latitude}, {payload.longitude})")
+    return {"status": "success", "message": "Localisation synchronisée", "location": data}
+
+
+@router.get("/api/device/location")
+async def get_device_location_endpoint(request: Request):
+    """Retourne la localisation actuellement détectée et active pour J.A.R.V.I.S."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    auth_header = request.headers.get("Authorization", "")
+    if not token and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1].strip()
+
+    client_ip = request.client.host if (request and request.client) else ""
+    is_local = client_ip in ("127.0.0.1", "::1", "localhost", "172.17.0.1", "172.18.0.1")
+
+    if not is_local and not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+
+    cached_loc = await cache_service.get("jarvis:device:location")
+    if cached_loc and isinstance(cached_loc, dict):
+        return {"status": "ok", "source": "device_gps", "location": cached_loc}
+
+    from services.memory_service import memory_service
+    mem_loc = memory_service.get_current_user_location()
+    return {"status": "ok", "source": "memory", "location": mem_loc}
+

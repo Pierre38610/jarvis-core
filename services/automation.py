@@ -305,8 +305,24 @@ async def executer_action_externe(
             tags=effective_params.get("tags", [])
         )
     elif effective_action == "agenda-event":
+        req_action = (effective_params.get("action") or "consulter").strip().lower()
+        if req_action in ("consulter", "lire", "verifier", "voir"):
+            # Sécurité anti-création parasite : Ne JAMAIS déclencher de webhook n8n de création
+            # lors d'une simple consultation !
+            from services.cache import cache_service
+            cached_agenda = await cache_service.get("jarvis:agenda:today")
+            events = cached_agenda if isinstance(cached_agenda, list) else []
+            if isinstance(cached_agenda, dict) and "events" in cached_agenda:
+                events = cached_agenda["events"]
+            return {
+                "status": "success",
+                "action": "consulter",
+                "result": {"events": events},
+                "count": len(events)
+            }
+
         effective_params = build_agenda_payload(
-            action=effective_params.get("action", "consulter"),
+            action=req_action,
             titre=effective_params.get("titre", "Rendez-vous"),
             date_debut=effective_params.get("date_debut", ""),
             date_fin=effective_params.get("date_fin"),

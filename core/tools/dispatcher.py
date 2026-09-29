@@ -1616,6 +1616,54 @@ async def _execute_dispatch_tool(
         date_fin = (args.get("date_fin") or date_debut).strip()
         description = (args.get("description") or "").strip()
 
+        # Si l'action est purement une consultation, NE JAMAIS déclencher de création d'événement
+        if action in ("consulter", "lire", "verifier", "voir"):
+            supervision_service.start_action(
+                "agenda_gerer_evenement",
+                "Consultation de l'Agenda",
+                "agenda_gerer_evenement",
+                "Consultation des rendez-vous du jour",
+                "Local Redis Cache",
+                api_type="free",
+                api_label="Local Service",
+                cost_est="0.00 $"
+            )
+            await broadcast_supervision()
+            await websocket.send_text(json.dumps({
+                "type": "jarvis_announcement",
+                "text": "Consultation de votre agenda...",
+                "voice": False
+            }))
+            await websocket.send_text(json.dumps({
+                "type": "status",
+                "state": "calendar",
+                "msg": "Consultation de l'agenda...",
+                "task": "Agenda : Consultation",
+                "engine": "FastAPI / Redis",
+                "model": "Agenda Reader",
+                "api_type": "free",
+                "api_label": "Local Service"
+            }))
+
+            cached_agenda = await cache_service.get("jarvis:agenda:today")
+            events = cached_agenda if isinstance(cached_agenda, list) else []
+            if isinstance(cached_agenda, dict) and "events" in cached_agenda:
+                events = cached_agenda["events"]
+
+            supervision_service.complete_action(
+                "agenda_gerer_evenement",
+                status="completed",
+                summary=f"{len(events)} événement(s) trouvé(s)"
+            )
+            await broadcast_supervision()
+
+            if events:
+                events_str = ", ".join([f"'{e.get('titre', e.get('summary', 'Point'))}' à {e.get('heure', e.get('start', 'heure non précisée'))}" for e in events])
+                instruction = f"Voici les rendez-vous du jour sur ton agenda : {events_str}. Présente-les clairement à Pierre avec ta voix Aoede."
+            else:
+                instruction = "Ton agenda est entièrement dégagé pour aujourd'hui, aucun rendez-vous planifié. Confirme-le simplement à Pierre avec ta voix Aoede."
+            return {"status": "completed", "result": {"events": events}, "instruction_to_jarvis": instruction}
+
         supervision_service.start_action(
             "agenda_gerer_evenement",
             f"Agenda ({action}) : {titre}",
@@ -1777,7 +1825,8 @@ async def _execute_dispatch_tool(
                 "instruction_to_jarvis": (
                     f"Voici le Morning Briefing préparé pour Pierre : \"{briefing_text}\". "
                     f"Restitue-le-lui immédiatement et intégralement à voix haute avec ta voix Aoede "
-                    f"avec élégance, assurance et zéro verbosité inutile."
+                    f"avec élégance, assurance et zéro verbosité inutile. "
+                    f"Ne déclenche aucun outil d'agenda ni de calendrier, le point de la journée (météo à sa position actuelle, actualités des dernières 24h, agenda et e-mails) est déjà fidèlement compilé."
                 )
             }
 
@@ -1814,7 +1863,8 @@ async def _execute_dispatch_tool(
             "instruction_to_jarvis": (
                 f"Voici le Morning Briefing fraîchement compilé pour Pierre : \"{briefing_text}\". "
                 f"Restitue-le-lui immédiatement et intégralement à voix haute avec ta voix Aoede "
-                f"d'un ton percutant et confiant digne de Stark Industries."
+                f"d'un ton percutant et confiant digne de Stark Industries. "
+                f"Ne déclenche aucun outil d'agenda ni de calendrier, le point de la journée (météo à sa position actuelle, actualités 24h, agenda et e-mails) est déjà fidèlement compilé."
             )
         }
 
