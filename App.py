@@ -93,6 +93,14 @@ async def startup_event():
     except Exception as e:
         print(f"[Deezer Startup] Erreur lancement bridge : {e}")
 
+    # 4. Synchronisation et amorçage du profil de candidature de Pierre
+    try:
+        from services.user_profile_service import user_profile_service
+        sync_res = user_profile_service.sync_to_sqlite()
+        print(f"[Startup] [UserProfile] Profil de Pierre synchronisé : {sync_res}")
+    except Exception as e:
+        print(f"[Startup] [UserProfile] Avertissement synchro profil Pierre : {e}")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():

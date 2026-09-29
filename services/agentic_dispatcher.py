@@ -163,10 +163,17 @@ class AgenticDispatcher:
 
         elif mission_type == "email_drafting":
             filename = f"email_draft_{slug}_{timestamp}.md"
+            user_profile_context = ""
+            try:
+                from services.user_profile_service import user_profile_service
+                user_profile_context = user_profile_service.get_summary()
+            except Exception:
+                pass
             prompt = (
                 f"MISSION DE TRIAGE EXÉCUTIF & RÉDACTION DE COURRIEL (SYSTÈME 2 - ANTIGRAVITY)\n"
                 f"OBJET DU MESSAGE / CONTEXTE : {goal}\n"
                 f"DONNÉES DU COURRIEL & PIÈCES JOINTES : {ctx_str}\n\n"
+                f"RÉFÉRENTIEL CANDIDATURE & PROFIL DE PIERRE :\n{user_profile_context}\n\n"
                 f"Tu es le chef de cabinet exécutif de Pierre Cassagnettes chez Stark Industries.\n"
                 f"DIRECTIVES DE RÉDACTION :\n"
                 f"1. ANALYSE DU FIL : Détermine les enjeux clés, l'expéditeur, le ton adapté (académique, recrutement, partenaire ou administratif).\n"

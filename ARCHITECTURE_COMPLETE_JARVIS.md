@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.9.0 — Briefing Matinal : Météo Géolocalisée (GPS appareil & Mémoire temporelle), Actualités 24h & Sécurisation Anti-Création Agenda.*
+> *Dernière révision majeure : Version 5.10.0 — Intégration Native de la Base de Connaissances & Dossier de Candidature Pierre Cassagnettes (Phelma SICOM, Scintil Photonics, Teem Photonics, Øresund, DSP, Photonique, ML appliqué).*
 
 ---
 
@@ -24,6 +24,7 @@
    - 3.4. Moteur Vectoriel Qdrant & Embeddings Fastembed (`services/memory.py`)
    - 3.5. Mémoire Locale Structurée SQLite (`jarvis_memory.db`)
    - 3.6. Façade Unifiée de Mémoire Long-Terme (`services/unified_memory.py`)
+   - 3.7. Service de Connaissance Approfondie du Profil de Candidature (`services/user_profile_service.py`)
 4. [Architecture de Sécurité, Cryptographie & Gestion des Appareils](#4-architecture-de-sécurité-cryptographie--gestion-des-appareils)
    - 4.1. Moteur d'Authentification Cryptographique (`services/auth_service.py` & `auth.py`)
    - 4.2. Tokens JWT Signés (HMAC-SHA256) & Gestion des Clés Secrètes
@@ -346,7 +347,28 @@ Fichier SQLite local assurant la persistance rapide hors-cloud :
 ### 3.6. Façade Unifiée de Mémoire Long-Terme (`services/unified_memory.py`)
 La classe `UnifiedMemoryManager` fusionne harmonieusement les deux couches :
 - **Déduplication & Arbitrage** : Si une information correspond à une clé de profil reconnue (`pointure`, `adresse`, etc.), elle est enregistrée dans SQLite `user_profile`. Les autres faits sont indexés dans Qdrant et PostgreSQL en arrière-plan non-bloquant.
-- **Injection Dynamique au Démarrage de Session** : Méthode `build_live_context_prompt()` qui agrège le profil de Pierre, les faits récents et le résumé de l'architecture pour constituer le bloc d'instruction injecté dans Gemini Live au démarrage de chaque flux vocal.
+- **Injection Dynamique au Démarrage de Session** : Méthode `build_live_context_prompt()` qui agrège le profil de Pierre, les faits récents, le dossier de candidature et le résumé de l'architecture pour constituer le bloc d'instruction injecté dans Gemini Live au démarrage de chaque flux vocal.
+
+### 3.7. Service de Connaissance Approfondie du Profil de Candidature (`services/user_profile_service.py`)
+Ce service garantit que J.A.R.V.I.S. dispose à tout instant d'une maîtrise intégrale, vivante et contextuelle de l'ensemble des éléments académiques, techniques et professionnels de Pierre Cassagnettes :
+1. **Source Dynamique & Surveillance Hot-Reload (`PROFIL_CANDIDATURE_PIERRE_CASSAGNETTES.md`)** :
+   - Surveillance de l'empreinte `mtime` du fichier à la racine du projet. Dès que Pierre enrichit ou édite son profil, les sections et la synthèse en mémoire vive sont rechargées instantanément à la volée.
+2. **Découpage Structuré en 10 Chapitres Stratégiques** :
+   - *Fiche d'identité & Coordonnées* : Élève-ingénieur 3e année (Bac+5 / MSc, Promo 2026), Malmö (Suède) / Grenoble (France), téléphone (+33 7 69 52 44 30), e-mail (`pierrecassagnettes@gmail.com`), Permis B & A2, disponibilité immédiate région Øresund sans visa (citoyen UE).
+   - *Objectifs & Cibles de Stage* : Stage de Fin d'Études (PFE) / Master's Thesis de 5 à 6 mois (dès le 18 janvier 2026). Domaines cibles : DSP / Audio / Acoustique, Machine Learning appliqué aux signaux physiques, Photonique intégrée & Optoélectronique, Automatisation de bancs de test SCPI/PyVISA, Développement logiciel scientifique Python CustomTkinter, Embarqué.
+   - *Formation Académique* : Grenoble INP – Phelma (Majeure SICOM - Signal, Image, Communication & Machine Learning), Prépa des INP, Bac S Mention Très Bien (Champollion). Référentiel compétences C1 à C6 et certification Sulitest.
+   - *Expériences Professionnelles Réelles* :
+     - *Scintil Photonics (Stage R&D 2025, 13 sem.)* : Suite de 4 IHM CustomTkinter divisant par 5 le temps de dépouillement sur wafer 200 mm (multiprocessing adapté), caractérisation pulsée athermique 500 ns supprimant le roll-off thermique sur puces SHIP™ (lasers DFB III-V/Si), alignement spectral OSA (< 1.0 GHz) et asservissement EEPROM embarqué, qualification EVK, diagnostic SCPI HP 81104A.
+     - *Teem Photonics (Stage Opérateur Salle Blanche 2024, 8 sem.)* : Normes ISO, conformité ESD, assemblage micro-lasers pulsés passifs déclenchés.
+     - *Trésorier BDE La Prépa des INP (2023-2024)* : Gestion budgétaire, partenariats, logistique d'événements.
+   - *Matrice des Compétences Techniques* : Python avancé, C, MATLAB, Bash, Git, LaTeX, DSP, RIN, SNR, filtres RIF/RII, ML appliqué, composants photoniques, micro-contrôleurs, Langues (Français maternel, Anglais C1 pro, Italien B1/B2).
+   - *Centres d'intérêt* : Volley-ball, Basket-ball, Course à pied, Moto A2, reproduction sonore et acoustique.
+   - *Guide Rédactionnel & Templates* : Guides d'adaptation sectorielle, cold emails en anglais et français, aide-mémoire d'entretiens.
+3. **Synchronisation Automatique Multi-Couches** :
+   - *SQLite au Démarrage (`App.py`)* : Amorçage automatique des clés dans `user_profile` et des faits structurés dans `memories`.
+   - *Injection Live Vocal (`routers/voice.py`)* : Synthèse exécutive injectée dans le prompt système de chaque session Gemini Live.
+   - *Routage Cognitif Sémantique (`unified_memory.recall`)* : Interception immédiate de toute requête concernant Pierre, son CV, ses stages, ses compétences pour renvoyer les sections exactes avec un score de 1.0.
+   - *Agents Antigravity & Deep Research* : Disponibilité intégrale pour le moteur `deep_research_service` et la mission `email_drafting` d'`agentic_dispatcher`.
 
 ---
 

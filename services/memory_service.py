@@ -113,14 +113,17 @@ class MemoryService:
             "last_name": profile.get("last_name", "Cassagnettes"),
             "full_name": profile.get("full_name", "Pierre Cassagnettes"),
             "email": profile.get("email", "pierrecassagnettes@gmail.com"),
-            "phone": profile.get("phone", profile.get("user_phone", "")),
-            "address": profile.get("address", profile.get("user_address", "")),
+            "phone": profile.get("phone", profile.get("user_phone", "+33 7 69 52 44 30")),
+            "address": profile.get("address", profile.get("user_address", "Malmö, Suède / Grenoble, France")),
             "zip_code": profile.get("zip_code", profile.get("user_zip", "")),
-            "city": profile.get("city", profile.get("user_city", "")),
-            "country": profile.get("country", "France"),
+            "city": profile.get("city", profile.get("user_city", "Malmö")),
+            "country": profile.get("country", profile.get("user_country", "Suède")),
             "shoe_size": profile.get("shoe_size", profile.get("pointure", "42")),
             "clothing_size": profile.get("clothing_size", profile.get("taille", "M")),
-            "ereader_email": profile.get("ereader_email", profile.get("kindle_email", "pierrecassagnettes@gmail.com"))
+            "ereader_email": profile.get("ereader_email", profile.get("kindle_email", "pierrecassagnettes@gmail.com")),
+            "ecole": profile.get("ecole", "Grenoble INP – Phelma"),
+            "filiere": profile.get("filiere", "SICOM (Signal, Image, Communication & Machine Learning)"),
+            "statut_recherche": profile.get("statut_recherche", "Stage de Fin d'Études (PFE) / Master's Thesis (5-6 mois, dès le 18 janvier 2026)")
         }
 
     def update_user_autofill_profile(self, details: Dict[str, str]):

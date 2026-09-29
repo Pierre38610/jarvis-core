@@ -84,7 +84,29 @@ class UnifiedMemoryManager:
             except Exception as e:
                 logger.error(f"[UnifiedMemory] Erreur fallback SQLite: {e}")
                 
-        # 3. Enrichissement architectural si la recherche concerne les capacités de Jarvis
+        # 3. Enrichissement si la recherche concerne le profil, CV ou parcours de Pierre
+        profile_keywords = [
+            "pierre", "profil", "cv", "stage", "candidature", "formation", "phelma",
+            "sicom", "scintil", "teem", "école", "études", "compétences", "expérience",
+            "lettre de motivation", "cold email", "suède", "malmö", "danemark", "oresund",
+            "øresund", "photonique", "dsp", "traitement du signal", "anglais", "permis"
+        ]
+        if any(kw in query.lower() for kw in profile_keywords):
+            try:
+                from services.user_profile_service import user_profile_service
+                prof_res = user_profile_service.lookup(query=query)
+                if prof_res.get("status") == "success" and prof_res.get("content"):
+                    results.insert(0, {
+                        "id": "candidature_profile_doc",
+                        "content": prof_res["content"][:1500],
+                        "category": "profil_candidature_pierre",
+                        "score": 1.0,
+                        "created_at": "live_sync"
+                    })
+            except Exception as e:
+                logger.error(f"[UnifiedMemory] Erreur injection profil candidature dans recall: {e}")
+
+        # 4. Enrichissement architectural si la recherche concerne les capacités de Jarvis
         arch_keywords = [
             "architecture", "fonctionnement", "comment tu marches", "qui es-tu",
             "capacités", "que sais-tu faire", "serveur", "infrastructure", "vps",
@@ -109,13 +131,19 @@ class UnifiedMemoryManager:
 
     def get_user_profile(self) -> Dict[str, Any]:
         """
-        Récupère le profil maître (données immuables) depuis SQLite.
+        Récupère le profil maître (données immuables) depuis SQLite enrichi par user_profile_service.
         """
-        return sqlite_memory.get_user_autofill_profile()
+        profile = sqlite_memory.get_user_autofill_profile()
+        try:
+            from services.user_profile_service import user_profile_service
+            profile.update(user_profile_service.get_profile_dict())
+        except Exception:
+            pass
+        return profile
         
     async def build_live_context_prompt(self) -> str:
         """
-        Construit un contexte mémoire complet pour Gemini Live (Profil + Vectoriel + Architecture).
+        Construit un contexte mémoire complet pour Gemini Live (Profil + Candidature + Vectoriel + Architecture).
         """
         # Profil maître SQLite
         profile = self.get_user_profile()
@@ -124,7 +152,17 @@ class UnifiedMemoryManager:
         contact_info = f"PROFIL UTILISATEUR : {profile.get('full_name')} | Email : {profile.get('email')}"
         if profile.get("address"):
             contact_info += f" | Adresse : {profile.get('address')} {profile.get('zip_code', '')} {profile.get('city', '')}"
+        if profile.get("phone"):
+            contact_info += f" | Tél : {profile.get('phone')}"
             
+        # Connaissance approfondie du profil et dossier de candidature de Pierre
+        user_candidature_summary = ""
+        try:
+            from services.user_profile_service import user_profile_service
+            user_candidature_summary = user_profile_service.get_summary()
+        except Exception as e:
+            logger.error(f"[UnifiedMemory] Erreur chargement résumé profil candidature: {e}")
+
         # Souvenirs contextuels
         semantic_context = ""
         try:
@@ -160,6 +198,9 @@ class UnifiedMemoryManager:
         )
 
         full_prompt = f"{base_prompt}\n\n{fluidity_guideline}".strip()
+
+        if user_candidature_summary:
+            full_prompt = f"{full_prompt}\n\n{user_candidature_summary}".strip()
 
         if arch_summary and arch_summary not in full_prompt:
             return f"{full_prompt}\n\n{arch_summary}".strip()
