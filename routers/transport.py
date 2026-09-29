@@ -12,7 +12,7 @@ import logging
 from google.genai import types
 from services.transport_service import transport_service
 from services.supervision_service import supervision_service
-from core.shared_state import active_task_controller, broadcast_supervision
+from core.shared_state import active_task_controller, broadcast_supervision, safe_send_live_client_content
 
 logger = logging.getLogger(__name__)
 
@@ -133,8 +133,11 @@ async def receive_train_alert(alert: TrainAlertPayload):
             f"Je t'ai affiché l'alerte sur ton écran."
         )
         try:
-            await current_sess.send_client_content(
-                turns=types.Content(role="user", parts=[types.Part.from_text(text=speech_text)]),
+            await safe_send_live_client_content(
+                current_sess,
+                text_content=speech_text,
+                priority=2,
+                role="user",
                 turn_complete=True
             )
         except Exception as e:

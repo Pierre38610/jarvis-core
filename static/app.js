@@ -1518,6 +1518,7 @@ function interruptPlayback() {
   isAwaitingToolResponse = false;
   if (ws && ws.readyState === WebSocket.OPEN) {
     try {
+      ws.send(JSON.stringify({ type: "playback_finished" }));
       ws.send(JSON.stringify({ type: "speech_ended" }));
     } catch (e) {}
   }
@@ -1803,6 +1804,7 @@ function checkSpeechEnded() {
         isAwaitingToolResponse = false;
         if (ws && ws.readyState === WebSocket.OPEN) {
           try {
+            ws.send(JSON.stringify({ type: "playback_finished" }));
             ws.send(JSON.stringify({ type: "speech_ended" }));
           } catch (e) {}
         }

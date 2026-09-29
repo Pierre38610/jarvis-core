@@ -19,6 +19,7 @@ import auth
 from google_antigravity import is_stop_directive
 from services.supervision_service import supervision_service
 from services.console_monitor import console_monitor
+from services.metrics_service import metrics_service
 from core.shared_state import (
     active_task_controller,
     client_free, client_paid,
@@ -27,6 +28,10 @@ from core.shared_state import (
     QuotaExhaustedError, ModelSwitchRequested,
     is_quota_or_limit_error, merge_user_speech,
     get_tool_metadata,
+    SpeechState, get_speech_state, set_speech_state, is_speech_idle,
+    notify_generation_chunk, notify_turn_complete, notify_playback_finished,
+    notify_tool_started, notify_tool_completed, notify_user_speaking,
+    notify_interrupted, wait_until_speech_finished, safe_send_live_client_content,
 )
 from core.tools.declarations import get_tools_list
 from core.tools.dispatcher import dispatch_tool
@@ -216,12 +221,29 @@ async def voice_channel(websocket: WebSocket):
 
                             if p_type == "speech_started":
                                 active_task_controller["client_speaking"] = True
+                                notify_user_speaking()
 
                             elif p_type == "speech_ended":
                                 active_task_controller["client_speaking"] = False
                                 active_task_controller["speaking_active"] = False
                                 active_task_controller["estimated_speech_end"] = 0.0
                                 speaking_state["active"] = False
+                                notify_playback_finished()
+                                if is_speech_idle():
+                                    supervision_service.update_voice_state("idle", model=active_live_model, is_paid=is_paid_live)
+                                    await broadcast_supervision()
+                                pending_switch = active_task_controller.pop("pending_model_switch", None)
+                                if pending_switch:
+                                    raise ModelSwitchRequested(pending_switch)
+
+                            elif p_type == "playback_finished":
+                                notify_playback_finished()
+                                if is_speech_idle():
+                                    supervision_service.update_voice_state("idle", model=active_live_model, is_paid=is_paid_live)
+                                    await broadcast_supervision()
+                                pending_switch = active_task_controller.pop("pending_model_switch", None)
+                                if pending_switch:
+                                    raise ModelSwitchRequested(pending_switch)
 
                             elif p_type == "live_directive":
                                 dir_text = payload.get("directive", "").strip()
@@ -250,7 +272,15 @@ async def voice_channel(websocket: WebSocket):
                                             "voice": False
                                         }))
                                     elif new_model != active_live_model:
-                                        raise ModelSwitchRequested(new_model)
+                                        if is_speech_idle():
+                                            raise ModelSwitchRequested(new_model)
+                                        else:
+                                            active_task_controller["pending_model_switch"] = new_model
+                                            await websocket.send_text(json.dumps({
+                                                "type": "jarvis_announcement",
+                                                "text": f"Bascule vers {new_model} différée jusqu'à la fin de la phrase en cours...",
+                                                "voice": False
+                                            }))
                                     else:
                                         await websocket.send_text(json.dumps({
                                             "type": "jarvis_announcement",
@@ -271,17 +301,15 @@ async def voice_channel(websocket: WebSocket):
                                 }))
                                 if active_task_controller.get("live_session"):
                                     try:
-                                        await active_task_controller["live_session"].send_client_content(
-                                            turns=types.Content(
-                                                role="user",
-                                                parts=[types.Part.from_text(
-                                                    text=(
-                                                        f"[INFO SYSTÈME EN DIRECT] Pierre vient de {'COCHER' if authorized else 'DÉCOCHER'} "
-                                                        f"l'encoche d'autorisation de la clé payante dans l'application. "
-                                                        f"La clé payante est désormais {'AUTORISÉE' if authorized else 'VERROUILLÉE ET INTERDITE PHYSIQUEMENT'}."
-                                                    )
-                                                )]
+                                        await safe_send_live_client_content(
+                                            active_task_controller["live_session"],
+                                            text_content=(
+                                                f"[INFO SYSTÈME EN DIRECT] Pierre vient de {'COCHER' if authorized else 'DÉCOCHER'} "
+                                                f"l'encoche d'autorisation de la clé payante dans l'application. "
+                                                f"La clé payante est désormais {'AUTORISÉE' if authorized else 'VERROUILLÉE ET INTERDITE PHYSIQUEMENT'}."
                                             ),
+                                            priority=3,
+                                            role="user",
                                             turn_complete=True
                                         )
                                     except Exception:
@@ -314,17 +342,15 @@ async def voice_channel(websocket: WebSocket):
                                     await websocket.send_text(json.dumps({"type": "hide_paid_consent"}))
                                     if active_task_controller.get("live_session"):
                                         try:
-                                            await active_task_controller["live_session"].send_client_content(
-                                                turns=types.Content(
-                                                    role="user",
-                                                    parts=[types.Part.from_text(
-                                                        text=(
-                                                            "[ACCORD ACCORDÉ DANS LE HUD] Pierre a cliqué sur 'ACCORDER L'ACCÈS PAYANT' sur son écran. "
-                                                            "Tu as son accord officiel pour lancer l'action sur l'API payante. "
-                                                            "Lance immédiatement la tâche avec confirmed_by_user=True !"
-                                                        )
-                                                    )]
+                                            await safe_send_live_client_content(
+                                                active_task_controller["live_session"],
+                                                text_content=(
+                                                    "[ACCORD ACCORDÉ DANS LE HUD] Pierre a cliqué sur 'ACCORDER L'ACCÈS PAYANT' sur son écran. "
+                                                    "Tu as son accord officiel pour lancer l'action sur l'API payante. "
+                                                    "Lance immédiatement la tâche avec confirmed_by_user=True !"
                                                 ),
+                                                priority=2,
+                                                role="user",
                                                 turn_complete=True
                                             )
                                         except Exception as e:
@@ -338,16 +364,14 @@ async def voice_channel(websocket: WebSocket):
                                     await websocket.send_text(json.dumps({"type": "hide_paid_consent"}))
                                     if active_task_controller.get("live_session"):
                                         try:
-                                            await active_task_controller["live_session"].send_client_content(
-                                                turns=types.Content(
-                                                    role="user",
-                                                    parts=[types.Part.from_text(
-                                                        text=(
-                                                            "[ACCORD REFUSÉ DANS LE HUD] Pierre a cliqué sur 'REFUSER' pour l'accès à la clé payante. "
-                                                            "Confirme avec ta voix Aoede que tu n'exécutes pas cette tâche payante et reste à sa disposition pour autre chose."
-                                                        )
-                                                    )]
+                                            await safe_send_live_client_content(
+                                                active_task_controller["live_session"],
+                                                text_content=(
+                                                    "[ACCORD REFUSÉ DANS LE HUD] Pierre a cliqué sur 'REFUSER' pour l'accès à la clé payante. "
+                                                    "Confirme avec ta voix Aoede que tu n'exécutes pas cette tâche payante et reste à sa disposition pour autre chose."
                                                 ),
+                                                priority=2,
+                                                role="user",
                                                 turn_complete=True
                                             )
                                         except Exception as e:
@@ -355,8 +379,10 @@ async def voice_channel(websocket: WebSocket):
 
                             elif p_type == "user_interrupt":
                                 speaking_state["active"] = False
+                                notify_interrupted("user_barge_in")
+                                metrics_service.record_speech_cut("user_barge_in", details="WebSocket user_interrupt event")
                                 inter_txt = payload.get("text", "").strip()
-                                print(f"[Voice Channel] Barge-in utilisateur (parole coupée) : '{inter_txt}'")
+                                print(f"[Voice Channel] SPEECH_CUT reason=user_barge_in : '{inter_txt}'")
                                 is_any_task_running = (
                                     active_task_controller["info"]["running"]
                                     or bool(active_task_controller.get("bg_task"))
@@ -380,9 +406,12 @@ async def voice_channel(websocket: WebSocket):
 
                             elif p_type == "text":
                                 text_input = payload.get("text", "").strip()
-                                if text_input:
-                                    await session.send_client_content(
-                                        turns=types.Content(role="user", parts=[types.Part.from_text(text=text_input)]),
+                                if text_input and session:
+                                    await safe_send_live_client_content(
+                                        session,
+                                        text_content=text_input,
+                                        priority=2,
+                                        role="user",
                                         turn_complete=True
                                     )
 
@@ -390,11 +419,12 @@ async def voice_channel(websocket: WebSocket):
                                 image_b64 = payload.get("data", "")
                                 mime = payload.get("mime", "image/jpeg")
                                 caption = payload.get("caption", "")
-                                if image_b64:
+                                if image_b64 and session:
                                     image_bytes = base64.b64decode(image_b64)
                                     parts = [types.Part.from_bytes(data=image_bytes, mime_type=mime)]
                                     if caption:
                                         parts.append(types.Part.from_text(text=caption))
+                                    await wait_until_speech_finished(timeout=5.0, buffer_drainage_delay=0.35)
                                     await session.send_client_content(
                                         turns=types.Content(role="user", parts=parts),
                                         turn_complete=True
@@ -449,6 +479,9 @@ async def voice_channel(websocket: WebSocket):
                         if sc:
                             # Interruption (barge-in serveur)
                             if getattr(sc, "interrupted", False):
+                                notify_interrupted("user_barge_in")
+                                metrics_service.record_speech_cut("user_barge_in", details="Gemini Live server content interrupted")
+                                print("[Voice Channel] SPEECH_CUT reason=user_barge_in from Gemini Live server content")
                                 user_speech_buffer = ""
                                 is_speaking_state = False
                                 speaking_state["active"] = False
@@ -485,13 +518,11 @@ async def voice_channel(websocket: WebSocket):
                                     user_speech_buffer = ""
                                     if session:
                                         try:
-                                            await session.send_client_content(
-                                                turns=types.Content(
-                                                    role="user",
-                                                    parts=[types.Part.from_text(
-                                                        text="[ACTION IMMÉDIATEMENT ARRÊTÉE] Le développement ou la tâche en cours a été coupé immédiatement selon l'ordre de Pierre. Confirme avec ta voix Aoede que l'action est bien arrêtée."
-                                                    )]
-                                                ),
+                                            await safe_send_live_client_content(
+                                                session,
+                                                text_content="[ACTION IMMÉDIATEMENT ARRÊTÉE] Le développement ou la tâche en cours a été coupé immédiatement selon l'ordre de Pierre. Confirme avec ta voix Aoede que l'action est bien arrêtée.",
+                                                priority=1,
+                                                role="user",
                                                 turn_complete=True
                                             )
                                         except Exception:
@@ -506,13 +537,11 @@ async def voice_channel(websocket: WebSocket):
                                         if not config.is_paid_key_authorized():
                                             print(f"[Voice Channel] Clé payante verrouillée dans l'app. Rappel oral pour cocher la case.")
                                             try:
-                                                await session.send_client_content(
-                                                    turns=types.Content(
-                                                        role="user",
-                                                        parts=[types.Part.from_text(
-                                                            text="[RAPPEL ENCOCHE NON COCHÉE] Pierre a donné son accord oral, mais l'encoche d'autorisation de la clé payante est encore décochée dans l'application. Tu es dans l'impossibilité physique de faire des requêtes sur la clé payante tant qu'elle n'est pas cochée. Rappelle immédiatement à Pierre avec ta voix Aoede : 'Merci Pierre, mais pense à cocher l'encoche d'autorisation de la clé payante sur ton écran pour débloquer l'accès technique !'"
-                                                        )]
-                                                    ),
+                                                await safe_send_live_client_content(
+                                                    session,
+                                                    text_content="[RAPPEL ENCOCHE NON COCHÉE] Pierre a donné son accord oral, mais l'encoche d'autorisation de la clé payante est encore décochée dans l'application. Tu es dans l'impossibilité physique de faire des requêtes sur la clé payante tant qu'elle n'est pas cochée. Rappelle immédiatement à Pierre avec ta voix Aoede : 'Merci Pierre, mais pense à cocher l'encoche d'autorisation de la clé payante sur ton écran pour débloquer l'accès technique !'",
+                                                    priority=2,
+                                                    role="user",
                                                     turn_complete=True
                                                 )
                                             except Exception:
@@ -547,9 +576,10 @@ async def voice_channel(websocket: WebSocket):
                                             "text": part.text
                                         }))
                                     elif part.inline_data and part.inline_data.data:
+                                        chunk_dur = len(part.inline_data.data) / (24000 * 2)
+                                        notify_generation_chunk(chunk_dur)
                                         speaking_state["active"] = True
                                         active_task_controller["speaking_active"] = True
-                                        chunk_dur = len(part.inline_data.data) / (24000 * 2)
                                         now = time.time()
                                         active_task_controller["last_audio_chunk_time"] = now
                                         active_task_controller["estimated_speech_end"] = max(
@@ -582,13 +612,12 @@ async def voice_channel(websocket: WebSocket):
 
                             # Fin de transmission audio par Gemini
                             if getattr(sc, "turn_complete", False):
+                                notify_turn_complete()
                                 user_speech_buffer = ""
                                 is_speaking_state = False
                                 speaking_state["active"] = False
                                 active_task_controller["speaking_active"] = False
                                 active_task_controller["last_turn_complete_time"] = time.time()
-                                supervision_service.update_voice_state("idle", model=active_live_model, is_paid=is_paid_live)
-                                await broadcast_supervision()
                                 await websocket.send_text(json.dumps({"type": "turn_complete"}))
 
                         # ── Appels d'outils (Tool Calls) ─────────────────────────────
@@ -601,6 +630,7 @@ async def voice_channel(websocket: WebSocket):
                                 name = call.name
                                 args = dict(call.args) if call.args else {}
 
+                                notify_tool_started(name)
                                 # Notification visuelle outil en cours
                                 t_meta = get_tool_metadata(name, args)
                                 await websocket.send_text(json.dumps({
@@ -654,6 +684,7 @@ async def voice_channel(websocket: WebSocket):
                                 )
                                 active_task_controller["awaiting_tool_response"] = False
                                 active_task_controller["tool_response_cooldown"] = time.time() + 2.5
+                                notify_tool_completed(name)
 
                                 # Signal de fin d'outil au frontend
                                 await websocket.send_text(json.dumps({
@@ -738,8 +769,10 @@ async def voice_channel(websocket: WebSocket):
                     "Salue Pierre naturellement et d'égal à égal avec ta voix Aoede en une courte phrase sympa, directe et décontractée pour lui dire que tu es prête."
                 )
                 try:
-                    await session.send_client_content(
-                        turns=types.Content(role="user", parts=[types.Part.from_text(text=greeting_instruction)]),
+                    await safe_send_live_client_content(
+                        session,
+                        text_content=greeting_instruction,
+                        priority=2,
                         turn_complete=True
                     )
                     print("[Voice Channel] Amorce vocale (greeting) envoyée avec succès.")
@@ -778,6 +811,9 @@ async def voice_channel(websocket: WebSocket):
             except ModelSwitchRequested as switch_req:
                 new_model = switch_req.model
                 print(f"[Voice Channel] Bascule dynamique de modèle vocal demandée : {new_model}")
+                if not is_speech_idle():
+                    print(f"[Voice Channel] Attente de la fin de l'élocution avant bascule modèle...")
+                    await wait_until_speech_finished(timeout=8.0, buffer_drainage_delay=0.35)
                 active_live_model = new_model
                 config.GEMINI_LIVE_MODEL = new_model
 

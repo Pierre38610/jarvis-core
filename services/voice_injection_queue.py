@@ -59,10 +59,12 @@ class VoiceInjectionQueue:
         self._counter: int = 0
         self._active_loop: Optional[asyncio.AbstractEventLoop] = None
         self._is_delivering: bool = False
+        self._last_milestone_timestamps: Dict[str, float] = {}
         self._stats: Dict[str, int] = {
             "enqueued": 0,
             "delivered": 0,
             "rejected_sync": 0,
+            "coalesced_milestones": 0,
             "failed": 0
         }
 
@@ -82,7 +84,7 @@ class VoiceInjectionQueue:
             )
 
     async def _worker_loop(self) -> None:
-        """Boucle consommatrice séquentielle et déterministe."""
+        """Boucle consommatrice séquentielle et déterministe avec coalescence des TOOL_RESPONSE."""
         while True:
             try:
                 item: InjectionItem = await self._queue.get()
@@ -93,30 +95,57 @@ class VoiceInjectionQueue:
                 await asyncio.sleep(0.1)
                 continue
 
+            all_items = [item]
+            # Coalescence : si plusieurs résultats d'outils TOOL_RESPONSE sont en attente, les fusionner en un seul tour
+            if item.priority == InjectionPriority.TOOL_RESPONSE and self._queue and not self._queue.empty():
+                extra_tools = []
+                other_items = []
+                while not self._queue.empty():
+                    try:
+                        cand = self._queue.get_nowait()
+                        self._queue.task_done()
+                        if cand.priority == InjectionPriority.TOOL_RESPONSE:
+                            extra_tools.append(cand)
+                        else:
+                            other_items.append(cand)
+                    except Exception:
+                        break
+                for o in other_items:
+                    await self._queue.put(o)
+                if extra_tools:
+                    all_items.extend(extra_tools)
+                    merged_texts = [it.text.strip() for it in all_items if it.text.strip()]
+                    item.text = "\n\n".join(merged_texts)
+                    logger.info(f"[VoiceInjectionQueue] {len(all_items)} résultats d'outils fusionnés en un seul message.")
+
             try:
                 self._is_delivering = True
                 success = await self._deliver_item(item)
-                if item.future and not item.future.done():
-                    item.future.set_result(success)
+                for it in all_items:
+                    if it.future and not it.future.done():
+                        it.future.set_result(success)
                 if success:
-                    self._stats["delivered"] += 1
+                    self._stats["delivered"] += len(all_items)
                 else:
-                    self._stats["failed"] += 1
+                    self._stats["failed"] += len(all_items)
             except Exception as exc:
                 logger.error(f"[VoiceInjectionQueue] Exception livraison vocal: {exc}", exc_info=True)
-                if item.future and not item.future.done():
-                    item.future.set_result(False)
-                self._stats["failed"] += 1
+                for it in all_items:
+                    if it.future and not it.future.done():
+                        it.future.set_result(False)
+                self._stats["failed"] += len(all_items)
             finally:
                 self._is_delivering = False
                 self._queue.task_done()
 
     async def _deliver_item(self, item: InjectionItem) -> bool:
-        """Livre un élément à la session Gemini Live en respectant les verrous et règles de canal."""
+        """Livre un élément à la session Gemini Live en respectant la machine à états de la parole."""
         from core.shared_state import (
             active_task_controller,
             is_action_sync_completed,
-            wait_until_speech_finished
+            wait_until_speech_finished,
+            get_speech_state,
+            SpeechState,
         )
 
         session = item.session or active_task_controller.get("live_session")
@@ -133,18 +162,46 @@ class VoiceInjectionQueue:
             self._stats["rejected_sync"] += 1
             return False
 
-        # Verrou d'élocution anti-coupure (si demandé)
-        if item.wait_if_speaking:
-            timeout = 5.0 if item.priority == InjectionPriority.INTERRUPTION else 15.0
-            await wait_until_speech_finished(timeout=timeout, buffer_drainage_delay=item.drainage_delay)
+        # Règle unique : aucune injection de priorité 2, 3, 4 ne part si SpeechState != IDLE
+        if item.priority in (InjectionPriority.TOOL_RESPONSE, InjectionPriority.PROGRESS_MILESTONE, InjectionPriority.PASSIVE_INFO):
+            timeout = 15.0
+            # Attente active de SpeechState == IDLE
+            await wait_until_speech_finished(timeout=timeout, buffer_drainage_delay=max(0.35, item.drainage_delay))
+
+            # Si l'utilisateur est en train de parler
+            if get_speech_state() == SpeechState.USER_SPEAKING:
+                if item.priority == InjectionPriority.PROGRESS_MILESTONE:
+                    logger.info("[VoiceInjectionQueue] Jalon de progression abandonné : utilisateur en train de parler.")
+                    self._stats["coalesced_milestones"] += 1
+                    return False
+                # Pour les réponses d'outils et infos passives, attendre que l'utilisateur finisse
+                await wait_until_speech_finished(timeout=timeout, buffer_drainage_delay=0.35)
+
+            # Sas de respiration acoustique strict : 350 ms après la fin réelle du playback client
+            last_pb = active_task_controller.get("last_playback_finished_time", 0.0)
+            if last_pb > 0:
+                elapsed = time.time() - last_pb
+                if elapsed < 0.35:
+                    await asyncio.sleep(0.35 - elapsed)
+        else:
+            # Priorité INTERRUPTION (1) : réservée pour arrêt d'urgence ou alerte critique
+            if get_speech_state() == SpeechState.MODEL_SPEAKING:
+                from services.metrics_service import metrics_service
+                is_user_stop = (
+                    item.metadata.get("source") == "user"
+                    or any(k in item.text.lower() for k in ("stop", "arrête", "arrete", "annule"))
+                )
+                if is_user_stop:
+                    metrics_service.record_speech_cut("user_barge_in", details="Arrêt d'urgence prioritaire utilisateur")
+                else:
+                    metrics_service.record_speech_cut("internal", details=f"Interruption prioritaire interne: {item.text[:50]}")
 
         try:
             await session.send_client_content(
                 turns=types.Content(role="user", parts=[types.Part.from_text(text=item.text)]),
                 turn_complete=True
             )
-            # Pause de respiration et amorçage audio pour que les premiers paquets
-            # de Aoede activent speaking_active avant que le prochain item de la file ne soit évalué
+            # Pause de respiration et amorçage audio
             if self.post_delivery_delay > 0:
                 await asyncio.sleep(self.post_delivery_delay)
             return True
@@ -165,22 +222,41 @@ class VoiceInjectionQueue:
     ) -> bool:
         """
         Enfile un message dans la file d'injection prioritaire.
-        Si wait_for_completion=True, attend la fin effective de la livraison et retourne le booléen.
+        Applique les règles de canal unique, coalescence de jalons (20s) et rejet si l'utilisateur parle.
         """
         if not text or not text.strip():
             return False
 
-        from core.shared_state import is_action_sync_completed
+        from core.shared_state import is_action_sync_completed, get_speech_state, SpeechState
         if action_key and is_action_sync_completed(action_key):
             logger.info(f"[VoiceInjectionQueue] Action '{action_key}' déjà synchronisée. Ignorée dès l'enfilage.")
             self._stats["rejected_sync"] += 1
             return False
 
+        p_val = int(priority)
+
+        # Règle 5 : Coalescence des PROGRESS_MILESTONE
+        if p_val == InjectionPriority.PROGRESS_MILESTONE:
+            # Jamais si l'utilisateur est en train de parler
+            if get_speech_state() == SpeechState.USER_SPEAKING:
+                logger.info("[VoiceInjectionQueue] Jalon refusé : l'utilisateur est en train de parler.")
+                self._stats["coalesced_milestones"] += 1
+                return False
+
+            task_key = action_key or (metadata.get("task_id") if metadata else None)
+            if task_key:
+                now = time.time()
+                last_t = self._last_milestone_timestamps.get(task_key, 0.0)
+                if now - last_t < 20.0:
+                    logger.info(f"[VoiceInjectionQueue] Jalon coalescé pour tâche '{task_key}' (< 20s depuis le précédent).")
+                    self._stats["coalesced_milestones"] += 1
+                    return False
+                self._last_milestone_timestamps[task_key] = now
+
         self._ensure_worker()
         self._counter += 1
         self._stats["enqueued"] += 1
 
-        p_val = int(priority)
         fut = asyncio.get_running_loop().create_future() if wait_for_completion else None
 
         item = InjectionItem(
@@ -290,6 +366,18 @@ class VoiceInjectionQueue:
                     self._queue.task_done()
                 except Exception:
                     break
+
+    def reset(self) -> None:
+        """Réinitialise complètement la file pour les tests ou la reconnexion."""
+        self.clear()
+        if self._worker_task and not self._worker_task.done():
+            self._worker_task.cancel()
+        self._worker_task = None
+        self._queue = None
+        self._active_loop = None
+        self._last_milestone_timestamps.clear()
+        self._counter = 0
+        self._is_delivering = False
 
 
 # Singleton global

@@ -15,6 +15,7 @@ from core.shared_state import (
     active_task_controller,
     broadcast_supervision,
     broadcast_paid_key_status,
+    safe_send_live_client_content,
 )
 
 router = APIRouter()
@@ -86,17 +87,15 @@ async def post_paid_key_auth(req: PaidKeyAuthRequest, request: Request):
             }))
             if active_task_controller.get("live_session"):
                 try:
-                    await active_task_controller["live_session"].send_client_content(
-                        turns=types.Content(
-                            role="user",
-                            parts=[types.Part.from_text(
-                                text=(
-                                    f"[INFO SYSTÈME EN DIRECT] Pierre vient de {'COCHER' if req.authorized else 'DÉCOCHER'} "
-                                    f"l'encoche d'autorisation de la clé payante dans l'application. "
-                                    f"La clé payante est désormais {'AUTORISÉE' if req.authorized else 'VERROUILLÉE ET INTERDITE PHYSIQUEMENT'}."
-                                )
-                            )]
+                    await safe_send_live_client_content(
+                        active_task_controller["live_session"],
+                        text_content=(
+                            f"[INFO SYSTÈME EN DIRECT] Pierre vient de {'COCHER' if req.authorized else 'DÉCOCHER'} "
+                            f"l'encoche d'autorisation de la clé payante dans l'application. "
+                            f"La clé payante est désormais {'AUTORISÉE' if req.authorized else 'VERROUILLÉE ET INTERDITE PHYSIQUEMENT'}."
                         ),
+                        priority=3,
+                        role="user",
                         turn_complete=True
                     )
                 except Exception:

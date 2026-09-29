@@ -35,6 +35,25 @@ class MetricsService:
         self._memory_buffer: deque = deque(maxlen=buffer_size)
         self._schema_ensured: bool = False
         self._claimed_success_without_verification: int = 0
+        self._internal_speech_cuts: int = 0
+        self._user_barge_in_cuts: int = 0
+
+    def record_speech_cut(self, reason: str, details: str = "") -> None:
+        """Enregistre et qualifie une coupure de parole (user_barge_in vs internal)."""
+        r_norm = reason.lower().strip()
+        if "user" in r_norm or "barge_in" in r_norm or "barge-in" in r_norm:
+            self._user_barge_in_cuts += 1
+            logger.info(f"SPEECH_CUT reason=user_barge_in details={details}")
+        else:
+            self._internal_speech_cuts += 1
+            logger.warning(f"SPEECH_CUT reason=internal details={details}")
+
+    def get_internal_speech_cuts_count(self) -> int:
+        return self._internal_speech_cuts
+
+    @property
+    def internal_speech_cuts(self) -> int:
+        return self._internal_speech_cuts
 
     def record_claimed_success_without_verification(self, tool_name: str = "") -> None:
         """Incrémente le compteur d'alerte lorsqu'un succès est affirmé sans vérification indépendante."""
@@ -370,6 +389,9 @@ class MetricsService:
                 "total_failures": total_failures,
                 "total_timeouts": total_timeouts,
                 "claimed_success_without_verification": self._claimed_success_without_verification,
+                "internal_speech_cuts": self._internal_speech_cuts,
+                "speech_cuts_internal": self._internal_speech_cuts,
+                "user_barge_in_cuts": self._user_barge_in_cuts,
                 "global_failure_rate": global_failure_rate,
                 "total_cost": total_cost,
                 "top_tools": top_tools,
@@ -496,6 +518,9 @@ class MetricsService:
             "total_failures": total_failures,
             "total_timeouts": total_timeouts,
             "claimed_success_without_verification": self._claimed_success_without_verification,
+            "internal_speech_cuts": self._internal_speech_cuts,
+            "speech_cuts_internal": self._internal_speech_cuts,
+            "user_barge_in_cuts": self._user_barge_in_cuts,
             "global_failure_rate": global_failure_rate,
             "total_cost": round(total_cost, 4),
             "top_tools": top_tools,

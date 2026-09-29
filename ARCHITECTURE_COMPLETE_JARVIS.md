@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.12.0 — Contrat Universel ToolResult, Moteur de Vérification Post-Exécution & Élimination Structurelle des Fausses Confirmations Vocales.*
+> *Dernière révision majeure : Version 5.13.0 — Machine à États SpeechState, Accusé Client playback_finished & Garantie Anti-Coupure d'Élocution Aoede.*
 
 ---
 
@@ -501,6 +501,7 @@ En cas d'exception `AntigravityQuotaExhaustedError` ou HTTP 429 sur `gemini-3.1-
 ### 6.1. Protocole Audio Full-Duplex & Streaming PCM
 - Endpoint `/ws` connecté directement à l'API Google Gemini Live.
 - Streaming PCM linéaire 16-bit, 16 kHz ou 24 kHz mono bidirectionnel permanent sans Push-to-Talk obligatoire.
+- Accusé de lecture réel du client : le navigateur web ou l'application émet un message WebSocket `playback_finished` lorsque son buffer de lecture Web Audio API (`AudioBufferSourceNode`) est physiquement vide.
 
 ### 6.2. Assemblage Dynamique de l'Instruction Système & Contexte
 À l'ouverture du WebSocket, compilation de :
@@ -509,35 +510,49 @@ En cas d'exception `AntigravityQuotaExhaustedError` ou HTTP 429 sur `gemini-3.1-
 3. État matériel PC (`is_pc_connected()`).
 4. Résumé architectural dynamique extrait d'`ARCHITECTURE_COMPLETE_JARVIS.md`.
 
-### 6.3. Modèles Vocaux Actifs & Permutation à Chaud
+### 6.3. Modèles Vocaux Actifs & Permutation à Chaud Différée
 - Modèle standard : `gemini-3.8-live` ; Modèle avec réflexion : `gemini-3.8-live-extended-thinking`.
-- Permutation à chaud via `/api/live-model` interceptant `ModelSwitchRequested` pour réinitialiser la session Live sans coupure client.
+- Permutation à chaud via `/api/live-model` ou message WebSocket `set_live_model`.
+- **Bascule différée anti-coupure** : Si Jarvis est en train de parler (`SpeechState != IDLE`), la requête de bascule est mise en attente (`active_task_controller["pending_model_switch"] = new_model`) et annoncée discrètement. La réinitialisation de session (`ModelSwitchRequested`) n'est déclenchée que lorsque le statut repasse en `IDLE`, protégeant la phrase entamée.
 
 ### 6.4. Boucle de Traitement des Outils Asynchrone Non-Bloquante (< 300 ms)
 1. Gemini Live émet un `tool_call`.
-2. Dispatcheur renvoie **instantanément** un accusé de réception préliminaire : `{"status": "launched_in_background"}`.
+2. Dispatcheur notifie `notify_tool_started(name)` (`SpeechState.TOOL_PENDING`) et renvoie **instantanément** un accusé de réception préliminaire : `{"status": "launched_in_background"}`.
 3. Aoede confirme vocalement à Pierre en moins de 300 ms.
 4. Tâche lourde exécutée en tâche de fond (`asyncio.create_task`).
 5. Pierre et Jarvis continuent de dialoguer librement pendant l'exécution.
 6. Notification finale injectée dans le flux via `VoiceInjectionQueue`.
 
-### 6.5. File d'Injection Vocale à Priorités FIFO (`VoiceInjectionQueue`)
-- `INTERRUPTION (1)` : Ordres d'arrêt d'urgence (`stop_current_action`), alertes SRE critiques.
+### 6.5. File d'Injection Vocale à Priorités FIFO (`VoiceInjectionQueue`) & Coalescence
+- `INTERRUPTION (1)` : Ordres d'arrêt d'urgence (`stop_current_action`), alertes SRE critiques. Seule cette priorité peut couper une prise de parole en cours.
 - `TOOL_RESPONSE (2)` : Retours directs d'outils et commandes.
 - `PROGRESS_MILESTONE (3)` : Jalons d'avancement des tâches longues.
 - `PASSIVE_INFO (4)` : Télémétrie passive et logs non-urgents.
-- Ordonnancement FIFO strict par niveau de priorité avec sas de respiration (350 ms).
+- **Règle Unique de Silence** : Aucune injection de priorité 2, 3 ou 4 ne part si `SpeechState != IDLE`. La file attend que le client ait fini de jouer le son (`playback_finished`) + un sas de respiration acoustique de 350 ms.
+- **Coalescence des Retours d'Outils d'Arrière-Plan** : Si plusieurs tâches en tâche de fond se terminent alors que Jarvis est en train de parler, leurs messages `TOOL_RESPONSE` sont fusionnés en un seul tour conversationnel complet injecté en une seule fois.
+- **Coalescence des Jalons de Progression** : Maximum 1 injection `PROGRESS_MILESTONE` par tâche toutes les 20 secondes, et rejet immédiat si l'utilisateur est en train de parler (`SpeechState.USER_SPEAKING`).
 
 ### 6.6. Jalons Vocaux Intermédiaires (`VOCAL_MILESTONE_THRESHOLD_SECONDS`)
 - Variable d'environnement (90 secondes par défaut).
-- Émission proactive de jalons vocaux pour les opérations longues afin d'éliminer l'effet "boîte noire".
+- Émission proactive de jalons vocaux pour les opérations longues afin d'éliminer l'effet "boîte noire", cadencée par la file d'injection prioritaire.
 
-### 6.7. Règle d'Or de Canal Unique & Verrou d'Élocution Anti-Coupure
-1. `mark_action_sync_completed` : Si une action s'est exécutée de manière synchrone et a répondu via `tool_response`, l'injection parallèle d'un `send_client_content` est formellement bloquée.
-2. `wait_until_speech_finished` : Avant toute injection, attente que l'élocution d'Aoede soit totalement achevée avec délai de vidange du tampon audio (0,3 à 2,0 s).
+### 6.7. Machine à États Explicite de la Parole (`SpeechState`) & Règle d'Or de Canal Unique
+1. **Machine à États `SpeechState`** :
+   - `IDLE` : Aucun flux audio émis ou en attente de restitution physique.
+   - `MODEL_SPEAKING` : Gemini Live génère de l'audio ou le client Web Audio restitue les trames PCM (maintien tant que `playback_finished` n'est pas reçu).
+   - `USER_SPEAKING` : L'utilisateur a pris la parole (VAD ou speech recognition actif).
+   - `TOOL_PENDING` : Un outil est en cours de dispatching synchrone.
+   - *Auto-expiration sécurisée* : Si un client se déconnecte abruptement sans renvoyer `playback_finished`, retour automatique à `IDLE` dès `estimated_speech_end + 3.0s`.
+2. **Règle d'Or de Canal Unique** :
+   - `mark_action_sync_completed` : Si une action s'est exécutée de manière synchrone et a répondu via `tool_response`, l'injection parallèle d'un `send_client_content` est formellement bloquée.
+   - `safe_send_live_client_content` : Tous les appels directs (`set_paid_key_authorized`, `paid_consent_response`, directives orales) transitent par la file d'injection et respectent le verrou d'élocution.
 
-### 6.8. Gestion des Interruptions (Barge-In) & Gating Micro
-Détection instantanée de la voix de l'utilisateur interrompant Aoede, coupure audio côté client, purge des tampons et réécoute active. Gating avec trames de silence anti-bruit résiduel.
+### 6.8. Gestion des Interruptions (Barge-In) & Traçabilité des Coupures de Parole
+1. **Barge-in utilisateur immédiat** : Si l'utilisateur commence à parler pendant qu'Aoede s'exprime, le son est coupé instantanément côté client et relayé au backend.
+2. **Distinction stricte des causes de coupure (Objectif 0 Coupure Interne)** :
+   - Interruption utilisateur : journalisation explicite `SPEECH_CUT reason=user_barge_in`.
+   - Interruption accidentelle ou interne (système, conflit d'outils) : journalisation explicite `SPEECH_CUT reason=internal`.
+   - Compteur `internal_speech_cuts` exposé et tracé en temps réel sur `/api/supervision/metrics` pour audit et alerte SRE.
 
 ---
 

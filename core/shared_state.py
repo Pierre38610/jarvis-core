@@ -47,6 +47,17 @@ def is_quota_or_limit_error(exc: Exception | None) -> bool:
     return False
 
 
+from enum import Enum
+
+
+class SpeechState(str, Enum):
+    """Machine à états explicite de la parole dans J.A.R.V.I.S."""
+    IDLE = "IDLE"                      # Au repos : aucune génération audio ni restitution en cours
+    MODEL_SPEAKING = "MODEL_SPEAKING"  # Le modèle génère ou les enceintes du client restituent la voix d'Aoede
+    USER_SPEAKING = "USER_SPEAKING"    # L'utilisateur parle dans son micro (interim transcription ou VAD)
+    TOOL_PENDING = "TOOL_PENDING"      # Un outil est en cours d'exécution côté serveur ou en attente de retour
+
+
 class QuotaExhaustedError(Exception):
     """Exception levée en cas de dépassement de quota ou limitation de débit sur une clé API."""
     pass
@@ -76,6 +87,12 @@ active_task_controller: dict = {
     "paid_live_approved": False, # Accord vocal payant par défaut verrouillé
     "paid_consent_modal_open": False,
     "paid_consent_event": None,  # asyncio.Event pour attendre la confirmation
+    "speech_state": SpeechState.IDLE, # État machine explicite de la parole
+    "generation_active": False,  # True tant que Gemini Live émet des chunks
+    "playback_pending": False,   # True tant que le client n'a pas confirmé playback_finished
+    "playback_finished_event": None, # asyncio.Event déclenché à playback_finished
+    "last_playback_finished_time": 0.0, # Timestamp de réception du dernier playback_finished
+    "pending_model_switch": None, # Modèle cible en attente que SpeechState devienne IDLE
     "speaking_active": False,    # True pendant l'émission de chunks audio par le modèle
     "estimated_speech_end": 0.0, # Timestamp estimé de fin de restitution audio dans les enceintes
     "client_speaking": False,    # True tant que le navigateur joue le flux sonore
@@ -85,6 +102,129 @@ active_task_controller: dict = {
     "last_turn_complete_time": 0.0,  # Horodatage du dernier turn_complete
     "sync_resolved_actions": {},     # Actions terminées en mode synchrone {action_name: timestamp}
 }
+
+
+def get_speech_state() -> SpeechState:
+    """Retourne l'état machine courant de la parole avec auto-expiration de sécurité."""
+    raw = active_task_controller.get("speech_state", SpeechState.IDLE)
+    if isinstance(raw, SpeechState):
+        state = raw
+    else:
+        try:
+            state = SpeechState(str(raw))
+        except Exception:
+            state = SpeechState.IDLE
+            active_task_controller["speech_state"] = state
+
+    # Garde-fou d'auto-expiration si le client n'a pas pu envoyer playback_finished
+    if state == SpeechState.MODEL_SPEAKING:
+        now = time.time()
+        est_end = active_task_controller.get("estimated_speech_end", 0.0)
+        # Si la génération est terminée et que le temps estimé + 3.0s est dépassé
+        if not active_task_controller.get("generation_active", False) and est_end > 0 and (now > est_end + 3.0):
+            set_speech_state(SpeechState.IDLE, reason="auto_expiry_safety_timeout")
+            return SpeechState.IDLE
+
+    return state
+
+
+def set_speech_state(new_state: SpeechState, reason: str = "") -> None:
+    """Met à jour l'état machine explicite de la parole."""
+    prev = active_task_controller.get("speech_state", SpeechState.IDLE)
+    if prev != new_state:
+        active_task_controller["speech_state"] = new_state
+        # Cohérence speaking_active
+        if new_state == SpeechState.MODEL_SPEAKING:
+            active_task_controller["speaking_active"] = True
+        elif new_state == SpeechState.IDLE:
+            active_task_controller["speaking_active"] = False
+            active_task_controller["client_speaking"] = False
+
+
+def is_speech_idle() -> bool:
+    """Vérifie si la parole est au repos complet (IDLE) : ni génération, ni lecture client, ni outil."""
+    return get_speech_state() == SpeechState.IDLE
+
+
+def notify_generation_chunk(chunk_duration: float = 0.0) -> None:
+    """Notifie l'arrivée d'un chunk audio PCM émis par Gemini Live."""
+    now = time.time()
+    active_task_controller["generation_active"] = True
+    active_task_controller["playback_pending"] = True
+    active_task_controller["speaking_active"] = True
+    active_task_controller["last_audio_chunk_time"] = now
+    active_task_controller["estimated_speech_end"] = max(
+        active_task_controller.get("estimated_speech_end", 0.0), now
+    ) + max(0.0, chunk_duration)
+    set_speech_state(SpeechState.MODEL_SPEAKING, reason="generation_chunk_received")
+
+
+def notify_turn_complete() -> None:
+    """Notifie que Gemini Live a terminé l'émission de son tour audio côté serveur."""
+    now = time.time()
+    active_task_controller["generation_active"] = False
+    active_task_controller["last_turn_complete_time"] = now
+    # ATTENTION : Si le client est encore en train de lire le flux sonore,
+    # l'état DOIT RESTER MODEL_SPEAKING jusqu'à réception de playback_finished !
+    if not active_task_controller.get("playback_pending", False):
+        active_task_controller["speaking_active"] = False
+        set_speech_state(SpeechState.IDLE, reason="turn_complete_no_playback_pending")
+    else:
+        set_speech_state(SpeechState.MODEL_SPEAKING, reason="turn_complete_awaiting_playback")
+
+
+def notify_playback_finished() -> None:
+    """Notifie que le buffer de lecture audio du client est réellement vide."""
+    now = time.time()
+    active_task_controller["playback_pending"] = False
+    active_task_controller["client_speaking"] = False
+    active_task_controller["speaking_active"] = False
+    active_task_controller["last_playback_finished_time"] = now
+
+    evt = active_task_controller.get("playback_finished_event")
+    if evt and isinstance(evt, asyncio.Event):
+        evt.set()
+
+    if not active_task_controller.get("generation_active", False) and not active_task_controller.get("awaiting_tool_response", False):
+        set_speech_state(SpeechState.IDLE, reason="playback_finished_received")
+
+
+def notify_tool_started(tool_name: str = "") -> None:
+    """Notifie le démarrage de l'exécution d'un outil."""
+    active_task_controller["awaiting_tool_response"] = True
+    set_speech_state(SpeechState.TOOL_PENDING, reason=f"tool_start_{tool_name}")
+
+
+def notify_tool_completed(tool_name: str = "") -> None:
+    """Notifie la fin de l'exécution d'un outil."""
+    active_task_controller["awaiting_tool_response"] = False
+    active_task_controller["tool_response_cooldown"] = time.time() + 0.35
+    if not active_task_controller.get("speaking_active", False) and not active_task_controller.get("playback_pending", False):
+        set_speech_state(SpeechState.IDLE, reason=f"tool_end_{tool_name}")
+
+
+def notify_user_speaking(started: bool = True) -> None:
+    """Notifie la prise de parole de l'utilisateur."""
+    active_task_controller["client_speaking"] = started
+    if started:
+        set_speech_state(SpeechState.USER_SPEAKING, reason="user_speaking_started")
+    else:
+        if get_speech_state() == SpeechState.USER_SPEAKING:
+            if not active_task_controller.get("generation_active", False) and not active_task_controller.get("playback_pending", False):
+                set_speech_state(SpeechState.IDLE, reason="user_speaking_ended")
+
+
+def notify_interrupted(reason: str = "user_barge_in") -> None:
+    """Notifie une interruption de parole (barge-in volontaire ou arrêt d'urgence)."""
+    active_task_controller["generation_active"] = False
+    active_task_controller["playback_pending"] = False
+    active_task_controller["speaking_active"] = False
+    active_task_controller["client_speaking"] = False
+    active_task_controller["estimated_speech_end"] = 0.0
+    evt = active_task_controller.get("playback_finished_event")
+    if evt and isinstance(evt, asyncio.Event):
+        evt.set()
+    set_speech_state(SpeechState.IDLE, reason=f"interrupted_{reason}")
 
 
 def mark_action_sync_completed(action_name: str) -> None:
@@ -106,6 +246,11 @@ def is_action_sync_completed(action_name: str, window_seconds: float = 60.0) -> 
 
 def is_model_speaking() -> bool:
     """Vérifie si le modèle Gemini Live est en train de parler ou si son flux audio est actif / en cours d'élocution."""
+    state = get_speech_state()
+    if state == SpeechState.MODEL_SPEAKING:
+        return True
+    if state == SpeechState.TOOL_PENDING:
+        return True
     now = time.time()
     if active_task_controller.get("speaking_active", False):
         return True
@@ -120,36 +265,43 @@ def is_model_speaking() -> bool:
     return False
 
 
-async def wait_until_speech_finished(timeout: float = 15.0, buffer_drainage_delay: float = 0.3) -> None:
+async def wait_until_speech_finished(timeout: float = 15.0, buffer_drainage_delay: float = 0.35) -> None:
     """
     Attend que J.A.R.V.I.S. ait réellement fini de prononcer sa phrase en cours
     avant d'injecter une nouvelle interaction dans la session Gemini Live.
     Évite absolument toute coupure de parole intempestive en pleine phrase (anti-barge-in prématuré).
-    Si le modèle parlait ou finissait d'émettre, respecte le délai de drainage du buffer audio.
+    Attente que SpeechState == IDLE + sas de respiration acoustique (350 ms).
     """
     start = time.time()
     was_speaking = False
     while time.time() - start < timeout:
-        if is_model_speaking():
+        state = get_speech_state()
+        if state != SpeechState.IDLE or is_model_speaking():
             was_speaking = True
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.05)
         else:
             break
 
-    # Si le modèle était en train de parler, pause de respiration et drainage audio pour laisser les enceintes terminer
+    # Sas de respiration acoustique après la fin effective de la parole
     if was_speaking:
-        await asyncio.sleep(buffer_drainage_delay)
+        delay = max(0.35, buffer_drainage_delay)
+        await asyncio.sleep(delay)
     else:
-        await asyncio.sleep(0.2)
+        # Sas de respiration standard minimal de 350 ms
+        await asyncio.sleep(0.35)
+
 
 
 async def safe_send_live_client_content(
     session,
-    text: str,
+    text: str = "",
     action_key: str | None = None,
     wait_if_speaking: bool = True,
     drainage_delay: float = 2.0,
-    priority: Any = None
+    priority: Any = None,
+    text_content: str | None = None,
+    role: str = "user",
+    turn_complete: bool = True,
 ) -> bool:
     """
     Injecte un message client dans la session Live en passant par la file d'attente prioritaire FIFO :
@@ -161,10 +313,14 @@ async def safe_send_live_client_content(
     if not session:
         return False
 
+    final_text = text or text_content or ""
+    if not final_text:
+        return False
+
     from services.voice_injection_queue import voice_injection_queue, InjectionPriority
 
     if priority is None:
-        text_lower = text.lower()
+        text_lower = final_text.lower()
         if any(w in text_lower for w in ("[arrêt", "[stop", "[alerte quota", "[urgence")):
             priority = InjectionPriority.INTERRUPTION
         elif action_key and not any(k in action_key for k in ("milestone", "jalon", "bg")):
@@ -175,7 +331,7 @@ async def safe_send_live_client_content(
             priority = InjectionPriority.PASSIVE_INFO
 
     return await voice_injection_queue.enqueue(
-        text=text,
+        text=final_text,
         priority=priority,
         session=session,
         action_key=action_key,
