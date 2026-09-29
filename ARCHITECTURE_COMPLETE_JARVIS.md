@@ -1093,4 +1093,4 @@ Pour ajouter un 39e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.12.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.14.0.*
