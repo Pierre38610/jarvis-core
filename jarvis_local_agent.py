@@ -532,8 +532,45 @@ def execute_local_app(app_name: str) -> Dict[str, Any]:
         }
 
 
+def execute_spotify_launch(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Lance l application Spotify sur le PC avec un URI optionnel (spotify://...) ou juste l appli."""
+    uri = (params.get("uri") or "").strip()
+    spotify_paths = [
+        os.path.expandvars(r"%APPDATA%\Spotify\Spotify.exe"),
+        r"C:\Users\pierr\AppData\Roaming\Spotify\Spotify.exe",
+    ]
+    spotify_exe = next((p for p in spotify_paths if os.path.exists(p)), None)
+
+    if not spotify_exe:
+        # Tenter via le raccourci Windows
+        try:
+            cmd = ["cmd", "/c", "start", "", "spotify:"]
+            if uri:
+                cmd[-1] = uri
+            subprocess.Popen(cmd, shell=False)
+            return {"status": "launched", "method": "protocol", "uri": uri,
+                    "message": "Spotify lance via protocole URI."}
+        except Exception as e:
+            return {"status": "error", "message": f"Spotify introuvable sur ce PC : {e}"}
+
+    try:
+        args = [spotify_exe]
+        if uri:
+            args.append(uri)
+        subprocess.Popen(args, shell=False)
+        return {
+            "status": "launched",
+            "method": "exe",
+            "exe": spotify_exe,
+            "uri": uri,
+            "message": f"Spotify lance{' sur ' + uri if uri else ''} depuis {spotify_exe}."
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"Impossible de lancer Spotify : {e}"}
+
+
 def execute_media_action(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Exécute une action multimédia locale (Deezer, Stremio, VLC)."""
+    """Exécute une action multimédia locale (Stremio, VLC)."""
     app = params.get("app", "").lower()
     query = params.get("query", "")
     target = params.get("target", "")
@@ -541,12 +578,7 @@ def execute_media_action(params: Dict[str, Any]) -> Dict[str, Any]:
     content_type = params.get("content_type", "movie")
 
     try:
-        if "deezer" in app:
-            url = f"https://www.deezer.com/search/{query}" if query else "https://www.deezer.com"
-            webbrowser.open(url)
-            return {"status": "success", "message": f"Deezer ouvert dans votre navigateur sur : {url}"}
-
-        elif "stremio" in app:
+        if "stremio" in app:
             exe = None
             for p in STREMIO_PATHS:
                 if os.path.exists(p):
@@ -770,6 +802,8 @@ async def agent_loop():
                             result = execute_open_browser(url, load_extensions=load_ext)
                         elif action == "launch_media":
                             result = execute_media_action(params)
+                        elif action == "spotify_launch":
+                            result = execute_spotify_launch(params)
                         elif action == "deezer_action":
                             result = await execute_deezer_action(params)
                         elif action == "prepare_train_checkout":

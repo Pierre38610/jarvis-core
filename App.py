@@ -8,7 +8,7 @@ Structure :
 - routers/voice.py         : WebSocket /ws  (Gemini Live full-duplex)
 - routers/local_agent.py   : WebSocket /ws/local-agent + /api/local-agent/status
 - routers/chat.py          : /api/chat/*
-- routers/media.py         : /api/media/deezer/*
+- routers/media.py         : /api/media/deezer/* (legacy) + /api/media/spotify/*
 - routers/browser.py       : /api/browser/*, /api/downloads, /api/emails/*
 - routers/supervision.py   : /api/supervision/*, /api/task/*
 - routers/settings.py      : /api/live-model, /api/settings/*, /api/paid-consent
@@ -32,7 +32,7 @@ from services.memory import vector_memory
 from services.console_monitor import console_monitor
 
 # ─── Routeurs modulaires ──────────────────────────────────────────────────────
-from routers import voice, local_agent, chat, media, browser, supervision, settings, briefing, transport
+from routers import voice, local_agent, chat, media, browser, supervision, settings, briefing, transport, spotify as spotify_router
 
 app = FastAPI(title="J.A.R.V.I.S. Core Server")
 
@@ -59,6 +59,7 @@ app.include_router(supervision.router)
 app.include_router(settings.router)
 app.include_router(briefing.router)
 app.include_router(transport.router)
+app.include_router(spotify_router.router)
 
 
 # ─── Cycle de vie de l'application ───────────────────────────────────────────
@@ -86,12 +87,17 @@ async def startup_event():
     except Exception as e:
         print(f"[Startup] [Memory] Avertissement initialisation mémoire vectorielle : {e}")
 
-    # 3. Bridge Deezer
+    # 3. Service Spotify (init tables SQLite + validation tokens en cache)
     try:
-        from deezer_bridge import deezer_controller
-        await deezer_controller.start()
+        from services.spotify_service import spotify_service
+        spotify_service._ensure_db()
+        auth_status = spotify_service.get_user_info()
+        if auth_status.get("authenticated"):
+            print(f"[Startup] [Spotify] Connecte en tant que : {auth_status.get('display_name', 'Utilisateur')}")
+        else:
+            print("[Startup] [Spotify] Non authentifie — va sur /api/media/spotify/login")
     except Exception as e:
-        print(f"[Deezer Startup] Erreur lancement bridge : {e}")
+        print(f"[Startup] [Spotify] Avertissement initialisation : {e}")
 
     # 4. Synchronisation et amorçage du profil de candidature de Pierre
     try:
@@ -115,11 +121,7 @@ async def shutdown_event():
     except Exception:
         pass
 
-    try:
-        from deezer_bridge import deezer_controller
-        await deezer_controller.stop()
-    except Exception:
-        pass
+    # Spotify : aucun cleanup necessaire (tokens persistes en DB)
 
 
 # ─── Routes racines et authentification ──────────────────────────────────────
