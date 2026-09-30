@@ -134,7 +134,6 @@ def _similarity(a: str, b: str) -> float:
 class SpotifyService:
     """Client Web API Spotify complet pour J.A.R.V.I.S."""
 
-    def __init__(self) -> None:
         self._client_id = os.environ.get("SPOTIFY_CLIENT_ID", "").strip()
         self._client_secret = os.environ.get("SPOTIFY_CLIENT_SECRET", "").strip()
         self._redirect_uri = os.environ.get(
@@ -143,6 +142,44 @@ class SpotifyService:
         ).strip()
         self._refresh_lock = asyncio.Lock()
         self._db_ready = False
+
+    @property
+    def client_id(self) -> str:
+        cid = os.environ.get("SPOTIFY_CLIENT_ID", "").strip() or getattr(config, "SPOTIFY_CLIENT_ID", "").strip() or self._client_id
+        if not cid:
+            # Rechargement de secours depuis le fichier .env si non chargé
+            try:
+                from dotenv import load_dotenv
+                env_file = os.path.join(config.BASE_DIR, ".env")
+                if os.path.exists(env_file):
+                    load_dotenv(env_file, override=True)
+                    cid = os.environ.get("SPOTIFY_CLIENT_ID", "").strip()
+            except Exception:
+                pass
+        return cid
+
+    @property
+    def client_secret(self) -> str:
+        csec = os.environ.get("SPOTIFY_CLIENT_SECRET", "").strip() or getattr(config, "SPOTIFY_CLIENT_SECRET", "").strip() or self._client_secret
+        if not csec:
+            try:
+                from dotenv import load_dotenv
+                env_file = os.path.join(config.BASE_DIR, ".env")
+                if os.path.exists(env_file):
+                    load_dotenv(env_file, override=True)
+                    csec = os.environ.get("SPOTIFY_CLIENT_SECRET", "").strip()
+            except Exception:
+                pass
+        return csec
+
+    @property
+    def redirect_uri(self) -> str:
+        return (
+            os.environ.get("SPOTIFY_REDIRECT_URI", "").strip()
+            or getattr(config, "SPOTIFY_REDIRECT_URI", "").strip()
+            or self._redirect_uri
+            or "https://jarvis.signalcraftapps.com/api/media/spotify/callback"
+        )
 
     # ── Init DB ───────────────────────────────────────────────────────────────
 
@@ -175,9 +212,9 @@ class SpotifyService:
     def build_auth_url(self, state: str, code_challenge: str) -> str:
         """Construit l URL Spotify authorize (PKCE)."""
         params = {
-            "client_id": self._client_id,
+            "client_id": self.client_id,
             "response_type": "code",
-            "redirect_uri": self._redirect_uri,
+            "redirect_uri": self.redirect_uri,
             "scope": SPOTIFY_SCOPES,
             "state": state,
             "code_challenge_method": "S256",
@@ -193,8 +230,8 @@ class SpotifyService:
                 data={
                     "grant_type": "authorization_code",
                     "code": code,
-                    "redirect_uri": self._redirect_uri,
-                    "client_id": self._client_id,
+                    "redirect_uri": self.redirect_uri,
+                    "client_id": self.client_id,
                     "code_verifier": code_verifier,
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -283,7 +320,7 @@ class SpotifyService:
                     data={
                         "grant_type": "refresh_token",
                         "refresh_token": refresh_token,
-                        "client_id": self._client_id,
+                        "client_id": self.client_id,
                     },
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                 )

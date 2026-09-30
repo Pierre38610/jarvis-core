@@ -38,6 +38,14 @@ JWT_EXPIRATION_DAYS = int(os.environ.get("JWT_EXPIRATION_DAYS", "90"))
 CLOUDFLARE_TUNNEL_TOKEN = os.environ.get("CLOUDFLARE_TUNNEL_TOKEN", "").strip()
 CLOUDFLARE_HOSTNAME = os.environ.get("CLOUDFLARE_HOSTNAME", "jarvis.signalcraftapps.com").strip()
 
+# Intégration Spotify Web API
+SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID", "").strip()
+SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET", "").strip()
+SPOTIFY_REDIRECT_URI = os.environ.get(
+    "SPOTIFY_REDIRECT_URI",
+    "https://jarvis.signalcraftapps.com/api/media/spotify/callback"
+).strip()
+
 # Détection de l'exécutable Chrome sous Windows
 CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 if not os.path.exists(CHROME_PATH):

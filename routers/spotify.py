@@ -54,6 +54,15 @@ async def spotify_login(request: Request):
     if not _is_authorized(request):
         return _unauthorized()
 
+    if not spotify_service.client_id:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "SPOTIFY_CLIENT_ID non configuré sur le serveur J.A.R.V.I.S. Vérifie les variables dans ton fichier .env.",
+            }
+        )
+
     state = secrets.token_urlsafe(16)
     code_verifier, code_challenge = spotify_service.generate_pkce_pair()
 
