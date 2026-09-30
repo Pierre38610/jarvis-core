@@ -134,6 +134,7 @@ def _similarity(a: str, b: str) -> float:
 class SpotifyService:
     """Client Web API Spotify complet pour J.A.R.V.I.S."""
 
+    def __init__(self) -> None:
         self._client_id = os.environ.get("SPOTIFY_CLIENT_ID", "").strip()
         self._client_secret = os.environ.get("SPOTIFY_CLIENT_SECRET", "").strip()
         self._redirect_uri = os.environ.get(
