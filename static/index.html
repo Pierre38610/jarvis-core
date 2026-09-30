@@ -36,7 +36,7 @@
     <div class="hud-header">
       <div class="hud-header-left">
         <span class="system-tag"><span class="system-tag-dot"></span> STARK AI CORE</span>
-        <span class="hud-version-tag">V 5.15.0 SLIDES DYNAMIQUES LLM</span>
+        <span class="hud-version-tag">V 5.16.0 SPOTIFY INTEGRATION</span>
 
       </div>
       <!-- Actions d'en-tête (Kindle, Messagerie & Supervision) -->
@@ -338,34 +338,34 @@
             </g>
           </g>
 
-          <!-- COUCHE MIME 7 : MUSIQUE & STREAMING AUDIO (Deezer, Égaliseurs, Vinyle) -->
+          <!-- COUCHE MIME 7 : MUSIQUE & STREAMING AUDIO (Spotify Connect, Égaliseurs, Vinyle) -->
           <g class="mime-layer mime-music-layer" style="display: none;">
-            <!-- Disque Vinyle / Anneau sonique rotatif magenta -->
-            <circle cx="100" cy="105" r="76" fill="none" stroke="#ec4899" stroke-width="1" stroke-dasharray="10 6 3 6" opacity="0.6" class="music-disc-spin" filter="url(#avatarGlowPink)"/>
+            <!-- Disque Vinyle / Anneau sonique rotatif Spotify vert/magenta -->
+            <circle cx="100" cy="105" r="76" fill="none" stroke="#1db954" stroke-width="1.2" stroke-dasharray="10 6 3 6" opacity="0.7" class="music-disc-spin" filter="url(#avatarGlowGreen)"/>
 
             <!-- Barres d'égaliseur sur casque gauche -->
             <g class="eq-left-ear">
-              <line x1="53" y1="99" x2="53" y2="91" stroke="#ec4899" stroke-width="1.8" stroke-linecap="round" class="music-bar-1"/>
-              <line x1="56" y1="102" x2="56" y2="88" stroke="#a855f7" stroke-width="1.8" stroke-linecap="round" class="music-bar-2"/>
+              <line x1="53" y1="99" x2="53" y2="91" stroke="#1db954" stroke-width="1.8" stroke-linecap="round" class="music-bar-1"/>
+              <line x1="56" y1="102" x2="56" y2="88" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" class="music-bar-2"/>
               <line x1="59" y1="100" x2="59" y2="93" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" class="music-bar-3"/>
             </g>
 
             <!-- Barres d'égaliseur sur casque droit -->
             <g class="eq-right-ear">
               <line x1="141" y1="100" x2="141" y2="93" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" class="music-bar-3"/>
-              <line x1="144" y1="102" x2="144" y2="88" stroke="#a855f7" stroke-width="1.8" stroke-linecap="round" class="music-bar-2"/>
-              <line x1="147" y1="99" x2="147" y2="91" stroke="#ec4899" stroke-width="1.8" stroke-linecap="round" class="music-bar-1"/>
+              <line x1="144" y1="102" x2="144" y2="88" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" class="music-bar-2"/>
+              <line x1="147" y1="99" x2="147" y2="91" stroke="#1db954" stroke-width="1.8" stroke-linecap="round" class="music-bar-1"/>
             </g>
 
             <!-- Notes de musique holographiques flottantes -->
-            <text x="44" y="78" fill="#ec4899" font-family="sans-serif" font-size="14" class="music-note-float-1" filter="url(#avatarGlowPink)">♪</text>
-            <text x="146" y="72" fill="#a855f7" font-family="sans-serif" font-size="16" class="music-note-float-2" filter="url(#avatarGlowPink)">♫</text>
+            <text x="44" y="78" fill="#1db954" font-family="sans-serif" font-size="14" class="music-note-float-1" filter="url(#avatarGlowGreen)">♪</text>
+            <text x="146" y="72" fill="#10b981" font-family="sans-serif" font-size="16" class="music-note-float-2">♫</text>
             <text x="135" y="52" fill="#00f0ff" font-family="sans-serif" font-size="11" class="music-note-float-3">♪</text>
 
-            <!-- Badge Deezer Flow -->
+            <!-- Badge Spotify Connect -->
             <g class="music-badge">
-              <rect x="136" y="118" width="44" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#ec4899" stroke-width="0.9"/>
-              <text x="140" y="129" fill="#f472b6" font-family="monospace" font-size="6.5" font-weight="bold">DEEZER // HI-FI</text>
+              <rect x="132" y="118" width="52" height="15" rx="3" fill="rgba(15, 23, 42, 0.9)" stroke="#1db954" stroke-width="0.9"/>
+              <text x="135" y="129" fill="#1ed760" font-family="monospace" font-size="6" font-weight="bold">SPOTIFY CONNECT</text>
             </g>
           </g>
 
@@ -550,6 +550,41 @@
         <div class="eq-bar"></div>
         <div class="eq-bar"></div>
         <div class="eq-bar"></div>
+      </div>
+    </div>
+
+    <!-- Panneau Lecteur Spotify Connect Jarvis (Stark Spotify Dock) -->
+    <div id="spotifyDock" class="spotify-dock" style="display: none;">
+      <div class="spotify-dock-cover-wrapper">
+        <img id="spotifyDockCover" class="spotify-dock-cover" src="/static/jarvis-icon.svg" alt="Pochette" />
+        <span class="spotify-dock-live-dot" id="spotifyDockLiveDot"></span>
+      </div>
+      <div class="spotify-dock-info">
+        <div class="spotify-dock-header">
+          <svg class="spotify-logo-icon" viewBox="0 0 24 24" width="13" height="13" fill="#1db954">
+            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+          </svg>
+          <span id="spotifyDockDevice" class="spotify-dock-device">SPOTIFY CONNECT</span>
+        </div>
+        <div id="spotifyDockTrack" class="spotify-dock-track">Titre du morceau</div>
+        <div id="spotifyDockArtist" class="spotify-dock-artist">Artiste</div>
+        <div class="spotify-dock-progress-bar">
+          <div id="spotifyDockProgress" class="spotify-dock-progress-fill" style="width: 0%;"></div>
+        </div>
+      </div>
+      <div class="spotify-dock-controls">
+        <button id="spotifyBtnPrev" class="spotify-ctrl-btn" title="Morceau précédent" onclick="spotifyControl('previous')">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+        </button>
+        <button id="spotifyBtnPlayPause" class="spotify-ctrl-btn spotify-play-btn" title="Lecture / Pause" onclick="spotifyControl('playpause')">
+          <svg id="spotifyPlayIcon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button id="spotifyBtnNext" class="spotify-ctrl-btn" title="Morceau suivant" onclick="spotifyControl('next')">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+        </button>
+        <button id="spotifyBtnLike" class="spotify-ctrl-btn" title="J'aime ce titre" onclick="spotifyControl('like')">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+        </button>
       </div>
     </div>
 

@@ -1492,6 +1492,137 @@ body {
   letter-spacing: 0.5px;
 }
 
+/* Panneau Lecteur Spotify Connect Jarvis (Stark Spotify Dock) */
+.spotify-dock {
+  display: none;
+  width: 100%;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(29, 185, 84, 0.55);
+  box-shadow: 0 0 25px rgba(29, 185, 84, 0.22), inset 0 0 14px rgba(29, 185, 84, 0.08);
+  border-radius: 12px;
+  padding: 8px 12px;
+  margin-top: 4px;
+  align-items: center;
+  gap: 12px;
+  animation: fadeIn 0.3s ease;
+  backdrop-filter: blur(8px);
+}
+.spotify-dock-cover-wrapper {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+}
+.spotify-dock-cover {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid rgba(29, 185, 84, 0.4);
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+}
+.spotify-dock-live-dot {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #1db954;
+  border: 1px solid #0f172a;
+  box-shadow: 0 0 6px #1ed760;
+  animation: pulse 1.8s infinite;
+}
+.spotify-dock-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  overflow: hidden;
+  flex: 1;
+}
+.spotify-dock-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.spotify-dock-device {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: #1ed760;
+  text-transform: uppercase;
+}
+.spotify-dock-track {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 190px;
+  margin-top: 1px;
+}
+.spotify-dock-artist {
+  font-size: 0.66rem;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 190px;
+}
+.spotify-dock-progress-bar {
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+.spotify-dock-progress-fill {
+  height: 100%;
+  background: #1db954;
+  box-shadow: 0 0 6px #1ed760;
+  transition: width 0.3s ease;
+}
+.spotify-dock-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.spotify-ctrl-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.spotify-ctrl-btn:hover {
+  background: rgba(29, 185, 84, 0.25);
+  border-color: #1db954;
+  color: #ffffff;
+  transform: scale(1.08);
+}
+.spotify-play-btn {
+  background: rgba(29, 185, 84, 0.2);
+  border-color: #1db954;
+  color: #1ed760;
+  width: 32px;
+  height: 32px;
+}
+.spotify-play-btn:hover {
+  background: #1db954;
+  color: #0b0f19;
+  box-shadow: 0 0 12px rgba(29, 185, 84, 0.7);
+}
+
 /* Panneau Navigation Web Jarvis (Stark Browser Dock) */
 .browser-dock {
   display: none;

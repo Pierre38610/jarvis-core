@@ -164,7 +164,8 @@ jarvis-core/
 │   ├── voice.py                         # WebSocket /ws : session bidirectionnelle Gemini Live Audio, streaming PCM et injection client
 │   ├── local_agent.py                   # WebSocket /ws/local-agent et GET /api/local-agent/status (relais PC physique)
 │   ├── chat.py                          # GET/POST /api/chat/* : messagerie multimodale écrite et vision Gemini 3.8 Flash
-│   ├── media.py                         # GET/POST /api/media/deezer/* : contrôle et état de la musique Deezer
+│   ├── spotify.py                       # GET/POST /api/media/spotify/* : OAuth PKCE, playback, devices, migration Deezer->Spotify
+│   ├── media.py                         # /api/media/deezer/* (legacy redirigé/déprécié) et userscript Tampermonkey archive
 │   ├── browser.py                       # /api/browser/*, /api/downloads, /api/emails/* : gestion documents, Kindle et courriels
 │   ├── supervision.py                   # /api/supervision/*, /api/task/* : métriques, fenêtres actives, patches SRE, directives
 │   ├── settings.py                      # /api/live-model, /api/settings/paid-key, /api/paid-consent, /api/tunnel-info
@@ -780,10 +781,13 @@ Afin de rendre structurellement impossible que Jarvis annonce oralement un succ�
 | **GET** | `/api/emails/preview/{id}`| Prévisualise le rendu HTML d'un courriel archivé. | Ouvert | Path param `email_id` | Document HTML |
 | **GET** | `/api/downloads` | Liste les fichiers et e-books téléchargés. | Token JWT | Aucun | `{"downloads": [], "ebooks": []}` |
 | **GET** | `/downloads/*` | Téléchargement direct des fichiers générés (.xlsx, .md). | Ouvert | Chemin du fichier | Flux binaire |
-| **POST** | `/api/media/deezer/control` | Contrôle direct de Deezer (play, pause, next, volume). | Token JWT | `{"action": "play", "query": "..."}` | `{"status": "success"}` |
-| **GET** | `/api/media/deezer/status` | Retourne l'état du lecteur Deezer (titre, artiste, pochette).| Token JWT | Aucun | `{"status": "playing", "track": "..."}` |
-| **GET** | `/api/media/deezer/search` | Recherche un titre ou album sur Deezer. | Token JWT | Query `?q=...` | `{"status": "success", "results": [...]}` |
-| **GET** | `/api/media/deezer/userscript`| Sert le script Tampermonkey pour le navigateur. | Ouvert | Aucun | Fichier JS |
+| **GET** | `/api/media/spotify/login` | Initialisation OAuth 2.0 PKCE Spotify (redirection). | Token JWT | Aucun | Redirection 307 |
+| **GET** | `/api/media/spotify/callback` | Callback OAuth Spotify (échange code PKCE + stockage SQLite/Redis). | Ouvert | `?code=...&state=...` | Redirection HUD |
+| **GET** | `/api/media/spotify/status` | Retourne l'état temps réel du lecteur Spotify Connect. | Token JWT | Aucun | `{"is_playing": true, ...}` |
+| **POST** | `/api/media/spotify/control` | Contrôle direct du lecteur Spotify (play, pause, next, like, etc.). | Token JWT | `{"action": "play", "query": "..."}` | `{"status": "done"}` |
+| **GET** | `/api/media/spotify/migration/status` | Statut temps réel de la migration Deezer->Spotify. | Token JWT | Aucun | `{"status": "completed", ...}` |
+| **POST** | `/api/media/spotify/migration/start` | Déclenche la migration Deezer->Spotify en tâche de fond. | Token JWT | `{"dry_run": false}` | `{"status": "started"}` |
+| **GET** | `/api/media/deezer/userscript`| Sert le script Tampermonkey pour archive historique. | Ouvert | Aucun | Fichier JS |
 | **GET** | `/api/browser/extensions` | Énumère les extensions Chrome installées sur la machine. | Token JWT | Aucun | `[{"id": "...", "name": "Send to Kindle"}]` |
 | **POST** | `/api/browser/send-to-kindle` | Envoie un article web nettoyé sur la liseuse Kindle. | Token JWT | `{"url": "...", "title": "..."}` | `{"status": "sent"}` |
 | **POST** | `/api/browser/send-file-to-kindle` | Envoie un fichier présent sur disque vers Kindle. | Token JWT | `{"file_path": "..."}` | `{"status": "sent"}` |

@@ -1,8 +1,8 @@
-"""deezer_bridge.py - Serveur WebSocket & Contrôleur API Deezer pour J.A.R.V.I.S.
+"""deezer_bridge.py - Serveur WebSocket & Contrôleur API Deezer pour J.A.R.V.I.S. (ARCHIVÉ / DÉPRÉCIÉ)
 
-Maintient une liaison bidirectionnelle temps réel avec le Web Player Deezer (deezer.com)
-via un Userscript Tampermonkey (deezer_controller.user.js).
-Expose l'ensemble des outils asynchrones pour le contrôle audio à 100% par l'agent LLM.
+NOTE : Ce composant a été entièrement remplacé par Spotify Connect Web API
+(services/spotify_service.py et routers/spotify.py).
+Conservé uniquement pour archive historique et rétrocompatibilité.
 """
 
 import os

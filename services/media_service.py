@@ -1,7 +1,7 @@
-"""Service multimedia J.A.R.V.I.S. - Deezer Web Player & Stremio.
-Contrôle Deezer Web Player à 100% en temps réel (play, pause, next, prev, choix de musique, albums, playlists, volume, shuffle)
-via le serveur WebSocket bridge local (deezer_bridge.py) et l'Userscript Tampermonkey (deezer_controller.user.js).
-Et Stremio (recherche film/serie via API Cinemeta + stream 1080p le plus leger via Torrentio).
+"""Service multimedia J.A.R.V.I.S. - Stremio & VLC.
+Contrôle Stremio (recherche film/serie via API Cinemeta + stream 1080p le plus leger via Torrentio)
+et VLC pour la lecture locale.
+Note : la musique est desormais geree par services/spotify_service.py.
 """
 
 import os
@@ -13,17 +13,6 @@ import asyncio
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Literal
 
-from deezer_bridge import (
-    deezer_controller,
-    search_catalog,
-    play as bridge_play,
-    pause as bridge_pause,
-    next_track as bridge_next,
-    previous_track as bridge_prev,
-    toggle_shuffle as bridge_shuffle,
-    play_music as bridge_play_music,
-    get_playback_status as bridge_status
-)
 
 _CURRENT_DIR = Path(__file__).resolve().parent
 _WORKSPACE_ROOT = _CURRENT_DIR.parent
@@ -50,136 +39,6 @@ def _find_exe(paths: list) -> Optional[str]:
         if p and os.path.exists(p):
             return p
     return None
-
-
-def is_deezer_running() -> bool:
-    """Vérifie si le Web Player Deezer est connecté via WebSocket ou si le processus Deezer tourne."""
-    if deezer_controller.is_connected():
-        return True
-    try:
-        startupinfo = None
-        if os.name == "nt":
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
-        cmd = ["tasklist", "/FI", "IMAGENAME eq Deezer.exe", "/NH"]
-        res = subprocess.run(cmd, capture_output=True, text=True, startupinfo=startupinfo, timeout=2)
-        return "deezer.exe" in res.stdout.lower()
-    except Exception:
-        return False
-
-
-# ─── DEEZER WEB PLAYER (WEBSOCKET BRIDGE & REST API) ──────────────────────────
-
-def launch_deezer(query: str = "") -> Dict[str, Any]:
-    """Ouvre Deezer Web Player dans le navigateur par défaut."""
-    try:
-        from services.local_agent_service import local_agent_service
-        if sys.platform != "win32" or local_agent_service.is_connected():
-            if not local_agent_service.is_connected():
-                return {
-                    "status": "pc_offline",
-                    "app": "Deezer Web",
-                    "message": "Votre ordinateur personnel est éteint ou le script start_local_agent.bat n'est pas lancé. Impossible d'ouvrir Deezer sur votre écran."
-                }
-            return local_agent_service.execute_command_sync("launch_media", timeout=12.0, app="deezer", query=query)
-    except Exception:
-        pass
-
-    import webbrowser
-    url = f"https://www.deezer.com/search/{query}" if query else "https://www.deezer.com"
-    try:
-        webbrowser.open(url)
-        return {
-            "status": "launched",
-            "app": "Deezer Web",
-            "query": query,
-            "url": url,
-            "message": f"Web Player Deezer ouvert sur : {url}"
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "app": "Deezer Web",
-            "message": f"Impossible d'ouvrir Deezer : {e}"
-        }
-
-
-async def search_deezer(query: str, search_type: str = "track", limit: int = 5) -> List[Dict[str, Any]]:
-    """Recherche des morceaux, albums, artistes ou playlists via l'API publique Deezer."""
-    res = await deezer_controller.search_catalog(query=query, search_type=search_type, limit=limit)
-    return res.get("results", [])
-
-
-async def play_deezer_track(track_query: str = "", item_type: str = "track") -> Dict[str, Any]:
-    """Lance la lecture d'un morceau, album, artiste ou playlist sur le Web Player Deezer."""
-    return await deezer_controller.play_music(query=track_query, search_type=item_type)
-
-
-async def deezer_play() -> Dict[str, Any]:
-    """Reprend ou lance la lecture sur Deezer Web."""
-    return await deezer_controller.play()
-
-
-async def deezer_pause() -> Dict[str, Any]:
-    """Met la lecture en pause sur Deezer Web."""
-    return await deezer_controller.pause()
-
-
-async def deezer_play_pause() -> Dict[str, Any]:
-    """Bascule entre lecture et pause sur Deezer Web."""
-    return await deezer_controller.toggle_play()
-
-
-async def deezer_next() -> Dict[str, Any]:
-    """Passe à la piste suivante sur Deezer Web."""
-    return await deezer_controller.next_track()
-
-
-async def deezer_prev() -> Dict[str, Any]:
-    """Revient à la piste précédente sur Deezer Web."""
-    return await deezer_controller.previous_track()
-
-
-async def deezer_send_command(action: str) -> bool:
-    """Envoie une commande basique au Web Player Deezer."""
-    act = (action or "playpause").lower().strip()
-    if act in ("next",):
-        res = await deezer_controller.next_track()
-    elif act in ("prev", "previous"):
-        res = await deezer_controller.previous_track()
-    elif act in ("pause", "stop"):
-        res = await deezer_controller.pause()
-    elif act in ("play",):
-        res = await deezer_controller.play()
-    else:
-        res = await deezer_controller.toggle_play()
-    return res.get("status") in ("success", "completed")
-
-
-async def control_deezer(action: str = "playpause", query: str = "", item_type: str = "track", **kwargs) -> Dict[str, Any]:
-    """Point d'entrée universel pour le contrôle complet (100%) de Deezer Web Player."""
-    from services.local_agent_service import local_agent_service
-    if sys.platform != "win32" or local_agent_service.is_connected():
-        if not local_agent_service.is_connected():
-            return {
-                "status": "pc_offline",
-                "message": (
-                    "Votre ordinateur personnel est actuellement éteint ou le script start_local_agent.bat n'est pas lancé. "
-                    "Impossible de contrôler Deezer sans le relais local actif sur votre PC."
-                )
-            }
-        return await local_agent_service.execute_command(
-            "deezer_action",
-            timeout=12.0,
-            action=action,
-            query=query,
-            item_type=item_type,
-            **kwargs
-        )
-
-    return await deezer_controller.control_deezer(action=action, query=query, item_type=item_type, **kwargs)
-
 
 
 

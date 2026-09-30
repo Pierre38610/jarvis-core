@@ -551,7 +551,7 @@ let activeActionState = null;
 function getActionLabel(state) {
   switch (state) {
     case 'kindle': return "LISEUSE & EBOOK KINDLE";
-    case 'music': return "MUSIQUE DEEZER";
+    case 'music': return "MUSIQUE SPOTIFY";
     case 'media': return "CINÉMA & VIDÉO";
     case 'downloading': return "TÉLÉCHARGEMENT";
     case 'system': return "DIAGNOSTIC SYSTÈME";
@@ -1082,9 +1082,9 @@ function setJarvisState(state, customMsg, detail, engineInfo) {
     } else if (state === 'music') {
       btn.classList.add('state-music');
       stateBadge.classList.add('badge-music');
-      stateLabel.innerText = "MUSIQUE DEEZER";
-      statusMessage.innerText = customMsg || (detail ? `Deezer : ${detail}` : "Lecture musicale sur Deezer...");
-      btnLabel.innerText = "DEEZER";
+      stateLabel.innerText = "MUSIQUE SPOTIFY";
+      statusMessage.innerText = customMsg || (detail ? `Spotify : ${detail}` : "Lecture musicale sur Spotify...");
+      btnLabel.innerText = "SPOTIFY";
     } else if (state === 'media') {
       btn.classList.add('state-media');
       stateBadge.classList.add('badge-media');
@@ -1153,7 +1153,7 @@ function updateLiveActivityBand(state, msg, task, engine, model, apiType, apiLab
     thinking: 'ANALYSE APPROFONDIE',
     emailing: 'EXPÉDITION E-MAIL',
     kindle: 'LISEUSE & EBOOK KINDLE',
-    music: 'DEEZER // STREAMING AUDIO',
+    music: 'SPOTIFY // STREAMING AUDIO',
     media: 'STREMIO // CINÉMA & VIDÉO',
     downloading: 'TÉLÉCHARGEMENT SÉCURISÉ',
     system: 'DIAGNOSTIC SYSTÈME',
@@ -4116,5 +4116,151 @@ if (kindleModal) {
     }
   });
 }
+
+// ============================================================================
+// MODULE SPOTIFY CONNECT HUD (Stark Audio Player)
+// ============================================================================
+const spotifyDock = document.getElementById('spotifyDock');
+const spotifyDockCover = document.getElementById('spotifyDockCover');
+const spotifyDockTrack = document.getElementById('spotifyDockTrack');
+const spotifyDockArtist = document.getElementById('spotifyDockArtist');
+const spotifyDockDevice = document.getElementById('spotifyDockDevice');
+const spotifyDockProgress = document.getElementById('spotifyDockProgress');
+const spotifyBtnPlayPause = document.getElementById('spotifyBtnPlayPause');
+const spotifyPlayIcon = document.getElementById('spotifyPlayIcon');
+
+let _spotifyPollTimer = null;
+let _spotifyCurrentPlaying = false;
+
+// Notification de retour OAuth Spotify
+if (window.location.search.includes('spotify_connected=1')) {
+  console.log('[Spotify] Authentification réussie détectée.');
+  if (typeof showToast === 'function') {
+    showToast('Connexion Spotify Connect réussie !');
+  }
+  // Nettoyage de l'URL sans rechargement
+  const cleanUrl = window.location.origin + window.location.pathname;
+  window.history.replaceState({}, document.title, cleanUrl);
+}
+
+async function fetchSpotifyStatus() {
+  const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token');
+  try {
+    const res = await fetch('/api/media/spotify/status', {
+      headers: {
+        'Accept': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.debug('[Spotify] Erreur poll status:', err);
+    return null;
+  }
+}
+
+async function pollSpotifyStatus() {
+  const data = await fetchSpotifyStatus();
+  if (!data || data.authenticated === false || !spotifyDock) {
+    if (spotifyDock) spotifyDock.style.display = 'none';
+    _spotifyCurrentPlaying = false;
+    _scheduleNextSpotifyPoll(6000);
+    return;
+  }
+
+  if (data.is_playing) {
+    _spotifyCurrentPlaying = true;
+    spotifyDock.style.display = 'flex';
+
+    if (spotifyDockCover && data.cover_url) {
+      spotifyDockCover.src = data.cover_url;
+    }
+    if (spotifyDockTrack) {
+      spotifyDockTrack.innerText = data.track_name || 'Titre inconnu';
+      spotifyDockTrack.title = data.track_name || '';
+    }
+    if (spotifyDockArtist) {
+      spotifyDockArtist.innerText = data.artist || 'Artiste inconnu';
+    }
+    if (spotifyDockDevice) {
+      spotifyDockDevice.innerText = data.device_name ? `SPOTIFY // ${data.device_name.toUpperCase()}` : 'SPOTIFY CONNECT';
+    }
+    if (spotifyDockProgress) {
+      const pct = Math.max(0, Math.min(100, data.progress_pct || 0));
+      spotifyDockProgress.style.width = `${pct}%`;
+    }
+    if (spotifyPlayIcon) {
+      // Icône Pause (deux barres)
+      spotifyPlayIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+    }
+    _scheduleNextSpotifyPoll(2500);
+  } else if (data.track_name) {
+    // Morceau en pause
+    _spotifyCurrentPlaying = false;
+    spotifyDock.style.display = 'flex';
+    if (spotifyPlayIcon) {
+      // Icône Play (triangle)
+      spotifyPlayIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+    }
+    if (spotifyDockTrack) spotifyDockTrack.innerText = data.track_name;
+    if (spotifyDockArtist) spotifyDockArtist.innerText = data.artist;
+    if (spotifyDockProgress) spotifyDockProgress.style.width = `${data.progress_pct || 0}%`;
+    _scheduleNextSpotifyPoll(5000);
+  } else {
+    // Rien ne joue
+    _spotifyCurrentPlaying = false;
+    spotifyDock.style.display = 'none';
+    _scheduleNextSpotifyPoll(5000);
+  }
+}
+
+function _scheduleNextSpotifyPoll(delayMs) {
+  if (_spotifyPollTimer) clearTimeout(_spotifyPollTimer);
+  _spotifyPollTimer = setTimeout(pollSpotifyStatus, delayMs);
+}
+
+window.spotifyControl = async function(action, query) {
+  const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token');
+  let effectiveAction = action;
+  if (action === 'playpause') {
+    effectiveAction = _spotifyCurrentPlaying ? 'pause' : 'resume';
+  }
+
+  // Animation visuelle immédiate sur le bouton
+  if (action === 'playpause' && spotifyPlayIcon) {
+    if (_spotifyCurrentPlaying) {
+      spotifyPlayIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+      _spotifyCurrentPlaying = false;
+    } else {
+      spotifyPlayIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+      _spotifyCurrentPlaying = true;
+    }
+  }
+
+  try {
+    const res = await fetch('/api/media/spotify/control', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({
+        action: effectiveAction,
+        query: query || ''
+      })
+    });
+    const result = await res.json();
+    console.log('[Spotify] Commande exécutée:', result);
+
+    // Re-poll rapide après 600ms pour synchroniser l'état réel
+    setTimeout(pollSpotifyStatus, 600);
+  } catch (err) {
+    console.error('[Spotify] Erreur envoi commande:', err);
+  }
+};
+
+// Démarrer le polling Spotify au chargement
+setTimeout(pollSpotifyStatus, 1500);
 
 
