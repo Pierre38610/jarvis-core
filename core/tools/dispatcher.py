@@ -29,7 +29,8 @@ from services.system_service import get_system_status, launch_application
 from services.email_service import send_email_async, read_received_emails_async
 from services.console_monitor import console_monitor
 from services.supervision_service import supervision_service
-from services.media_service import control_deezer, play_on_stremio
+from services.media_service import play_on_stremio
+from services.spotify_service import spotify_service
 from services.cache import cache_service
 from services.briefing_service import briefing_service
 from services.transport_service import transport_service
@@ -775,41 +776,141 @@ async def _execute_dispatch_tool(
             data={"result": res, "app": app_name, "pid": found_pid}
         )
 
-    # ─── play_music_deezer / deezer_action ─────────────────────────────────────
-    elif name in ("play_music_deezer", "deezer_action"):
-        action = args.get("action") or ("choose" if args.get("query") else "playpause")
-        query = args.get("query", "")
-        item_type = args.get("item_type", "track")
-        volume = args.get("volume")
-        enable = args.get("enable")
 
-        if query:
-            q_low = query.lower()
-            if any(k in q_low for k in ["playlist", "mix", "compil"]):
-                item_type = "playlist"
-            elif any(k in q_low for k in ["flow", "mon flow"]):
-                item_type = "flow"
-            elif any(k in q_low for k in ["coup de coeur", "coups de coeur", "favoris", "ma musique"]):
-                item_type = "loved"
-
-        action_label_map = {
-            "play": "Lecture Deezer", "pause": "Pause Deezer", "playpause": "Bascule Play/Pause Deezer",
-            "next": "Morceau suivant Deezer", "prev": "Morceau précédent Deezer",
-            "shuffle": "Aléatoire Deezer",
-            "volume": f"Volume Deezer ({volume}%)" if volume is not None else "Volume Deezer",
-            "status": "Statut lecture Deezer",
-            "choose": f"Musique Deezer ({item_type}) : {query}",
-            "open": "Ouverture Deezer Web"
+    # ─── control_spotify (+ alias legacy play_music_deezer / deezer_action) ────
+    elif name in ("control_spotify", "play_music_deezer", "deezer_action"):
+        action = args.get("action") or ("play" if args.get("query") else "now_playing")
+        # Rétrocompatibilité alias Deezer → Spotify
+        _deezer_compat = {
+            "playpause": "play", "choose": "play", "open": "play",
+            "prev": "previous", "status": "now_playing",
         }
-        action_label = action_label_map.get(action.lower(), f"Deezer : {action}")
-        supervision_service.start_action("play_music_deezer", action_label, "play_music_deezer", f"Action : {action} {f'({query})' if query else ''}", "Deezer Web Player (WebSocket Bridge)", api_type="free", api_label="Local", cost_est="0.00 $")
+        action = _deezer_compat.get(action, action)
+
+        query = args.get("query", "")
+        search_type = args.get("search_type") or args.get("item_type", "track")
+        # Rétrocompatibilité item_type Deezer → search_type Spotify
+        _type_compat = {"loved": "liked", "flow": "liked"}
+        search_type = _type_compat.get(search_type, search_type)
+
+        device = args.get("device")
+        volume = args.get("volume")
+        volume_delta = args.get("volume_delta")
+        position_ms = args.get("position_ms")
+        state = args.get("state")
+        playlist_name = args.get("playlist_name")
+
+        _action_labels = {
+            "play":        f"Spotify — {'Lecture : ' + query if query else 'Reprendre'}",
+            "pause":       "Spotify — Pause",
+            "resume":      "Spotify — Reprendre",
+            "next":        "Spotify — Suivant",
+            "previous":    "Spotify — Précédent",
+            "volume":      "Spotify — Volume",
+            "shuffle":     "Spotify — Aléatoire",
+            "repeat":      "Spotify — Répétition",
+            "now_playing": "Spotify — Lecture en cours",
+            "like":        "Spotify — Like",
+            "unlike":      "Spotify — Unlike",
+            "add_to_playlist": f"Spotify — Ajouter à '{playlist_name}'",
+            "transfer":    f"Spotify — Transfert vers {device}",
+            "list_devices": "Spotify — Appareils",
+        }
+        action_label = _action_labels.get(
+            action, f"Spotify — {action}" + (f" : {query}" if query else "")
+        )
+
+        supervision_service.start_action(
+            "control_spotify", action_label, "control_spotify",
+            f"Action : {action}{f' ({query})' if query else ''}",
+            "Spotify Web API (OAuth 2.0)",
+            api_type="free", api_label="Spotify", cost_est="0.00 $"
+        )
         await broadcast_supervision()
-        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"{action_label}...", "voice": False}))
-        await websocket.send_text(json.dumps({"type": "status", "state": "music", "msg": f"Deezer — {action_label}...", "task": query or action, "engine": "WebSocket Bridge", "model": "Deezer Web", "api_type": "free", "api_label": "Local"}))
-        res = await control_deezer(action=action, query=query, item_type=item_type, volume=volume, enable=enable)
-        supervision_service.complete_action("play_music_deezer", status=res.get("status", "completed"), summary=res.get("message", "Deezer contrôlé avec succès"))
-        await broadcast_supervision()
-        return {"status": res.get("status", "completed"), "result": res, "instruction_to_jarvis": f"{res.get('message', 'Action Deezer exécutée.')} Réponds directement et naturellement à Pierre en une seule prise de parole fluide sans préambule robotique."}
+        await websocket.send_text(json.dumps({
+            "type": "jarvis_announcement", "text": f"{action_label}...", "voice": False
+        }))
+        await websocket.send_text(json.dumps({
+            "type": "status", "state": "music",
+            "msg": f"{action_label}...",
+            "task": query or action,
+            "engine": "Spotify Connect", "model": "Spotify Web API",
+            "api_type": "free", "api_label": "Spotify"
+        }))
+
+        # Actions rapides (<300 ms) : exécution bloquante
+        # Recherche + lecture (>300 ms) : asyncio.create_task pour ne pas bloquer la voix
+        _FAST_ACTIONS = {
+            "pause", "resume", "next", "previous", "volume", "shuffle",
+            "repeat", "seek", "like", "unlike", "now_playing",
+            "list_devices", "get_queue",
+        }
+
+        if action in _FAST_ACTIONS:
+            res = await spotify_service.control(
+                action=action, query=query, search_type=search_type,
+                device=device, volume=volume, volume_delta=volume_delta,
+                position_ms=position_ms, state=state, playlist_name=playlist_name,
+            )
+            supervision_service.complete_action(
+                "control_spotify",
+                status=res.get("status", "done"),
+                summary=res.get("message", "Spotify : action terminée"),
+            )
+            await broadcast_supervision()
+        else:
+            # Lancement en tâche de fond pour ne pas bloquer Gemini Live
+            async def _spotify_bg_task():
+                r = await spotify_service.control(
+                    action=action, query=query, search_type=search_type,
+                    device=device, volume=volume, volume_delta=volume_delta,
+                    position_ms=position_ms, state=state, playlist_name=playlist_name,
+                )
+                supervision_service.complete_action(
+                    "control_spotify",
+                    status=r.get("status", "done"),
+                    summary=r.get("message", "Spotify : action terminée"),
+                )
+                await broadcast_supervision()
+
+            asyncio.create_task(_spotify_bg_task())
+            return {
+                "status": "started",
+                "verified": False,
+                "instruction_to_jarvis": (
+                    f"Je lance {action_label.lower()} sur Spotify. "
+                    "Confirme à Pierre en une phrase directe et naturelle sans préambule."
+                ),
+            }
+
+        # Construction de la réponse vocale selon le résultat
+        status = res.get("status", "done")
+        msg = res.get("message", "")
+        needs_user = res.get("needs_user", False)
+        verified = res.get("verified", False)
+
+        if needs_user:
+            instr = (
+                f"{msg} "
+                "Dis-le clairement à Pierre en une seule phrase, sans préambule robotique."
+            )
+        elif status == "not_found":
+            instr = f"{msg} Informe Pierre brièvement."
+        elif status == "failed":
+            instr = f"Erreur Spotify : {msg} Informe Pierre brièvement."
+        else:
+            instr = (
+                f"{msg} "
+                "Confirme directement à Pierre en une phrase courte et naturelle."
+            )
+
+        return {
+            "status": status,
+            "verified": verified,
+            "result": res,
+            "instruction_to_jarvis": instr,
+        }
+
 
     # ─── play_video_stremio / launch_media ─────────────────────────────────────
     elif name in ("play_video_stremio", "launch_media"):

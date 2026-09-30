@@ -316,7 +316,7 @@ def get_tools_list() -> list[types.Tool]:
                     description=(
                         "Lance une application locale sur le PC Windows de Pierre (Calculatrice, Bloc-notes, VS Code, Explorateur, Chrome, VLC, Terminal). "
                         "À UTILISER QUAND : Pierre demande d'ouvrir un logiciel bureautique sur son poste de travail. "
-                        "NE JAMAIS UTILISER QUAND : Pierre demande de la musique sur Deezer (utiliser 'play_music_deezer'), "
+                        "NE JAMAIS UTILISER QUAND : Pierre demande de la musique (utiliser 'control_spotify'), "
                         "un film ou une série sur Stremio (utiliser 'play_video_stremio'), "
                         "ou une page web dans Chrome (utiliser 'open_user_browser')."
                     ),
@@ -332,40 +332,84 @@ def get_tools_list() -> list[types.Tool]:
                     )
                 ),
 
-                # ─── 13. play_music_deezer ────────────────────────────────────────────
+                # ─── 13. control_spotify ─────────────────────────────────────────────
                 types.FunctionDeclaration(
-                    name="play_music_deezer",
+                    name="control_spotify",
                     description=(
-                        "Contrôle intégralement le lecteur web officiel Deezer en temps réel via liaison WebSocket locale "
-                        "(lecture, pause, piste suivante/précédente, volume, lecture aléatoire, recherche de titre/artiste/album/playlist). "
-                        "À UTILISER QUAND : Pierre demande d'écouter, de contrôler ou de régler de la musique sur Deezer. "
+                        "Contrôle complet du lecteur Spotify Connect via la Web API Spotify officielle "
+                        "(lecture, pause, suivant, précédent, volume, aléatoire, répétition, recherche de titre/artiste/album/playlist/épisode, "
+                        "file d'attente, transfert d'appareil, like, playlists). "
+                        "À UTILISER QUAND : Pierre demande d'écouter, de contrôler ou de régler de la musique ou un podcast sur Spotify. "
                         "NE JAMAIS UTILISER QUAND : Pierre demande un film, une vidéo ou une série télévisée (utiliser 'play_video_stremio'), "
-                        "ni pour lancer une application bureautique (utiliser 'launch_application')."
+                        "ni pour lancer une application bureautique (utiliser 'launch_application'). "
+                        "IMPORTANT : si Spotify n'est pas connecté (no_tokens), renvoyer le lien d'authentification /api/media/spotify/login."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
                             "action": types.Schema(
                                 type="STRING",
-                                description="Action à effectuer : 'play', 'pause', 'playpause', 'next', 'prev', 'shuffle', 'volume', 'status', 'choose', 'open'"
+                                description=(
+                                    "Action à effectuer. Valeurs : "
+                                    "'play' (lance ou relance la lecture, avec query optionnel), "
+                                    "'pause' (met en pause), "
+                                    "'resume' (reprend la lecture), "
+                                    "'next' (piste suivante), "
+                                    "'previous' (piste précédente), "
+                                    "'seek' (position_ms requis), "
+                                    "'volume' (volume absolu 0-100 ou delta relatif), "
+                                    "'shuffle' (state='true'/'false'), "
+                                    "'repeat' (state='off'/'track'/'context'), "
+                                    "'queue_add' (ajouter un titre à la file), "
+                                    "'get_queue' (voir la file), "
+                                    "'list_devices' (appareils disponibles), "
+                                    "'transfer' (transférer sur device), "
+                                    "'like' (liker le morceau en cours), "
+                                    "'unlike' (retirer le like), "
+                                    "'add_to_playlist' (playlist_name requis), "
+                                    "'create_playlist' (query=nom), "
+                                    "'follow_artist' (query=nom artiste), "
+                                    "'save_album' (query=nom album), "
+                                    "'now_playing' (état courant), "
+                                    "'search' (recherche sans lecture), "
+                                    "'top' (top tracks/artists), "
+                                    "'recent' (écoutes récentes)"
+                                )
                             ),
                             "query": types.Schema(
                                 type="STRING",
-                                description="Titre du morceau, nom de l'artiste, album ou style de musique recherché"
+                                description="Titre du morceau, nom de l'artiste, de l'album, de la playlist ou du podcast recherché"
                             ),
-                            "item_type": types.Schema(
+                            "search_type": types.Schema(
                                 type="STRING",
-                                description="Type de recherche si applicable : 'track' (défaut), 'album', 'playlist', 'artist'"
+                                description="Type de contenu : 'track' (défaut), 'artist', 'album', 'playlist', 'episode', 'liked'"
                             ),
-                            "enable": types.Schema(
-                                type="BOOLEAN",
-                                description="Pour shuffle : True pour activer, False pour désactiver, omis pour basculer"
+                            "device": types.Schema(
+                                type="STRING",
+                                description="Appareil cible (ex: 'pc', 'téléphone', 'enceinte', nom exact Spotify Connect). Optionnel."
                             ),
                             "volume": types.Schema(
                                 type="INTEGER",
-                                description="Niveau de volume de 0 à 100 pour l'action 'volume'"
+                                description="Volume absolu 0-100 pour l'action 'volume'"
                             ),
-                        }
+                            "volume_delta": types.Schema(
+                                type="INTEGER",
+                                description="Delta relatif de volume (ex: +10, -20) pour l'action 'volume'"
+                            ),
+                            "position_ms": types.Schema(
+                                type="INTEGER",
+                                description="Position de lecture en millisecondes pour l'action 'seek'"
+                            ),
+                            "state": types.Schema(
+                                type="STRING",
+                                description="Valeur complémentaire : 'true'/'false' pour shuffle, 'off'/'track'/'context' pour repeat, 'short_term'/'medium_term'/'long_term' pour top"
+                            ),
+                            "playlist_name": types.Schema(
+                                type="STRING",
+                                description="Nom de la playlist pour les actions 'add_to_playlist' et 'create_playlist'"
+                            ),
+                        },
+                        required=["action"]
                     )
                 ),
 
@@ -375,7 +419,7 @@ def get_tools_list() -> list[types.Tool]:
                     description=(
                         "Recherche et lance un film ou un épisode de série sur Stremio localement en sélectionnant automatiquement le meilleur flux 1080p fluide. "
                         "À UTILISER QUAND : Pierre demande de regarder un film ou une série vidéo. "
-                        "NE JAMAIS UTILISER QUAND : Pierre demande un morceau de musique (utiliser 'play_music_deezer'), "
+                        "NE JAMAIS UTILISER QUAND : Pierre demande un morceau de musique (utiliser 'control_spotify'), "
                         "ni pour une simple vidéo YouTube dans le navigateur (utiliser 'open_user_browser')."
                     ),
                     parameters=types.Schema(
