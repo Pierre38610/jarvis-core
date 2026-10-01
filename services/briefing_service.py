@@ -459,14 +459,26 @@ class BriefingService:
         else:
             phrase_emails = "Messagerie à jour, aucun message urgent. Tous les voyants sont au vert, prêt pour vos directives."
 
+        # Phrase 6 : Synthèse de supervision et de qualité des 7 derniers jours
+        phrase_qualite = ""
+        try:
+            from scripts.quality_report import get_quality_briefing_sentence
+            phrase_qualite = get_quality_briefing_sentence()
+        except Exception as _qe:
+            logger.debug("[BriefingService] Synthèse qualité non disponible : %s", _qe)
+
         # Assemblage final du discours d'impact
-        discours_oral = f"{phrase_sys} {phrase_meteo} {phrase_agenda} {phrase_news} {phrase_emails}"
+        discours_parts = [phrase_sys, phrase_meteo, phrase_agenda, phrase_news, phrase_emails]
+        if phrase_qualite:
+            discours_parts.append(phrase_qualite)
+        discours_oral = " ".join(discours_parts)
 
         briefing_payload = {
             "status": "success",
             "date": datetime.date.today().isoformat(),
             "compiled_at": datetime.datetime.now().isoformat(),
             "texte_oral": discours_oral,
+            "synthese_qualite_7j": phrase_qualite,
             "meteo": weather,
             "actualites": {
                 "count": len(top_news_items),
@@ -499,6 +511,10 @@ class BriefingService:
             logger.warning("[BriefingService] Erreur mise en cache Redis : %s", e)
 
         return briefing_payload
+
+    async def get_morning_briefing(self, force_refresh: bool = False) -> Dict[str, Any]:
+        """Retourne le Morning Briefing (alias conforme get_morning_briefing)."""
+        return await self.compiler_morning_briefing(force_refresh=force_refresh)
 
     async def get_today_briefing(self, force_refresh: bool = False) -> Dict[str, Any]:
         """Retourne le briefing du jour depuis le cache ou le génère immédiatement."""

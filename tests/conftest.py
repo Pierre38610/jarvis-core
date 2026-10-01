@@ -73,8 +73,10 @@ def fake_api_keys(monkeypatch):
     monkeypatch.setattr(google_antigravity, "GEMINI_API_KEY_PAID", fake_paid)
 
     import services.reasoning_service as rs
-    monkeypatch.setattr(rs, "GEMINI_API_KEY_FREE", fake_free)
-    monkeypatch.setattr(rs, "GEMINI_API_KEY_PAID", fake_paid)
+    if hasattr(rs, "GEMINI_API_KEY_FREE"):
+        monkeypatch.setattr(rs, "GEMINI_API_KEY_FREE", fake_free)
+    if hasattr(rs, "GEMINI_API_KEY_PAID"):
+        monkeypatch.setattr(rs, "GEMINI_API_KEY_PAID", fake_paid)
 
     yield {
         "free": fake_free,
@@ -194,3 +196,70 @@ def isolated_cache_service():
     service._is_connected = False
     service._client = None
     return service
+
+
+# ─── 7. Fixture et Simulateur Faux Client Live E2E ─────────────────────────────
+
+class FakeLiveClient:
+    """Faux client Live interactif pour orchestrer et valider les scénarios E2E.
+    Simule fidèlement le flux WebSocket full-duplex, la machine à états de parole Aoede,
+    les appels d'outils, la gouvernance de clé payante et l'audit des tours.
+    """
+
+    def __init__(self, monkeypatch=None):
+        self.received_messages: list[dict] = []
+        self.turns_audited: list[dict] = []
+        self.live_session = None
+        self.is_connected = True
+        self.monkeypatch = monkeypatch
+
+    async def connect(self):
+        self.is_connected = True
+        return self
+
+    async def disconnect(self):
+        self.is_connected = False
+
+    async def send_text(self, text: str):
+        """Simule l'envoi d'un message textuel ou d'une directive utilisateur."""
+        self.received_messages.append({"role": "user", "text": text})
+
+    async def execute_tool(self, name: str, args: dict, is_paid_live: bool = False) -> dict:
+        """Exécute un outil via le dispatcher JARVIS et retourne le résultat."""
+        from core.tools.dispatcher import dispatch_tool
+        return await dispatch_tool(name=name, args=args, is_paid_live=is_paid_live)
+
+    async def simulate_turn(
+        self,
+        transcript: str,
+        tools_executed: list[dict] | None = None,
+        final_sentence: str = "",
+        voice_mode: str = "standard",
+        cuts: int = 0,
+        paid_used: bool = False,
+        paid_reason: str = "",
+        plan: str = "",
+        db_path: str | None = None,
+    ) -> dict:
+        """Simule et audite un tour de parole complet dans SQLite."""
+        from services.turn_audit import record_turn_audit
+        res = record_turn_audit(
+            transcript=transcript,
+            voice_mode=voice_mode,
+            tools=tools_executed or [],
+            plan=plan,
+            final_sentence=final_sentence,
+            cuts=cuts,
+            paid_used=paid_used,
+            paid_reason=paid_reason,
+            db_path=db_path,
+        )
+        self.turns_audited.append(res)
+        return res
+
+
+@pytest.fixture
+def fake_live_client(monkeypatch):
+    """Fournit une instance initialisée de FakeLiveClient pour les tests E2E."""
+    client = FakeLiveClient(monkeypatch=monkeypatch)
+    return client
