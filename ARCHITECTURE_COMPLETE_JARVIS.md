@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.15.0 — Slides Dynamiques LLM : outline sur-mesure, 9 layouts polymorphes, modify_presentation, verification post-execution avec expected_outline_count. à États SpeechState, Accusé Client playback_finished & Garantie Anti-Coupure d'Élocution Aoede.*
+> *Dernière révision majeure : Version 5.26.0 — Accès Lecture Seule Espace _anti_gravity (Stages, LTH, Micro-SaaS, jarvis, etc.), Service WorkspaceService étanche & Outils Live Dédiés (list_workspace_files, read_workspace_file, search_workspace_files).*
 
 ---
 
@@ -198,6 +198,7 @@ jarvis-core/
 │   ├── automation.py                    # Webhooks n8n génériques, export tableur XLSX et intégration Notion
 │   ├── system_service.py                # Télémétrie système serveur/local et ouverture d'applications
 │   ├── voice_injection_queue.py         # File d'attente à priorités FIFO pour injection vocale sans collision (Aoede)
+│   ├── workspace_service.py             # Exploration et lecture seule stricte des projets locaux _anti_gravity (anti-traversal, filtres)
 │   └── architecture_service.py          # Hot-reload de ARCHITECTURE_COMPLETE_JARVIS.md et outil live query_jarvis_architecture
 │
 ├── db/
@@ -580,6 +581,9 @@ Le VPS distant n'a pas accès à l'écran, au Chrome réel, ni aux périphériqu
 | `execute_cdp_browser_action` | Contrôle Chrome via CDP `http://localhost:9222`. | `action: str` (`click`, `type`, `evaluate`), `selector: str`, `text: str` | `{"status": "cdp_executed", "data": any}` |
 | `get_status` | Relève la télémétrie matérielle physique en direct. | Aucun | `{"cpu_percent": float, "ram_percent": float, "battery": dict}` |
 | `fetch_file` | Extrait et encode en base64 un fichier local PC pour le Cloud. | `file_path: str` | `{"status": "ok", "filename": str, "data_b64": str, "size": int}` |
+| `list_workspace_dir` | Liste récursivement dossiers et fichiers dans `_anti_gravity` (lecture seule). | `relative_path: str`, `depth: int`, `pattern: str` | `{"status": "success", "items": list, "items_count": int}` |
+| `read_workspace_file` | Lit le contenu textuel paginé d'un fichier dans `_anti_gravity` (lecture seule). | `file_path: str`, `max_lines: int`, `offset_line: int` | `{"status": "success", "content": str, "total_lines": int}` |
+| `search_workspace_files` | Recherche textuelle (grep) au sein des projets sous `_anti_gravity`. | `query: str`, `subpath: str`, `extension: str`, `max_results: int` | `{"status": "success", "matches": list, "matches_count": int}` |
 
 ### 7.4. Journalisation Auto-Flush & Interception Globale des Crashs
 Flux standards encapsulés dans `AutoFlushStream` (`buffering=1`, `flush()` immédiat) dans `jarvis_agent.log`. `sys.excepthook` capturant toute exception avec traceback horodaté.

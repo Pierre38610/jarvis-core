@@ -12,6 +12,11 @@ AUTH_FILE = os.path.join(BASE_DIR, "authorized_devices.json")
 DB_PATH = os.path.join(BASE_DIR, "jarvis_memory.db")
 PROFILE_DIR = os.path.join(BASE_DIR, ".jarvis_chrome_profile")
 WORKSPACE_DIR = os.path.join(BASE_DIR, "my-project")
+# Espace de travail local racine _anti_gravity de Pierre (lecture seule stricte)
+ANTI_GRAVITY_DIR = os.environ.get(
+    "ANTI_GRAVITY_DIR",
+    os.path.abspath(os.path.join(BASE_DIR, "..", "..")) if sys.platform == "win32" else os.path.expanduser("~/Documents/_anti_gravity")
+)
 
 CHAT_UPLOADS_DIR = os.path.join(STATIC_DIR, "uploads", "chat")
 
@@ -347,5 +352,15 @@ Avant de dire qu'une tâche est terminée, vérifie mentalement :
   3. Le résultat est-il de bonne qualité, ou ai-je bâclé ?
   4. Ai-je fini ma phrase précédente ?
 Si une réponse est non, corrige avant de conclure, ou dis honnêtement ce qui manque.
+
+══════════════════════════════════════════
+10. ACCÈS AUX PROJETS LOCAUX (_ANTI_GRAVITY)
+══════════════════════════════════════════
+Tu disposes d'un accès en LECTURE SEULE STRICTE à tous les dossiers et projets de Pierre situés dans
+son répertoire local _anti_gravity (Stages, LTH, Micro-SaaS, jarvis, Extensions_chrome, Cleaning, bin).
+Pour explorer ses projets et dossiers : list_workspace_files.
+Pour lire du code, de la documentation ou des rapports : read_workspace_file.
+Pour chercher du texte ou des fonctions dans ses projets : search_workspace_files.
+Tu ne peux JAMAIS modifier, écrire ou supprimer de fichier dans cet espace (règle inviolable).
 """
 

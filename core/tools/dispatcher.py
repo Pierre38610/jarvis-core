@@ -42,6 +42,7 @@ from services.cache import cache_service
 from services.briefing_service import briefing_service
 from services.transport_service import transport_service
 from services.deep_research_service import deep_research_service
+from services.workspace_service import workspace_service
 
 from core.shared_state import (
     active_task_controller,
@@ -93,7 +94,7 @@ def _infer_tool_tier_and_cost(
     cost = 0.0
 
     # 1. Tier cognitif
-    if name in ("generate_book_summary", "curation_livre_synthese"):
+    if name in ("generate_book_summary", "curation_livre_synthese", "list_workspace_files", "read_workspace_file", "search_workspace_files"):
         tier = 1
     elif name in (
         "draft_email_response", "triage_et_brouillon_email",
@@ -2920,8 +2921,104 @@ async def _execute_dispatch_tool(
             )
         )
 
+    # ─── list_workspace_files ──────────────────────────────────────────────────
+    elif name in ("list_workspace_files", "lister_fichiers_workspace"):
+        res = await workspace_service.list_directory(
+            relative_path=args.get("relative_path", ""),
+            depth=int(args.get("depth", 1)),
+            pattern=args.get("pattern")
+        )
+        if res.get("status") == "success":
+            return ToolResult.done(
+                action="list_workspace_files",
+                user_message=res.get("message", "Contenu de _anti_gravity recensé."),
+                evidence=f"{res.get('items_count', 0)} éléments dans '{res.get('queried_path', '.')}'",
+                verified=True,
+                items=res.get("items", []),
+                items_count=res.get("items_count", 0),
+                truncated=res.get("truncated", False),
+                instruction_to_jarvis=(
+                    f"Tu as accès aux éléments suivants dans '_anti_gravity/{res.get('queried_path', '')}' : "
+                    f"{', '.join([it['name'] for it in res.get('items', [])[:10]])}. "
+                    "Présente les éléments clés à Pierre de façon claire et concise avec ta voix Aoede."
+                )
+            )
+        return ToolResult.failed(
+            action="list_workspace_files",
+            user_message=res.get("message", "Impossible de lister le dossier."),
+            instruction_to_jarvis=f"Signale à Pierre : {res.get('message', '')}"
+        )
+
+    # ─── read_workspace_file ───────────────────────────────────────────────────
+    elif name in ("read_workspace_file", "lire_fichier_workspace"):
+        res = await workspace_service.read_file(
+            file_path=args.get("file_path", ""),
+            max_lines=int(args.get("max_lines", 200)),
+            offset_line=int(args.get("offset_line", 1))
+        )
+        if res.get("status") == "success":
+            return ToolResult.done(
+                action="read_workspace_file",
+                user_message=res.get("message", "Fichier lu avec succès."),
+                evidence=f"{res.get('filename')}: {res.get('lines_shown')} lignes lues sur {res.get('total_lines')}",
+                verified=True,
+                file_path=res.get("relative_path"),
+                filename=res.get("filename"),
+                total_lines=res.get("total_lines"),
+                lines_shown=res.get("lines_shown"),
+                content=res.get("content"),
+                instruction_to_jarvis=(
+                    f"Le fichier '{res.get('filename')}' a été lu avec succès. "
+                    "Explique et synthétise son contenu à Pierre à l'oral avec ta voix Aoede sans réciter de syntaxe brute."
+                )
+            )
+        elif res.get("status") == "binary_file":
+            return ToolResult.done(
+                action="read_workspace_file",
+                user_message=res.get("message", "Fichier binaire détecté."),
+                evidence=f"{res.get('filename')} ({res.get('size_kb')} Ko)",
+                verified=True,
+                file_path=res.get("relative_path"),
+                filename=res.get("filename"),
+                instruction_to_jarvis=f"Indique à Pierre que '{res.get('filename')}' est un fichier binaire de {res.get('size_kb')} Ko."
+            )
+        return ToolResult.failed(
+            action="read_workspace_file",
+            user_message=res.get("message", "Impossible de lire le fichier."),
+            instruction_to_jarvis=f"Signale à Pierre l'échec de lecture : {res.get('message', '')}"
+        )
+
+    # ─── search_workspace_files ────────────────────────────────────────────────
+    elif name in ("search_workspace_files", "chercher_fichiers_workspace"):
+        res = await workspace_service.search_files(
+            query=args.get("query", ""),
+            subpath=args.get("subpath", ""),
+            extension=args.get("extension"),
+            max_results=int(args.get("max_results", 30))
+        )
+        if res.get("status") == "success":
+            return ToolResult.done(
+                action="search_workspace_files",
+                user_message=res.get("message", "Recherche terminée."),
+                evidence=f"{res.get('matches_count')} occurrences trouvées pour '{res.get('query')}'",
+                verified=True,
+                query=res.get("query"),
+                matches_count=res.get("matches_count"),
+                matches=res.get("matches", []),
+                instruction_to_jarvis=(
+                    f"Recherche terminée avec {res.get('matches_count')} résultat(s). "
+                    "Résume brièvement les fichiers et emplacements trouvés pour Pierre."
+                )
+            )
+        return ToolResult.failed(
+            action="search_workspace_files",
+            user_message=res.get("message", "Échec de la recherche."),
+            instruction_to_jarvis=f"Signale à Pierre : {res.get('message', '')}"
+        )
+
     # ─── Outil inconnu ─────────────────────────────────────────────────────────
     else:
         return {"status": "error", "message": f"Outil inconnu : {name}"}
+
 
 

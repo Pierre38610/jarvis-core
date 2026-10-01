@@ -1420,6 +1420,93 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                         required=["accept"]
                     )
                 ),
+
+                # ─── 42. list_workspace_files ────────────────────────────────────────────
+                types.FunctionDeclaration(
+                    name="list_workspace_files",
+                    description=(
+                        "Liste les dossiers et fichiers dans l'espace de travail local _anti_gravity de Pierre (en lecture seule stricte : Stages, LTH, Micro-SaaS, jarvis, Extensions_chrome, Cleaning, bin). "
+                        "À UTILISER QUAND : Pierre demande ce qu'il y a dans ses projets locaux, dans son dossier Stages, LTH, Micro-SaaS, ou à la racine de _anti_gravity. "
+                        "NE JAMAIS UTILISER POUR : Tenter d'écrire, modifier ou supprimer un fichier (accès strictement read-only)."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "relative_path": types.Schema(
+                                type="STRING",
+                                description="Sous-dossier relatif au sein de _anti_gravity (ex: '' pour la racine, 'Stages', 'Micro-SaaS', 'LTH')."
+                            ),
+                            "depth": types.Schema(
+                                type="INTEGER",
+                                description="Profondeur maximale d'exploration (1 à 3, défaut 1)."
+                            ),
+                            "pattern": types.Schema(
+                                type="STRING",
+                                description="Filtre par motif facultatif (ex: '*.py', '*.md', '*scintil*')."
+                            ),
+                        }
+                    )
+                ),
+
+                # ─── 43. read_workspace_file ─────────────────────────────────────────────
+                types.FunctionDeclaration(
+                    name="read_workspace_file",
+                    description=(
+                        "Lit le contenu textuel d'un fichier dans l'espace local _anti_gravity de Pierre en lecture seule stricte (code, markdown, scripts, rapports, configurations). "
+                        "À UTILISER QUAND : Pierre demande de lire, consulter, analyser ou résumer le contenu d'un fichier de son PC dans _anti_gravity. "
+                        "NE JAMAIS UTILISER QUAND : Le fichier est confidentiel (.env, clés) ou hors de _anti_gravity, ni pour modifier un fichier."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "file_path": types.Schema(
+                                type="STRING",
+                                description="Chemin relatif du fichier au sein de _anti_gravity (ex: 'Stages/Scintil/README.md', 'Micro-SaaS/app.py')."
+                            ),
+                            "max_lines": types.Schema(
+                                type="INTEGER",
+                                description="Nombre maximal de lignes à lire (défaut 200, max 500)."
+                            ),
+                            "offset_line": types.Schema(
+                                type="INTEGER",
+                                description="Ligne de départ pour la lecture paginée (défaut 1)."
+                            ),
+                        },
+                        required=["file_path"]
+                    )
+                ),
+
+                # ─── 44. search_workspace_files ──────────────────────────────────────────
+                types.FunctionDeclaration(
+                    name="search_workspace_files",
+                    description=(
+                        "Recherche un mot-clé ou un motif textuel dans l'ensemble des fichiers de code et documents de l'espace _anti_gravity en lecture seule. "
+                        "À UTILISER QUAND : Pierre demande où se trouve une fonction, un composant, une variable ou un terme dans tous ses projets locaux. "
+                        "NE JAMAIS UTILISER POUR : Chercher sur le web (utiliser search_web) ou chercher des e-mails."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "query": types.Schema(
+                                type="STRING",
+                                description="Le mot-clé ou terme de recherche."
+                            ),
+                            "subpath": types.Schema(
+                                type="STRING",
+                                description="Sous-dossier optionnel où restreindre la recherche (ex: 'Stages', 'Micro-SaaS')."
+                            ),
+                            "extension": types.Schema(
+                                type="STRING",
+                                description="Extension de fichier optionnelle pour filtrer (ex: '.py', '.md', '.js')."
+                            ),
+                            "max_results": types.Schema(
+                                type="INTEGER",
+                                description="Nombre maximal de correspondances retournées (défaut 30)."
+                            ),
+                        },
+                        required=["query"]
+                    )
+                ),
             ]
         )
     ]

@@ -125,6 +125,12 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 HOSTNAME = os.environ.get("CLOUDFLARE_HOSTNAME", "jarvis.signalcraftapps.com").strip()
 PASSWORD = os.environ.get("JARVIS_PASSWORD", "Bonjourmotdepassedu52..").strip()
 
+# Répertoire racine _anti_gravity local (lecture seule stricte)
+ANTI_GRAVITY_DIR = os.environ.get(
+    "ANTI_GRAVITY_DIR",
+    os.path.abspath(os.path.join(BASE_DIR, "..", "..")) if sys.platform == "win32" else os.path.expanduser("~/Documents/_anti_gravity")
+)
+
 # Détection Chrome Windows
 CHROME_PATHS = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -648,6 +654,7 @@ def execute_fetch_file(params: Dict[str, Any]) -> Dict[str, Any]:
     else:
         clean_name = os.path.basename(target).lower()
         search_dirs = [
+            ANTI_GRAVITY_DIR,
             os.path.expandvars(r"%USERPROFILE%\Downloads"),
             os.path.expandvars(r"%USERPROFILE%\Documents"),
             os.path.expandvars(r"%USERPROFILE%\Desktop"),
@@ -857,6 +864,37 @@ async def agent_loop():
                             result = get_local_metrics()
                         elif action == "fetch_file":
                             result = execute_fetch_file(params)
+                        elif action == "list_workspace_dir":
+                            try:
+                                from services.workspace_service import workspace_service
+                                result = await workspace_service.list_directory(
+                                    relative_path=params.get("relative_path", ""),
+                                    depth=params.get("depth", 1),
+                                    pattern=params.get("pattern")
+                                )
+                            except Exception as e:
+                                result = {"status": "error", "message": f"Erreur list_workspace_dir local : {e}"}
+                        elif action == "read_workspace_file":
+                            try:
+                                from services.workspace_service import workspace_service
+                                result = await workspace_service.read_file(
+                                    file_path=params.get("file_path", ""),
+                                    max_lines=params.get("max_lines", 200),
+                                    offset_line=params.get("offset_line", 1)
+                                )
+                            except Exception as e:
+                                result = {"status": "error", "message": f"Erreur read_workspace_file local : {e}"}
+                        elif action == "search_workspace_files":
+                            try:
+                                from services.workspace_service import workspace_service
+                                result = await workspace_service.search_files(
+                                    query=params.get("query", ""),
+                                    subpath=params.get("subpath", ""),
+                                    extension=params.get("extension"),
+                                    max_results=params.get("max_results", 30)
+                                )
+                            except Exception as e:
+                                result = {"status": "error", "message": f"Erreur search_workspace_files local : {e}"}
                         elif action == "gemini_deep_research":
                             # Lance une recherche Deep Research via Gemini Web sur le navigateur local
                             try:
