@@ -348,8 +348,22 @@ class SpotifyService:
             return None
 
     async def _refresh(self) -> str:
-        """Rafraichit l access token. Thread-safe via asyncio.Lock."""
-        async with self._refresh_lock:
+        """Rafraichit l access token. Thread-safe via asyncio.Lock (timeout 20s anti-deadlock)."""
+        acquired = False
+        try:
+            try:
+                await asyncio.wait_for(self._refresh_lock.acquire(), timeout=20.0)
+                acquired = True
+            except asyncio.TimeoutError:
+                logger.error("[Spotify] _refresh_lock timeout 20s - forcage liberation")
+                if self._refresh_lock.locked():
+                    try:
+                        self._refresh_lock.release()
+                    except RuntimeError:
+                        pass
+                await self._refresh_lock.acquire()
+                acquired = True
+
             # Double-check : un autre appel peut avoir rafraichi pendant l attente
             try:
                 cached = await cache_service.get(REDIS_TOKEN_KEY)
@@ -399,6 +413,12 @@ class SpotifyService:
                 pass
 
             return data["access_token"]
+        finally:
+            if acquired and self._refresh_lock.locked():
+                try:
+                    self._refresh_lock.release()
+                except RuntimeError:
+                    pass
 
     async def _get_token(self) -> str:
         """Retourne un access token valide. Leve ValueError('no_tokens') si non connecte."""

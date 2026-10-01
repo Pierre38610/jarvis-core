@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional
 from google import genai
 from google.genai import types
 import config
-from config import GEMINI_API_KEY_FREE, GEMINI_API_KEY_PAID, HAS_PAID_API_KEY, WORKSPACE_DIR
+from config import GEMINI_API_KEY_FREE, HAS_PAID_API_KEY, WORKSPACE_DIR
 from google_antigravity import (
     AntigravityAgent,
     resolve_antigravity_model,
@@ -22,10 +22,9 @@ from google_antigravity import (
 )
 from services.console_monitor import console_monitor
 
-# Clients Gemini : clé GRATUITE prioritaire, clé PAYANTE en repli (conditionnée à l'encoche utilisateur)
-client_paid = genai.Client(api_key=GEMINI_API_KEY_PAID) if GEMINI_API_KEY_PAID else None
+# Client Gemini gratuit par défaut (Tier 1 classification, flash)
 client_free = genai.Client(api_key=GEMINI_API_KEY_FREE) if GEMINI_API_KEY_FREE else None
-client = client_paid or client_free
+client = client_free
 
 def _is_quota_error(exc: Exception) -> bool:
     """Détecte les erreurs de quota/rate-limit pour déclencher le repli sur clé payante."""
@@ -61,7 +60,7 @@ async def classify_query_tier_with_llm(query: str, client_override: Optional[Any
         '{"tier": 1, 2 ou 3, "reason": "Courte justification en français"}'
     )
 
-    eff_client = client_override or client_free or (client_paid if config.is_paid_key_authorized() else None)
+    eff_client = client_override or client_free
     if not eff_client:
         return {"tier": 2, "reason": "Repli Tier 2 (aucun client API Gemini disponible pour la classification)"}
 
@@ -149,15 +148,6 @@ async def resolve_cognitive_tier(
                     reason=f"Override modèle pro-medium: {user_preference}", is_override=True
                 )
             return COGNITIVE_TIER_3.with_details(reason=f"Override modèle pro: {user_preference}", is_override=True)
-        if "opus" in up or "sonnet" in up or "claude" in up:
-            return CognitiveConfig(
-                model="claude-3-opus" if "opus" in up else "claude-3-7-sonnet",
-                thinking_level="high", timeout_seconds=600, tier=3,
-                cli_model_arg="claude-opus-4-6-thinking" if "opus" in up else "claude-3-7-sonnet-thinking",
-                voice_pitch=COGNITIVE_TIER_3.voice_pitch,
-                description="Tier 3 — Délibération Système 2 & Haute Ingénierie (Claude Thinking)",
-                reason=f"Override modèle Claude: {user_preference}", is_override=True
-            )
 
     if query:
         q_lower = query.lower()
@@ -525,13 +515,9 @@ async def run_deep_reasoning(
     chosen_model = model_choice or cog_cfg.cli_model_arg
 
     # Vérification clé payante si modèle lourd et encoche décochée
-    is_heavy_model = any(k in chosen_model.lower() for k in ["pro", "claude", "sonnet", "opus"])
+    is_heavy_model = any(k in chosen_model.lower() for k in ["pro", "3.1"])
     if is_heavy_model and not config.is_paid_key_authorized():
         cost_str = "~0.03 $"
-        if "opus" in chosen_model.lower():
-            cost_str = "~0.10 $"
-        elif any(k in chosen_model.lower() for k in ["sonnet", "claude"]):
-            cost_str = "~0.05 $"
         prompt_msg = (
             f"ATTENTION : Le modèle {chosen_model} nécessite la clé payante ({cost_str}), mais l'encoche d'autorisation de la clé payante est actuellement décochée dans l'application. "
             f"RÈGLE STRICTE ET ABSOLUE : Tu es dans l'impossibilité physique de faire des requêtes sur la clé payante tant que l'encoche n'est pas cochée par Pierre. "

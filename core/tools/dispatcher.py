@@ -52,6 +52,15 @@ from core.shared_state import (
 
 from services.metrics_service import metrics_service
 from core.tools.result import ToolResult, normalize_result
+from services.key_gate import (
+    PaidKeyConsentRequired,
+    is_qualified_free_key_failure,
+    set_pending_action,
+    get_pending_action,
+    clear_pending_action,
+    grant_paid_consent,
+    consume_paid_consent,
+)
 from core.tools.verifier import (
     verify_email_sent,
     verify_presentation_slides,
@@ -94,7 +103,7 @@ def _infer_tool_tier_and_cost(
         ir_lower = str(args.get("intensite_reflexion") or "").lower()
         if any(k in ir_lower for k in ["rapide", "tier1", "tier 1", "flash-low"]) or any(k in m_lower for k in ["flash-low", "low", "tier1"]):
             tier = 1
-        elif any(k in ir_lower for k in ["approfondie", "tier3", "tier 3", "pro-high", "fond", "ingenierie"]) or any(k in m_lower for k in ["pro-high", "opus", "claude", "tier3", "o3"]):
+        elif any(k in ir_lower for k in ["approfondie", "tier3", "tier 3", "pro-high", "fond", "ingenierie"]) or any(k in m_lower for k in ["pro-high", "tier3", "gemini-3.1-pro"]):
             tier = 3
         else:
             tier = 2
@@ -167,10 +176,77 @@ async def dispatch_tool(
             status = "success"
 
         return res
+    except PaidKeyConsentRequired as exc:
+        status = "needs_user"
+        set_pending_action(
+            name=name,
+            args=args,
+            reason=exc.reason,
+            detail=exc.detail,
+            purpose=exc.purpose,
+            task_id=exc.task_id,
+            session_id=exc.session_id,
+            extra={
+                "websocket": websocket,
+                "session": session,
+                "is_paid_live": is_paid_live,
+                "live_display_label": live_display_label,
+            },
+        )
+        if exc.reason == "cli_quota_exceeded":
+            user_msg = "Le quota des agents Antigravity est dépassé. Veux-tu que j'utilise la clé payante pour terminer ?"
+        else:
+            user_msg = f"La clé gratuite a échoué ({exc.detail}). Veux-tu que j'utilise la clé payante pour terminer ?"
+
+        tool_result = ToolResult.needs_user(
+            user_message=user_msg,
+            question=user_msg,
+            evidence=f"Paid key consent required: {exc.reason}",
+            data={
+                "reason": exc.reason,
+                "detail": exc.detail,
+                "purpose": exc.purpose,
+                "task_id": exc.task_id,
+                "pending_tool": name,
+            },
+        )
+        res = tool_result.to_dict()
+        return res
     except asyncio.TimeoutError:
         status = "timeout"
         raise
     except Exception as exc:
+        is_qual, detail = is_qualified_free_key_failure(exc)
+        if is_qual:
+            status = "needs_user"
+            set_pending_action(
+                name=name,
+                args=args,
+                reason="free_key_failure",
+                detail=detail,
+                purpose=name,
+                extra={
+                    "websocket": websocket,
+                    "session": session,
+                    "is_paid_live": is_paid_live,
+                    "live_display_label": live_display_label,
+                },
+            )
+            user_msg = f"La clé gratuite a échoué ({detail}). Veux-tu que j'utilise la clé payante pour terminer ?"
+            tool_result = ToolResult.needs_user(
+                user_message=user_msg,
+                question=user_msg,
+                evidence="Paid key consent required: free_key_failure",
+                data={
+                    "reason": "free_key_failure",
+                    "detail": detail,
+                    "purpose": name,
+                    "pending_tool": name,
+                },
+            )
+            res = tool_result.to_dict()
+            return res
+
         status = "failure"
         tool_result = ToolResult.failed(
             user_message=f"L'outil '{name}' a rencontré une erreur d'exécution.",
@@ -218,6 +294,53 @@ async def _execute_dispatch_tool(
             "message": f"Action immédiatement et totalement arrêtée ({stop_reason}).",
             "instruction_to_jarvis": "L'action en cours a été immédiatement et totalement arrêtée. Confirme brièvement et calmement à Pierre avec ta voix Aoede que l'action est stoppée."
         }
+
+    # ─── confirm_paid_key ──────────────────────────────────────────────────────
+    elif name in ("confirm_paid_key", "confirmer_cle_payante"):
+        accept = bool(args.get("accept", False))
+        pending = get_pending_action()
+        if not pending:
+            return ToolResult.failed(
+                user_message="Aucune action en attente d'autorisation de clé payante.",
+                error_hint="no_pending_action"
+            )
+
+        if not accept:
+            clear_pending_action()
+            return ToolResult.failed(
+                user_message="Utilisation de la clé payante refusée. L'action n'a pas été exécutée.",
+                error_hint="paid_key_rejected"
+            )
+
+        # Pierre a accepté d'utiliser la clé payante pour cette tâche
+        grant_paid_consent(
+            session_id=pending.session_id,
+            reason=pending.reason,
+            scope="this_task",
+            task_id=pending.task_id,
+        )
+        saved_name = pending.name
+        saved_args = dict(pending.args)
+        if "confirmed_by_user" in saved_args or saved_name in ("ask_deep_reasoning", "download_file"):
+            saved_args["confirmed_by_user"] = True
+
+        extra_ctx = pending.extra or {}
+        ws = extra_ctx.get("websocket") or websocket
+        sess = extra_ctx.get("session") or session
+        clear_pending_action()
+
+        try:
+            res = await dispatch_tool(
+                name=saved_name,
+                args=saved_args,
+                websocket=ws,
+                session=sess,
+                is_paid_live=True,
+                live_display_label=live_display_label,
+            )
+            return res
+        finally:
+            consume_paid_consent(session_id=pending.session_id, task_id=pending.task_id)
 
 
     # ─── guide_active_task ─────────────────────────────────────────────────────

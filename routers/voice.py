@@ -773,38 +773,36 @@ async def voice_channel(websocket: WebSocket):
         while True:
             live_display_label = "Gemini 3.8 Live (Thinking)" if "extended-thinking" in active_live_model else "Gemini 3.8 Live"
 
-            # Sélection intelligente de la clé (gratuite en priorité pour Live de base, payante si autorisée ou demandée)
-            is_base_live = (active_live_model == "gemini-3.8-live")
-            if is_base_live and client_free and not supervision_service._free_quota_exhausted:
-                current_live_client = client_free
+            # Sélection de la clé (gratuite par défaut pour gemini-3.8-live et gemini-3.8-live-extended-thinking)
+            from services.key_gate import has_paid_consent, is_qualified_free_key_failure, grant_paid_consent
+            has_voice_consent = has_paid_consent(session_id="voice")
+            if has_voice_consent and client_paid:
+                current_live_client = client_paid
+                is_paid_live = True
+                tier_badge = "Clé Payante"
+            else:
+                current_live_client = client_free or client_paid
                 is_paid_live = False
                 tier_badge = "Clé Gratuite"
-            else:
-                if config.is_paid_key_authorized() and client_paid:
-                    current_live_client = client_paid
-                    is_paid_live = True
-                    tier_badge = "Clé Payante"
-                else:
-                    current_live_client = client_free
-                    is_paid_live = False
-                    tier_badge = "Clé Gratuite"
 
             try:
                 print(f"[Voice Channel] Connexion Live ({active_live_model}) avec {tier_badge}...")
                 session_ctx, session = await _establish_live_session(active_live_model, current_live_client)
             except Exception as initial_conn_err:
-                if not is_paid_live and client_paid and config.is_paid_key_authorized():
-                    print(f"[Voice Channel] Clé gratuite en échec ({initial_conn_err}). Bascule immédiate de repli sur la clé payante...")
+                is_qual, fail_detail = is_qualified_free_key_failure(initial_conn_err)
+                if not is_paid_live and client_paid and (config.is_paid_key_authorized() or has_voice_consent):
+                    print(f"[Voice Channel] Clé gratuite en échec ({initial_conn_err}). Bascule autorisée sur la clé payante...")
                     supervision_service.set_free_quota_exhausted(True)
                     console_monitor.record_error(source="Voice Channel", message=f"Bascule de repli sur clé payante : {initial_conn_err}", level="WARNING")
+                    grant_paid_consent(session_id="voice", reason="free_key_failure", scope="this_task")
                     current_live_client = client_paid
                     is_paid_live = True
-                    tier_badge = "Clé Payante (Repli Quota)"
-                    await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Limite de la clé gratuite atteinte. Bascule automatique sur la clé payante.", "voice": False}))
+                    tier_badge = "Clé Payante (Secours)"
+                    await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Échec de la clé gratuite. Bascule de secours sur la clé payante.", "voice": False}))
                     session_ctx, session = await _establish_live_session(active_live_model, current_live_client)
                 else:
-                    if not is_paid_live and client_paid and not config.is_paid_key_authorized():
-                        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Limite de la clé gratuite atteinte. La clé payante est verrouillée dans l'application. Cochez l'encoche pour l'autoriser.", "voice": False}))
+                    if not is_paid_live and client_paid:
+                        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"La clé gratuite a échoué ({fail_detail or initial_conn_err}). Autorisation de la clé payante requise.", "voice": False}))
                     raise initial_conn_err
 
             active_task_controller["live_session"] = session

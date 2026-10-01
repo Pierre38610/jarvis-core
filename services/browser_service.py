@@ -32,7 +32,7 @@ async def _notify_live_fallback(message: str):
         print(f"[browser_service] Erreur notification vocale repli : {e}", flush=True)
 
 import config
-from config import CHROME_PATH, STATIC_DIR, SCREENSHOT_PATH, PROFILE_DIR, GEMINI_API_KEY, GEMINI_API_KEY_PAID, GEMINI_API_KEY_FREE, BASE_DIR
+from config import CHROME_PATH, STATIC_DIR, SCREENSHOT_PATH, PROFILE_DIR, GEMINI_API_KEY, GEMINI_API_KEY_FREE, BASE_DIR
 
 # Configuration environnement pour Browser-Use
 os.environ["BROWSER_USE_CONFIG_DIR"] = os.path.join(BASE_DIR, ".browseruse")
@@ -654,7 +654,7 @@ async def run_browser_task(
         target_site_fallback = route_info["url"]
 
     api_key_to_use = config.get_effective_paid_key() or GEMINI_API_KEY_FREE
-    key_label = "Clé Payante" if (api_key_to_use and api_key_to_use == GEMINI_API_KEY_PAID) else "Clé Gratuite"
+    key_label = "Clé Payante" if (api_key_to_use and api_key_to_use == config.GEMINI_API_KEY_PAID) else "Clé Gratuite"
     chosen_model = "gemini-3.8-flash"
 
     if not api_key_to_use:

@@ -196,7 +196,7 @@ class SupervisionService:
         self._tracked_windows: List[Dict[str, Any]] = []
         self._subagents: Dict[str, Dict[str, Any]] = {}
         self._free_quota_exhausted: bool = False
-        initial_is_paid = ("extended-thinking" in config.GEMINI_LIVE_MODEL) or not bool(config.GEMINI_API_KEY_FREE)
+        initial_is_paid = not bool(config.GEMINI_API_KEY_FREE)
         initial_label = "Clé Payante" if initial_is_paid else "Clé Gratuite"
         initial_key = config.GEMINI_API_KEY_PAID if initial_is_paid else config.GEMINI_API_KEY_FREE
         self._voice_state: Dict[str, Any] = {
@@ -230,7 +230,7 @@ class SupervisionService:
             is_thinking = "extended-thinking" in model
             self._voice_state["display_label"] = "Gemini 3.8 Live (Thinking)" if is_thinking else "Gemini 3.8 Live"
             if is_paid is None:
-                is_paid = is_thinking or self._free_quota_exhausted or not bool(config.GEMINI_API_KEY_FREE)
+                is_paid = self._free_quota_exhausted or not bool(config.GEMINI_API_KEY_FREE)
 
         if is_paid is not None:
             self._voice_state["is_paid"] = is_paid

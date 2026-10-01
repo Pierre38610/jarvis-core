@@ -21,12 +21,11 @@ from services.supervision_service import supervision_service
 
 
 # ─── Clients Gemini : Répartition Clé Gratuite / Clé Payante ─────────────────
-# - Clé GRATUITE (client_free) : utilisée prioritairement pour gemini-3.8-live (voix standard sans réflexion).
-# - Clé PAYANTE (client_paid) : utilisée pour gemini-3.8-live-extended-thinking, gemini-3.8-flash,
-#   Antigravity Agents, Browser-Use et repli automatique immédiat si le quota gratuit est atteint.
-client_paid = genai.Client(api_key=config.GEMINI_API_KEY_PAID) if config.GEMINI_API_KEY_PAID else None
+# - Clé GRATUITE (client_free) : utilisée pour gemini-3.8-live, gemini-3.8-live-extended-thinking, classification.
+# - Clé PAYANTE (client_paid) : clé de secours uniquement via key_gate.
 client_free = genai.Client(api_key=config.GEMINI_API_KEY_FREE) if config.GEMINI_API_KEY_FREE else None
-client = client_paid or client_free
+client_paid = genai.Client(api_key=config.GEMINI_API_KEY_PAID) if config.GEMINI_API_KEY_PAID else None
+client = client_free or client_paid
 
 
 def is_quota_or_limit_error(exc: Exception | None) -> bool:

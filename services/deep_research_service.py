@@ -34,7 +34,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Dict, Any, List, Optional, Tuple, Set
 
 import config
-from config import BASE_DIR, WORKSPACE_DIR, GEMINI_API_KEY_FREE, GEMINI_API_KEY_PAID
+from config import BASE_DIR, WORKSPACE_DIR, GEMINI_API_KEY_FREE
 from services.unified_memory import unified_memory_manager
 from services.memory_service import memory_service
 from services.supervision_service import supervision_service

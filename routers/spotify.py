@@ -240,7 +240,12 @@ async def migration_start(request: Request):
         run_id = body.get("run_id", "")
 
         asyncio.create_task(
-            deezer_migration_service.run(dry_run=dry_run, run_id=run_id)
+            deezer_migration_service.run(
+                dry_run=dry_run,
+                run_id=run_id,
+                deezer_user_id=body.get("deezer_user_id", ""),
+                csv_path=body.get("csv_path", ""),
+            )
         )
         return JSONResponse(content={
             "status": "started",

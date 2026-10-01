@@ -397,9 +397,28 @@ class DeezerMigrationService:
                     self._current_run["current_track"] = f"{title} - {artist}"
                     self._current_run["progress"] = round((idx / total_tracks) * 100, 1)
 
-                    match_res = await self._match_track(track_item)
-                    status = match_res["status"]
+                    try:
+                        match_res = await asyncio.wait_for(
+                            self._match_track(track_item), timeout=15.0
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(f"[DeezerMigration] Timeout 15s sur '{title}' - titre ignoré")
+                        match_res = {
+                            "matched": False, "spotify_track_id": "", "spotify_uri": "",
+                            "spotify_title": "", "spotify_artist": "", "confidence_score": 0.0,
+                            "duration_delta_s": 0.0, "match_method": "timeout",
+                            "status": "not_found",
+                        }
+                    except Exception as exc:
+                        logger.warning(f"[DeezerMigration] Erreur sur '{title}': {exc}")
+                        match_res = {
+                            "matched": False, "spotify_track_id": "", "spotify_uri": "",
+                            "spotify_title": "", "spotify_artist": "", "confidence_score": 0.0,
+                            "duration_delta_s": 0.0, "match_method": "error",
+                            "status": "not_found",
+                        }
 
+                    status = match_res["status"]
                     self._persist_state(run_id, track_item, match_res, status)
 
                     if status == "matched":
@@ -413,7 +432,8 @@ class DeezerMigrationService:
 
                     # Petit répit pour éviter les rate-limits
                     if idx % 10 == 0:
-                        await asyncio.sleep(0.1)
+                        await asyncio.sleep(0.2)
+
 
                 # 3. Création playlists Spotify et ajout des titres (si non dry_run)
                 created_playlists: List[str] = []

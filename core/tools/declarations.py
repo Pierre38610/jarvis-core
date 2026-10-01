@@ -81,7 +81,6 @@ def get_tools_list() -> list[types.Tool]:
                                 description=(
                                     "Modèle Antigravity CLI selon la complexité : "
                                     "'gemini-3.1-pro-high' (par défaut, pour synthèse et analyse de référence), "
-                                    "'claude-3-opus' ou 'claude-3-7-sonnet' (pour analyse conceptuelle pointue), "
                                     "ou 'gemini-3.8-flash-high' (pour investigation rapide)."
                                 )
                             ),
@@ -1285,6 +1284,26 @@ def get_tools_list() -> list[types.Tool]:
                             ),
                         },
                         required=["step_id", "status"]
+                    )
+                ),
+
+                # ─── 41. confirm_paid_key ────────────────────────────────────────────────
+                types.FunctionDeclaration(
+                    name="confirm_paid_key",
+                    description=(
+                        "Confirme ou refuse l'utilisation de la clé payante de secours suite à un échec de la clé gratuite ou un dépassement de quota Antigravity CLI. "
+                        "À UTILISER QUAND : Jarvis a demandé confirmation à l'utilisateur pour utiliser la clé payante de secours et que Pierre répond oui ou non. "
+                        "NE JAMAIS UTILISER QUAND : Aucune demande de clé payante n'a été formulée."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "accept": types.Schema(
+                                type="BOOLEAN",
+                                description="True si Pierre accepte d'utiliser la clé payante pour cette tâche, False pour refuser."
+                            )
+                        },
+                        required=["accept"]
                     )
                 ),
             ]

@@ -13,7 +13,7 @@ from typing import Any, Optional, Literal, Tuple
 
 from services.console_monitor import console_monitor
 import config
-from config import GEMINI_API_KEY_PAID, GEMINI_API_KEY_FREE
+from config import GEMINI_API_KEY_FREE
 
 
 class AntigravityQuotaExhaustedError(Exception):
@@ -137,15 +137,6 @@ def resolve_cognitive_tier_sync(
                     reason=f"Override modèle pro-medium: {user_preference}", is_override=True
                 )
             return COGNITIVE_TIER_3.with_details(reason=f"Override modèle pro: {user_preference}", is_override=True)
-        if "opus" in up or "sonnet" in up or "claude" in up:
-            return CognitiveConfig(
-                model="claude-3-opus" if "opus" in up else "claude-3-7-sonnet",
-                thinking_level="high", timeout_seconds=600, tier=3,
-                cli_model_arg="claude-opus-4-6-thinking" if "opus" in up else "claude-3-7-sonnet-thinking",
-                voice_pitch=COGNITIVE_TIER_3.voice_pitch,
-                description="Tier 3 — Délibération Système 2 & Haute Ingénierie (Claude Thinking)",
-                reason=f"Override modèle Claude: {user_preference}", is_override=True
-            )
 
     if query:
         q_lower = query.lower()
@@ -271,21 +262,7 @@ def resolve_antigravity_model(model_name: str | None = None, api_key: str | None
             level = ThinkingLevel.LOW
             label_level = "Low"
 
-    # 1. Claude Sonnet / Opus -> modélisé via le moteur Gemini 3.1 Pro haute réflexion
-    if "opus" in key:
-        target = ModelTarget(
-            name="gemini-3.1-pro-preview",
-            endpoint=GeminiAPIEndpoint(api_key=effective_key, options=GeminiModelOptions(thinking_level=ThinkingLevel.HIGH))
-        )
-        return target, "Claude 3 Opus (via Gemini 3.1 Pro)"
-    if "sonnet" in key:
-        target = ModelTarget(
-            name="gemini-3.1-pro-preview",
-            endpoint=GeminiAPIEndpoint(api_key=effective_key, options=GeminiModelOptions(thinking_level=ThinkingLevel.HIGH))
-        )
-        return target, "Claude 3.7 Sonnet (via Gemini 3.1 Pro)"
-
-    # 2. Gemini 3.1 Pro (nom officiel API: gemini-3.1-pro-preview)
+    # 1. Gemini 3.1 Pro (nom officiel API: gemini-3.1-pro-preview)
     if "3.1" in key or "pro" in key:
         target = ModelTarget(
             name="gemini-3.1-pro-preview",
@@ -443,12 +420,6 @@ def resolve_cli_model_args(model_name: Any = None, thinking_level: str | None = 
         return ["--model", "gemini-3.8-flash-high", "--effort", "high"]
 
     m = model_name.lower().strip()
-
-    # Claude models (supportés officiellement par agy: claude-sonnet-4-6, claude-opus-4-6-thinking)
-    if "opus" in m:
-        return ["--model", "claude-opus-4-6-thinking", "--effort", "high"]
-    if "sonnet" in m or "claude" in m:
-        return ["--model", "claude-sonnet-4-6", "--effort", "high"]
 
     # Gemini 3.1 Pro models (agy: gemini-3.1-pro-high, gemini-3.1-pro-low)
     if "3.1" in m or "pro" in m:

@@ -479,10 +479,10 @@ class SlidesService:
 
                 eff_client = client_override
                 if not eff_client:
-                    if config.is_paid_key_authorized() and config.GEMINI_API_KEY_PAID:
-                        eff_client = genai.Client(api_key=config.GEMINI_API_KEY_PAID)
-                    elif config.GEMINI_API_KEY_FREE:
-                        eff_client = genai.Client(api_key=config.GEMINI_API_KEY_FREE)
+                    from services.key_gate import get_key
+                    eff_key = get_key("slides_service")
+                    if eff_key:
+                        eff_client = genai.Client(api_key=eff_key)
 
                 if eff_client:
                     # Choix du modèle selon le palier cognitif

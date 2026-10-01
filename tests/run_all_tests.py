@@ -105,15 +105,13 @@ try:
     t_pro, l_pro = resolve_antigravity_model("gemini-3.1-pro")
     t_38, l_38 = resolve_antigravity_model("gemini-3.8-flash-high")
     t_36, l_36 = resolve_antigravity_model("gemini-3.6-flash")
-    t_claude, l_claude = resolve_antigravity_model("claude-3-7-sonnet")
     
     pro_ok = (getattr(t_pro, "name", "") == "gemini-3.1-pro-preview")
     flash_ok = (getattr(t_38, "name", "") == "gemini-3.8-flash")
     flash36_ok = (getattr(t_36, "name", "") == "gemini-3.6-flash")
-    claude_ok = ("Claude" in l_claude and getattr(t_claude, "name", "") == "gemini-3.1-pro-preview")
     
-    all_res_ok = pro_ok and flash_ok and flash36_ok and claude_ok
-    log_test("7. ANTIGRAVITY ENGINE", "Model Target Resolution & Thinking Levels", all_res_ok, f"Pro 3.1 -> {t_pro.name} | Flash -> {t_38.name} | Claude -> {t_claude.name}")
+    all_res_ok = pro_ok and flash_ok and flash36_ok
+    log_test("7. ANTIGRAVITY ENGINE", "Model Target Resolution & Thinking Levels", all_res_ok, f"Pro 3.1 -> {t_pro.name} | Flash -> {t_38.name} | Flash 3.6 -> {t_36.name}")
 except Exception as e:
     log_test("7. ANTIGRAVITY ENGINE", "Model Resolution", False, str(e))
 

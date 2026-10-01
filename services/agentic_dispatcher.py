@@ -32,7 +32,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional, Literal, Tuple
 
 import config
-from config import BASE_DIR, WORKSPACE_DIR, GEMINI_API_KEY_FREE, GEMINI_API_KEY_PAID
+from config import BASE_DIR, WORKSPACE_DIR, GEMINI_API_KEY_FREE
 from google_antigravity import AntigravityAgent, AntigravityQuotaExhaustedError, resolve_cognitive_tier, CognitiveConfig
 from services.supervision_service import supervision_service
 from services.console_monitor import console_monitor
