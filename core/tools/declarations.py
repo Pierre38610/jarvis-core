@@ -7,9 +7,39 @@ Catalogue unifié en anglais (snake_case) avec clauses d'exclusion strictes anti
 from google.genai import types
 
 
-def get_tools_list() -> list[types.Tool]:
-    """Retourne la liste complète des 38 outils déclarés pour Gemini Live."""
-    return [
+AGENTIC_TOOL_NAMES = {
+    "ask_deep_reasoning",
+    "launch_deep_research",
+    "run_agentic_task",
+    "run_agent_task",
+}
+
+
+def filter_agentic_tools(tools: list[types.Tool]) -> list[types.Tool]:
+    """Retire les outils agentiques d'une liste de types.Tool."""
+    filtered_tools: list[types.Tool] = []
+    for tool in tools:
+        if not hasattr(tool, "function_declarations") or not tool.function_declarations:
+            filtered_tools.append(tool)
+            continue
+        decls = [d for d in tool.function_declarations if getattr(d, "name", "") not in AGENTIC_TOOL_NAMES]
+        if decls:
+            filtered_tools.append(types.Tool(function_declarations=decls))
+    return filtered_tools
+
+
+async def get_tools_list_for_session() -> list[types.Tool]:
+    """Retourne la liste des outils pour la session Gemini Live, filtrée si Antigravity CLI n'est pas prêt."""
+    from services.google_antigravity import verify_antigravity_cli_ready
+    ready, _, _ = await verify_antigravity_cli_ready()
+    return get_tools_list(include_agentic=ready)
+
+
+def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
+    """Retourne la liste complète des outils déclarés pour Gemini Live.
+    Si include_agentic est False, retire les outils Antigravity CLI de la palette.
+    """
+    raw_tools = [
         types.Tool(
             function_declarations=[
                 # ─── 1. stop_current_action ───────────────────────────────────────────
@@ -59,14 +89,9 @@ def get_tools_list() -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="ask_deep_reasoning",
                     description=(
-                        "MOTEUR MULTI-AGENTS ANTIGRAVITY CLI VPS (Tiers 1, 2, 3) : "
-                        "Mobilise le pipeline d'agents autonomes sur le VPS (Prospecteur, Analyste critique, Synthèse & Artefact, Ingénierie) "
-                        "pour les réflexions complexes, analyses de code, audits techniques, benchmarks ou décisions architecturales. "
-                        "À UTILISER QUAND : Pierre pose une problématique complexe nécessitant réflexion, architecture, ingénierie de code ou arbitrage logique. "
-                        "Si Pierre n'a pas encore validé, confirmed_by_user=False. S'il a déjà validé, confirmed_by_user=True. "
-                        "NE JAMAIS UTILISER QUAND : Une simple réponse factuelle rapide ou consultation d'actualité suffit (utiliser 'search_web'), "
-                        "ni pour interagir avec une page web (utiliser 'run_browser_task'), "
-                        "ni pour une prospection sectorielle de masse de 5-10 min avec extraction d'entreprises (utiliser 'launch_deep_research')."
+                        "Moteur de raisonnement et d'arbitrage Antigravity CLI. "
+                        "À utiliser de ta propre initiative dès qu'il faut comparer, décider, diagnostiquer, "
+                        "analyser du code ou arbitrer un choix complexe."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -74,29 +99,27 @@ def get_tools_list() -> list[types.Tool]:
                         properties={
                             "question": types.Schema(
                                 type="STRING",
-                                description="La problématique, sujet d'investigation, question stratégique, audit ou mission à traiter en profondeur par Antigravity CLI sur le VPS"
+                                description="La question, problème logique, diagnostic ou décision à analyser en profondeur."
+                            ),
+                            "model_override": types.Schema(
+                                type="STRING",
+                                description="Modèle Antigravity CLI à utiliser ('flash' ou 'pro'). Par défaut 'pro'."
+                            ),
+                            "effort_override": types.Schema(
+                                type="STRING",
+                                description="Niveau d'effort de réflexion ('low', 'medium', 'high'). Par défaut 'high'."
                             ),
                             "model": types.Schema(
                                 type="STRING",
-                                description=(
-                                    "Modèle Antigravity CLI selon la complexité : "
-                                    "'gemini-3.1-pro-high' (par défaut, pour synthèse et analyse de référence), "
-                                    "ou 'gemini-3.8-flash-high' (pour investigation rapide)."
-                                )
+                                description="Alias optionnel pour le modèle."
                             ),
                             "intensite_reflexion": types.Schema(
                                 type="STRING",
-                                description=(
-                                    "Intensité cognitive et palier de réflexion Antigravity CLI souhaité : "
-                                    "'rapide' (Tier 1 : Gemini 3.8 Flash low, 1-3s, économique, tâches simples), "
-                                    "'tactique' (Tier 2 : Gemini 3.8 Flash high, quelques secondes, analyse logique poussée et préservation de quota), "
-                                    "'approfondie' (Tier 3 : Gemini 3.1 Pro high, analyse de fond, haute ingénierie)."
-                                ),
-                                enum=["rapide", "tactique", "approfondie"]
+                                description="Alias d'intensité ('rapide', 'tactique', 'approfondie')."
                             ),
                             "confirmed_by_user": types.Schema(
                                 type="BOOLEAN",
-                                description="Mettre à True UNIQUEMENT après que Pierre a explicitement donné son accord oral suite à ta proposition. Par défaut False."
+                                description="Confirmation utilisateur explicite si requise."
                             ),
                         },
                         required=["question"]
@@ -107,34 +130,113 @@ def get_tools_list() -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="launch_deep_research",
                     description=(
-                        "MOTEUR UNIVERSEL DEEP RESEARCH MAP-REDUCE (5 à 10 minutes) : "
-                        "Déclenche une recherche de fond exhaustive, multi-sources et autonome sur un écosystème ou secteur "
-                        "(cartographie d'entreprises, benchmarks mondiaux, prospection de stages). "
-                        "Déploie 3 ouvriers prospecteurs parallèles sur le VPS avec Quality Gate strict, "
-                        "génère un rapport complet dans /artifacts/ et l'expédie par e-mail et notifications. "
-                        "À UTILISER QUAND : Pierre demande expressément une étude de fond, prospection d'entreprises, cartographie sectorielle ou analyse de marché approfondie. "
-                        "NE JAMAIS UTILISER QUAND : La réponse doit être immédiate ou porte sur un fait simple (utiliser 'search_web'), "
-                        "ni pour du raisonnement de code ou d'architecture (utiliser 'ask_deep_reasoning'), "
-                        "ni pour interagir avec un site web en direct (utiliser 'run_browser_task')."
+                        "Moteur de recherche approfondie multi-agents Antigravity (phases prospecteur flash/medium, "
+                        "analyste pro/high, synthèse pro/medium). À utiliser de ta propre initiative dès qu'il faut "
+                        "rechercher à fond, cartographier un marché, comparer des offres ou explorer un domaine."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
+                            "consigne": types.Schema(
+                                type="STRING",
+                                description="La consigne ou le sujet de recherche approfondie à explorer."
+                            ),
                             "consigne_utilisateur": types.Schema(
                                 type="STRING",
-                                description="La consigne brute intégrale dictée par Pierre, sans filtrage ni altération."
+                                description="Alias de consigne brute dictée par l'utilisateur."
                             ),
                             "envoyer_email": types.Schema(
                                 type="BOOLEAN",
-                                description="True si la consigne orale mentionne un envoi par mail/courriel/rapport écrit (défaut False)."
+                                description="True pour envoyer les conclusions par e-mail à l'issue de l'exploration."
                             ),
                             "destinataire_email": types.Schema(
                                 type="STRING",
-                                description="E-mail de destination si précisé oralement, sinon repli automatique sur le profil utilisateur."
+                                description="Adresse e-mail cible optionnelle."
                             ),
                         },
-                        required=["consigne_utilisateur"]
+                    )
+                ),
+
+                # ─── 4b. run_agentic_task ─────────────────────────────────────────────
+                types.FunctionDeclaration(
+                    name="run_agentic_task",
+                    description=(
+                        "Exécuteur de tâche agentique autonome Antigravity CLI. "
+                        "À utiliser de ta propre initiative dès qu'il faut rédiger long, structurer un plan, "
+                        "transformer des données, exécuter du code ou produire un livrable complexe."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "objectif": types.Schema(
+                                type="STRING",
+                                description="L'objectif précis de la tâche agentique à accomplir."
+                            ),
+                            "contexte": types.Schema(
+                                type="STRING",
+                                description="Contexte technique, contraintes ou informations de cadrage."
+                            ),
+                            "livrable_attendu": types.Schema(
+                                type="STRING",
+                                description="Format, structure ou résultat tangible attendu."
+                            ),
+                            "model_override": types.Schema(
+                                type="STRING",
+                                description="Modèle Antigravity CLI ('flash' ou 'pro'). Par défaut 'pro'."
+                            ),
+                            "effort_override": types.Schema(
+                                type="STRING",
+                                description="Niveau d'effort ('low', 'medium', 'high'). Par défaut 'high'."
+                            ),
+                            "timeout": types.Schema(
+                                type="INTEGER",
+                                description="Délai maximum d'exécution en secondes (défaut 300)."
+                            ),
+                        },
+                        required=["objectif"]
+                    )
+                ),
+
+                # ─── 4c. run_agent_task (alias direct pour Gemini Live) ───────────────
+                types.FunctionDeclaration(
+                    name="run_agent_task",
+                    description=(
+                        "Exécuteur de tâche agentique autonome Antigravity CLI. "
+                        "À utiliser de ta propre initiative dès qu'il faut rédiger long, structurer un plan, "
+                        "transformer des données, exécuter du code ou produire un livrable complexe."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "objectif": types.Schema(
+                                type="STRING",
+                                description="L'objectif précis de la tâche agentique à accomplir."
+                            ),
+                            "contexte": types.Schema(
+                                type="STRING",
+                                description="Contexte technique, contraintes ou informations de cadrage."
+                            ),
+                            "livrable_attendu": types.Schema(
+                                type="STRING",
+                                description="Format, structure ou résultat tangible attendu."
+                            ),
+                            "model_override": types.Schema(
+                                type="STRING",
+                                description="Modèle Antigravity CLI ('flash' ou 'pro'). Par défaut 'pro'."
+                            ),
+                            "effort_override": types.Schema(
+                                type="STRING",
+                                description="Niveau d'effort ('low', 'medium', 'high'). Par défaut 'high'."
+                            ),
+                            "timeout": types.Schema(
+                                type="INTEGER",
+                                description="Délai maximum d'exécution en secondes (défaut 300)."
+                            ),
+                        },
+                        required=["objectif"]
                     )
                 ),
 
@@ -1309,3 +1411,8 @@ def get_tools_list() -> list[types.Tool]:
             ]
         )
     ]
+
+    if not include_agentic:
+        return filter_agentic_tools(raw_tools)
+    return raw_tools
+

@@ -60,3 +60,10 @@ __all__ = [
     "AgentOutput",
     "run_agentic",
 ]
+
+
+async def is_antigravity_cli_ready_for_session() -> bool:
+    """Vérifie si le CLI Antigravity est prêt pour inclure les outils agentiques dans la session Live."""
+    ready, _, _ = await verify_antigravity_cli_ready()
+    return ready
+

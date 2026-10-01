@@ -15,6 +15,13 @@ from google.genai import types
 
 import config
 from google_antigravity import resolve_antigravity_model, is_stop_directive
+from services.google_antigravity import (
+    MODEL_FLASH,
+    MODEL_PRO,
+    run_agentic,
+    AgentOutput,
+    verify_antigravity_cli_ready,
+)
 from services.memory_service import memory_service
 from services.memory import vector_memory
 from services.unified_memory import unified_memory_manager
@@ -128,10 +135,32 @@ def _infer_tool_tier_and_cost(
             cost = 0.02
     elif name in ("launch_deep_research", "deep_research"):
         cost = 0.05
+    elif name in ("run_agentic_task", "run_agent_task"):
+        cost = 0.03
     elif is_paid_live:
         cost = 0.005
 
     return tier, cost
+
+
+def _resolve_agy_model(model_override: Optional[str], default: str = MODEL_PRO) -> str:
+    if not model_override:
+        return default
+    m = str(model_override).lower().strip()
+    if "flash" in m:
+        return MODEL_FLASH
+    if "pro" in m:
+        return MODEL_PRO
+    return default
+
+
+def _resolve_agy_effort(effort_override: Optional[str], default: str = "high") -> str:
+    if not effort_override:
+        return default
+    e = str(effort_override).lower().strip()
+    if e in ("low", "medium", "high"):
+        return e
+    return default
 
 
 async def dispatch_tool(
@@ -361,311 +390,352 @@ async def _execute_dispatch_tool(
         await websocket.send_text(json.dumps({"type": "browser_update", "url": link_url, "title": link_title, "screenshot": "/static/latest_screenshot.jpg"}))
         return {"status": "updated", "url": link_url, "title": link_title, "message": f"Le lien {link_url} a été positionné dans le HUD mobile."}
 
-    # ─── ask_deep_reasoning (Moteur Antigravity CLI VPS - Avatar Code Violet) ───
-    elif name in ("ask_deep_reasoning", "deep_reasoning"):
-        question = args.get("question", "")
-        model_choice = args.get("model")
-        intensite_reflexion = args.get("intensite_reflexion")
-        is_confirmed = bool(args.get("confirmed_by_user", False)) or bool(active_task_controller.get("paid_consent_given", False))
+    # ─── run_agentic_task / run_agent_task (Priorité 1 Agentic Runner) ────────
+    elif name in ("run_agentic_task", "run_agent_task"):
+        objectif = args.get("objectif") or args.get("goal") or args.get("task") or ""
+        contexte = args.get("contexte") or args.get("context") or ""
+        livrable_attendu = args.get("livrable_attendu") or args.get("deliverable") or ""
+        model_override = args.get("model_override") or args.get("model")
+        effort_override = args.get("effort_override") or args.get("effort")
+        timeout = int(args.get("timeout", 300))
 
-        from google_antigravity import resolve_cognitive_tier
-        cog_cfg = await resolve_cognitive_tier(
-            query=question,
-            user_preference=model_choice,
-            intensite_reflexion=intensite_reflexion
-        )
-        effective_model_arg = model_choice or cog_cfg.cli_model_arg
-        _, model_label = resolve_antigravity_model(effective_model_arg)
-
-        # 1. Vérification de l'accord explicite préalable de Pierre
-        if not is_confirmed:
-            reason = f"Mobilisation des agents Antigravity CLI sur le VPS ({model_label}, {cog_cfg.description}) : '{question[:80]}'"
-            supervision_service.start_action(
-                "deep_reasoning", f"Antigravity ({cog_cfg.description})", "ask_deep_reasoning",
-                question, model_label, api_type="free", api_label="VPS Oracle",
-                cost_est="0.00 $"
-            )
-            supervision_service.complete_action("deep_reasoning", status="pending_confirmation", summary=reason)
-            await broadcast_supervision()
-            return {
-                "status": "requires_user_confirmation",
-                "requires_paid_consent": False,
-                "action": "ask_deep_reasoning",
-                "model": model_label,
-                "cognitive_tier": cog_cfg.tier,
-                "reason": reason,
-                "instruction_to_jarvis": (
-                    f"RÈGLE D'INITIATIVE ET DE CONFIRMATION OBLIGATOIRE : Tu as l'initiative de proposer nos agents Antigravity CLI sur le VPS pour analyser cette problématique ({cog_cfg.description}), "
-                    f"mais tu DOIS TOUJOURS demander confirmation à Pierre avant de l'exécuter. "
-                    f"Demande-lui directement à voix haute avec ta voix Aoede : 'Pierre, pour analyser cette question avec nos agents Antigravity sur le VPS ({cog_cfg.description}), m'autorises-tu à lancer cette réflexion ?'. "
-                    f"Attends sa confirmation orale avant de relancer l'outil avec confirmed_by_user=True."
-                )
-            }
-
-        # 2. Confirmation accordée : vérification pré-vol de la disponibilité réelle du CLI
-        from google_antigravity import verify_antigravity_cli_ready
         cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
         if not cli_ok:
-            supervision_service.start_action(
-                "deep_reasoning", f"Antigravity ({cog_cfg.description})", "ask_deep_reasoning",
-                question, model_label, api_type="free", api_label="VPS Oracle",
-                cost_est="0.00 $"
+            return ToolResult.failed(
+                user_message="Antigravity CLI n'est pas disponible sur le serveur VPS.",
+                error_hint=cli_err or "cli_not_ready",
+                verified=False,
             )
-            supervision_service.complete_action("deep_reasoning", status="error", summary=f"Échec pré-contrôle Antigravity CLI: {cli_err}")
-            await broadcast_supervision()
-            return {
-                "status": "error",
-                "error": "Antigravity CLI indisponible",
-                "details": cli_err,
-                "action": "ask_deep_reasoning",
-                "instruction_to_jarvis": (
-                    f"ATTENTION : Les agents Antigravity CLI sur le VPS n'ont PAS pu être lancés et ne travaillent PAS ({cli_err}). "
-                    f"Explique immédiatement à Pierre avec ta voix Aoede avec franchise, clarté et concision que les agents Antigravity sur le VPS n'ont pas pu être initialisés ({cli_err}). "
-                    f"Ne prétends SURTOUT PAS qu'ils sont lancés ou en train de travailler."
-                )
-            }
 
-        # 3. Pré-contrôle validé : lancement asynchrone non-bloquant avec avatar violet (coding)
-        active_task_controller["info"]["running"] = True
-        active_task_controller["info"]["task"] = question
-        active_task_controller["info"]["model"] = model_label
+        model = _resolve_agy_model(model_override, default=MODEL_PRO)
+        effort = _resolve_agy_effort(effort_override, default="high")
 
-        supervision_service.start_action(
-            "deep_reasoning", f"Antigravity ({cog_cfg.description})", "ask_deep_reasoning",
-            question, model_label, api_type="free", api_label="VPS Oracle",
-            cost_est="0.00 $"
+        full_prompt = f"Objectif : {objectif}"
+        if contexte:
+            full_prompt += f"\nContexte : {contexte}"
+        if livrable_attendu:
+            full_prompt += f"\nLivrable attendu : {livrable_attendu}"
+
+        agent_id = f"agy_task_{int(time.time()*1000)}"
+        t0 = time.perf_counter()
+        await spawn_subagent(
+            agent_id=agent_id,
+            name="Agent Antigravity",
+            role="Exécution Tâche",
+            activity="coding",
+            task=f"{objectif[:60]} ({model}/{effort})",
+            model=model,
         )
-        await broadcast_supervision()
-        announcement_text = cog_cfg.voice_pitch or f"Mobilisation des agents Antigravity CLI avec {model_label}."
-        await websocket.send_text(json.dumps({
-            "type": "jarvis_announcement",
-            "text": announcement_text,
-            "voice": False
-        }))
-        # Mobilisation des 3 sous-agents orbitaux Antigravity CLI VPS
-        await spawn_subagent("prospector", "Prospecteur", "Recherche & Faits", "browsing", f"Collecte des sources & données ({model_label})...", model_label)
-        await spawn_subagent("critic", "Analyste", "Critique & Logique", "thinking", "Délibération et vérification critique...", model_label)
-        await spawn_subagent("coder", "Synthèse", "Code & Artefact", "coding", "Production du livrable & patchs...", model_label)
 
-        # Jarvis conserve son visage intact et disponible pour la parole (pas de masque violet)
-        await websocket.send_text(json.dumps({
-            "type": "status", "state": "idle", "keep_face": True,
-            "action_type": "coding",
-            "msg": f"JARVIS mobilise 3 sous-agents Antigravity ({cog_cfg.description})...", "task": question,
-            "engine": "Antigravity CLI (VPS)", "model": model_label,
-            "api_type": "free", "api_label": "VPS Oracle"
-        }))
+        try:
+            await update_subagent(agent_id, activity="thinking", task=f"Exécution agentique en cours ({model}/{effort})...")
+            out: AgentOutput = await run_agentic(
+                role="general_agent",
+                prompt=full_prompt,
+                model=model,
+                effort=effort,
+                timeout=timeout,
+                session_id=getattr(session, "id", None) if session else None,
+                task_id=agent_id,
+                allow_paid_fallback=bool(active_task_controller.get("paid_consent_given", False)),
+            )
+            duration = time.perf_counter() - t0
+            summary = f"{out.conclusion[:80]} (modèle: {model}, effort: {effort}, durée: {duration:.1f}s)"
+            await complete_subagent(agent_id, summary=summary)
 
-        _q_bg = question
-        _mc_bg = effective_model_arg
-        _ir_bg = intensite_reflexion
-        _ml_bg = model_label
-        _ws_bg = websocket
-        _sess_bg = session
-
-        async def on_reasoning_progress(p_info, _ws_orig=_ws_bg, _ml=_ml_bg):
-            step = p_info.get("step", "progress")
-            text = p_info.get("text", "")
-            active_ws = active_task_controller.get("websocket") or _ws_orig
-            active_sess = active_task_controller.get("live_session")
-            supervision_service.update_action_progress("deep_reasoning", step, text, model=_ml)
-            await broadcast_supervision()
-
-            # Mise à jour dynamique de la constellation de sous-agents
-            if step in ("prospector", "start"):
-                await update_subagent("prospector", activity="browsing", task=text or "Collecte des sources & données...")
-            elif step == "critic":
-                await complete_subagent("prospector", summary="Sources collectées et vérifiées")
-                await update_subagent("critic", activity="thinking", task=text or "Analyse critique & logique...")
-            elif step == "synthesis":
-                await complete_subagent("critic", summary="Critique achevée sans hallucination")
-                await update_subagent("coder", activity="coding", task=text or "Génération de l'artefact & code...")
-            elif step == "complete":
-                await complete_subagent("coder", summary="Livrable produit avec succès")
-
-            if active_ws:
-                try:
-                    await active_ws.send_text(json.dumps({
-                        "type": "task_progress_oral", "step": step, "text": text,
-                        "engine": "Antigravity CLI (VPS)", "model": _ml
-                    }))
-                except Exception:
-                    pass
-            if active_sess and text and step in ("prospector", "critic", "synthesis", "complete"):
-                try:
-                    await safe_send_live_client_content(
-                        active_sess,
-                        f"[MISE À JOUR ANTIGRAVITY CLI VPS - à dire brièvement à Pierre] {text}"
-                    )
-                except Exception as inj_err:
-                    print(f"[Reasoning Progress Injection] {inj_err}")
-
-        async def _run_deep_reasoning_bg(_q=_q_bg, _mc=_mc_bg, _ir=_ir_bg, _ml=_ml_bg, _ws=_ws_bg, _sess=_sess_bg):
-            from google_antigravity import AntigravityQuotaExhaustedError
-            try:
-                res = await run_deep_reasoning(
-                    _q, model_choice=_mc, confirmed_by_user=True,
-                    on_progress=on_reasoning_progress, directive_queue=active_task_controller["queue"],
-                    intensite_reflexion=_ir
+            if out.status == "success":
+                return ToolResult.done(
+                    user_message=out.conclusion,
+                    evidence=f"Modèle: {out.model}, Effort: {out.effort}, Durée: {duration:.1f}s, Confiance: {out.confidence}",
+                    verified=True,
+                    data={
+                        "conclusion": out.conclusion,
+                        "confidence": out.confidence,
+                        "sources": out.sources,
+                        "open_questions": out.open_questions,
+                        "artifacts": out.artifacts,
+                        "model": out.model,
+                        "effort": out.effort,
+                        "duration_s": round(duration, 2),
+                    },
                 )
-            except AntigravityQuotaExhaustedError:
-                res = {
-                    "status": "quota_exhausted",
-                    "summary": "Quota de session de 5 heures atteint sur Antigravity CLI.",
-                    "model_label": _ml
-                }
-            except asyncio.CancelledError:
-                res = {"status": "cancelled", "summary": "Mission Antigravity CLI interrompue par l'utilisateur.", "model_label": _ml}
-            except Exception as bg_err:
-                res = {"status": "error", "summary": str(bg_err), "model_label": _ml}
-            finally:
-                active_task_controller["info"]["running"] = False
-                active_task_controller["reasoning_bg_task"] = None
-                await clear_all_subagents()
-
-            current_ws = active_task_controller.get("websocket") or _ws
-            current_sess = active_task_controller.get("live_session") or _sess
-            status = res.get("status")
-
-            if status == "cancelled":
-                supervision_service.complete_action("deep_reasoning", status="cancelled", summary="Mission Antigravity CLI arrêtée à votre demande")
-                await broadcast_supervision()
-                if current_ws:
-                    try:
-                        await current_ws.send_text(json.dumps({"type": "task_cancelled", "reason": "Arrêt demandé", "message": "Mission Antigravity CLI immédiatement interrompue."}))
-                        await current_ws.send_text(json.dumps({"type": "status", "state": "idle", "msg": "En veille active", "engine": "Google API Live", "model": live_display_label}))
-                    except Exception:
-                        pass
-                if current_sess:
-                    try:
-                        await safe_send_live_client_content(
-                            current_sess,
-                            "[MISSION ARRÊTÉE] L'exécution Antigravity CLI a été interrompue suite à la demande de Pierre. Confirme-lui brièvement que tout est arrêté."
-                        )
-                    except Exception:
-                        pass
-                return
-
-            elif status == "quota_exhausted":
-                supervision_service.complete_action("deep_reasoning", status="error", summary="Quota 5h Antigravity CLI saturé")
-                await broadcast_supervision()
-                if current_sess:
-                    try:
-                        await safe_send_live_client_content(
-                            current_sess,
-                            "[ALERTE QUOTA 5H ANTIGRAVITY CLI] Le quota de session de 5 heures d'Antigravity CLI sur le VPS est momentanément saturé. Informe Pierre calmement avec ta voix Aoede et propose-lui d'attendre le renouvellement de la session."
-                        )
-                    except Exception:
-                        pass
-                return
-
-            is_error = status == "error"
-            supervision_service.complete_action(
-                "deep_reasoning",
-                status="error" if is_error else "completed",
-                summary=res.get("summary", "")[:250],
-                model=res.get("model_label", _ml)
+            else:
+                return ToolResult.failed(
+                    user_message=out.conclusion or "La tâche agentique a échoué.",
+                    error_hint=out.error or "agentic_execution_failed",
+                    verified=False,
+                    data={
+                        "error": out.error,
+                        "model": out.model,
+                        "effort": out.effort,
+                        "duration_s": round(duration, 2),
+                    },
+                )
+        except Exception as e:
+            duration = time.perf_counter() - t0
+            await complete_subagent(agent_id, summary=f"Erreur: {str(e)[:80]} (durée: {duration:.1f}s)")
+            return ToolResult.failed(
+                user_message=f"Erreur lors de l'exécution de la tâche agentique : {str(e)}",
+                error_hint=str(e),
+                verified=False,
             )
-            await broadcast_supervision()
 
-            if current_ws:
-                try:
-                    await current_ws.send_text(json.dumps({
-                        "type": "task_completed", "is_error": is_error,
-                        "status": "error" if is_error else "completed",
-                        "summary": res.get("summary", ""),
-                        "artifact_path": res.get("artifact_path"),
-                        "engine": "Antigravity CLI (VPS)", "model": res.get("model_label", _ml)
-                    }))
-                    await current_ws.send_text(json.dumps({
-                        "type": "status", "state": "idle", "msg": "En veille active",
-                        "engine": "Google API Live", "model": live_display_label
-                    }))
-                except Exception:
-                    pass
+    # ─── ask_deep_reasoning (Moteur Antigravity CLI VPS) ──────────────────────
+    elif name in ("ask_deep_reasoning", "deep_reasoning"):
+        question = args.get("question") or args.get("query") or ""
+        model_override = args.get("model_override") or args.get("model")
+        effort_override = args.get("effort_override") or args.get("intensite_reflexion")
 
-            if current_sess:
-                if is_error:
-                    msg = f"[ERREUR ANTIGRAVITY CLI] Une anomalie s'est produite lors de la mission : {res.get('summary', '')[:200]}. Explique brièvement à Pierre ce qui s'est produit."
-                else:
-                    msg = (
-                        f"[MISSION ANTIGRAVITY CLI TERMINÉE] L'investigation multi-agents Antigravity CLI est achevée avec succès. "
-                        f"Voici la synthèse percutante prête pour la parole : {res.get('summary', '')}. "
-                        f"Un artefact détaillé a été sauvegardé ({res.get('artifact_filename', 'rapport')}). "
-                        f"Présente la synthèse et les conclusions majeures à Pierre avec ta voix Aoede avec franchise, précision et éloquence."
-                    )
-                try:
-                    await safe_send_live_client_content(current_sess, msg, action_key="ask_deep_reasoning", drainage_delay=2.5)
-                except Exception as notify_err:
-                    print(f"[Reasoning Notification Err] {notify_err}")
-
-        bg_reasoning = asyncio.create_task(_run_deep_reasoning_bg())
-        active_task_controller["reasoning_bg_task"] = bg_reasoning
-
-        return {
-            "status": "launched_in_background",
-            "model_used": model_label,
-            "engine": "Antigravity DeepThinkingEngine",
-            "instruction_to_jarvis": (
-                f"L'analyse approfondie multi-agents avec {model_label} est lancée en arrière-plan pour : '{question}'. "
-                f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, complice et direct que tu te charges de l'investigation approfondie avec Antigravity. "
-                f"Tu restes 100% disponible pour continuer à échanger avec lui pendant l'analyse."
+        cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
+        if not cli_ok:
+            return ToolResult.failed(
+                user_message="Antigravity CLI n'est pas disponible sur le serveur VPS.",
+                error_hint=cli_err or "cli_not_ready",
+                verified=False,
             )
-        }
 
-    # ─── lancer_mission_deep_research ──────────────────────────────────────────
-    elif name in ("launch_deep_research", "lancer_mission_deep_research"):
-        consigne_utilisateur = args.get("consigne_utilisateur") or args.get("sujet") or ""
+        model = _resolve_agy_model(model_override, default=MODEL_PRO)
+        if effort_override == "rapide":
+            effort = "low"
+        elif effort_override == "tactique":
+            effort = "medium"
+        elif effort_override == "approfondie":
+            effort = "high"
+        else:
+            effort = _resolve_agy_effort(effort_override, default="high")
+
+        agent_id = f"agy_reasoning_{int(time.time()*1000)}"
+        t0 = time.perf_counter()
+        await spawn_subagent(
+            agent_id=agent_id,
+            name="Analyste Raisonnement",
+            role="Raisonnement & Décision",
+            activity="thinking",
+            task=f"{question[:60]} ({model}/{effort})",
+            model=model,
+        )
+
+        try:
+            await update_subagent(agent_id, activity="thinking", task=f"Raisonnement approfondi ({model}/{effort})...")
+            out: AgentOutput = await run_agentic(
+                role="reasoning",
+                prompt=question,
+                model=model,
+                effort=effort,
+                timeout=300,
+                session_id=getattr(session, "id", None) if session else None,
+                task_id=agent_id,
+                allow_paid_fallback=bool(active_task_controller.get("paid_consent_given", False)),
+            )
+            duration = time.perf_counter() - t0
+            summary = f"{out.conclusion[:80]} (modèle: {model}, effort: {effort}, durée: {duration:.1f}s)"
+            await complete_subagent(agent_id, summary=summary)
+
+            if out.status == "success":
+                return ToolResult.done(
+                    user_message=out.conclusion,
+                    evidence=f"Modèle: {out.model}, Effort: {out.effort}, Durée: {duration:.1f}s, Confiance: {out.confidence}",
+                    verified=True,
+                    data={
+                        "conclusion": out.conclusion,
+                        "confidence": out.confidence,
+                        "sources": out.sources,
+                        "open_questions": out.open_questions,
+                        "artifacts": out.artifacts,
+                        "model": out.model,
+                        "effort": out.effort,
+                        "duration_s": round(duration, 2),
+                    },
+                )
+            else:
+                return ToolResult.failed(
+                    user_message=out.conclusion or "L'analyse approfondie a échoué.",
+                    error_hint=out.error or "reasoning_failed",
+                    verified=False,
+                    data={
+                        "error": out.error,
+                        "model": out.model,
+                        "effort": out.effort,
+                        "duration_s": round(duration, 2),
+                    },
+                )
+        except Exception as e:
+            duration = time.perf_counter() - t0
+            await complete_subagent(agent_id, summary=f"Erreur: {str(e)[:80]} (durée: {duration:.1f}s)")
+            return ToolResult.failed(
+                user_message=f"Erreur lors du raisonnement approfondi : {str(e)}",
+                error_hint=str(e),
+                verified=False,
+            )
+
+    # ─── launch_deep_research (Deep Research 3 phases Map-Reduce) ─────────────
+    elif name in ("launch_deep_research", "deep_research"):
+        consigne = args.get("consigne") or args.get("consigne_utilisateur") or args.get("sujet") or ""
         envoyer_email = bool(args.get("envoyer_email", False))
         destinataire_email = args.get("destinataire_email")
-        generer_slides = bool(args.get("generer_slides", True))
 
-        # Pré-contrôle opérationnel Antigravity CLI : Vérifier disponibilité avant déclaration
-        from google_antigravity import verify_antigravity_cli_ready
         cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
         if not cli_ok:
-            supervision_service.start_action(
-                "deep_research", "Deep Research Cluster", "launch_deep_research",
-                consigne_utilisateur, "Antigravity CLI VPS", api_type="free", api_label="VPS Oracle", cost_est="0.00 $"
+            return ToolResult.failed(
+                user_message="Antigravity CLI n'est pas disponible sur le serveur VPS.",
+                error_hint=cli_err or "cli_not_ready",
+                verified=False,
             )
-            supervision_service.complete_action("deep_research", status="error", summary=f"Échec pré-contrôle Antigravity CLI: {cli_err}")
-            await broadcast_supervision()
-            return {
-                "status": "error",
-                "error": "Antigravity CLI indisponible",
-                "details": cli_err,
-                "action": "launch_deep_research",
-                "instruction_to_jarvis": (
-                    f"ATTENTION : La mission deep research n'a pas pu être engagée car le cluster Antigravity CLI sur le VPS n'est pas accessible ({cli_err}). "
-                    f"Explique directement à Pierre avec ta voix Aoede avec franchise et clarté que les agents de prospection ne peuvent pas être lancés pour cette raison. "
-                    f"Ne prétends SURTOUT PAS que les agents travaillent."
-                )
-            }
 
-        async def _run_deep_research_bg():
+        t_total_0 = time.perf_counter()
+        session_id = getattr(session, "id", None) if session else None
+        allow_paid = bool(active_task_controller.get("paid_consent_given", False))
+
+        # ── Phase 1 : Prospecteur (flash/medium) ──
+        p_agent_id = f"agy_prospector_{int(time.time()*1000)}"
+        t_p0 = time.perf_counter()
+        await spawn_subagent(
+            agent_id=p_agent_id,
+            name="Prospecteur",
+            role="Recherche & Faits",
+            activity="browsing",
+            task=f"Prospection : {consigne[:50]} (flash/medium)",
+            model=MODEL_FLASH,
+        )
+        try:
+            await update_subagent(p_agent_id, activity="browsing", task="Collecte exhaustive des sources & données...")
+            out_p: AgentOutput = await run_agentic(
+                role="prospector",
+                prompt=f"Collecte et prospection exhaustive de données et sources sur : {consigne}",
+                model=MODEL_FLASH,
+                effort="medium",
+                timeout=300,
+                session_id=session_id,
+                task_id=p_agent_id,
+                allow_paid_fallback=allow_paid,
+            )
+            dur_p = time.perf_counter() - t_p0
+            await complete_subagent(p_agent_id, summary=f"{out_p.conclusion[:70]} (flash/medium, durée: {dur_p:.1f}s)")
+            if out_p.status != "success":
+                return ToolResult.failed(
+                    user_message=out_p.conclusion or "Échec de la phase de prospection.",
+                    error_hint=out_p.error or "prospector_phase_failed",
+                    verified=False,
+                )
+        except Exception as e:
+            dur_p = time.perf_counter() - t_p0
+            await complete_subagent(p_agent_id, summary=f"Erreur: {str(e)[:70]} (durée: {dur_p:.1f}s)")
+            return ToolResult.failed(user_message=f"Erreur phase Prospecteur : {str(e)}", error_hint=str(e), verified=False)
+
+        # ── Phase 2 : Analyste (pro/high) ──
+        a_agent_id = f"agy_analyst_{int(time.time()*1000)}"
+        t_a0 = time.perf_counter()
+        await spawn_subagent(
+            agent_id=a_agent_id,
+            name="Analyste",
+            role="Critique & Logique",
+            activity="thinking",
+            task="Analyse critique & logique (pro/high)",
+            model=MODEL_PRO,
+        )
+        try:
+            await update_subagent(a_agent_id, activity="thinking", task="Analyse critique, détection de biais et triangulation...")
+            out_a: AgentOutput = await run_agentic(
+                role="critic",
+                prompt=(
+                    f"Analyse critique et triangulation pour la consigne : {consigne}\n"
+                    f"Données brutes recueillies par le prospecteur :\n{out_p.conclusion}\n"
+                    f"Sources : {json.dumps(out_p.sources, ensure_ascii=False)}"
+                ),
+                model=MODEL_PRO,
+                effort="high",
+                timeout=300,
+                session_id=session_id,
+                task_id=a_agent_id,
+                allow_paid_fallback=allow_paid,
+            )
+            dur_a = time.perf_counter() - t_a0
+            await complete_subagent(a_agent_id, summary=f"{out_a.conclusion[:70]} (pro/high, durée: {dur_a:.1f}s)")
+            if out_a.status != "success":
+                return ToolResult.failed(
+                    user_message=out_a.conclusion or "Échec de la phase d'analyse critique.",
+                    error_hint=out_a.error or "analyst_phase_failed",
+                    verified=False,
+                )
+        except Exception as e:
+            dur_a = time.perf_counter() - t_a0
+            await complete_subagent(a_agent_id, summary=f"Erreur: {str(e)[:70]} (durée: {dur_a:.1f}s)")
+            return ToolResult.failed(user_message=f"Erreur phase Analyste : {str(e)}", error_hint=str(e), verified=False)
+
+        # ── Phase 3 : Synthèse (pro/medium) ──
+        s_agent_id = f"agy_synthesis_{int(time.time()*1000)}"
+        t_s0 = time.perf_counter()
+        await spawn_subagent(
+            agent_id=s_agent_id,
+            name="Synthèse",
+            role="Rédaction & Artefact",
+            activity="coding",
+            task="Synthèse finale & livrable (pro/medium)",
+            model=MODEL_PRO,
+        )
+        try:
+            await update_subagent(s_agent_id, activity="coding", task="Rédaction du rapport de synthèse final...")
+            out_s: AgentOutput = await run_agentic(
+                role="synthesis",
+                prompt=(
+                    f"Consigne initiale : {consigne}\n"
+                    f"Données vérifiées de l'analyste :\n{out_a.conclusion}\n"
+                    f"Questions ouvertes restantes : {json.dumps(out_a.open_questions, ensure_ascii=False)}\n"
+                    f"Rédige une synthèse exécutive structurée et percutante."
+                ),
+                model=MODEL_PRO,
+                effort="medium",
+                timeout=300,
+                session_id=session_id,
+                task_id=s_agent_id,
+                allow_paid_fallback=allow_paid,
+            )
+            dur_s = time.perf_counter() - t_s0
+            await complete_subagent(s_agent_id, summary=f"{out_s.conclusion[:70]} (pro/medium, durée: {dur_s:.1f}s)")
+            if out_s.status != "success":
+                return ToolResult.failed(
+                    user_message=out_s.conclusion or "Échec de la phase de synthèse.",
+                    error_hint=out_s.error or "synthesis_phase_failed",
+                    verified=False,
+                )
+        except Exception as e:
+            dur_s = time.perf_counter() - t_s0
+            await complete_subagent(s_agent_id, summary=f"Erreur: {str(e)[:70]} (durée: {dur_s:.1f}s)")
+            return ToolResult.failed(user_message=f"Erreur phase Synthèse : {str(e)}", error_hint=str(e), verified=False)
+
+        total_duration = time.perf_counter() - t_total_0
+        all_sources = list(out_p.sources) + [s for s in out_a.sources if s not in out_p.sources]
+
+        if envoyer_email:
             try:
-                await deep_research_service.executer_mission_complete(
-                    consigne_utilisateur=consigne_utilisateur,
-                    envoyer_email=envoyer_email,
-                    destinataire_email=destinataire_email,
-                    generer_slides=generer_slides
+                dest = destinataire_email or "pierrecassagnettes@gmail.com"
+                await send_email_async(
+                    subject=f"[Deep Research] Synthèse : {consigne[:60]}",
+                    body=out_s.conclusion,
+                    to_email=dest,
                 )
-            except Exception as e:
-                print(f"[DeepResearch BG] Erreur: {e}")
+            except Exception as mail_err:
+                print(f"[Deep Research Mail Error] {mail_err}")
 
-        deep_task = asyncio.create_task(_run_deep_research_bg())
-        active_task_controller["deep_research_task"] = deep_task
+        return ToolResult.done(
+            user_message=out_s.conclusion,
+            evidence=f"3 phases (flash/medium -> pro/high -> pro/medium), Durée totale: {total_duration:.1f}s, Confiance: {out_s.confidence}",
+            verified=True,
+            data={
+                "conclusion": out_s.conclusion,
+                "confidence": out_s.confidence,
+                "sources": all_sources,
+                "artifacts": out_s.artifacts,
+                "open_questions": out_s.open_questions,
+                "phases": {
+                    "prospector": {"model": MODEL_FLASH, "effort": "medium", "duration_s": round(dur_p, 2)},
+                    "analyst": {"model": MODEL_PRO, "effort": "high", "duration_s": round(dur_a, 2)},
+                    "synthesis": {"model": MODEL_PRO, "effort": "medium", "duration_s": round(dur_s, 2)},
+                },
+                "total_duration_s": round(total_duration, 2),
+            },
+        )
 
-        consigne_label = (consigne_utilisateur[:80] + "...") if len(consigne_utilisateur) > 80 else consigne_utilisateur
-        return {
-            "status": "launched_in_background",
-            "action": "deep_research",
-            "message": "Mission deep research engagée en arrière-plan sur le cluster Antigravity.",
-            "instruction_to_jarvis": (
-                f"La mission deep research sur '{consigne_label}' est engagée en arrière-plan sur le cluster Antigravity. "
-                f"Dis immédiatement à Pierre avec ta voix Aoede d'un ton franc, énergique et complice que tu te charges de l'investigation approfondie."
-            )
-        }
 
     # ─── search_web ────────────────────────────────────────────────────────────
     elif name in ("search_web", "web_search"):
