@@ -144,6 +144,8 @@ async def _build_system_instruction() -> str:
         f"- Conserve le tutoiement, le ton franc, complice et pragmatique sans servilité."
     )
 
+    from services.turn_audit import inject_turn_status_into_prompt
+
     template = getattr(config, "JARVIS_SYSTEM_INSTRUCTION_TEMPLATE", None)
     if template:
         try:
@@ -154,10 +156,12 @@ async def _build_system_instruction() -> str:
             )
         except Exception:
             base_prompt = str(template)
+        base_prompt = inject_turn_status_into_prompt(base_prompt)
         return f"{base_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}"
 
     static = getattr(config, "JARVIS_SYSTEM_INSTRUCTION", "")
     full_prompt = f"{memory_context}\n\n{static}" if memory_context else static
+    full_prompt = inject_turn_status_into_prompt(full_prompt)
     return f"{full_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}"
 
 
@@ -541,6 +545,11 @@ async def voice_channel(websocket: WebSocket):
             """Reçoit les réponses audio et texte de Gemini Live et les relaie au client."""
             user_speech_buffer = ""
             is_speaking_state = False
+            turn_start_time = time.time()
+            turn_user_transcript = ""
+            turn_tools = []
+            turn_jarvis_sentence = ""
+            turn_cuts = 0
 
             try:
                 # Boucle permanente : session.receive() yield une interaction / tour de parole puis se termine.
@@ -555,6 +564,7 @@ async def voice_channel(websocket: WebSocket):
                             # Interruption (barge-in serveur)
                             if getattr(sc, "interrupted", False):
                                 notify_interrupted("user_barge_in")
+                                turn_cuts += 1
                                 metrics_service.record_speech_cut("user_barge_in", details="Gemini Live server content interrupted")
                                 print("[Voice Channel] SPEECH_CUT reason=user_barge_in from Gemini Live server content")
                                 user_speech_buffer = ""
@@ -574,6 +584,7 @@ async def voice_channel(websocket: WebSocket):
 
                             if user_txt:
                                 user_speech_buffer = merge_user_speech(user_speech_buffer, user_txt)
+                                turn_user_transcript = user_speech_buffer
                                 await websocket.send_text(json.dumps({
                                     "type": "transcript",
                                     "role": "user",
@@ -664,6 +675,7 @@ async def voice_channel(websocket: WebSocket):
                                             "api_label": "Clé Payante" if is_paid_live else "Clé Gratuite"
                                         }))
                                     elif part.text and not getattr(sc, "output_transcription", None):
+                                        turn_jarvis_sentence = f"{turn_jarvis_sentence} {part.text}".strip()
                                         recent_conversation_turns.append({"role": "jarvis", "text": part.text})
                                         if len(recent_conversation_turns) > 20:
                                             recent_conversation_turns = recent_conversation_turns[-20:]
@@ -702,6 +714,7 @@ async def voice_channel(websocket: WebSocket):
                             # Transcription fidèle de ce que JARVIS dit à l'oral
                             if getattr(sc, "output_transcription", None) and sc.output_transcription.text:
                                 jarvis_txt = sc.output_transcription.text
+                                turn_jarvis_sentence = f"{turn_jarvis_sentence} {jarvis_txt}".strip()
                                 recent_conversation_turns.append({"role": "jarvis", "text": jarvis_txt})
                                 if len(recent_conversation_turns) > 20:
                                     recent_conversation_turns = recent_conversation_turns[-20:]
@@ -720,6 +733,33 @@ async def voice_channel(websocket: WebSocket):
                                 active_task_controller["speaking_active"] = False
                                 active_task_controller["last_turn_complete_time"] = time.time()
                                 await websocket.send_text(json.dumps({"type": "turn_complete"}))
+
+                                # Enregistrement de l'audit de ce tour de dialogue
+                                try:
+                                    from services.turn_audit import record_turn_audit, get_active_plan_status_str
+                                    turn_dur = max(0.0, time.time() - turn_start_time)
+                                    record_turn_audit(
+                                        transcript=turn_user_transcript,
+                                        voice_mode="thinking" if ("extended-thinking" in active_live_model or "thinking" in active_live_model) else "standard",
+                                        tools=list(turn_tools),
+                                        plan=get_active_plan_status_str(),
+                                        final_sentence=turn_jarvis_sentence,
+                                        cuts=turn_cuts,
+                                        duration=turn_dur,
+                                        paid_used=is_paid_live,
+                                        paid_reason=str(active_task_controller.get("paid_reason", "")),
+                                        paid_consent=str(active_task_controller.get("paid_consent_given", False)),
+                                        session_id="voice",
+                                    )
+                                except Exception as _ae:
+                                    print(f"[TurnAudit] Erreur enregistrement tour : {_ae}")
+
+                                # Réinitialisation pour le tour suivant
+                                turn_start_time = time.time()
+                                turn_user_transcript = ""
+                                turn_tools = []
+                                turn_jarvis_sentence = ""
+                                turn_cuts = 0
 
                                 # Application au tour suivant si une bascule était différée et que la parole est idle
                                 if is_speech_idle():
@@ -774,6 +814,13 @@ async def voice_channel(websocket: WebSocket):
                                     is_paid_live=is_paid_live,
                                     live_display_label=live_display_label,
                                 )
+
+                                # Audit du statut et de la vérification de l'outil pour ce tour
+                                turn_tools.append({
+                                    "name": name,
+                                    "status": tool_resp.get("status", "unknown") if isinstance(tool_resp, dict) else "done",
+                                    "verified": bool(tool_resp.get("verified", False)) if isinstance(tool_resp, dict) else False,
+                                })
 
                                 # Règle d'or de canal unique : si l'action s'est terminée de manière synchrone, l'enregistrer
                                 if tool_resp.get("status") not in ("started", "launched_in_background", "lance_en_arriere_plan"):

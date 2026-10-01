@@ -132,3 +132,22 @@ async def post_task_stop(request: Request):
         return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
     res = await stop_active_task(source="api_button", reason="Arrêt demandé via l'interface")
     return JSONResponse(content=res)
+
+
+@router.get("/api/supervision/turns")
+async def get_supervision_turns(request: Request):
+    """Retourne l'audit des tours de dialogue (outils, transcript, false_claim, durée, coupures) avec filtre 'since'."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+
+    since = request.query_params.get("since")
+    limit_param = request.query_params.get("limit", "50")
+    try:
+        limit = max(1, min(200, int(limit_param)))
+    except ValueError:
+        limit = 50
+
+    from services.turn_audit import get_turn_audits
+    turns = get_turn_audits(since=since, limit=limit)
+    return JSONResponse(content={"turns": turns, "count": len(turns), "total": len(turns)})
