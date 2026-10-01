@@ -59,6 +59,7 @@ from core.shared_state import (
 
 from services.metrics_service import metrics_service
 from core.tools.result import ToolResult, normalize_result
+from core.tools.arg_validator import validate_tool_arguments
 from services.key_gate import (
     PaidKeyConsentRequired,
     is_qualified_free_key_failure,
@@ -313,6 +314,11 @@ async def _execute_dispatch_tool(
     Dispatch l'appel d'outil `name` avec ses `args` et retourne le dict tool_resp.
     Toute la logique métier est ici, séparée de la boucle WebSocket voice.
     """
+
+    # ─── 0. Validation stricte des arguments et confirmation utilisateur ───────
+    val_res = validate_tool_arguments(name=name, args=args)
+    if val_res is not None:
+        return val_res
 
     # ─── stop_current_action ───────────────────────────────────────────────────
     if name in ("stop_current_action", "stop"):
@@ -1182,8 +1188,9 @@ async def _execute_dispatch_tool(
 
         supervision_service.start_action("send_email", "Expédition E-mail", "send_email", f"Sujet : {subject} -> {to_email}", "SMTP Stark Protocol", api_type="free", api_label="Service Local", cost_est="0.00 $")
         await broadcast_supervision()
-        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Préparation de l'e-mail pour {to_email}.", "voice": False}))
-        await websocket.send_text(json.dumps({"type": "status", "state": "emailing", "msg": "Expédition d'e-mail en cours...", "task": subject, "engine": "Google API", "model": "Stark Email Protocol", "api_type": "free", "api_label": "Service Local"}))
+        if websocket:
+            await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Préparation de l'e-mail pour {to_email}.", "voice": False}))
+            await websocket.send_text(json.dumps({"type": "status", "state": "emailing", "msg": "Expédition d'e-mail en cours...", "task": subject, "engine": "Google API", "model": "Stark Email Protocol", "api_type": "free", "api_label": "Service Local"}))
 
         res = await send_email_async(
             subject=subject,
@@ -1200,14 +1207,15 @@ async def _execute_dispatch_tool(
             missing_str = ", ".join(missing) if missing else "demandé"
             supervision_service.complete_action("send_email", status="error", summary=f"Pièce jointe introuvable : {missing_str}")
             await broadcast_supervision()
-            await websocket.send_text(json.dumps({
-                "type": "email_sent",
-                "status": "error",
-                "subject": subject,
-                "recipient": to_email,
-                "attachments_count": 0,
-                "message": f"Pièce jointe introuvable : {missing_str}"
-            }))
+            if websocket:
+                await websocket.send_text(json.dumps({
+                    "type": "email_sent",
+                    "status": "error",
+                    "subject": subject,
+                    "recipient": to_email,
+                    "attachments_count": 0,
+                    "message": f"Pièce jointe introuvable : {missing_str}"
+                }))
             return ToolResult.failed(
                 user_message=f"Le document '{missing_str}' que vous avez demandé de joindre est introuvable sur le système.",
                 error_hint=f"Pièce jointe '{missing_str}' inexistante",
@@ -1238,15 +1246,16 @@ async def _execute_dispatch_tool(
         att_count = res.get("attachments_count", 0)
         att_names = ", ".join(res.get("attachments", []))
 
-        await websocket.send_text(json.dumps({
-            "type": "email_sent",
-            "status": res.get("status"),
-            "subject": subject,
-            "recipient": to_email,
-            "attachments_count": att_count,
-            "attachments": res.get("attachments", []),
-            "message": res.get("message", "")
-        }))
+        if websocket:
+            await websocket.send_text(json.dumps({
+                "type": "email_sent",
+                "status": res.get("status"),
+                "subject": subject,
+                "recipient": to_email,
+                "attachments_count": att_count,
+                "attachments": res.get("attachments", []),
+                "message": res.get("message", "")
+            }))
 
         att_suffix = f" avec la pièce jointe {att_names}" if att_count > 0 else ""
         return ToolResult.done(
@@ -2174,21 +2183,22 @@ async def _execute_dispatch_tool(
                 cost_est="0.00 $"
             )
             await broadcast_supervision()
-            await websocket.send_text(json.dumps({
-                "type": "jarvis_announcement",
-                "text": "Consultation de votre agenda...",
-                "voice": False
-            }))
-            await websocket.send_text(json.dumps({
-                "type": "status",
-                "state": "calendar",
-                "msg": "Consultation de l'agenda...",
-                "task": "Agenda : Consultation",
-                "engine": "FastAPI / Redis",
-                "model": "Agenda Reader",
-                "api_type": "free",
-                "api_label": "Local Service"
-            }))
+            if websocket:
+                await websocket.send_text(json.dumps({
+                    "type": "jarvis_announcement",
+                    "text": "Consultation de votre agenda...",
+                    "voice": False
+                }))
+                await websocket.send_text(json.dumps({
+                    "type": "status",
+                    "state": "calendar",
+                    "msg": "Consultation de l'agenda...",
+                    "task": "Agenda : Consultation",
+                    "engine": "FastAPI / Redis",
+                    "model": "Agenda Reader",
+                    "api_type": "free",
+                    "api_label": "Local Service"
+                }))
 
             cached_agenda = await cache_service.get("jarvis:agenda:today")
             events = cached_agenda if isinstance(cached_agenda, list) else []
@@ -2225,21 +2235,22 @@ async def _execute_dispatch_tool(
             cost_est="0.00 $"
         )
         await broadcast_supervision()
-        await websocket.send_text(json.dumps({
-            "type": "jarvis_announcement",
-            "text": f"Mise à jour de l'agenda : {titre}...",
-            "voice": False
-        }))
-        await websocket.send_text(json.dumps({
-            "type": "status",
-            "state": "calendar",
-            "msg": f"Agenda ({action}) — {titre}...",
-            "task": f"Agenda : {titre}",
-            "engine": "n8n Community",
-            "model": "Google Calendar Sync",
-            "api_type": "free",
-            "api_label": "Local n8n"
-        }))
+        if websocket:
+            await websocket.send_text(json.dumps({
+                "type": "jarvis_announcement",
+                "text": f"Mise à jour de l'agenda : {titre}...",
+                "voice": False
+            }))
+            await websocket.send_text(json.dumps({
+                "type": "status",
+                "state": "calendar",
+                "msg": f"Agenda ({action}) — {titre}...",
+                "task": f"Agenda : {titre}",
+                "engine": "n8n Community",
+                "model": "Google Calendar Sync",
+                "api_type": "free",
+                "api_label": "Local n8n"
+            }))
 
         from services.automation import executer_action_externe as n8n_exec
         payload = {
@@ -2268,7 +2279,8 @@ async def _execute_dispatch_tool(
                         return ToolResult.failed(
                             error_hint="Événement non retrouvé lors de la vérification de l'agenda.",
                             user_message=f"La création du rendez-vous '{titre}' n'a pas pu être confirmée dans votre agenda.",
-                            evidence=v_detail
+                            evidence=v_detail,
+                            verified=False
                         )
                     return ToolResult.done(
                         verified=True,
@@ -2277,18 +2289,47 @@ async def _execute_dispatch_tool(
                         result=res
                     )
                 elif action == "decaler":
-                    instruction = f"Le rendez-vous '{titre}' est décalé au {date_debut}."
+                    ev_id = res.get("result", {}).get("event_id") or res.get("event_id") or ""
+                    v_ok, v_detail, v_id = await verify_calendar_event(event_id=ev_id, titre=titre, date_debut=date_debut)
+                    if not v_ok:
+                        return ToolResult.failed(
+                            error_hint="Modification d'horaire non confirmée dans l'agenda.",
+                            user_message=f"Le décalage du rendez-vous '{titre}' n'a pas pu être vérifié dans l'agenda.",
+                            evidence=v_detail,
+                            verified=False
+                        )
+                    return ToolResult.done(
+                        verified=True,
+                        evidence=f"Événement décalé et vérifié (ID: {v_id or titre})",
+                        user_message=f"Le rendez-vous '{titre}' est décalé et vérifié au {date_debut}.",
+                        result=res
+                    )
                 elif action == "supprimer":
-                    instruction = f"L'événement '{titre}' a été supprimé de l'agenda."
+                    ev_id = res.get("result", {}).get("event_id") or res.get("event_id") or ""
+                    v_ok, v_detail, _ = await verify_calendar_event(event_id=ev_id, titre=titre, date_debut=date_debut)
+                    # Pour une suppression, l'événement ne doit plus exister !
+                    if v_ok:
+                        return ToolResult.failed(
+                            error_hint="L'événement est toujours présent dans l'agenda après demande de suppression.",
+                            user_message=f"La suppression du rendez-vous '{titre}' n'a pas pu être confirmée.",
+                            evidence="Événement toujours détecté dans l'agenda",
+                            verified=False
+                        )
+                    return ToolResult.done(
+                        verified=True,
+                        evidence=f"Suppression confirmée : événement '{titre}' absent de l'agenda",
+                        user_message=f"L'événement '{titre}' a bien été supprimé de l'agenda.",
+                        result=res
+                    )
                 else:
                     events_found = res.get("result", {}).get("events", [])
                     instruction = f"Voici les événements trouvés : {events_found}."
-                return ToolResult.done(
-                    verified=True,
-                    evidence=f"Action agenda '{action}' validée pour '{titre}'",
-                    user_message=instruction,
-                    result=res
-                )
+                    return ToolResult.done(
+                        verified=True,
+                        evidence=f"Consultation agenda : {len(events_found)} événement(s)",
+                        user_message=instruction,
+                        result=res
+                    )
             else:
                 err = res.get("error", "Erreur agenda")
                 return ToolResult.failed(
@@ -2859,7 +2900,7 @@ async def _execute_dispatch_tool(
                 action="modifier_presentation",
                 user_message=result.get("user_message", "Présentation modifiée."),
                 evidence=result.get("evidence", ""),
-                verified=result.get("verified", True),
+                verified=bool(result.get("verified", False)),
                 presentation_id=result.get("presentation_id", ""),
                 presentation_url=result.get("presentation_url", ""),
                 action_detail=result.get("action", ""),

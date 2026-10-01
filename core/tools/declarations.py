@@ -573,6 +573,10 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                                 type="BOOLEAN",
                                 description="Mettre à True pour joindre automatiquement une capture d'écran du système ou du navigateur"
                             ),
+                            "confirmed_by_user": types.Schema(
+                                type="BOOLEAN",
+                                description="Mettre à True UNIQUEMENT après confirmation explicite de Pierre suite au résumé vocal de l'e-mail et du destinataire. Par défaut False."
+                            ),
                         },
                         required=["subject"]
                     )
@@ -1061,6 +1065,10 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                                 type="STRING",
                                 description="Description détaillée, lieu ou notes pour l'événement (optionnel)"
                             ),
+                            "confirmed_by_user": types.Schema(
+                                type="BOOLEAN",
+                                description="Mettre à True UNIQUEMENT après accord explicite de Pierre, en particulier lors d'une suppression d'événement. Par défaut False."
+                            ),
                         },
                         required=["action"]
                     )
@@ -1338,6 +1346,10 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                             "patch_id": types.Schema(
                                 type="STRING",
                                 description="Identifiant spécifique du patch concerné (requis pour rollback ou approve ciblé, facultatif)"
+                            ),
+                            "confirmed_by_user": types.Schema(
+                                type="BOOLEAN",
+                                description="Mettre à True UNIQUEMENT après confirmation explicite de Pierre pour l'intervention SRE ou le rollback. Par défaut False."
                             )
                         }
                     )
