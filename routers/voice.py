@@ -113,10 +113,41 @@ async def _build_switch_context_prompt(
     return prompt
 
 
+def format_jarvis_system_instruction(
+    template: Optional[str] = None,
+    current_datetime: Optional[str] = None,
+    memory_context: Optional[str] = None,
+    active_plan_status: Optional[str] = None,
+    active_subagents_status: Optional[str] = None,
+    **kwargs
+) -> str:
+    """Formate le template d'instruction système JARVIS avec les variables requises.
+    Si une variable est vide, la valeur 'Aucun' est passée."""
+    if template is None:
+        template = getattr(config, "JARVIS_SYSTEM_INSTRUCTION_TEMPLATE", "") or ""
+
+    def _val(v: Optional[str]) -> str:
+        if v is None:
+            return "Aucun"
+        s = str(v).strip()
+        return s if s else "Aucun"
+
+    format_vars = {
+        "current_datetime": _val(current_datetime),
+        "memory_context": _val(memory_context),
+        "active_plan_status": _val(active_plan_status),
+        "active_subagents_status": _val(active_subagents_status),
+    }
+    format_vars.update(kwargs)
+    return template.format(**format_vars)
+
+
 async def _build_system_instruction() -> str:
     """Construit dynamiquement le system_instruction de la session Live en injectant le contexte mémoire et la règle d'arbitrage de présence PC."""
+    from datetime import datetime
     from services.unified_memory import unified_memory_manager
     from services.local_agent_service import is_pc_connected
+    from services.turn_audit import get_active_plan_status_str, get_active_subagents_status_str, inject_turn_status_into_prompt
 
     # Injection dynamique du contexte de mémoire unifiée
     memory_context = await unified_memory_manager.build_live_context_prompt()
@@ -144,19 +175,24 @@ async def _build_system_instruction() -> str:
         f"- Conserve le tutoiement, le ton franc, complice et pragmatique sans servilité."
     )
 
-    from services.turn_audit import inject_turn_status_into_prompt
+    current_dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    plan_st = get_active_plan_status_str()
+    sub_st = get_active_subagents_status_str()
 
     template = getattr(config, "JARVIS_SYSTEM_INSTRUCTION_TEMPLATE", None)
     if template:
         try:
-            base_prompt = template.format(
+            base_prompt = format_jarvis_system_instruction(
+                template=template,
+                current_datetime=current_dt,
                 memory_context=memory_context,
+                active_plan_status=plan_st,
+                active_subagents_status=sub_st,
                 paid_key_status=paid_key_status,
-                live_model=config.GEMINI_LIVE_MODEL
+                live_model=config.GEMINI_LIVE_MODEL,
             )
         except Exception:
             base_prompt = str(template)
-        base_prompt = inject_turn_status_into_prompt(base_prompt)
         return f"{base_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}"
 
     static = getattr(config, "JARVIS_SYSTEM_INSTRUCTION", "")
