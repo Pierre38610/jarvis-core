@@ -464,6 +464,7 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                                     "'queue_add' (ajouter un titre à la file), "
                                     "'get_queue' (voir la file), "
                                     "'list_devices' (appareils disponibles), "
+                                    "'set_default_device' (définit l'appareil par défaut pour la musique, paramètre device requis sans valeur par défaut), "
                                     "'transfer' (transférer sur device), "
                                     "'like' (liker le morceau en cours), "
                                     "'unlike' (retirer le like), "

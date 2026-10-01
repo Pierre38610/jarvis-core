@@ -64,7 +64,7 @@
    - 8.6. Pôle Documentaire & Présentations Google Slides Polymorphes v1
    - 8.7. Mobilité & Système Ferroviaire Intelligent (France & Suède)
    - 8.8. Gestionnaire E-Book, Liseuses Physiques & Send to Kindle
-   - 8.9. Contrôleur Média & Streaming (Deezer Web Player & Stremio)
+   - 8.9. Contrôleur Média : Spotify & Stremio
    - 8.10. Suite de Communication & Messagerie Stark
    - 8.11. Système de Mémoire Hybride (SQLite, Qdrant & Fastembed)
    - 8.12. Télémétrie, Observabilité & Métriques des Outils (`services/metrics_service.py`)
@@ -76,7 +76,7 @@
    - 9.1. Endpoints HTTP / REST FastAPI (Exhaustif)
    - 9.2. Contrat WebSocket Audio Gemini Live (`/ws`)
    - 9.3. Contrat WebSocket Relais Agent Local PC (`/ws/local-agent`)
-   - 9.4. Contrat WebSocket Deezer Controller (`127.0.0.1:8765`)
+   - 9.4. Contrat & Intégration Spotify Web API (Connect & OAuth 2.0 PKCE)
 10. [Cycle de Vie, Supervision & Événements des Sous-Agents](#10-cycle-de-vie-supervision--événements-des-sous-agents)
     - 10.1. Cycle de Vie d'un Sous-Agent
     - 10.2. Diffusion Temps Réel & Structure des Événements
@@ -146,8 +146,7 @@ jarvis-core/
 ├── config.py                            # Constantes, répertoires, clés API, détection Chrome, switch payant, template prompt système
 ├── auth.py                              # Wrapper d'authentification légère et compatibilité
 ├── google_antigravity.py                # Wrapper Antigravity CLI VPS, routage cognitif 3 tiers, détection 429 et exécuteur de sous-agents
-├── jarvis_local_agent.py                # Agent client WebSocket s'exécutant sur le PC Windows 11 (actions physiques, Chrome CDP, Deezer)
-├── deezer_bridge.py                     # Contrôleur WebSocket bidirectionnel local (port 8765) vers Deezer Web Player
+├── jarvis_local_agent.py                # Agent client WebSocket s'exécutant sur le PC Windows 11 (actions physiques, Chrome CDP, Spotify Desktop, Stremio)
 ├── tunnel_launcher.py                   # Gestionnaire du tunnel Cloudflare Zero Trust, fallback Quick Tunnel et LAN Wi-Fi
 ├── sync_deploy.py                       # Pipeline automatisé : Git commit/push + archive in-memory tar.gz + SFTP + relance systemd VPS
 ├── docker-compose.yml                   # Définition conteneurs Redis 7, Postgres 16, Qdrant et n8n (bound sur 127.0.0.1)
@@ -165,7 +164,6 @@ jarvis-core/
 │   ├── local_agent.py                   # WebSocket /ws/local-agent et GET /api/local-agent/status (relais PC physique)
 │   ├── chat.py                          # GET/POST /api/chat/* : messagerie multimodale écrite et vision Gemini 3.8 Flash
 │   ├── spotify.py                       # GET/POST /api/media/spotify/* : OAuth PKCE, playback, devices, migration Deezer->Spotify
-│   ├── media.py                         # /api/media/deezer/* (legacy redirigé/déprécié) et userscript Tampermonkey archive
 │   ├── browser.py                       # /api/browser/*, /api/downloads, /api/emails/* : gestion documents, Kindle et courriels
 │   ├── supervision.py                   # /api/supervision/*, /api/task/* : métriques, fenêtres actives, patches SRE, directives
 │   ├── settings.py                      # /api/live-model, /api/settings/paid-key, /api/paid-consent, /api/tunnel-info
@@ -273,9 +271,9 @@ jarvis-core/
 │                      │                                              │                                   │
 │                      ▼                                              ▼                                   │
 │           ┌──────────────────────┐                       ┌──────────────────────┐                       │
-│           │   DEEZER CONTROLLER  │                       │ LISEUSES PHYSIQUES   │                       │
-│           │ Tampermonkey Userscript                      │ Kindle / Kobo via USB│                       │
-│           │    WebSocket : 8765  │                       │ Montages lecteurs    │                       │
+│           │   SPOTIFY CONNECT    │                       │ LISEUSES PHYSIQUES   │                       │
+│           │ Web API + PKCE VPS   │                       │ Kindle / Kobo via USB│                       │
+│           │ Multi-Devices Connect│                       │ Montages lecteurs    │                       │
 │           └──────────────────────┘                       └──────────────────────┘                       │
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -288,7 +286,7 @@ jarvis-core/
 - **Service systemd** : Géré via `jarvis.service` (`sudo systemctl restart jarvis`, logs : `journalctl -u jarvis -f`).
 
 ### 2.3. Le PC Physique Windows 11 & Rôle Exécutant
-- **Rôle fonctionnel** : Exécutant matériel de bureau. Ne disposant d'aucun affichage graphique direct sur le VPS Cloud, toute opération nécessitant une interface visuelle à l'écran (ouvrir VS Code, manipuler Google Chrome avec sessions authentifiées, lancer un film dans Stremio, piloter Deezer ou détecter une liseuse branchée en USB) est déléguée à l'agent local.
+- **Rôle fonctionnel** : Exécutant matériel de bureau. Ne disposant d'aucun affichage graphique direct sur le VPS Cloud, toute opération nécessitant une interface visuelle à l'écran (ouvrir VS Code, manipuler Google Chrome avec sessions authentifiées, lancer un film dans Stremio, lancer Spotify Desktop ou détecter une liseuse branchée en USB) est déléguée à l'agent local.
 
 ### 2.4. Topologie Réseau, Tunnels Cloudflare & Résilience Réseau
 Le système utilise `tunnel_launcher.py` pour assurer une accessibilité permanente sans ouvrir le moindre port d'entrée sur la box ou le routeur :
@@ -574,7 +572,7 @@ Le VPS distant n'a pas accès à l'écran, au Chrome réel, ni aux périphériqu
 | `launch_app` | Lance une application Windows physique installée. | `app_name: str` (`vscode`, `vlc`, `calc`, `notepad`, `terminal`, `stremio`) | `{"status": "success", "pid": int, "message": str}` |
 | `open_browser` | Ouvre Google Chrome à l'écran sur une URL donnée. | `url: str`, `new_window: bool` (défaut False) | `{"status": "success", "message": str}` |
 | `launch_media` | Déclenche la lecture multimédia dans VLC ou Stremio. | `title: str`, `content_type: str` (`movie`, `series`, `music`) | `{"status": "success", "launched": str}` |
-| `deezer_action`| Relais vers le bridge Deezer local port 8765. | `action: str` (`play`, `pause`, `next`, `volume`), `query: str`, `volume: int` | `{"status": "success", "deezer_response": dict}` |
+| `spotify_launch`| Déclenche le lancement de Spotify Desktop sur le PC. | `uri: str` (opt) | `{"status": "success", "launched": "spotify"}` |
 | `prepare_train_checkout` | Ouvre en parallèle les onglets Omio/Trainline préremplis. | `segments: list[dict]`, `urls: list[str]` | `{"status": "opened_locally", "count": int}` |
 | `prepare_web_cart_or_checkout` | Ajoute au panier sur Chrome et s'arrête avant paiement. | `url: str`, `product: str` | `{"status": "cart_ready", "awaiting_payment": true}` |
 | `interact_web_page` | Interagit unitairement avec une page web ouverte. | `url: str`, `instruction: str`, `selector: str` | `{"status": "interacted", "result": str}` |
@@ -616,7 +614,7 @@ Remontée périodique (toutes les 15 s) : CPU global, mémoire vive, pourcentage
 | **10**| `recall_user_memories` | `search_memories` | Bloquant | `query: str` (req) | `{"status": "found", "results": list[dict], "count": int}` | `services/unified_memory.py` |
 | **11**| `get_system_status` | `get_status` | Bloquant | Aucun | `{"status": "ok", "server": dict, "pc_local": dict}` | `services/system_service.py` |
 | **12**| `launch_application` | `launch_app` | Bloquant | `app_name: str` (req) | `{"status": "success"|"error", "app": str, "message": str}` | `services/system_service.py` |
-| **13**| `play_music_deezer` | `deezer_action` | Bloquant | `action: str` (req), `query: str`, `volume: int` | `{"status": "success", "action": str, "data": dict}` | `services/media_service.py` |
+| **13**| `control_spotify` | `spotify_control` | Bloquant (<300ms) / Arrière-plan | `action: str` (req), `query: str`, `device: str`, `volume: int`, `search_type: str` | `{"status": "done"|"started", "verified": bool, "message": str}` | `services/spotify_service.py` |
 | **14**| `play_video_stremio` | `launch_media` | Bloquant | `title: str` (req), `content_type: str` | `{"status": "success", "title": str, "protocol_uri": str}` | `services/media_service.py` |
 | **15**| `send_email` | `mail_send` | Bloquant | `subject: str` (req), `body: str` (req), `to_email: str`, `attachments: list[str]` | `{"status": "sent", "to": str, "attachments_resolved": list[str]}` | `services/email_service.py` |
 | **16**| `read_emails` | `get_emails` | Bloquant | `count: int`, `query: str`, `unread_only: bool` | `{"status": "success", "emails": list[dict], "summary": str}` | `services/email_service.py` |
@@ -698,9 +696,11 @@ Orchestrées par `services/agentic_dispatcher.py` :
 - Scraping Anna's Archive avec contrôle strict de la langue (FR/EN) et intégrité EPUB.
 - Détection des liseuses USB montées sous Windows et téléversement direct Amazon Send to Kindle Web (fichiers jusqu'à 200 Mo).
 
-### 8.9. Contrôleur Média & Streaming (Deezer Web Player & Stremio)
-- Deezer : Bridge WebSocket `127.0.0.1:8765` + Userscript Tampermonkey. Flow, favoris, volume, recherche.
-- Stremio : Interrogation Cinemeta / Torrentio et lancement via protocole URI `stremio:///detail/...`.
+### 8.9. Contrôleur Média : Spotify & Stremio
+- **Spotify Web API & Connect** : Client asynchrone direct (`services/spotify_service.py`) avec OAuth 2.0 PKCE, tokens chiffrés Fernet dans SQLite et cache Redis. Contrôle lecture, recherche (titre, artiste, album, playlist), favoris, files d'attente, volume et transfert d'appareils.
+  - **Gestion de l'Appareil par Défaut** : Table SQLite `user_device_preferences`. Résolution prioritaire : 1) Indice oral explicite (`device="pc"`), 2) Appareil actuellement actif, 3) Préférence utilisateur enregistrée (par défaut 'telephone'). Si le smartphone est absent de Spotify Connect, émission d'un message vocal explicite sans bascule silencieuse PC.
+  - **Ducking Intelligent du Volume** : Dès que Jarvis commence à parler (`MODEL_SPEAKING`), le volume réel est sauvegardé et abaissé (~25% ou cible 15%). Dès la fin de parole (`playback_finished`, `speech_ended` ou interruption barge-in), le volume réel d'origine est restauré. Le ducking est ignoré si `supports_volume=false`, n'intervient qu'une seule fois par tour de parole, et n'écrase pas le réglage si l'utilisateur a ajusté son volume manuellement entre-temps.
+- **Stremio & VLC** : Interrogation Cinemeta / Torrentio pour trouver les flux 1080p légers et lancement via protocole URI `stremio:///detail/...` ou VLC direct via l'agent local.
 
 ### 8.10. Suite de Communication & Messagerie Stark
 - Envoi SMTP avec gabarit Stark HTML et résolution floue universelle des pièces jointes (`resolve_attachment_path`). Rapatriement de fichiers locaux du PC via `fetch_file` base64.
@@ -791,7 +791,6 @@ Afin de rendre structurellement impossible que Jarvis annonce oralement un succ�
 | **POST** | `/api/media/spotify/control` | Contrôle direct du lecteur Spotify (play, pause, next, like, etc.). | Token JWT | `{"action": "play", "query": "..."}` | `{"status": "done"}` |
 | **GET** | `/api/media/spotify/migration/status` | Statut temps réel de la migration Deezer->Spotify. | Token JWT | Aucun | `{"status": "completed", ...}` |
 | **POST** | `/api/media/spotify/migration/start` | Déclenche la migration Deezer->Spotify en tâche de fond. | Token JWT | `{"dry_run": false}` | `{"status": "started"}` |
-| **GET** | `/api/media/deezer/userscript`| Sert le script Tampermonkey pour archive historique. | Ouvert | Aucun | Fichier JS |
 | **GET** | `/api/browser/extensions` | Énumère les extensions Chrome installées sur la machine. | Token JWT | Aucun | `[{"id": "...", "name": "Send to Kindle"}]` |
 | **POST** | `/api/browser/send-to-kindle` | Envoie un article web nettoyé sur la liseuse Kindle. | Token JWT | `{"url": "...", "title": "..."}` | `{"status": "sent"}` |
 | **POST** | `/api/browser/send-file-to-kindle` | Envoie un fichier présent sur disque vers Kindle. | Token JWT | `{"file_path": "..."}` | `{"status": "sent"}` |
@@ -835,9 +834,10 @@ Afin de rendre structurellement impossible que Jarvis annonce oralement un succ�
 - **Réponse PC -> VPS** : `{"req_id": "rpc_123", "result": {"status": "success", "message": "..."}}`
 - **Heartbeat PC -> VPS (toutes les 15 s)** : `{"type": "heartbeat", "cpu_percent": 12.4, "ram_percent": 48.2, "battery": {"percent": 98, "power_plugged": true}}`
 
-### 9.4. Contrat WebSocket Deezer Controller (`127.0.0.1:8765`)
-- Ordres : `{"action": "play|pause|next|prev|shuffle|volume", "query": "...", "volume": 75}`.
-- Retours : `{"status": "playing", "track": "...", "artist": "...", "cover": "https://..."}`.
+### 9.4. Contrat & Intégration Spotify Web API (Connect & OAuth 2.0 PKCE)
+- **Authentification & Tokens** : Authorization Code Grant avec PKCE côté VPS (`GET /api/media/spotify/login` et `/callback`). Tokens d'accès et de rafraîchissement chiffrés via clé Fernet dérivée de `JWT_SECRET_KEY` stockés dans SQLite (`spotify_tokens`) avec TTL Redis et verrou asynchrone anti-refresh concurrent.
+- **Contrôle & Endpoints** : `POST /api/media/spotify/control` accepte `action: str` (`play`, `pause`, `resume`, `next`, `previous`, `seek`, `volume`, `shuffle`, `repeat`, `queue_add`, `get_queue`, `list_devices`, `set_default_device`, `transfer`, `like`, `unlike`, `add_to_playlist`, `create_playlist`, `follow_artist`, `search`, `top`, `recent`).
+- **Observabilité & Vérification Réelle** : Vérification post-action via `GET /me/player` pour confirmer que `is_playing` et le volume correspondent fidèlement avant de certifier `verified=True`.
 
 ---
 
@@ -915,7 +915,7 @@ L'avatar adapte ses filtres de lueur SVG et ses anneaux rotatifs selon l'état s
 - `coding` : Vert matrice (génération de code ou Antigravity CLI).
 - `browsing` : Bleu cobalt (navigation autonome Browser-Use / Chrome CDP).
 - `kindle` : Indigo feutré (transfert ou lecture d'e-book).
-- `music` : Ambre doré vibrant (Deezer Web Player actif).
+- `music` : Ambre doré vibrant (Spotify Connect actif).
 - `media` : Pourpre profond (lecture cinéma Stremio).
 
 ### 11.4. Tiroirs, Modals Interactifs & Vues Dédiées

@@ -1,6 +1,6 @@
 """Service de liaison avec l'Agent Relais Local (PC Windows de Pierre).
 Permet à Jarvis hébergé sur VPS de détecter si le PC personnel est allumé,
-et d'y exécuter des actions locales (lancer VS Code, VLC, Deezer, etc.).
+et d'y exécuter des actions locales (lancer VS Code, VLC, Spotify, etc.).
 """
 
 import asyncio
@@ -16,7 +16,6 @@ class LocalAgentService:
         self._connected_at: Optional[float] = None
         self._pending_requests: Dict[str, asyncio.Future] = {}
         self._last_pc_status: Optional[Dict[str, Any]] = None
-        self._last_deezer_status: Optional[Dict[str, Any]] = None
 
     def is_connected(self) -> bool:
         """Indique si le PC de Pierre est allumé et connecté au VPS."""
@@ -29,7 +28,6 @@ class LocalAgentService:
             "connected_at": self._connected_at,
             "uptime_seconds": round(time.time() - self._connected_at, 1) if self._connected_at else 0,
             "last_status": self._last_pc_status,
-            "deezer_status": self._last_deezer_status
         }
 
     async def register(self, websocket: WebSocket):
@@ -114,8 +112,6 @@ class LocalAgentService:
                         ))
                     except Exception:
                         pass
-                elif msg_type == "deezer_status":
-                    self._last_deezer_status = data.get("data")
         except WebSocketDisconnect:
             pass
         except Exception as e:

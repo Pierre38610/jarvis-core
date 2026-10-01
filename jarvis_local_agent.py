@@ -614,33 +614,6 @@ def execute_media_action(params: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "error", "message": f"Erreur média : {e}"}
 
 
-async def execute_deezer_action(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Exécute une action de contrôle Deezer via le bridge WebSocket local."""
-    try:
-        from deezer_bridge import deezer_controller
-        action = params.get("action", "playpause")
-        query = params.get("query", "")
-        item_type = params.get("item_type", "track")
-        volume = params.get("volume")
-        enable = params.get("enable")
-        seek_pos = params.get("position")
-
-        res = await deezer_controller.control_deezer(
-            action=action,
-            query=query,
-            item_type=item_type,
-            volume=volume,
-            enable=enable,
-            position=seek_pos
-        )
-        return res
-    except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Erreur lors du contrôle Deezer local : {e}"
-        }
-
-
 def execute_fetch_file(params: Dict[str, Any]) -> Dict[str, Any]:
     """Recherche et extrait un fichier local sur le PC Windows pour le transmettre au serveur Cloud (encodé en base64)."""
     target = (params.get("filepath") or params.get("filename") or "").strip()
@@ -712,24 +685,12 @@ def execute_fetch_file(params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def send_telemetry_loop(ws):
-    """Envoie l'état matériel du PC et l'état Deezer toutes les 30 secondes au serveur."""
+    """Envoie l'état matériel du PC toutes les 30 secondes au serveur."""
     try:
         while True:
             metrics = get_local_metrics()
             payload = {"type": "telemetry", "data": metrics}
             await ws.send(json.dumps(payload))
-
-            # Remonter l'état Deezer si disponible
-            try:
-                from deezer_bridge import deezer_controller
-                if deezer_controller.is_connected() or deezer_controller.last_status:
-                    await ws.send(json.dumps({
-                        "type": "deezer_status",
-                        "data": deezer_controller.last_status
-                    }))
-            except Exception:
-                pass
-
             await asyncio.sleep(30)
     except Exception:
         pass
@@ -766,15 +727,7 @@ async def agent_loop():
     print("=" * 70, flush=True)
     print(f"[*] Cible Cloud       : wss://{HOSTNAME}/ws/local-agent", flush=True)
 
-    # 1. Démarrage du bridge Deezer local pour écouter le Userscript Tampermonkey sur ws://127.0.0.1:8765
-    try:
-        from deezer_bridge import deezer_controller
-        await deezer_controller.start()
-        print("[✔] Deezer Bridge    : Actif sur ws://127.0.0.1:8765 (Tampermonkey prêt)", flush=True)
-    except Exception as e:
-        print(f"[!] Deezer Bridge    : Note ({e})", flush=True)
-
-    # 2. Vérification de la disponibilité Chrome CDP sur le port 9222
+    # Vérification de la disponibilité Chrome CDP sur le port 9222
     cdp_active = is_cdp_ready_sync(9222)
     cdp_msg = "Actif sur http://127.0.0.1:9222" if cdp_active else "En attente (démarrage auto à la demande)"
     print(f"[{'✔' if cdp_active else '*'}] Chrome CDP (9222)   : {cdp_msg}", flush=True)
@@ -785,7 +738,7 @@ async def agent_loop():
         try:
             async with websockets.connect(uri, ping_interval=20, ping_timeout=15) as ws:
                 print(f"\n[✔] CONNECTÉ À JARVIS CLOUD ({HOSTNAME}) !", flush=True)
-                print("[*] Votre PC est synchronisé : prêt à ouvrir des applications, pages web et contrôler Deezer.\n", flush=True)
+                print("[*] Votre PC est synchronisé : prêt à ouvrir des applications, pages web et multimédia.\n", flush=True)
 
                 # Lance l'envoi périodique de métriques
                 telemetry_task = asyncio.create_task(send_telemetry_loop(ws))
@@ -811,8 +764,6 @@ async def agent_loop():
                             result = execute_media_action(params)
                         elif action == "spotify_launch":
                             result = execute_spotify_launch(params)
-                        elif action == "deezer_action":
-                            result = await execute_deezer_action(params)
                         elif action == "prepare_train_checkout":
                             urls = params.get("urls") or ([params.get("url")] if params.get("url") else [])
                             operateur = params.get("operateur", "sncf")

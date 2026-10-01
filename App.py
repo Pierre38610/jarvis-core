@@ -8,7 +8,7 @@ Structure :
 - routers/voice.py         : WebSocket /ws  (Gemini Live full-duplex)
 - routers/local_agent.py   : WebSocket /ws/local-agent + /api/local-agent/status
 - routers/chat.py          : /api/chat/*
-- routers/media.py         : /api/media/deezer/* (legacy) + /api/media/spotify/*
+- routers/spotify.py       : /api/media/spotify/* (Web API Spotify & migration)
 - routers/browser.py       : /api/browser/*, /api/downloads, /api/emails/*
 - routers/supervision.py   : /api/supervision/*, /api/task/*
 - routers/settings.py      : /api/live-model, /api/settings/*, /api/paid-consent
@@ -32,7 +32,7 @@ from services.memory import vector_memory
 from services.console_monitor import console_monitor
 
 # ─── Routeurs modulaires ──────────────────────────────────────────────────────
-from routers import voice, local_agent, chat, media, browser, supervision, settings, briefing, transport, spotify as spotify_router
+from routers import voice, local_agent, chat, browser, supervision, settings, briefing, transport, spotify as spotify_router
 
 app = FastAPI(title="J.A.R.V.I.S. Core Server")
 
@@ -53,7 +53,6 @@ app.mount("/downloads", StaticFiles(directory=_downloads_dir), name="downloads")
 app.include_router(voice.router)
 app.include_router(local_agent.router)
 app.include_router(chat.router)
-app.include_router(media.router)
 app.include_router(browser.router)
 app.include_router(supervision.router)
 app.include_router(settings.router)

@@ -14,7 +14,7 @@
   <link rel="icon" type="image/svg+xml" href="/static/jarvis-icon.svg">
   <link rel="apple-touch-icon" href="/static/jarvis-icon.png">
   <link rel="shortcut icon" href="/static/jarvis-icon.png">
-  <link rel="stylesheet" href="/static/style.css?v=2.9">
+  <link rel="stylesheet" href="/static/style.css?v=3.0">
 </head>
 <body>
 
@@ -41,7 +41,7 @@
           <img src="/static/jarvis-icon.png" alt="JARVIS Logo" class="hud-header-logo">
           <span class="system-tag"><span class="system-tag-dot"></span> STARK AI CORE</span>
         </div>
-        <span class="hud-version-tag">V 5.27.0 NOUVEAU LOGO ROBOT JARVIS</span>
+        <span class="hud-version-tag">V 5.28.0 SPOTIFY AUDIO HD & MICRO SELECTOR</span>
       </div>
       <!-- Actions d'en-tête (Kindle, Messagerie & Supervision) -->
       <div class="hud-header-right">
@@ -482,6 +482,23 @@
         <div class="eq-bar"></div>
         <div class="eq-bar"></div>
         <div class="eq-bar"></div>
+      </div>
+    </div>
+
+    <!-- Sélecteur d'entrée audio & Avertissement Bluetooth HD -->
+    <div class="hud-audio-device-bar" id="hudAudioDeviceBar">
+      <div class="hud-audio-device-row">
+        <label for="micSelect" class="hud-audio-device-label">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          MICROPHONE :
+        </label>
+        <select id="micSelect" class="hud-audio-select" title="Choisir le microphone d'entrée">
+          <option value="">Microphone par défaut (Système)</option>
+        </select>
+      </div>
+      <div id="btWarningBox" class="hud-bt-warning-box" style="display: none;">
+        <span class="hud-bt-icon">⚠️</span>
+        <span class="hud-bt-text"><strong>Microphone Bluetooth / Casque détecté</strong> : Windows peut forcer le mode HFP (son dégradé mono 8-16kHz sur Spotify). Pour préserver un son Spotify haute fidélité stéréo sur PC, sélectionnez le microphone intégré du PC ou de la webcam.</span>
       </div>
     </div>
 

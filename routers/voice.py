@@ -345,6 +345,11 @@ async def voice_channel(websocket: WebSocket):
                                 active_task_controller["estimated_speech_end"] = 0.0
                                 speaking_state["active"] = False
                                 notify_playback_finished()
+                                try:
+                                    from services.spotify_service import spotify_service
+                                    asyncio.create_task(spotify_service.restore_volume())
+                                except Exception:
+                                    pass
                                 if is_speech_idle():
                                     supervision_service.update_voice_state("idle", model=active_live_model, is_paid=is_paid_live)
                                     await broadcast_supervision()
@@ -354,6 +359,11 @@ async def voice_channel(websocket: WebSocket):
 
                             elif p_type == "playback_finished":
                                 notify_playback_finished()
+                                try:
+                                    from services.spotify_service import spotify_service
+                                    asyncio.create_task(spotify_service.restore_volume())
+                                except Exception:
+                                    pass
                                 if is_speech_idle():
                                     supervision_service.update_voice_state("idle", model=active_live_model, is_paid=is_paid_live)
                                     await broadcast_supervision()
@@ -600,6 +610,11 @@ async def voice_channel(websocket: WebSocket):
                             # Interruption (barge-in serveur)
                             if getattr(sc, "interrupted", False):
                                 notify_interrupted("user_barge_in")
+                                try:
+                                    from services.spotify_service import spotify_service
+                                    asyncio.create_task(spotify_service.restore_volume())
+                                except Exception:
+                                    pass
                                 turn_cuts += 1
                                 metrics_service.record_speech_cut("user_barge_in", details="Gemini Live server content interrupted")
                                 print("[Voice Channel] SPEECH_CUT reason=user_barge_in from Gemini Live server content")
@@ -732,6 +747,11 @@ async def voice_channel(websocket: WebSocket):
                                         ) + chunk_dur
                                         if not is_speaking_state:
                                             is_speaking_state = True
+                                            try:
+                                                from services.spotify_service import spotify_service
+                                                asyncio.create_task(spotify_service.duck_volume())
+                                            except Exception:
+                                                pass
                                             supervision_service.update_voice_state("speaking", model=active_live_model, is_paid=is_paid_live)
                                             await broadcast_supervision()
                                             await websocket.send_text(json.dumps({

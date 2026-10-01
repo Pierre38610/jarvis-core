@@ -143,6 +143,10 @@ class SpotifyService:
         ).strip()
         self._refresh_lock = asyncio.Lock()
         self._db_ready = False
+        self._ducking_active: bool = False
+        self._volume_before_duck: Optional[int] = None
+        self._duck_target_volume: Optional[int] = None
+        self._ducked_device_id: Optional[str] = None
 
     @property
     def client_id(self) -> str:
@@ -233,6 +237,12 @@ class SpotifyService:
         "CREATE INDEX IF NOT EXISTS idx_migration_run_id ON migration_state (run_id);"
         "CREATE INDEX IF NOT EXISTS idx_migration_playlist ON migration_state (source_playlist);"
         "CREATE INDEX IF NOT EXISTS idx_migration_status ON migration_state (status);"
+        "CREATE TABLE IF NOT EXISTS user_device_preferences ("
+        "user_id TEXT PRIMARY KEY,"
+        "default_device_hint TEXT NOT NULL,"
+        "updated_at TEXT NOT NULL DEFAULT (datetime('now'))"
+        ");"
+        "INSERT OR IGNORE INTO user_device_preferences (user_id, default_device_hint) VALUES ('default', 'telephone');"
     )
 
     def _ensure_db(self) -> None:
@@ -640,7 +650,61 @@ class SpotifyService:
         alias_type = self._resolve_alias(hint)
         if alias_type == "Computer":
             return True
-        return any(k in _normalize(hint) for k in ["pc", "ordi", "portable", "laptop", "computer"])
+        return any(k in _normalize(hint) for k in ["pc", "ordi", "ordinateur", "portable", "laptop", "computer"])
+
+    def _is_phone_hint(self, hint: str) -> bool:
+        alias_type = self._resolve_alias(hint)
+        if alias_type == "Smartphone":
+            return True
+        return any(k in _normalize(hint) for k in ["telephone", "tel", "mobile", "phone", "smartphone", "portable"])
+
+    async def get_default_device(self) -> Optional[str]:
+        """Récupère l'appareil par défaut configuré par l'utilisateur."""
+        self._ensure_db()
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cur = conn.cursor()
+            cur.execute("SELECT default_device_hint FROM user_device_preferences WHERE user_id = 'default'")
+            row = cur.fetchone()
+            conn.close()
+            if row and row[0]:
+                return str(row[0]).strip()
+        except Exception as exc:
+            logger.warning(f"[Spotify] Erreur lecture appareil par défaut : {exc}")
+        return "telephone"
+
+    async def set_default_device(self, device: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Définit l'appareil par défaut pour la lecture Spotify.
+        Pas de valeur par défaut : renvoie une erreur si device est absent.
+        """
+        if not device or not str(device).strip():
+            return {
+                "status": "error",
+                "message": "Veuillez spécifier l'appareil à définir par défaut (ex: téléphone, pc, enceinte)."
+            }
+        clean = str(device).strip().lower()
+        self._ensure_db()
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute(
+                "INSERT INTO user_device_preferences (user_id, default_device_hint, updated_at) "
+                "VALUES ('default', ?, datetime('now')) "
+                "ON CONFLICT(user_id) DO UPDATE SET default_device_hint = excluded.default_device_hint, updated_at = excluded.updated_at",
+                (clean,)
+            )
+            conn.commit()
+            conn.close()
+            return {
+                "status": "success",
+                "message": f"L'appareil par défaut a été défini sur '{clean}'."
+            }
+        except Exception as exc:
+            logger.error(f"[Spotify] Erreur enregistrement appareil par défaut : {exc}")
+            return {
+                "status": "error",
+                "message": f"Impossible d'enregistrer l'appareil par défaut : {exc}"
+            }
 
     async def get_active_device(self) -> Optional[Dict[str, Any]]:
         for d in await self.get_devices():
@@ -662,9 +726,16 @@ class SpotifyService:
 
     async def _pick_device(self, hint: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
         """
-        Retourne (device_id, error_msg) selon la priorite :
-        hint specifie > actif > dernier utilise > PC auto > demande.
+        Retourne (device_id, error_msg) selon la priorité :
+        1) hint oral explicite
+        2) appareil actif
+        3) préférence utilisateur (user_device_preferences)
+           -> si pref=Smartphone absent : message vocal explicite, pas de bascule silencieuse PC !
+        4) dernier appareil utilisé (si visible)
+        5) PC auto si local agent connecté
+        6) demande explicite
         """
+        # 1. Hint oral explicite
         if hint:
             resolved = await self.resolve_device(hint)
             if resolved:
@@ -674,24 +745,57 @@ class SpotifyService:
                 if pc_id:
                     return pc_id, None
                 return None, (
-                    "Je n arrive pas a joindre Spotify sur ton PC. "
+                    "Je n'arrive pas à joindre Spotify sur ton PC. "
                     "Ouvre Spotify manuellement et redemande-moi."
                 )
+            if self._is_phone_hint(hint):
+                return None, (
+                    "Ton téléphone n'est pas visible dans Spotify Connect. "
+                    "Ouvre l'application Spotify sur ton téléphone pour que je puisse lancer la musique."
+                )
             return None, (
-                f"Ton {hint} n est pas visible dans Spotify Connect. "
-                "Ouvre l appli Spotify dessus et redemande-moi."
+                f"Ton {hint} n'est pas visible dans Spotify Connect. "
+                "Ouvre l'appli Spotify dessus et redemande-moi."
             )
 
+        # 2. Appareil déjà actif
         active = await self.get_active_device()
         if active:
             return active["id"], None
 
+        # 3. Préférence utilisateur (table user_device_preferences)
+        pref_device = await self.get_default_device()
+        if pref_device:
+            resolved = await self.resolve_device(pref_device)
+            if resolved:
+                return resolved["id"], None
+            # L'appareil préféré n'est pas visible sur Connect : message vocal explicite !
+            if self._is_phone_hint(pref_device):
+                return None, (
+                    "Ton téléphone n'est pas visible sur Spotify Connect. "
+                    "Ouvre l'application Spotify sur ton téléphone pour que je puisse lancer la musique."
+                )
+            if self._is_pc_hint(pref_device):
+                pc_id = await self._launch_pc_spotify()
+                if pc_id:
+                    return pc_id, None
+                return None, (
+                    "Je n'arrive pas à joindre Spotify sur ton PC. "
+                    "Ouvre Spotify sur ton ordinateur et redemande-moi."
+                )
+            return None, (
+                f"Ton appareil par défaut '{pref_device}' n'est pas visible sur Spotify Connect. "
+                "Ouvre Spotify dessus et redemande-moi."
+            )
+
+        # 4. Dernier utilisé (si aucune préférence configurée)
         last = await self._last_device_id()
         if last:
             devs = await self.get_devices()
             if any(d["id"] == last for d in devs):
                 return last, None
 
+        # 5. Agent local PC (si aucune préférence configurée)
         from services.local_agent_service import local_agent_service
         if local_agent_service.is_connected():
             devs = await self.get_devices()
@@ -702,7 +806,8 @@ class SpotifyService:
             if pc_id:
                 return pc_id, None
 
-        return None, "Sur quel appareil veux-tu ecouter ? (pc, telephone, enceinte...)"
+        # 6. Demande
+        return None, "Sur quel appareil veux-tu écouter ? (pc, téléphone, enceinte...)"
 
     async def _launch_pc_spotify(self, uri: Optional[str] = None) -> Optional[str]:
         """
@@ -829,6 +934,111 @@ class SpotifyService:
         if device_id:
             params["device_id"] = device_id
         await self._put("/me/player/volume", params=params)
+
+    # ── Ducking intelligent (baisse temporaire pendant la parole) ─────────────
+
+    async def duck_volume(self) -> Dict[str, Any]:
+        """
+        Abaisse temporairement le volume Spotify pendant que Jarvis parle.
+        - Sauvegarde le volume réel actuel (GET /me/player).
+        - Ignore si supports_volume=false ou volume absent.
+        - Une seule baisse par tour de parole (flag _ducking_active).
+        """
+        if self._ducking_active:
+            return {"status": "skipped", "message": "Ducking déjà actif pour ce tour de parole."}
+
+        try:
+            state = await self.get_playback_state()
+            if not state or not state.get("is_playing"):
+                return {"status": "skipped", "message": "Aucune lecture active."}
+
+            device = state.get("device") or {}
+            # Ignore si supports_volume=false
+            if not device.get("supports_volume", True):
+                return {"status": "skipped", "message": "Contrôle du volume non supporté sur cet appareil."}
+
+            current_vol = device.get("volume_percent")
+            if current_vol is None:
+                return {"status": "skipped", "message": "Volume actuel inaccessible."}
+
+            if current_vol <= 5:
+                return {"status": "skipped", "message": "Volume déjà très bas."}
+
+            dev_id = device.get("id")
+            # Cible duck : ~25% du volume actuel, plafonné entre 10 et 20%
+            target_vol = max(10, min(20, int(current_vol * 0.25)))
+            if target_vol >= current_vol:
+                target_vol = max(5, current_vol - 15)
+
+            self._volume_before_duck = current_vol
+            self._duck_target_volume = target_vol
+            self._ducked_device_id = dev_id
+            self._ducking_active = True
+
+            await self.set_volume(target_vol, device_id=dev_id)
+            logger.info(f"[Spotify Ducking] Volume abaissé de {current_vol}% à {target_vol}% (device: {dev_id})")
+            return {
+                "status": "ducked",
+                "original_volume": current_vol,
+                "duck_volume": target_vol,
+                "device_id": dev_id
+            }
+        except Exception as exc:
+            logger.warning(f"[Spotify Ducking] Erreur ducking : {exc}")
+            return {"status": "error", "message": str(exc)}
+
+    async def restore_volume(self) -> Dict[str, Any]:
+        """
+        Restaure le volume Spotify à sa valeur réelle d'avant ducking.
+        - Ne restaure pas si l'utilisateur a changé le volume entre-temps.
+        - Réinitialise le verrou pour le tour de parole suivant.
+        """
+        if not self._ducking_active:
+            return {"status": "skipped", "message": "Aucun ducking actif à restaurer."}
+
+        # Déverrouillage pour le tour de parole suivant
+        self._ducking_active = False
+        orig_vol = self._volume_before_duck
+        duck_target = self._duck_target_volume
+        dev_id = self._ducked_device_id
+
+        self._volume_before_duck = None
+        self._duck_target_volume = None
+        self._ducked_device_id = None
+
+        if orig_vol is None:
+            return {"status": "skipped", "message": "Aucun volume d'origine sauvegardé."}
+
+        try:
+            state = await self.get_playback_state()
+            if not state:
+                return {"status": "skipped", "message": "Impossible de lire l'état Spotify pour vérification."}
+
+            device = state.get("device") or {}
+            curr_vol = device.get("volume_percent")
+
+            # Ne pas restaurer si l'utilisateur a changé le volume entre-temps
+            if curr_vol is not None and duck_target is not None:
+                if abs(curr_vol - duck_target) > 5:
+                    logger.info(
+                        f"[Spotify Ducking] Volume changé par l'utilisateur pendant la parole "
+                        f"({curr_vol}% vs cible duck {duck_target}%). Restauration annulée."
+                    )
+                    return {
+                        "status": "skipped",
+                        "message": "Volume modifié manuellement par l'utilisateur, restauration annulée."
+                    }
+
+            await self.set_volume(orig_vol, device_id=dev_id)
+            logger.info(f"[Spotify Ducking] Volume restauré à sa valeur réelle : {orig_vol}% (device: {dev_id})")
+            return {
+                "status": "restored",
+                "restored_volume": orig_vol,
+                "device_id": dev_id
+            }
+        except Exception as exc:
+            logger.warning(f"[Spotify Ducking] Erreur restauration du volume : {exc}")
+            return {"status": "error", "message": str(exc)}
 
     async def set_shuffle(self, enabled: bool, device_id: Optional[str] = None) -> None:
         params: Dict[str, Any] = {"state": str(enabled).lower()}
@@ -1271,6 +1481,9 @@ class SpotifyService:
                 devs = await self.get_devices()
                 return {"status": "done", "devices": devs,
                         "message": f"{len(devs)} appareil(s) Spotify Connect."}
+
+            elif action == "set_default_device":
+                return await self.set_default_device(device=device)
 
             elif action == "transfer":
                 if not device:

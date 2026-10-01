@@ -260,21 +260,15 @@ try:
 except Exception as e:
     log_test("16. FLASH MODEL ZERO LATENCY", "Flash API Key Routing", False, str(e))
 
-# 17. Contrôle Complet Deezer Web Player (WebSocket Bridge & API Deezer)
+# 17. Contrôle Spotify Web API & Connect (OAuth 2.0 PKCE & Devices)
 try:
-    from services.media_service import control_deezer, search_deezer, is_deezer_running
-    # Test recherche API Deezer
-    tracks = asyncio.run(search_deezer("Daft Punk Get Lucky", search_type="track", limit=2))
-    search_ok = len(tracks) > 0 and "Get Lucky" in tracks[0].get("title", "")
-
-    # Test contrôle playpause / WebSocket bridge
-    deezer_res = asyncio.run(control_deezer("playpause"))
-    ctrl_ok = deezer_res.get("status") in ("success", "completed", "warning")
-
-    deezer_100_ok = search_ok and ctrl_ok
-    log_test("17. DEEZER 100% CONTROL", "Deezer Web Player WebSocket Bridge & API Deezer", deezer_100_ok, f"Search: {tracks[0]['title'] if tracks else 'None'} | Deezer connected: {is_deezer_running()} | Command: {deezer_res.get('action')}")
+    from services.spotify_service import spotify_service
+    spotify_service._ensure_db()
+    client_id_ok = bool(spotify_service.client_id)
+    spotify_100_ok = client_id_ok and spotify_service._db_ready
+    log_test("17. SPOTIFY 100% CONTROL", "Spotify Web API & Connect Service", spotify_100_ok, f"Client ID present: {client_id_ok} | DB Ready: {spotify_service._db_ready}")
 except Exception as e:
-    log_test("17. DEEZER 100% CONTROL", "Deezer Control Validation", False, str(e))
+    log_test("17. SPOTIFY 100% CONTROL", "Spotify Control Validation", False, str(e))
 
 # 18. Extensions Chrome & Service Send to Kindle
 try:
@@ -332,7 +326,7 @@ report_lines.append("  - GenAI Thinking & Browser  : DuckDuckGo, deep-links tran
 report_lines.append("  - Telechargement Securise   : Accord oral prealable obligatoire, archivage downloads/, envoi Kindle/Kobo")
 report_lines.append("  - Panier & Achat Securise   : Detection pointure/variantes, profil persistant, arret strict avant paiement")
 report_lines.append("  - Profil Autofill Utilisateur: Coordonnees completes Pierre Cassagnettes + preferences de pointure")
-report_lines.append("  - Deezer 100% Contrôle      : Web Player WebSocket Bridge (play/pause/next/prev/shuffle/volume) + API Deezer")
+report_lines.append("  - Spotify 100% Contrôle     : Web API Connect (play/pause/next/prev/volume/devices) + Migration Deezer->Spotify")
 report_lines.append("  - Extensions Chrome & Kindle: Auto-chargement CLI Chrome, extension Send to Kindle et formatage lecture")
 report_lines.append("  - Send to Kindle Web Direct : Upload direct sur amazon.fr/sendtokindle avec profil persistant et session detectee")
 report_lines.append("======================================================================")

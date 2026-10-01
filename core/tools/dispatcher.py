@@ -1015,6 +1015,7 @@ async def _execute_dispatch_tool(
             "add_to_playlist": f"Spotify — Ajouter à '{playlist_name}'",
             "transfer":    f"Spotify — Transfert vers {device}",
             "list_devices": "Spotify — Appareils",
+            "set_default_device": f"Spotify — Appareil par défaut : {device}",
         }
         action_label = _action_labels.get(
             action, f"Spotify — {action}" + (f" : {query}" if query else "")
@@ -1043,7 +1044,7 @@ async def _execute_dispatch_tool(
         _FAST_ACTIONS = {
             "pause", "resume", "next", "previous", "volume", "shuffle",
             "repeat", "seek", "like", "unlike", "now_playing",
-            "list_devices", "get_queue",
+            "list_devices", "get_queue", "set_default_device",
         }
 
         if action in _FAST_ACTIONS:

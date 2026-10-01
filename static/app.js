@@ -2055,14 +2055,33 @@ async function startJarvis() {
       throw new Error("L'accès au microphone requiert une connexion HTTPS sécurisée (https://jarvis.signalcraftapps.com).");
     }
 
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: false, // Ne pas laisser Windows moduler le volume tout seul !
-        channelCount: 1
-      }
-    });
+    const savedMicId = localStorage.getItem('jarvis_selected_mic_id');
+    const audioConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: false, // Ne pas laisser Windows moduler le volume tout seul !
+      channelCount: 1
+    };
+    if (savedMicId) {
+      audioConstraints.deviceId = { exact: savedMicId };
+    }
+
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+    } catch (e) {
+      console.warn("[Audio] Micro sélectionné inaccessible, repli sur micro par défaut :", e);
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: false,
+          channelCount: 1
+        }
+      });
+    }
+
+    // Actualiser les labels des micros dans le sélecteur
+    populateAudioInputDevices();
 
     window._jarvisStream = mediaStream;
     window._jarvisCtx = audioCtx;
@@ -4262,5 +4281,128 @@ window.spotifyControl = async function(action, query) {
 
 // Démarrer le polling Spotify au chargement
 setTimeout(pollSpotifyStatus, 1500);
+
+// ── GESTION DES ENTRÉES AUDIO & DÉTECTION BLUETOOTH HD ───────────────────
+function isBluetoothDevice(label) {
+  if (!label) return false;
+  const l = label.toLowerCase();
+  return l.includes('bluetooth') || l.includes('hands-free') || l.includes('handsfree') ||
+         l.includes('casque') || l.includes('headset') || l.includes('airpods') || l.includes('bt');
+}
+
+async function populateAudioInputDevices() {
+  const select = document.getElementById('micSelect');
+  const warningBox = document.getElementById('btWarningBox');
+  if (!select || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const audioInputs = devices.filter(d => d.kind === 'audioinput');
+    const savedId = localStorage.getItem('jarvis_selected_mic_id') || '';
+
+    select.innerHTML = '<option value="">Microphone par défaut (Système)</option>';
+
+    let foundSaved = false;
+    let currentLabel = '';
+
+    audioInputs.forEach((dev, idx) => {
+      const opt = document.createElement('option');
+      opt.value = dev.deviceId;
+      const label = dev.label || `Microphone ${idx + 1}`;
+      const isBt = isBluetoothDevice(label);
+      opt.text = label + (isBt ? ' ⚠️ [Bluetooth / HFP]' : '');
+      if (dev.deviceId === savedId) {
+        opt.selected = true;
+        foundSaved = true;
+        currentLabel = label;
+      }
+      select.appendChild(opt);
+    });
+
+    if (!foundSaved && savedId && audioInputs.length > 0) {
+      localStorage.removeItem('jarvis_selected_mic_id');
+      select.value = '';
+    }
+
+    if (warningBox) {
+      if (isBluetoothDevice(currentLabel)) {
+        warningBox.style.display = 'flex';
+      } else {
+        warningBox.style.display = 'none';
+      }
+    }
+  } catch (err) {
+    console.warn('[Audio Devices] Erreur énumération périphériques :', err);
+  }
+}
+
+async function switchAudioInputDevice(deviceId) {
+  try {
+    if (window._jarvisStream) {
+      window._jarvisStream.getTracks().forEach(t => t.stop());
+    }
+    const constraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: false,
+      channelCount: 1
+    };
+    if (deviceId) {
+      constraints.deviceId = { exact: deviceId };
+    }
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
+    window._jarvisStream = mediaStream;
+
+    if (inputNode) {
+      try { inputNode.disconnect(); } catch (e) {}
+    }
+    inputNode = audioCtx.createMediaStreamSource(mediaStream);
+    window._jarvisInput = inputNode;
+
+    if (analyser) {
+      inputNode.connect(analyser);
+    }
+    if (processor) {
+      inputNode.connect(processor);
+    }
+    console.log('[Audio] Microphone commuté avec succès vers :', deviceId || 'défaut');
+  } catch (err) {
+    console.error('[Audio] Erreur basculement micro :', err);
+  }
+}
+
+const micSelectEl = document.getElementById('micSelect');
+if (micSelectEl) {
+  micSelectEl.addEventListener('change', async (e) => {
+    const newId = e.target.value;
+    if (newId) {
+      localStorage.setItem('jarvis_selected_mic_id', newId);
+    } else {
+      localStorage.removeItem('jarvis_selected_mic_id');
+    }
+
+    const opt = e.target.options[e.target.selectedIndex];
+    const warningBox = document.getElementById('btWarningBox');
+    if (warningBox) {
+      if (opt && isBluetoothDevice(opt.text)) {
+        warningBox.style.display = 'flex';
+      } else {
+        warningBox.style.display = 'none';
+      }
+    }
+
+    if (isConnected && audioCtx) {
+      await switchAudioInputDevice(newId);
+    }
+  });
+}
+
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', () => {
+    populateAudioInputDevices();
+  });
+}
+
+setTimeout(populateAudioInputDevices, 500);
 
 
