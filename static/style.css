@@ -43,15 +43,23 @@ body {
   align-items: center;
 }
 .security-badge {
-  width: 58px;
-  height: 58px;
+  width: 68px;
+  height: 68px;
   border-radius: 50%;
-  border: 2px solid #38bdf8;
+  border: 2px solid #00f0ff;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 20px;
-  box-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
+  box-shadow: 0 0 25px rgba(0, 240, 255, 0.45);
+  overflow: hidden;
+  background: #050d1a;
+}
+.security-badge .auth-robot-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 .security-badge svg {
   width: 28px;
@@ -147,6 +155,25 @@ body {
   color: #64748b;
   letter-spacing: 1.5px;
 }
+.hud-brand-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hud-header-logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid #00f0ff;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+  object-fit: cover;
+  flex-shrink: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.hud-header-logo:hover {
+  transform: scale(1.12);
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.7);
+}
 .system-tag {
   color: #0284c7;
   font-weight: 700;
@@ -212,6 +239,54 @@ body {
   overflow: visible;
   filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6));
   pointer-events: none;
+}
+
+/* Robot Bleu Jarvis (Avatar interactif) */
+.jarvis-robot-img {
+  transform-origin: 100px 105px;
+  filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.45));
+  transition: filter 0.35s ease, transform 0.35s ease;
+}
+
+/* Modificateur universel : Jarvis parle (Lip-sync & pulsation vocale) */
+.jarvis-avatar-pod.is-speaking .jarvis-robot-img,
+.jarvis-avatar-pod.state-speaking .jarvis-robot-img {
+  filter: drop-shadow(0 0 18px #00f0ff) drop-shadow(0 0 35px rgba(0, 240, 255, 0.7));
+  animation: robotSpeechPulse 0.5s ease-in-out infinite alternate;
+}
+@keyframes robotSpeechPulse {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.04); filter: drop-shadow(0 0 24px #38bdf8) drop-shadow(0 0 45px rgba(0, 240, 255, 0.85)); }
+}
+
+/* State thinking - halo ambre */
+.jarvis-avatar-pod.state-thinking .jarvis-robot-img {
+  filter: drop-shadow(0 0 16px #fbbf24) drop-shadow(0 0 28px rgba(245, 158, 11, 0.5));
+  animation: robotThinkingPulse 1.2s ease-in-out infinite alternate;
+}
+@keyframes robotThinkingPulse {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.025); }
+}
+
+/* State listening - aura émeraude */
+.jarvis-avatar-pod.state-listening .jarvis-robot-img {
+  filter: drop-shadow(0 0 16px #10b981) drop-shadow(0 0 28px rgba(16, 185, 129, 0.5));
+}
+
+/* State coding - aura violette */
+.jarvis-avatar-pod.state-coding .jarvis-robot-img {
+  filter: drop-shadow(0 0 18px #c084fc) drop-shadow(0 0 30px rgba(168, 85, 247, 0.5));
+}
+
+/* State browsing - aura cyan radar */
+.jarvis-avatar-pod.state-browsing .jarvis-robot-img {
+  filter: drop-shadow(0 0 18px #38bdf8) drop-shadow(0 0 30px rgba(56, 189, 248, 0.5));
+}
+
+/* State offline / veille */
+.jarvis-avatar-pod.state-offline .jarvis-robot-img {
+  filter: grayscale(0.85) opacity(0.5);
 }
 
 /* Pastille intégrée de statut et d'action */

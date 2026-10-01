@@ -10,17 +10,19 @@
   <meta name="apple-mobile-web-app-title" content="JARVIS">
   <meta name="theme-color" content="#0B0F19">
   <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" type="image/png" sizes="512x512" href="/static/jarvis-icon.png">
   <link rel="icon" type="image/svg+xml" href="/static/jarvis-icon.svg">
   <link rel="apple-touch-icon" href="/static/jarvis-icon.png">
-  <link rel="stylesheet" href="/static/style.css?v=2.8">
+  <link rel="shortcut icon" href="/static/jarvis-icon.png">
+  <link rel="stylesheet" href="/static/style.css?v=2.9">
 </head>
 <body>
 
   <!-- Écran de verrouillage / Enregistrement de l'appareil -->
   <div id="authScreen">
     <div class="auth-card">
-      <div class="security-badge">
-        <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 6c1.4 0 2.5 1.1 2.5 2.5V11c.6 0 1 .4 1 1v5c0 .6-.4 1-1 1H9.5c-.6 0-1-.4-1-1v-5c0-.6.4-1 1-1V9.5C9.5 8.1 10.6 7 12 7zm0 1.5c-.55 0-1 .45-1 1V11h2V9.5c0-.55-.45-1-1-1z"/></svg>
+      <div class="security-badge auth-robot-badge">
+        <img src="/static/jarvis-icon.png" alt="Logo JARVIS" class="auth-robot-logo-img">
       </div>
       <div class="auth-title">J.A.R.V.I.S.</div>
       <div class="auth-subtitle">Protocole de sécurité Stark Industries.<br>Identification requise pour autoriser ce terminal.</div>
@@ -35,9 +37,11 @@
     <!-- En-tête -->
     <div class="hud-header">
       <div class="hud-header-left">
-        <span class="system-tag"><span class="system-tag-dot"></span> STARK AI CORE</span>
-        <span class="hud-version-tag">V 5.26.0 ACCÈS LECTURE SEULE _ANTI_GRAVITY</span>
-
+        <div class="hud-brand-wrap">
+          <img src="/static/jarvis-icon.png" alt="JARVIS Logo" class="hud-header-logo">
+          <span class="system-tag"><span class="system-tag-dot"></span> STARK AI CORE</span>
+        </div>
+        <span class="hud-version-tag">V 5.27.0 NOUVEAU LOGO ROBOT JARVIS</span>
       </div>
       <!-- Actions d'en-tête (Kindle, Messagerie & Supervision) -->
       <div class="hud-header-right">
@@ -143,87 +147,15 @@
             <path d="M 45 198 C 60 180 80 174 100 174 C 120 174 140 180 155 198 L 164 210 L 36 210 Z" fill="#070c18" stroke="#0284c7" stroke-width="1" opacity="0.9"/>
             <path d="M 65 184 Q 100 198 135 184" fill="none" stroke="#38bdf8" stroke-width="1.5" filter="url(#avatarGlowCyan)" opacity="0.8"/>
 
-            <!-- COU CYBERNÉTIQUE -->
-            <path d="M 86 138 L 86 178 Q 100 182 114 178 L 114 138 Z" fill="#0a1324" stroke="#1e293b" stroke-width="1"/>
-            <line x1="94" y1="145" x2="94" y2="174" stroke="#0284c7" stroke-width="1" opacity="0.6" stroke-dasharray="3 3"/>
-            <line x1="106" y1="145" x2="106" y2="174" stroke="#0284c7" stroke-width="1" opacity="0.6" stroke-dasharray="3 3"/>
-
-            <!-- CHEVEUX ARRIÈRE (Bob cyberpunk élégant) -->
-            <path d="M 54 95 C 48 58 68 32 100 32 C 132 32 152 58 146 95 C 148 122 142 146 137 156 C 134 142 135 120 133 105 C 130 82 125 62 100 62 C 75 62 70 82 67 105 C 65 120 66 142 63 156 C 58 146 52 122 54 95 Z" fill="url(#avatarHairGrad)" stroke="#38bdf8" stroke-width="0.8" opacity="0.95"/>
-
-            <!-- VISAGE (Contour féminin futuriste raffiné) -->
-            <path d="M 68 85 C 67 112 75 133 93 145 C 97 148 103 148 107 145 C 125 133 133 112 132 85 C 131 50 69 50 68 85 Z" fill="url(#avatarFaceGrad)" stroke="rgba(56, 189, 248, 0.5)" stroke-width="1.2"/>
-
-            <!-- OREILLES CYBERNÉTIQUES / CASQUE COMM AUDIO -->
-            <rect x="61" y="86" width="6" height="18" rx="3" fill="#0f172a" stroke="#38bdf8" stroke-width="1"/>
-            <circle cx="64" cy="95" r="2" fill="#0284c7" class="ear-led"/>
-            <rect x="133" y="86" width="6" height="18" rx="3" fill="#0f172a" stroke="#38bdf8" stroke-width="1"/>
-            <circle cx="136" cy="95" r="2" fill="#0284c7" class="ear-led"/>
-
-            <!-- COUTURES CYBER SUR LES POMMETTES -->
-            <path d="M 74 100 Q 82 108 86 120" fill="none" stroke="rgba(56, 189, 248, 0.4)" stroke-width="0.8"/>
-            <circle cx="86" cy="120" r="1" fill="#38bdf8" opacity="0.7"/>
-            <path d="M 126 100 Q 118 108 114 120" fill="none" stroke="rgba(56, 189, 248, 0.4)" stroke-width="0.8"/>
-            <circle cx="114" cy="120" r="1" fill="#38bdf8" opacity="0.7"/>
-
-            <!-- CŒUR NEURAL & SYNAPSES FRONT -->
-            <polygon points="100,56 104,61 100,66 96,61" fill="#38bdf8" stroke="#00f0ff" stroke-width="1" class="neural-core" filter="url(#avatarGlowCyan)"/>
-            <path d="M 96 61 L 84 57 L 76 63" fill="none" stroke="rgba(56, 189, 248, 0.5)" stroke-width="0.9" class="neural-synapse"/>
-            <path d="M 104 61 L 116 57 L 124 63" fill="none" stroke="rgba(56, 189, 248, 0.5)" stroke-width="0.9" class="neural-synapse"/>
-
-            <!-- CHEVEUX AVANT (Mèche asymétrique élégante) -->
-            <path d="M 68 60 C 82 46 118 46 132 60 C 122 66 108 72 90 72 C 78 72 72 66 68 60 Z" fill="#0a1020" stroke="#38bdf8" stroke-width="0.7"/>
-            <path d="M 68 60 C 65 80 64 105 61 130 C 66 112 68 85 73 66 Z" fill="#0f172a" opacity="0.8"/>
-
-            <!-- SOURCILS ÉLÉGANTS -->
-            <path d="M 78 81 Q 86 77 94 80" fill="none" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round"/>
-            <path d="M 106 80 Q 114 77 122 81" fill="none" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round"/>
-
-            <!-- YEUX FUTURISTES -->
-            <g id="avatarEyesGroup">
-              <!-- Sclères sombres cyber -->
-              <path d="M 78 92 Q 86 85 94 92 Q 86 97 78 92 Z" fill="#031525" stroke="#0284c7" stroke-width="0.8"/>
-              <path d="M 106 92 Q 114 85 122 92 Q 114 97 106 92 Z" fill="#031525" stroke="#0284c7" stroke-width="0.8"/>
-
-              <!-- Pupilles & Iris animés -->
-              <g class="avatar-eye-pupils">
-                <!-- Iris gauche -->
-                <circle cx="86" cy="92" r="4.2" fill="#00f0ff" filter="url(#avatarGlowCyan)"/>
-                <circle cx="86" cy="92" r="2.2" fill="none" stroke="#ffffff" stroke-width="0.6"/>
-                <circle cx="86" cy="92" r="1.3" fill="#031525"/>
-                <circle cx="84.8" cy="90.8" r="0.7" fill="#ffffff"/>
-
-                <!-- Iris droit -->
-                <circle cx="114" cy="92" r="4.2" fill="#00f0ff" filter="url(#avatarGlowCyan)"/>
-                <circle cx="114" cy="92" r="2.2" fill="none" stroke="#ffffff" stroke-width="0.6"/>
-                <circle cx="114" cy="92" r="1.3" fill="#031525"/>
-                <circle cx="112.8" cy="90.8" r="0.7" fill="#ffffff"/>
-              </g>
-
-              <!-- Paupières / Clignement naturel -->
-              <path d="M 77 86 Q 86 91 95 86 Q 86 95 77 86 Z" fill="#0d1b2a" class="avatar-eyelid"/>
-              <path d="M 105 86 Q 114 91 123 86 Q 114 95 105 86 Z" fill="#0d1b2a" class="avatar-eyelid"/>
-
-              <!-- Ligne yeux fermés (veille / hors ligne) -->
-              <path d="M 78 92 Q 86 94 94 92" fill="none" stroke="#38bdf8" stroke-width="1.2" class="eye-sleep-line"/>
-              <path d="M 106 92 Q 114 94 122 92" fill="none" stroke="#38bdf8" stroke-width="1.2" class="eye-sleep-line"/>
-
-              <!-- Eyeliner cyber -->
-              <path d="M 76 92 Q 86 84 95 91" fill="none" stroke="#38bdf8" stroke-width="1.6"/>
-              <path d="M 105 91 Q 114 84 124 92" fill="none" stroke="#38bdf8" stroke-width="1.6"/>
+            <!-- ROBOT BLEU JARVIS (Avatar & Emblème Officiel) -->
+            <g class="jarvis-robot-core">
+              <image href="/static/jarvis-robot-transparent.png" x="18" y="23" width="164" height="164" class="jarvis-robot-img" preserveAspectRatio="xMidYMid meet" />
             </g>
-
-            <!-- NEZ FIN ET DISCRET -->
-            <path d="M 100 89 L 99 108 L 102 110" fill="none" stroke="rgba(56, 189, 248, 0.45)" stroke-width="1"/>
-
-            <!-- BOUCHE & LÈVRES AVEC LIP-SYNC -->
-            <g id="avatarMouthGroup">
-              <!-- Lèvre supérieure -->
-              <path d="M 92 124 Q 96 122 100 123.5 Q 104 122 108 124 Q 100 125.5 92 124 Z" fill="#0284c7" stroke="#38bdf8" stroke-width="0.6"/>
-              <!-- Cavité buccale -->
-              <ellipse cx="100" cy="126" rx="6" ry="1.2" fill="#030b14" class="avatar-mouth-cavity"/>
-              <!-- Lèvre inférieure animée pour parler -->
-              <path d="M 93 125.5 Q 100 127 107 125.5 Q 100 131 93 125.5 Z" fill="#0369a1" stroke="#38bdf8" stroke-width="0.6" class="avatar-lip-lower"/>
+            <!-- Éléments de rétrocompatibilité masqués pour le moteur audio/sync -->
+            <g id="avatarEyesGroup" style="display:none;"></g>
+            <g id="avatarMouthGroup" style="display:none;">
+              <span class="avatar-lip-lower"></span>
+              <ellipse class="avatar-mouth-cavity"></ellipse>
             </g>
           </g>
 
@@ -556,7 +488,7 @@
     <!-- Panneau Lecteur Spotify Connect Jarvis (Stark Spotify Dock) -->
     <div id="spotifyDock" class="spotify-dock" style="display: none;">
       <div class="spotify-dock-cover-wrapper">
-        <img id="spotifyDockCover" class="spotify-dock-cover" src="/static/jarvis-icon.svg" alt="Pochette" />
+        <img id="spotifyDockCover" class="spotify-dock-cover" src="/static/jarvis-icon.png" alt="Pochette" />
         <span class="spotify-dock-live-dot" id="spotifyDockLiveDot"></span>
       </div>
       <div class="spotify-dock-info">
