@@ -13,7 +13,7 @@ from typing import Any, Optional, Literal, Tuple
 
 from services.console_monitor import console_monitor
 import config
-from config import GEMINI_API_KEY_FREE
+from config import GEMINI_API_KEY_FREE, GEMINI_API_KEY_PAID
 
 
 class AntigravityQuotaExhaustedError(Exception):
