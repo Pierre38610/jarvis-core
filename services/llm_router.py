@@ -177,6 +177,7 @@ def decide(
     force_agentic: Optional[bool] = None,
     task_kind: Optional[str] = None,
     session_id: Optional[str] = None,
+    speech_state: Any = None,
 ) -> Dict[str, Any]:
     """Exposition directe de la décision de mode pour commodité d'import."""
     return policy_decide(
@@ -187,4 +188,64 @@ def decide(
         force_agentic=force_agentic,
         task_kind=task_kind,
         session_id=session_id,
+        speech_state=speech_state,
     )
+
+
+def resolve_live_fallback(
+    current_model: str,
+    error: Optional[Any] = None,
+    session_id: Optional[str] = None,
+    task_id: Optional[str] = None,
+    standard_already_failed: bool = False,
+) -> Dict[str, Any]:
+    """Gère la cascade de repli en direct :
+    1. Échec de la clé FREE sur modèle thinking : repli d'abord sur Live standard FREE.
+    2. Si le standard FREE échoue aussi : PaidKeyConsentRequired("free_key_failure").
+    3. Si consentement accordé : bascule sur Live avec clé PAID.
+    """
+    is_thinking = "extended-thinking" in (current_model or "")
+
+    # Étape 1 : Si on était en thinking avec clé FREE et que le standard n'a pas encore échoué
+    if is_thinking and not standard_already_failed:
+        free_key = get_key(
+            purpose="live_standard_fallback",
+            session_id=session_id,
+            task_id=task_id,
+            require_paid=False,
+        )
+        return {
+            "model_name": LIVE_MODEL_STANDARD,
+            "voice_mode": VOICE_MODE_STANDARD,
+            "api_key": free_key,
+            "is_paid": False,
+            "action": "fallback_to_standard_free",
+            "message": "Repli sur Gemini Live standard en clé gratuite.",
+        }
+
+    # Étape 2 : Le standard FREE a échoué (ou on y était déjà) -> exige consentement payant
+    if not has_paid_consent(session_id=session_id, task_id=task_id):
+        raise PaidKeyConsentRequired(
+            reason="free_key_failure",
+            detail=f"Échec de la clé gratuite sur {current_model} (standard FREE indisponible)",
+            purpose="live_standard_paid",
+            session_id=session_id,
+            task_id=task_id,
+        )
+
+    # Étape 3 : Consentement présent -> clé payante autorisée
+    paid_key = get_key(
+        purpose="live_paid_consent",
+        session_id=session_id,
+        task_id=task_id,
+        require_paid=True,
+    )
+    return {
+        "model_name": LIVE_MODEL_STANDARD,
+        "voice_mode": VOICE_MODE_STANDARD,
+        "api_key": paid_key,
+        "is_paid": True,
+        "action": "fallback_to_standard_paid",
+        "message": "Bascule sur Gemini Live standard avec clé payante autorisée.",
+    }
+

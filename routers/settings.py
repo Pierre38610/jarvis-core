@@ -46,18 +46,34 @@ async def get_live_model():
 @router.post("/api/live-model")
 @router.post("/api/supervision/set-model")
 async def set_live_model(req: LiveModelRequest):
-    """Bascule le modèle vocal Gemini Live entre gemini-3.8-live et gemini-3.8-live-extended-thinking."""
+    """Bascule le modèle vocal Gemini Live entre gemini-3.8-live et gemini-3.8-live-extended-thinking (tous deux sur clé FREE par défaut)."""
+    from core.shared_state import is_speech_idle, ModelSwitchRequested
+
     if req.model in ("gemini-3.8-live", "gemini-3.8-live-extended-thinking"):
-        if "extended-thinking" in req.model and not config.is_paid_key_authorized():
-            return JSONResponse(
-                status_code=403,
-                content={"error": "Le modèle Live Extended Thinking requiert la clé payante. Veuillez cocher l'encoche d'autorisation dans l'application."}
-            )
         config.GEMINI_LIVE_MODEL = req.model
-        is_thinking = "extended-thinking" in req.model
-        is_paid = is_thinking or supervision_service._free_quota_exhausted or not bool(config.GEMINI_API_KEY_FREE)
-        supervision_service.update_voice_state(supervision_service._voice_state["status"], model=req.model, is_paid=is_paid)
+        is_paid = bool(supervision_service._free_quota_exhausted or not config.GEMINI_API_KEY_FREE)
+        supervision_service.update_voice_state(supervision_service._voice_state.get("status", "idle"), model=req.model, is_paid=is_paid)
         await broadcast_supervision()
+
+        # Si une session live est active, appliquer ou différer selon SpeechState
+        ws = active_task_controller.get("websocket")
+        if ws:
+            if not is_speech_idle():
+                active_task_controller["pending_model_switch"] = req.model
+                await ws.send_text(json.dumps({
+                    "type": "jarvis_announcement",
+                    "text": f"Bascule vers {req.model} différée jusqu'à la fin de la parole...",
+                    "voice": False,
+                }))
+            else:
+                active_task_controller["pending_model_switch"] = req.model
+                # Signal au canal vocal de traiter la bascule
+                await ws.send_text(json.dumps({
+                    "type": "jarvis_announcement",
+                    "text": f"Bascule immédiate vers {req.model}...",
+                    "voice": False,
+                }))
+
         return {"status": "ok", "current_model": config.GEMINI_LIVE_MODEL}
     return JSONResponse(
         status_code=400,

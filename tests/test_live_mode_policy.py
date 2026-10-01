@@ -17,7 +17,12 @@ from services.live_mode_policy import (
     LIVE_MODEL_STANDARD,
     LIVE_MODEL_THINKING,
 )
-from services.llm_router import LLMRouter, route, get_live_model_and_key
+from services.llm_router import (
+    LLMRouter,
+    route,
+    get_live_model_and_key,
+    resolve_live_fallback,
+)
 from services.key_gate import (
     grant_paid_consent,
     clear_all_consents,
@@ -303,3 +308,91 @@ def test_llm_router_paid_key_fallback_requires_consent(monkeypatch):
 
     res_paid = route(transcript="Test secours avec consentement", session_id=session_id, require_paid=True)
     assert res_paid["api_key"] == "FAKE_PAID_KEY_99999"
+
+
+# ─────────────────────────────────────────────────────────────
+# 5. TESTS DU NOUVEAU COMPORTEMENT DE BASCULE ET DE REPLI
+# ─────────────────────────────────────────────────────────────
+
+def test_deferred_switch_when_speech_active():
+    """Test 1 : Bascule différée quand Jarvis parle (SpeechState != IDLE), puis appliquée dès que IDLE."""
+    policy = LiveModePolicy()
+
+    # 1. Jarvis est en train de parler (speech_state="model_speaking")
+    # L'utilisateur envoie une consigne cognitive (tier_hint=2) qui réclame le mode thinking
+    res_speaking = policy.decide(
+        transcript="Analyse cette trajectoire d'injection",
+        tier_hint=2,
+        speech_state="model_speaking",
+    )
+
+    # La bascule doit être différée pour ne pas couper la parole
+    assert res_speaking["switch_deferred"] is True
+    assert res_speaking["target_mode"] == VOICE_MODE_THINKING
+    assert res_speaking["voice_mode"] == VOICE_MODE_STANDARD
+    assert res_speaking["switch_source"] == "policy"
+    assert res_speaking["announcement_phrase"] == "Je passe en mode réflexion."
+    assert policy.pending_switch == VOICE_MODE_THINKING
+
+    # 2. Au tour suivant, Jarvis a fini de parler (speech_state="idle")
+    # La bascule différée est appliquée
+    new_mode = policy.apply_deferred_switch()
+    assert new_mode == VOICE_MODE_THINKING
+    assert policy.current_mode == VOICE_MODE_THINKING
+    assert policy.pending_switch is None
+
+    # Si la bascule vient d'une demande explicite de l'utilisateur, l'annonce est vide
+    policy.reset()
+    res_user = policy.decide(transcript="Réfléchis bien à cela", speech_state="idle")
+    assert res_user["voice_mode"] == VOICE_MODE_THINKING
+    assert res_user["switch_source"] == "user_demand"
+    assert res_user["announcement_phrase"] == ""
+
+
+def test_fallback_free_thinking_to_free_standard(monkeypatch):
+    """Test 2 : Échec de la clé FREE sur modèle thinking -> repli d'abord sur Live standard FREE."""
+    monkeypatch.setattr(config, "GEMINI_API_KEY_FREE", "FAKE_FREE_KEY_777")
+    monkeypatch.setattr(config, "GEMINI_API_KEY_PAID", "FAKE_PAID_KEY_888")
+
+    # En cas d'échec sur extended-thinking avec clé FREE, resolve_live_fallback retourne standard en FREE
+    fallback_res = resolve_live_fallback(
+        current_model=LIVE_MODEL_THINKING,
+        standard_already_failed=False,
+    )
+
+    assert fallback_res["model_name"] == LIVE_MODEL_STANDARD
+    assert fallback_res["voice_mode"] == VOICE_MODE_STANDARD
+    assert fallback_res["is_paid"] is False
+    assert fallback_res["api_key"] == "FAKE_FREE_KEY_777"
+    assert fallback_res["action"] == "fallback_to_standard_free"
+
+
+def test_fallback_free_standard_failure_requires_paid_consent(monkeypatch):
+    """Test 3 : Si le standard FREE échoue aussi -> PaidKeyConsentRequired, puis PAID seulement après consentement."""
+    monkeypatch.setattr(config, "GEMINI_API_KEY_FREE", "FAKE_FREE_KEY_777")
+    monkeypatch.setattr(config, "GEMINI_API_KEY_PAID", "FAKE_PAID_KEY_888")
+
+    session_id = "voice_session_fallback_test"
+
+    # Sans consentement : lève PaidKeyConsentRequired
+    with pytest.raises(PaidKeyConsentRequired) as exc_info:
+        resolve_live_fallback(
+            current_model=LIVE_MODEL_STANDARD,
+            session_id=session_id,
+            standard_already_failed=True,
+        )
+    assert exc_info.value.reason == "free_key_failure"
+
+    # Avec consentement accordé par l'utilisateur (oralement ou interface)
+    grant_paid_consent(session_id=session_id, reason="free_key_failure")
+
+    paid_fallback = resolve_live_fallback(
+        current_model=LIVE_MODEL_STANDARD,
+        session_id=session_id,
+        standard_already_failed=True,
+    )
+    assert paid_fallback["model_name"] == LIVE_MODEL_STANDARD
+    assert paid_fallback["is_paid"] is True
+    assert paid_fallback["api_key"] == "FAKE_PAID_KEY_888"
+    assert paid_fallback["action"] == "fallback_to_standard_paid"
+

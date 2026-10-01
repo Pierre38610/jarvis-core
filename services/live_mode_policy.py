@@ -107,12 +107,27 @@ class LiveModePolicy:
         self.current_mode: str = VOICE_MODE_STANDARD
         self.thinking_turns: int = 0
         self.consecutive_tier1_without_plan: int = 0
+        self.pending_switch: Optional[str] = None
+        self.pending_switch_meta: Dict[str, Any] = {}
 
     def reset(self) -> None:
         """Réinitialise l'état interne de la politique."""
         self.current_mode = VOICE_MODE_STANDARD
         self.thinking_turns = 0
         self.consecutive_tier1_without_plan = 0
+        self.pending_switch = None
+        self.pending_switch_meta = {}
+
+    def apply_deferred_switch(self) -> Optional[str]:
+        """Applique la bascule différée lorsque la parole est redevenue IDLE."""
+        if self.pending_switch:
+            new_mode = self.pending_switch
+            self.current_mode = new_mode
+            self.pending_switch = None
+            if new_mode == VOICE_MODE_THINKING:
+                self.thinking_turns = max(1, self.thinking_turns)
+            return new_mode
+        return None
 
     def decide(
         self,
@@ -122,6 +137,7 @@ class LiveModePolicy:
         tier_hint: int = 1,
         force_agentic: Optional[bool] = None,
         task_kind: Optional[str] = None,
+        speech_state: Any = None,
     ) -> Dict[str, Any]:
         """Décide du mode vocal et de l'activation agentique selon les règles ordonnées et l'hystérésis.
 
@@ -130,15 +146,21 @@ class LiveModePolicy:
             "voice_mode": "standard" | "thinking",
             "needs_agentic": bool,
             "task_kind": str,
-            "reason": str
+            "reason": str,
+            "switch_source": "user_demand" | "policy",
+            "announcement_phrase": str,
+            "switch_deferred": bool,
+            "target_mode": str,
         }
         """
         norm = _normalize_text(transcript)
         plan_steps = _count_plan_steps(plan_active)
 
-        # ─── 1. DÉCISION DU MODE VOCAL (VOICE_MODE) ───
-        voice_mode: str
+        # ─── 1. DÉCISION DU MODE VOCAL CIBLE (TARGET_MODE) ───
+        target_mode: str
         reason: str
+        switch_source: str = "policy"
+        rule_fired: int = 5
 
         # Règle 1 : Demande explicite
         is_explicit_standard = bool(re.search(r"\b(vite|rapide|rapidement|en vitesse|fais vite|sois bref|bref|court)\b", norm))
@@ -147,77 +169,106 @@ class LiveModePolicy:
         ))
 
         if is_explicit_standard:
-            self.current_mode = VOICE_MODE_STANDARD
-            self.thinking_turns = 0
-            self.consecutive_tier1_without_plan = 0
-            voice_mode = VOICE_MODE_STANDARD
+            rule_fired = 1
+            target_mode = VOICE_MODE_STANDARD
+            switch_source = "user_demand"
             reason = "Demande explicite: passage en standard (vite/rapide)"
 
         elif is_explicit_thinking:
-            self.current_mode = VOICE_MODE_THINKING
-            self.thinking_turns += 1
-            self.consecutive_tier1_without_plan = 0
-            voice_mode = VOICE_MODE_THINKING
+            rule_fired = 1
+            target_mode = VOICE_MODE_THINKING
+            switch_source = "user_demand"
             reason = "Demande explicite: passage en thinking (réfléchis bien / prends ton temps / en détail)"
 
         # Règle 2 : Plan actif ≥ 3 étapes
         elif plan_steps >= 3:
-            self.current_mode = VOICE_MODE_THINKING
-            self.thinking_turns += 1
-            self.consecutive_tier1_without_plan = 0
-            voice_mode = VOICE_MODE_THINKING
+            rule_fired = 2
+            target_mode = VOICE_MODE_THINKING
+            switch_source = "policy"
             reason = f"Plan actif complexe ({plan_steps} étapes >= 3)"
 
         # Règle 3 : 2 échecs d'outil consécutifs
         elif recent_failures >= 2:
-            self.current_mode = VOICE_MODE_THINKING
-            self.thinking_turns += 1
-            self.consecutive_tier1_without_plan = 0
-            voice_mode = VOICE_MODE_THINKING
+            rule_fired = 3
+            target_mode = VOICE_MODE_THINKING
+            switch_source = "policy"
             reason = f"Échecs consécutifs d'outils ({recent_failures} >= 2)"
 
         # Règle 4 : tier_hint ≥ 2
         elif tier_hint >= 2:
-            self.current_mode = VOICE_MODE_THINKING
-            self.thinking_turns += 1
-            self.consecutive_tier1_without_plan = 0
-            voice_mode = VOICE_MODE_THINKING
+            rule_fired = 4
+            target_mode = VOICE_MODE_THINKING
+            switch_source = "policy"
             reason = f"Complexité cognitive élevée (tier_hint={tier_hint} >= 2)"
 
         # Règle 5 : Sinon standard, soumis à l'hystérésis
         else:
+            rule_fired = 5
             if self.current_mode == VOICE_MODE_THINKING:
-                # Évaluation de la condition de décroissance : tour tier 1 sans plan actif
                 is_tier1_without_plan = (tier_hint <= 1 and plan_steps == 0)
-                if is_tier1_without_plan:
-                    self.consecutive_tier1_without_plan += 1
-                else:
-                    self.consecutive_tier1_without_plan = 0
+                next_tier1_count = (self.consecutive_tier1_without_plan + 1) if is_tier1_without_plan else 0
 
-                # Hystérésis : au moins 2 tours en thinking ; retour en standard après 3 tours tier 1 sans plan actif
+                # Hystérésis : au moins 2 tours en thinking ; retour en standard après 3 tours tier 1 sans plan
                 can_return_to_standard = (
-                    self.thinking_turns >= 2 and self.consecutive_tier1_without_plan >= 3
+                    self.thinking_turns >= 2 and next_tier1_count >= 3
                 )
 
                 if can_return_to_standard:
-                    self.current_mode = VOICE_MODE_STANDARD
-                    self.thinking_turns = 0
-                    self.consecutive_tier1_without_plan = 0
-                    voice_mode = VOICE_MODE_STANDARD
+                    target_mode = VOICE_MODE_STANDARD
+                    switch_source = "policy"
                     reason = "Retour en standard après 3 tours tier 1 sans plan actif"
                 else:
-                    self.thinking_turns += 1
-                    voice_mode = VOICE_MODE_THINKING
-                    if self.thinking_turns <= 2:
-                        reason = f"Maintien thinking par hystérésis (minimum 2 tours requis, tour {self.thinking_turns})"
+                    target_mode = VOICE_MODE_THINKING
+                    switch_source = "policy"
+                    if self.thinking_turns < 2:
+                        reason = f"Maintien thinking par hystérésis (minimum 2 tours requis, tour {self.thinking_turns + 1})"
                     else:
-                        reason = f"Maintien thinking par hystérésis ({self.consecutive_tier1_without_plan}/3 tours tier 1 sans plan)"
+                        reason = f"Maintien thinking par hystérésis ({next_tier1_count}/3 tours tier 1 sans plan)"
             else:
-                self.current_mode = VOICE_MODE_STANDARD
+                target_mode = VOICE_MODE_STANDARD
+                switch_source = "policy"
+                reason = "Mode standard (tier 1, pas de déclencheur thinking)"
+
+        # ─── VÉRIFICATION DE LA PAROLE (SpeechState IDLE) ───
+        is_speaking = False
+        if speech_state is not None:
+            st_str = str(speech_state).lower()
+            is_speaking = "speaking" in st_str or "model_speaking" in st_str
+
+        # Phrase courte uniquement si bascule vers thinking issue de la politique (pas demande explicite)
+        announcement_phrase = ""
+        mode_changing = (target_mode != self.current_mode)
+        if mode_changing and target_mode == VOICE_MODE_THINKING and switch_source == "policy":
+            announcement_phrase = "Je passe en mode réflexion."
+
+        switch_deferred = False
+        if mode_changing and is_speaking:
+            switch_deferred = True
+            self.pending_switch = target_mode
+            self.pending_switch_meta = {
+                "target_mode": target_mode,
+                "reason": reason,
+                "switch_source": switch_source,
+                "announcement_phrase": announcement_phrase,
+            }
+            voice_mode = self.current_mode
+        else:
+            # Application de la décision
+            switch_deferred = False
+            self.pending_switch = None
+            self.pending_switch_meta = {}
+            self.current_mode = target_mode
+            voice_mode = target_mode
+
+            if target_mode == VOICE_MODE_THINKING:
+                self.thinking_turns += 1
+                if rule_fired == 5:
+                    self.consecutive_tier1_without_plan = next_tier1_count
+                else:
+                    self.consecutive_tier1_without_plan = 0
+            else:
                 self.thinking_turns = 0
                 self.consecutive_tier1_without_plan = 0
-                voice_mode = VOICE_MODE_STANDARD
-                reason = "Mode standard (tier 1, pas de déclencheur thinking)"
 
         # ─── 2. DÉCISION AGENTIQUE INDÉPENDANTE (NEEDS_AGENTIC) ───
         needs_agentic, detected_task_kind = _detect_agentic_need(
@@ -226,9 +277,13 @@ class LiveModePolicy:
 
         return {
             "voice_mode": voice_mode,
+            "target_mode": target_mode,
             "needs_agentic": needs_agentic,
             "task_kind": detected_task_kind,
             "reason": reason,
+            "switch_source": switch_source,
+            "announcement_phrase": announcement_phrase,
+            "switch_deferred": switch_deferred,
         }
 
 
@@ -254,6 +309,7 @@ def decide(
     force_agentic: Optional[bool] = None,
     task_kind: Optional[str] = None,
     session_id: Optional[str] = None,
+    speech_state: Any = None,
 ) -> Dict[str, Any]:
     """Point d'entrée modulaire pour l'évaluation de la politique Live."""
     policy = get_policy(session_id)
@@ -264,4 +320,38 @@ def decide(
         tier_hint=tier_hint,
         force_agentic=force_agentic,
         task_kind=task_kind,
+        speech_state=speech_state,
     )
+
+
+async def log_tier_routing_decision(
+    query_text: str,
+    decision: Dict[str, Any],
+    latency_ms: float = 0.0,
+    override_manuel: bool = False,
+    fallback_occurred: bool = False,
+) -> bool:
+    """Journalise chaque décision dans PostgreSQL tier_routing_log sans bloquer."""
+    try:
+        from services.memory import memory_service
+        chosen_tier = 2 if decision.get("voice_mode") == VOICE_MODE_THINKING else 1
+        meta = {
+            "voice_mode": decision.get("voice_mode"),
+            "target_mode": decision.get("target_mode"),
+            "needs_agentic": decision.get("needs_agentic"),
+            "task_kind": decision.get("task_kind"),
+            "switch_source": decision.get("switch_source"),
+            "switch_deferred": decision.get("switch_deferred"),
+        }
+        return await memory_service.log_tier_routing(
+            query_text=query_text or "live_turn",
+            chosen_tier=chosen_tier,
+            reason=decision.get("reason", "live_policy_decision"),
+            final_tier=chosen_tier,
+            latency_ms=latency_ms,
+            override_manuel=override_manuel,
+            fallback_occurred=fallback_occurred,
+            metadata=meta,
+        )
+    except Exception:
+        return False

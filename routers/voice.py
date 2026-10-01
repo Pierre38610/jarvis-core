@@ -36,8 +36,81 @@ from core.shared_state import (
 from core.tools.declarations import get_tools_list
 from core.tools.dispatcher import dispatch_tool
 from services import task_planner as _task_planner_mod
+from services.live_mode_policy import (
+    decide as live_mode_decide,
+    log_tier_routing_decision,
+    LIVE_MODEL_STANDARD,
+    LIVE_MODEL_THINKING,
+    VOICE_MODE_THINKING,
+)
+from services.llm_router import resolve_live_fallback
+from services.key_gate import (
+    PaidKeyConsentRequired,
+    grant_paid_consent,
+    has_paid_consent,
+    is_qualified_free_key_failure,
+)
 
 router = APIRouter()
+
+
+async def _build_switch_context_prompt(
+    recent_turns: list[dict[str, str]],
+    announcement_phrase: str = "",
+) -> str:
+    """Construit le prompt de réinjection de contexte complet lors d'une bascule de modèle Live :
+    1. build_live_context_prompt (mémoire unifiée)
+    2. 10 derniers tours de dialogue
+    3. Plan multi-étapes actif
+    4. Sous-agents actifs
+    """
+    from services.unified_memory import unified_memory_manager
+
+    # 1. Mémoire unifiée
+    memory_context = await unified_memory_manager.build_live_context_prompt()
+
+    # 2. 10 derniers tours de dialogue
+    last_10 = recent_turns[-10:] if recent_turns else []
+    if last_10:
+        turns_str = "\n".join([f"- {t.get('role', 'user').upper()}: {t.get('text', '')}" for t in last_10])
+    else:
+        turns_str = "Aucun tour précédent."
+
+    # 3. Plan actif
+    active_plan = _task_planner_mod.get_active_plan()
+    if active_plan and hasattr(active_plan, "checklist_text"):
+        plan_str = active_plan.checklist_text()
+    else:
+        plan_str = "Aucun plan actif."
+
+    # 4. Sous-agents actifs
+    subagents = supervision_service.get_active_subagents()
+    if subagents:
+        sub_str = "\n".join([
+            f"- [{sa.get('role', 'agent')}] {sa.get('name', 'subagent')} : {sa.get('activity', '')} ({sa.get('task', '')})"
+            for sa in subagents
+        ])
+    else:
+        sub_str = "Aucun sous-agent actif."
+
+    prompt = (
+        f"[CONTINUITÉ DE CONVERSATION APRÈS BASCULE DE MODÈLE]\n"
+        f"MÉMOIRE UNIFIÉE :\n{memory_context}\n\n"
+        f"10 DERNIERS TOURS DE DIALOGUE :\n{turns_str}\n\n"
+        f"PLAN D'ACTION EN COURS :\n{plan_str}\n\n"
+        f"SOUS-AGENTS ACTIFS EN ARRIÈRE-PLAN :\n{sub_str}\n\n"
+    )
+    if announcement_phrase:
+        prompt += (
+            f"CONSIGNE VOCALE IMMÉDIATE : Dis exactement et brièvement à Pierre avec ta voix Aoede : '{announcement_phrase}' "
+            f"puis poursuis naturellement et réponds à sa demande sans répéter tout le contexte."
+        )
+    else:
+        prompt += (
+            "CONSIGNE VOCALE : Poursuis naturellement la conversation avec Pierre en tenant compte de tout ce contexte réinjecté, sans répéter l'historique."
+        )
+
+    return prompt
 
 
 async def _build_system_instruction() -> str:
@@ -177,6 +250,8 @@ async def voice_channel(websocket: WebSocket):
     session = None
     session_ctx = None
     greeting_sent = False
+    is_model_switch_reconnect = False
+    recent_conversation_turns: list[dict[str, str]] = []
     setup_done_event = asyncio.Event()
     speaking_state = {"active": False}
 
@@ -266,13 +341,12 @@ async def voice_channel(websocket: WebSocket):
                             elif p_type == "set_live_model":
                                 new_model = (payload.get("model") or "").strip()
                                 if new_model in ("gemini-3.8-live", "gemini-3.8-live-extended-thinking"):
-                                    if "extended-thinking" in new_model and not config.is_paid_key_authorized():
-                                        await websocket.send_text(json.dumps({
-                                            "type": "jarvis_announcement",
-                                            "text": "Le modèle Extended Thinking requiert la clé payante. Veuillez cocher l'encoche d'autorisation dans l'application.",
-                                            "voice": False
-                                        }))
-                                    elif new_model != active_live_model:
+                                    if new_model != active_live_model:
+                                        active_task_controller["pending_model_switch_meta"] = {
+                                            "target_mode": "thinking" if "extended-thinking" in new_model else "standard",
+                                            "switch_source": "user_demand",
+                                            "announcement_phrase": "",
+                                        }
                                         if is_speech_idle():
                                             raise ModelSwitchRequested(new_model)
                                         else:
@@ -507,7 +581,34 @@ async def voice_channel(websocket: WebSocket):
                                     "mode": "set"
                                 }))
 
-                                # 1. Détection prioritaire immédiate d'ordre d'arrêt d'action en cours
+                                # 1. Évaluation dynamique de la politique Live (LiveModePolicy)
+                                _plan_curr = _task_planner_mod.get_active_plan()
+                                _plan_steps = len(_plan_curr.steps) if _plan_curr else 0
+                                _speech_st = get_speech_state()
+
+                                decision = live_mode_decide(
+                                    transcript=user_speech_buffer,
+                                    plan_active=_plan_steps,
+                                    recent_failures=active_task_controller.get("recent_tool_failures", 0),
+                                    tier_hint=active_task_controller.get("current_tier_hint", 1),
+                                    session_id="voice",
+                                    speech_state=_speech_st,
+                                )
+
+                                # 5. Journalisation systématique dans tier_routing_log
+                                asyncio.create_task(log_tier_routing_decision(user_speech_buffer, decision))
+
+                                target_model = LIVE_MODEL_THINKING if decision.get("target_mode") == "thinking" else LIVE_MODEL_STANDARD
+                                if target_model != active_live_model:
+                                    active_task_controller["pending_model_switch_meta"] = decision
+                                    if decision.get("switch_deferred") or not is_speech_idle():
+                                        active_task_controller["pending_model_switch"] = target_model
+                                        print(f"[Voice Channel] Bascule vers {target_model} différée (Jarvis parle, SpeechState={_speech_st})")
+                                    else:
+                                        print(f"[Voice Channel] Bascule immédiate vers {target_model} (SpeechState IDLE)")
+                                        raise ModelSwitchRequested(target_model)
+
+                                # 2. Détection prioritaire immédiate d'ordre d'arrêt d'action en cours
                                 is_any_task_running = (
                                     active_task_controller["info"]["running"]
                                     or bool(active_task_controller.get("bg_task"))
@@ -529,33 +630,25 @@ async def voice_channel(websocket: WebSocket):
                                         except Exception:
                                             pass
 
-                                # 2. Détection d'accord oral si demande de clé payante en attente
+                                # 3. Détection d'accord oral si demande de clé payante en attente
                                 if active_task_controller.get("paid_consent_modal_open"):
                                     affirmative_words = ["oui", "d'accord", "vas-y", "je valide", "autorise", "fais-le", "c'est bon", "accepte", "valide", "je t'autorise"]
                                     t_clean = user_speech_buffer.lower().strip()
                                     if any(w in t_clean for w in affirmative_words):
                                         print(f"[Voice Channel] Accord oral détecté pour clé payante : '{user_speech_buffer}'")
-                                        if not config.is_paid_key_authorized():
-                                            print(f"[Voice Channel] Clé payante verrouillée dans l'app. Rappel oral pour cocher la case.")
-                                            try:
-                                                await safe_send_live_client_content(
-                                                    session,
-                                                    text_content="[RAPPEL ENCOCHE NON COCHÉE] Pierre a donné son accord oral, mais l'encoche d'autorisation de la clé payante est encore décochée dans l'application. Tu es dans l'impossibilité physique de faire des requêtes sur la clé payante tant qu'elle n'est pas cochée. Rappelle immédiatement à Pierre avec ta voix Aoede : 'Merci Pierre, mais pense à cocher l'encoche d'autorisation de la clé payante sur ton écran pour débloquer l'accès technique !'",
-                                                    priority=2,
-                                                    role="user",
-                                                    turn_complete=True
-                                                )
-                                            except Exception:
-                                                pass
-                                        else:
-                                            active_task_controller["paid_consent_given"] = True
-                                            active_task_controller["paid_consent_modal_open"] = False
-                                            await websocket.send_text(json.dumps({"type": "hide_paid_consent"}))
-                                            if active_task_controller.get("paid_consent_event"):
-                                                active_task_controller["paid_consent_event"].set()
+                                        grant_paid_consent(session_id="voice", reason="free_key_failure", scope="this_task")
+                                        active_task_controller["paid_consent_given"] = True
+                                        active_task_controller["paid_consent_modal_open"] = False
+                                        await websocket.send_text(json.dumps({"type": "hide_paid_consent"}))
+                                        if active_task_controller.get("paid_consent_event"):
+                                            active_task_controller["paid_consent_event"].set()
 
                             # Tour de parole du modèle
                             if sc.model_turn:
+                                if user_speech_buffer:
+                                    recent_conversation_turns.append({"role": "user", "text": user_speech_buffer})
+                                    if len(recent_conversation_turns) > 20:
+                                        recent_conversation_turns = recent_conversation_turns[-20:]
                                 user_speech_buffer = ""
                                 for part in sc.model_turn.parts:
                                     if getattr(part, 'thought', False) and part.text:
@@ -571,6 +664,9 @@ async def voice_channel(websocket: WebSocket):
                                             "api_label": "Clé Payante" if is_paid_live else "Clé Gratuite"
                                         }))
                                     elif part.text and not getattr(sc, "output_transcription", None):
+                                        recent_conversation_turns.append({"role": "jarvis", "text": part.text})
+                                        if len(recent_conversation_turns) > 20:
+                                            recent_conversation_turns = recent_conversation_turns[-20:]
                                         await websocket.send_text(json.dumps({
                                             "type": "transcript",
                                             "role": "jarvis",
@@ -605,10 +701,14 @@ async def voice_channel(websocket: WebSocket):
 
                             # Transcription fidèle de ce que JARVIS dit à l'oral
                             if getattr(sc, "output_transcription", None) and sc.output_transcription.text:
+                                jarvis_txt = sc.output_transcription.text
+                                recent_conversation_turns.append({"role": "jarvis", "text": jarvis_txt})
+                                if len(recent_conversation_turns) > 20:
+                                    recent_conversation_turns = recent_conversation_turns[-20:]
                                 await websocket.send_text(json.dumps({
                                     "type": "transcript",
                                     "role": "jarvis",
-                                    "text": sc.output_transcription.text
+                                    "text": jarvis_txt
                                 }))
 
                             # Fin de transmission audio par Gemini
@@ -620,6 +720,13 @@ async def voice_channel(websocket: WebSocket):
                                 active_task_controller["speaking_active"] = False
                                 active_task_controller["last_turn_complete_time"] = time.time()
                                 await websocket.send_text(json.dumps({"type": "turn_complete"}))
+
+                                # Application au tour suivant si une bascule était différée et que la parole est idle
+                                if is_speech_idle():
+                                    pending_switch = active_task_controller.pop("pending_model_switch", None)
+                                    if pending_switch:
+                                        print(f"[Voice Channel] Application au tour suivant de la bascule différée : {pending_switch}")
+                                        raise ModelSwitchRequested(pending_switch)
 
                         # ── Appels d'outils (Tool Calls) ─────────────────────────────
                         if chunk.tool_call:
@@ -686,6 +793,12 @@ async def voice_channel(websocket: WebSocket):
                                 active_task_controller["awaiting_tool_response"] = False
                                 active_task_controller["tool_response_cooldown"] = time.time() + 2.5
                                 notify_tool_completed(name)
+
+                                # Suivi des échecs consécutifs d'outils pour la politique Live (Règle 3)
+                                if isinstance(tool_resp, dict) and ("error" in tool_resp or "exception" in tool_resp or tool_resp.get("status") == "error"):
+                                    active_task_controller["recent_tool_failures"] = active_task_controller.get("recent_tool_failures", 0) + 1
+                                else:
+                                    active_task_controller["recent_tool_failures"] = 0
 
                                 # Signal de fin d'outil au frontend
                                 await websocket.send_text(json.dumps({
@@ -790,19 +903,72 @@ async def voice_channel(websocket: WebSocket):
                 session_ctx, session = await _establish_live_session(active_live_model, current_live_client)
             except Exception as initial_conn_err:
                 is_qual, fail_detail = is_qualified_free_key_failure(initial_conn_err)
-                if not is_paid_live and client_paid and (config.is_paid_key_authorized() or has_voice_consent):
-                    print(f"[Voice Channel] Clé gratuite en échec ({initial_conn_err}). Bascule autorisée sur la clé payante...")
-                    supervision_service.set_free_quota_exhausted(True)
-                    console_monitor.record_error(source="Voice Channel", message=f"Bascule de repli sur clé payante : {initial_conn_err}", level="WARNING")
-                    grant_paid_consent(session_id="voice", reason="free_key_failure", scope="this_task")
-                    current_live_client = client_paid
-                    is_paid_live = True
-                    tier_badge = "Clé Payante (Secours)"
-                    await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Échec de la clé gratuite. Bascule de secours sur la clé payante.", "voice": False}))
-                    session_ctx, session = await _establish_live_session(active_live_model, current_live_client)
+                print(f"[Voice Channel] Échec de connexion Live ({active_live_model}, {tier_badge}): {initial_conn_err}")
+
+                # 3. Repli cascade : Si échec de la clé FREE sur modèle thinking -> passer d'abord en Live standard FREE
+                if "extended-thinking" in active_live_model and not is_paid_live:
+                    print(f"[Voice Channel] Échec FREE sur thinking. Repli cascade sur Live standard FREE...")
+                    active_live_model = LIVE_MODEL_STANDARD
+                    config.GEMINI_LIVE_MODEL = LIVE_MODEL_STANDARD
+                    current_live_client = client_free or client_paid
+                    is_paid_live = False
+                    tier_badge = "Clé Gratuite (Repli Standard)"
+                    await websocket.send_text(json.dumps({
+                        "type": "jarvis_announcement",
+                        "text": "Échec du modèle réflexion en clé gratuite. Repli sur le modèle Live standard en clé gratuite.",
+                        "voice": False
+                    }))
+                    try:
+                        session_ctx, session = await _establish_live_session(active_live_model, current_live_client)
+                    except Exception as std_free_err:
+                        # Le standard FREE a échoué aussi -> exigence de consentement payant
+                        print(f"[Voice Channel] Échec également du standard FREE ({std_free_err}). Demande de consentement payant.")
+                        active_task_controller["paid_consent_modal_open"] = True
+                        active_task_controller["paid_consent_given"] = False
+                        await websocket.send_text(json.dumps({
+                            "type": "show_paid_consent",
+                            "reason": "free_key_failure",
+                            "detail": "Les clés gratuites (thinking et standard) ont échoué. Consentement requis pour la clé payante."
+                        }))
+                        await websocket.send_text(json.dumps({
+                            "type": "jarvis_announcement",
+                            "text": "La clé gratuite ne répond plus sur aucun modèle vocal. Pierre, m'autorises-tu à passer sur la clé payante ?",
+                            "voice": True
+                        }))
+                        raise PaidKeyConsentRequired(
+                            reason="free_key_failure",
+                            detail="Échec de la clé gratuite sur thinking et standard",
+                            session_id="voice"
+                        )
+                elif not is_paid_live:
+                    # Échec direct sur standard FREE
+                    has_voice_consent = has_paid_consent(session_id="voice") or active_task_controller.get("paid_consent_given")
+                    if has_voice_consent and client_paid and config.is_paid_key_authorized():
+                        grant_paid_consent(session_id="voice", reason="free_key_failure", scope="this_task")
+                        current_live_client = client_paid
+                        is_paid_live = True
+                        tier_badge = "Clé Payante (Secours)"
+                        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Échec de la clé gratuite. Bascule de secours sur la clé payante autorisée.", "voice": False}))
+                        session_ctx, session = await _establish_live_session(active_live_model, current_live_client)
+                    else:
+                        active_task_controller["paid_consent_modal_open"] = True
+                        active_task_controller["paid_consent_given"] = False
+                        await websocket.send_text(json.dumps({
+                            "type": "show_paid_consent",
+                            "reason": "free_key_failure",
+                            "detail": f"Échec de la clé gratuite standard : {fail_detail or initial_conn_err}"
+                        }))
+                        await websocket.send_text(json.dumps({
+                            "type": "jarvis_announcement",
+                            "text": "La clé gratuite ne répond plus. Pierre, m'autorises-tu à passer sur la clé payante ?",
+                            "voice": True
+                        }))
+                        raise PaidKeyConsentRequired(
+                            reason="free_key_failure",
+                            detail=fail_detail or str(initial_conn_err),
+                            session_id="voice"
+                        )
                 else:
-                    if not is_paid_live and client_paid:
-                        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"La clé gratuite a échoué ({fail_detail or initial_conn_err}). Autorisation de la clé payante requise.", "voice": False}))
                     raise initial_conn_err
 
             active_task_controller["live_session"] = session
@@ -833,6 +999,26 @@ async def voice_channel(websocket: WebSocket):
                     print("[Voice Channel] Amorce vocale (greeting) envoyée avec succès.")
                 except Exception as greet_err:
                     print(f"[Voice Channel] Avertissement amorce vocale: {greet_err}")
+            elif is_model_switch_reconnect:
+                is_model_switch_reconnect = False
+                # 2. Réinjection de contexte (build_live_context_prompt + 10 derniers tours + plan + sous-agents actifs)
+                meta = active_task_controller.pop("pending_model_switch_meta", {})
+                announcement = meta.get("announcement_phrase", "")
+                reinjected_context = await _build_switch_context_prompt(
+                    recent_turns=recent_conversation_turns,
+                    announcement_phrase=announcement,
+                )
+                try:
+                    await safe_send_live_client_content(
+                        session,
+                        text_content=reinjected_context,
+                        priority=1,
+                        role="user",
+                        turn_complete=bool(announcement),
+                    )
+                    print(f"[Voice Channel] Contexte réinjecté avec succès suite à bascule ({active_live_model}, annonce={bool(announcement)})")
+                except Exception as re_err:
+                    print(f"[Voice Channel] Erreur réinjection contexte après bascule: {re_err}")
 
             client_task = asyncio.create_task(client_to_gemini(), name="client_to_gemini")
             gemini_task = asyncio.create_task(gemini_to_client(), name="gemini_to_client")
@@ -880,37 +1066,63 @@ async def voice_channel(websocket: WebSocket):
                 session = None
                 session_ctx = None
 
-                if new_model == "gemini-3.8-live":
-                    current_live_client = client_free if (client_free and not supervision_service._free_quota_exhausted) else (client_paid or client_free)
-                    is_paid_live = (current_live_client is client_paid)
-                else:
-                    current_live_client = client_paid or client_free
-                    is_paid_live = (current_live_client is client_paid)
-
+                # Les deux modèles (standard et thinking) tournent sur clé FREE par défaut
+                current_live_client = client_free if (client_free and not supervision_service._free_quota_exhausted) else (client_paid or client_free)
+                is_paid_live = (current_live_client is client_paid)
                 tier_badge = "Clé Payante" if is_paid_live else "Clé Gratuite"
+
+                is_model_switch_reconnect = True
                 await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Bascule vers le modèle {new_model} ({tier_badge})...", "voice": False}))
                 continue
             except QuotaExhaustedError as q_err:
-                if not is_paid_live and client_paid and config.is_paid_key_authorized():
-                    print(f"[Voice Channel] Quota dépassé sur la clé gratuite en direct ({q_err}). Bascule automatique sur la clé payante...")
+                print(f"[Voice Channel] QuotaExhaustedError: {q_err}")
+                # 3. Repli cascade si thinking FREE -> passer d'abord en Live standard FREE
+                if "extended-thinking" in active_live_model and not is_paid_live:
+                    print(f"[Voice Channel] Quota thinking FREE dépassé. Repli automatique sur Live standard FREE...")
+                    active_live_model = LIVE_MODEL_STANDARD
+                    config.GEMINI_LIVE_MODEL = LIVE_MODEL_STANDARD
+                    current_live_client = client_free
+                    is_paid_live = False
+                    tier_badge = "Clé Gratuite (Repli Standard)"
+                    is_model_switch_reconnect = True
+                    await websocket.send_text(json.dumps({
+                        "type": "jarvis_announcement",
+                        "text": "Limite de la clé gratuite atteinte sur le modèle réflexion. Repli automatique sur Live standard en clé gratuite.",
+                        "voice": False
+                    }))
+                    continue
+
+                # Standard FREE a aussi échoué ou dépassé son quota
+                has_voice_consent = has_paid_consent(session_id="voice") or active_task_controller.get("paid_consent_given")
+                if has_voice_consent and client_paid and config.is_paid_key_authorized():
                     supervision_service.set_free_quota_exhausted(True)
-                    console_monitor.record_error(source="Voice Channel", message="Quota clé gratuite dépassé en direct. Bascule automatique sur clé payante.", level="WARNING")
-                    if session_ctx:
-                        try:
-                            await session_ctx.__aexit__(None, None, None)
-                        except Exception:
-                            pass
-                    session = None
-                    session_ctx = None
                     current_live_client = client_paid
                     is_paid_live = True
-                    tier_badge = "Clé Payante (Repli Quota)"
-                    await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Limite de la clé gratuite atteinte pendant l'échange. Bascule automatique sur la clé payante effectuée.", "voice": False}))
+                    tier_badge = "Clé Payante (Secours)"
+                    await websocket.send_text(json.dumps({
+                        "type": "jarvis_announcement",
+                        "text": "Bascule autorisée sur la clé payante suite à épuisement de la clé gratuite.",
+                        "voice": False
+                    }))
                     continue
                 else:
-                    if not is_paid_live and client_paid and not config.is_paid_key_authorized():
-                        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Quota de la clé gratuite dépassé. La clé payante est verrouillée dans l'application. Cochez l'encoche pour l'autoriser.", "voice": False}))
-                    raise q_err
+                    active_task_controller["paid_consent_modal_open"] = True
+                    active_task_controller["paid_consent_given"] = False
+                    await websocket.send_text(json.dumps({
+                        "type": "show_paid_consent",
+                        "reason": "free_key_failure",
+                        "detail": "Quota de la clé gratuite dépassé sur Live standard."
+                    }))
+                    await websocket.send_text(json.dumps({
+                        "type": "jarvis_announcement",
+                        "text": "Le quota de la clé gratuite est épuisé. Pierre, m'autorises-tu à passer sur la clé payante pour continuer ?",
+                        "voice": True
+                    }))
+                    raise PaidKeyConsentRequired(
+                        reason="free_key_failure",
+                        detail="Quota clé gratuite épuisé sur thinking et standard",
+                        session_id="voice"
+                    )
 
     except (WebSocketDisconnect, WebSocketDisconnected, asyncio.CancelledError):
         pass
