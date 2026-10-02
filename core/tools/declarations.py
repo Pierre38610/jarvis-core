@@ -298,6 +298,50 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                     )
                 ),
 
+                # ─── 6b. browser_task (Nouvel Agent Autonome S1) ───────────────────────
+                types.FunctionDeclaration(
+                    name="browser_task",
+                    description=(
+                        "Pour TOUTE action sur un site web (remplir un panier, réserver, rechercher, se connecter à un service web). "
+                        "Ne fabrique jamais d'URL de résultat. Rend la main immédiatement ; le résultat sera annoncé plus tard."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "goal": types.Schema(
+                                type="STRING",
+                                description="Objectif complet en langage naturel avec tous les détails donnés par l'utilisateur."
+                            ),
+                            "start_url": types.Schema(
+                                type="STRING",
+                                description="Optionnel, seulement si l'utilisateur a nommé le site."
+                            ),
+                            "recipe": types.Schema(
+                                type="STRING",
+                                enum=["cart", "train", "gemini_deep_research"],
+                                description="Recette optionnelle : cart, train, ou gemini_deep_research."
+                            ),
+                        },
+                        required=["goal"]
+                    )
+                ),
+
+                # ─── 6c. browser_task_status ──────────────────────────────────────────
+                types.FunctionDeclaration(
+                    name="browser_task_status",
+                    description="Renvoie le statut et l'étape en cours des tâches de navigation web.",
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "task_id": types.Schema(
+                                type="STRING",
+                                description="Identifiant optionnel de la tâche de navigation."
+                            ),
+                        }
+                    )
+                ),
+
                 # ─── 7. open_user_browser ─────────────────────────────────────────────
                 types.FunctionDeclaration(
                     name="open_user_browser",

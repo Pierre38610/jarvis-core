@@ -31,6 +31,13 @@ from services.browser_service import (
     prepare_web_cart_or_checkout, send_page_to_kindle, send_file_to_kindle_web,
     list_installed_chrome_extensions
 )
+from services.browser_agent.loop import (
+    BrowserTask,
+    run_browser_task as run_browser_agent_task,
+    TASKS as BROWSER_TASKS,
+    get_task as get_browser_task,
+)
+from services.voice_injection_queue import voice_injection_queue, InjectionPriority
 from services.download_service import download_file, send_to_ereader, search_and_download_ebook
 from services.system_service import get_system_status, launch_application
 from services.email_service import send_email_async, read_received_emails_async
@@ -324,6 +331,13 @@ async def _execute_dispatch_tool(
     # ─── stop_current_action ───────────────────────────────────────────────────
     if name in ("stop_current_action", "stop"):
         stop_reason = args.get("reason", "Arrêt demandé par Pierre")
+        try:
+            for b_task in list(BROWSER_TASKS.values()):
+                if b_task.status == "running" or not b_task.cancel_event.is_set():
+                    b_task.cancel_event.set()
+                    b_task.status = "cancelled"
+        except Exception as e:
+            logger.warning(f"[Dispatcher] Erreur annulation BrowserTask: {e}")
         await stop_active_task(source="tool_stop", reason=stop_reason)
         return {
             "status": "stopped",
@@ -786,7 +800,7 @@ async def _execute_dispatch_tool(
             }
 
     # ─── run_browser_task ──────────────────────────────────────────────────────
-    elif name in ("run_browser_task", "browser_task"):
+    elif name == "run_browser_task":
         goal = args.get("goal", "")
         target_url = args.get("url") or ""
         execution_target = args.get("execution_target")
@@ -868,6 +882,149 @@ async def _execute_dispatch_tool(
                 f"{speech_intro} Dis brièvement à Pierre avec ta voix Aoede que tu démarres la navigation sur le web."
             )
         }
+
+    # ─── browser_task (Nouvel Agent Autonome S1/S2) ───────────────────────────
+    elif name == "browser_task":
+        goal = args.get("goal") or ""
+        start_url = args.get("start_url") or args.get("url") or None
+        recipe = args.get("recipe") or None
+
+        task_id = f"bt_{int(time.time() * 1000)}"
+        task = BrowserTask(
+            task_id=task_id,
+            goal=goal,
+            start_url=start_url,
+            recipe=recipe,
+        )
+        BROWSER_TASKS[task_id] = task
+
+        supervision_service.start_action(
+            "browser_task",
+            "Navigation Web Autonome",
+            "browser_task",
+            goal,
+            "Antigravity Browser Agent",
+        )
+        await broadcast_supervision()
+
+        if websocket:
+            try:
+                await websocket.send_text(json.dumps({
+                    "type": "jarvis_announcement",
+                    "text": f"Navigation autonome : {goal}",
+                    "voice": False,
+                }))
+            except Exception:
+                pass
+
+        _sess = session
+        _tid = task_id
+        _g = goal
+
+        async def _notify(msg: str):
+            # notify = injection avec priorité PROGRESS_MILESTONE. Le handoff utilise INTERRUPTION.
+            is_handoff = (
+                task.status in ("needs_user", "ready_for_user")
+                or any(k in msg.lower() for k in ["captcha", "login", "2fa", "intervention", "valider"])
+            )
+            p = InjectionPriority.INTERRUPTION if is_handoff else InjectionPriority.PROGRESS_MILESTONE
+            try:
+                await voice_injection_queue.enqueue(
+                    text=msg,
+                    priority=p,
+                    session=_sess,
+                    action_key=f"browser_task_{_tid}",
+                    metadata={"task_id": _tid, "is_handoff": is_handoff},
+                )
+            except Exception as e:
+                logger.error(f"[BrowserAgent BG] Erreur notify: {e}")
+
+        async def _run_browser_bg():
+            try:
+                res: ToolResult = await run_browser_agent_task(task=task, notify=_notify)
+
+                # Résultat final = injection avec priorité TOOL_RESPONSE et le user_message du ToolResult. Le handoff utilise INTERRUPTION.
+                is_handoff = (
+                    res.status == "needs_user"
+                    or task.status in ("needs_user", "ready_for_user")
+                )
+                final_priority = InjectionPriority.INTERRUPTION if is_handoff else InjectionPriority.TOOL_RESPONSE
+                final_msg = res.user_message or (f"Navigation terminée : {_g}" if res.is_success else f"Échec de la navigation : {_g}")
+
+                try:
+                    await voice_injection_queue.enqueue(
+                        text=final_msg,
+                        priority=final_priority,
+                        session=_sess,
+                        action_key=f"browser_task_result_{_tid}",
+                        metadata={"task_id": _tid, "status": res.status},
+                    )
+                except Exception as inj_err:
+                    logger.error(f"[BrowserAgent BG] Erreur injection résultat final: {inj_err}")
+
+                action_status = "completed" if res.is_success else ("pending_user" if is_handoff else "error")
+                supervision_service.complete_action("browser_task", status=action_status, summary=final_msg[:250])
+                await broadcast_supervision()
+            except Exception as e:
+                logger.error(f"[BrowserAgent BG] Exception loop: {e}", exc_info=True)
+                supervision_service.complete_action("browser_task", status="error", summary=str(e))
+                await broadcast_supervision()
+                try:
+                    await voice_injection_queue.enqueue(
+                        text=f"La navigation sur '{_g}' a rencontré un souci : {e}",
+                        priority=InjectionPriority.TOOL_RESPONSE,
+                        session=_sess,
+                        action_key=f"browser_task_error_{_tid}",
+                        metadata={"task_id": _tid},
+                    )
+                except Exception:
+                    pass
+            finally:
+                if active_task_controller.get("browser_bg_task") == b_task:
+                    active_task_controller["browser_bg_task"] = None
+
+        b_task = asyncio.create_task(_run_browser_bg())
+        active_task_controller["browser_bg_task"] = b_task
+
+        return {
+            "status": "launched_in_background",
+            "task_id": task_id,
+            "goal": goal,
+            "instruction_to_jarvis": "Dis à Pierre « Je m'en occupe » puis reste immédiatement disponible à la voix.",
+        }
+
+    # ─── browser_task_status ───────────────────────────────────────────────────
+    elif name == "browser_task_status":
+        req_task_id = args.get("task_id")
+        if req_task_id:
+            t = get_browser_task(req_task_id)
+            if not t:
+                return {
+                    "status": "not_found",
+                    "task_id": req_task_id,
+                    "message": f"Tâche de navigation '{req_task_id}' introuvable."
+                }
+            return {
+                "status": t.status,
+                "task_id": t.task_id,
+                "steps": t.steps,
+                "goal": t.goal,
+                "result": t.result,
+            }
+        else:
+            return {
+                "status": "success",
+                "tasks": [
+                    {
+                        "task_id": t.task_id,
+                        "status": t.status,
+                        "steps": t.steps,
+                        "goal": t.goal,
+                        "result": t.result,
+                    }
+                    for t in BROWSER_TASKS.values()
+                ]
+            }
 
     # ─── open_user_browser / open_browser ──────────────────────────────────────
     elif name in ("open_user_browser", "open_browser"):
