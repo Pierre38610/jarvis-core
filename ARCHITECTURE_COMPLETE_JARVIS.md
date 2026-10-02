@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.37.0 — Canal vocal enceinte physique ESP32-S3 Waveshare AI Smart Speaker (`routers/device_voice.py`, `/ws/device`, `/api/device/*`), protocole WebSocket JSON+binaire PCM, wake word `wn9_jarvis_tts` (ESP-SR WakeNet 9), JWT `role=device`, présence Redis `jarvis:presence:device:<id>`, règle canal unique. Précédent : Routage Intelligent des Modèles Antigravity CLI (`services/model_routing/`, `config/models.json`), exécuteur agentique `services/agentic_runner.py`, gouvernance des clés `services/key_gate.py`, planificateur multi-étapes `services/task_planner.py` & audit anti-fausses-affirmations `services/turn_audit.py`.*
+> *Dernière révision majeure : Version 5.37.6 — Intégration complète de l'enceinte intelligente matérielle ESP32-S3 Waveshare Audio Board (`routers/device_voice.py`, `/ws/device`, `/api/device/*`), régulateur de flux audio temps réel (`DeviceAudioPacer`), rééchantillonneur continu de précision (`Continuous24kTo16kResampler`), pipeline audio full-duplex Opus 16kHz, wake word hors-ligne `wn9_jarvis_tts` (ESP-SR WakeNet 9), persistance NVS Wi-Fi & jeton JWT `role=device`, présence Redis `jarvis:presence:device:<id>`, règle canal unique & initiative proactive `push_speak_to_device`.*
 
 ---
 
@@ -16,8 +16,9 @@
    - 2.1. Schéma d'Architecture Globale
    - 2.2. Le Serveur Cloud Central (Oracle Cloud VPS ARM64)
    - 2.3. Le PC Physique Windows 11 & Rôle Exécutant
-   - 2.4. Topologie Réseau, Tunnels Cloudflare & Résilience Réseau
-   - 2.5. Pipeline de Déploiement Continu & Synchronisation (`sync_deploy.py`)
+   - 2.4. L'Écosystème Matériel : Enceinte Intelligente Autonome Waveshare ESP32-S3 Audio
+   - 2.5. Topologie Réseau, Tunnels Cloudflare & Résilience Réseau
+   - 2.6. Pipeline de Déploiement Continu & Synchronisation (`sync_deploy.py`)
 3. [Stack Logicielle, Conteneurs Docker & Persistance des Données](#3-stack-logicielle-conteneurs-docker--persistance-des-données)
    - 3.1. Matrice des Conteneurs Docker (`docker-compose.yml`)
    - 3.2. Mécanisme de Cache, Présence & Pub/Sub (`services/cache.py`)
@@ -56,51 +57,61 @@
    - 7.4. Journalisation Auto-Flush & Interception Globale des Crashs
    - 7.5. Exécution Silencieuse VBScript & Scripts d'Automatisation Windows
    - 7.6. Télémétrie Matérielle Réelle (`psutil`)
-8. [Catalogue Matriciel & Fiches des 49 Outils Unifiés (Function Calling)](#8-catalogue-matriciel--fiches-des-49-outils-unifiés-function-calling)
-   - 8.1. Matrice Globale Exhaustive des 49 Outils Déclarés (Spécifications Exactes)
-   - 8.2. Moteur Multi-Agents Antigravity CLI sur VPS (`ask_deep_reasoning`, `guide_active_task`, `stop_current_action`)
-   - 8.3. Moteur Asynchrone Deep Research : Architecture à Double Moteur (Moteur A Browser Agent Gemini Web + Moteur B Map-Reduce VPS)
-   - 8.4. Moteur Délibératif Système 2 Transverse (Les 8 Missions Agentiques Spécialisées)
-   - 8.5. Interaction Web Autonome & Agent Navigateur Local (`browser_task`)
-   - 8.6. Pôle Documentaire & Présentations Google Slides Polymorphes v1
-   - 8.7. Mobilité & Système Ferroviaire Intelligent (France & Suède)
-   - 8.8. Gestionnaire E-Book, Liseuses Physiques & Send to Kindle
-   - 8.9. Contrôleur Média : Spotify & Stremio
-   - 8.10. Suite de Communication & Messagerie Stark
-   - 8.11. Système de Mémoire Hybride (SQLite, Qdrant & Fastembed)
-   - 8.12. Télémétrie, Observabilité & Métriques des Outils (`services/metrics_service.py`)
-   - 8.13. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
-   - 8.14. Connaissance Architecturale Dynamique & Auto-évaluation
-   - 8.15. SRE Autonome & Auto-Guérison Système (`services/system_healing_service.py`)
-   - 8.16. Contrat Universel ToolResult & Moteur de Vérification d'Effet Réel (Zero Unverified Claims)
-9. [Matrice des Endpoints API REST & Protocoles WebSockets](#9-matrice-des-endpoints-api-rest--protocoles-websockets)
-   - 9.1. Endpoints HTTP / REST FastAPI (Exhaustif)
-   - 9.2. Contrat WebSocket Audio Gemini Live (`/ws`)
-   - 9.3. Contrat WebSocket Relais Agent Local PC (`/ws/local-agent`)
-   - 9.4. Contrat & Intégration Spotify Web API (Connect & OAuth 2.0 PKCE)
-10. [Cycle de Vie, Supervision & Événements des Sous-Agents](#10-cycle-de-vie-supervision--événements-des-sous-agents)
-    - 10.1. Cycle de Vie d'un Sous-Agent
-    - 10.2. Diffusion Temps Réel & Structure des Événements
-    - 10.3. Visualisation dans le HUD Mobile
-11. [Interface Utilisateur, PWA & HUD Mobile Stark Industries](#11-interface-utilisateur-pwa--hud-mobile-stark-industries)
-    - 11.1. Principes Ergonomiques & Design System Cyberpunk
-    - 11.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
-    - 11.3. Machine à États Visuelle
-    - 11.4. Tiroirs, Modals Interactifs & Vues Dédiées
-12. [Analyse Critique : Forces, Dette Technique & Pistes d'Amélioration](#12-analyse-critique--forces-dette-technique--pistes-damélioration)
-    - 12.1. Forces Majeures de l'Architecture Actuelle
-    - 12.2. Points d'Attention & Dette Technique
-    - 12.3. Pistes d'Évolution Stratégique & Prochaines Étapes
-13. [Guide du Développeur & Recettes d'Ingénierie pour Agents IA](#13-guide-du-développeur--recettes-dingénierie-pour-agents-ia)
-    - 13.1. Invariants d'Implémentation & Style de Code
-    - 13.2. Recette 1 : Déclarer & Implémenter un Nouvel Outil Gemini Live
-    - 13.3. Recette 2 : Ajouter un Nouvel Endpoint REST ou WebSocket
-    - 13.4. Recette 3 : Ajouter une Action RPC Local Agent PC
-    - 13.5. Recette 4 : Créer une Nouvelle Mission Agentique Système 2
-    - 13.6. Patterns d'Accès aux Bases de Données (PostgreSQL, SQLite, Qdrant, Redis)
-    - 13.7. Glossaire des Variables d'Environnement (`.env` vs `config.py`)
-    - 13.8. Exécution des Tests & Validation Hors-Ligne
-    - 13.9. Procédure de Déploiement & Maintenance Cloud (`sync_deploy.py`)
+8. [L'Enceinte Intelligente Matérielle Autonome (Waveshare ESP32-S3 Audio Board & Canal `/ws/device`)](#8-lenceinte-intelligente-matérielle-autonome-waveshare-esp32-s3-audio-board--canal-wsdevice)
+   - 8.1. Architecture Matérielle & Périphériques Électroniques
+   - 8.2. Moteur de Détection Wake Word Vocal On-Device (ESP-SR WakeNet 9 `wn9_jarvis_tts`)
+   - 8.3. Pipeline Audio Full-Duplex Opus 16kHz & Rééchantillonnage Continu (`Continuous24kTo16kResampler`)
+   - 8.4. Régulateur Temporel de Flux Audio & Anti-Saturation de File (`DeviceAudioPacer`)
+   - 8.5. Protocole WebSocket `/ws/device` & Contrat Événementiel XiaoZhi
+   - 8.6. Authentification Matérielle JWT, Provisioning NVS & Connexion Wi-Fi Directe
+   - 8.7. Règle de Canal Unique, Présence Redis & Initiative Proactive (`push_speak_to_device`)
+   - 8.8. Compilation, Flash & Outillage Firmware (`build_firmware.bat`, ESP-IDF 5.x)
+9. [Catalogue Matriciel & Fiches des 49 Outils Unifiés (Function Calling)](#9-catalogue-matriciel--fiches-des-49-outils-unifiés-function-calling)
+   - 9.1. Matrice Globale Exhaustive des 49 Outils Déclarés (Spécifications Exactes)
+   - 9.2. Moteur Multi-Agents Antigravity CLI sur VPS (`ask_deep_reasoning`, `guide_active_task`, `stop_current_action`)
+   - 9.3. Moteur Asynchrone Deep Research : Architecture à Double Moteur (Moteur A Browser Agent Gemini Web + Moteur B Map-Reduce VPS)
+   - 9.4. Moteur Délibératif Système 2 Transverse (Les 8 Missions Agentiques Spécialisées)
+   - 9.5. Interaction Web Autonome & Agent Navigateur Local (`browser_task`)
+   - 9.6. Pôle Documentaire & Présentations Google Slides Polymorphes v1
+   - 9.7. Mobilité & Système Ferroviaire Intelligent (France & Suède)
+   - 9.8. Gestionnaire E-Book, Liseuses Physiques & Send to Kindle
+   - 9.9. Contrôleur Média : Spotify & Stremio
+   - 9.10. Suite de Communication & Messagerie Stark
+   - 9.11. Système de Mémoire Hybride (SQLite, Qdrant & Fastembed)
+   - 9.12. Télémétrie, Observabilité & Métriques des Outils (`services/metrics_service.py`)
+   - 9.13. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
+   - 9.14. Connaissance Architecturale Dynamique & Auto-évaluation
+   - 9.15. SRE Autonome & Auto-Guérison Système (`services/system_healing_service.py`)
+   - 9.16. Contrat Universel ToolResult & Moteur de Vérification d'Effet Réel (Zero Unverified Claims)
+10. [Matrice des Endpoints API REST & Protocoles WebSockets](#10-matrice-des-endpoints-api-rest--protocoles-websockets)
+    - 10.1. Endpoints HTTP / REST FastAPI (Exhaustif)
+    - 10.2. Contrat WebSocket Audio Gemini Live (`/ws`)
+    - 10.3. Contrat WebSocket Relais Agent Local PC (`/ws/local-agent`)
+    - 10.4. Contrat WebSocket Enceinte Physique ESP32-S3 (`/ws/device`)
+    - 10.5. Contrat & Intégration Spotify Web API (Connect & OAuth 2.0 PKCE)
+11. [Cycle de Vie, Supervision & Événements des Sous-Agents](#11-cycle-de-vie-supervision--événements-des-sous-agents)
+    - 11.1. Cycle de Vie d'un Sous-Agent
+    - 11.2. Diffusion Temps Réel & Structure des Événements
+    - 11.3. Visualisation dans le HUD Mobile
+12. [Interface Utilisateur, PWA & HUD Mobile Stark Industries](#12-interface-utilisateur-pwa--hud-mobile-stark-industries)
+    - 12.1. Principes Ergonomiques & Design System Cyberpunk
+    - 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
+    - 12.3. Machine à États Visuelle
+    - 12.4. Tiroirs, Modals Interactifs & Vues Dédiées
+13. [Analyse Critique : Forces, Dette Technique & Pistes d'Amélioration](#13-analyse-critique--forces-dette-technique--pistes-damélioration)
+    - 13.1. Forces Majeures de l'Architecture Actuelle
+    - 13.2. Points d'Attention & Dette Technique
+    - 13.3. Pistes d'Évolution Stratégique & Prochaines Étapes
+14. [Guide du Développeur & Recettes d'Ingénierie pour Agents IA](#14-guide-du-développeur--recettes-dingénierie-pour-agents-ia)
+    - 14.1. Invariants d'Implémentation & Style de Code
+    - 14.2. Recette 1 : Déclarer & Implémenter un Nouvel Outil Gemini Live
+    - 14.3. Recette 2 : Ajouter un Nouvel Endpoint REST ou WebSocket
+    - 14.4. Recette 3 : Ajouter une Action RPC Local Agent PC
+    - 14.5. Recette 4 : Créer une Nouvelle Mission Agentique Système 2
+    - 14.6. Patterns d'Accès aux Bases de Données (PostgreSQL, SQLite, Qdrant, Redis)
+    - 14.7. Glossaire des Variables d'Environnement (`.env` vs `config.py`)
+    - 14.8. Exécution des Tests & Validation Hors-Ligne
+    - 14.9. Procédure de Déploiement & Maintenance Cloud (`sync_deploy.py`)
 
 ---
 
@@ -168,6 +179,10 @@ jarvis-core/
 ├── scripts_tmp_fix_slides*.py / scripts_tmp_append_tests.py # Scripts jetables historiques (dette technique, purge recommandée)
 ├── .agents/rules/                       # Règles agents locales (AGENTS.md, architecture-knowledge-and-sync.md, git-sync.md)
 │
+├── firmware_esp32/                       # Firmware embarqué pour l'enceinte intelligente Waveshare ESP32-S3 Audio Board
+│   ├── xiaozhi-esp32/                   # Projet firmware ESP-IDF C++ (codecs ES8311/ES7210, WakeNet 9, LCD JD9853/ST7789)
+│   ├── build_firmware.bat               # Script Windows automatisé : compilation idf.py, flash COM5, préservation NVS & monitor
+│   └── DEPLOY_GUIDE.sh                  # Procédure pas-à-pas de configuration, menuconfig, génération token NVS et flash
 ├── config/
 │   └── models.json                      # Catalogue déclaratif (5 modèles Gemini/Claude) + routing_rules + fallback_chain + cooldown 300s
 │
@@ -184,7 +199,8 @@ jarvis-core/
 │       └── verifier.py                  # Vérifications post-exécution d'effet réel (email, slides, xlsx, download, process, agenda, mémoire, navigateur)
 │
 ├── routers/                             # Routeurs modulaires FastAPI (/api/* et /ws/*)
-│   ├── voice.py                         # WebSocket /ws : session bidirectionnelle Gemini Live Audio, streaming PCM et injection client
+│   ├── voice.py                         # WebSocket /ws : session bidirectionnelle Gemini Live Audio, streaming PCM et injection client (PWA)
+│   ├── device_voice.py                  # WebSocket /ws/device & /api/device/* : canal vocal dédié enceinte ESP32-S3, pacer Opus, rééchantillonneur continu
 │   ├── local_agent.py                   # WebSocket /ws/local-agent et GET /api/local-agent/status (relais PC physique)
 │   ├── chat.py                          # GET/POST /api/chat/* : messagerie multimodale écrite et vision Gemini 3.8 Flash
 │   ├── spotify.py                       # GET/POST /api/media/spotify/* : OAuth PKCE, playback, devices, migration Deezer->Spotify
@@ -265,20 +281,21 @@ jarvis-core/
 ### 2.1. Schéma d'Architecture Globale
 
 ```
-                         ┌────────────────────────────────────────────────────────┐
-                         │                    TERMINAUX CLIENTS                   │
-                         │    • Smartphone PWA (HUD Mobile / Audio Full-Duplex)   │
-                         │    • Navigateur Desktop (Chrome / Dashboard Stark)     │
-                         └───────────────────────────┬────────────────────────────┘
-                                                     │ HTTPS / WSS
-                                                     ▼
-                         ┌────────────────────────────────────────────────────────┐
-                         │      PASSERELLE D'ACCÈS CLOUDFLARE ZERO TRUST          │
-                         │       Domaine : jarvis.signalcraftapps.com             │
-                         │      (Tunnel HTTP/2 multiplexé sortant, port 7844)     │
-                         └───────────────────────────┬────────────────────────────┘
-                                                     │
-                                                     ▼
+                         ┌────────────────────────────────────────────────────────────────────────┐
+                         │                           TERMINAUX CLIENTS                            │
+                         │    • Smartphone PWA (HUD Mobile / Audio Full-Duplex / WebSocket /ws)   │
+                         │    • Navigateur Desktop (Chrome / Dashboard Stark / WebSocket /ws)     │
+                         │    • Enceinte Intelligente ESP32-S3 (WakeNet 9 / WebSocket /ws/device) │
+                         └───────────────────────────────────┬────────────────────────────────────┘
+                                                             │ HTTPS / WSS
+                                                             ▼
+                         ┌────────────────────────────────────────────────────────────────────────┐
+                         │               PASSERELLE D'ACCÈS CLOUDFLARE ZERO TRUST                 │
+                         │                Domaine : jarvis.signalcraftapps.com                    │
+                         │               (Tunnel HTTP/2 multiplexé sortant, port 7844)            │
+                         └───────────────────────────────────┬────────────────────────────────────┘
+                                                             │
+                                                             ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                 SERVEUR CLOUD CENTRAL (ORACLE CLOUD VPS)                                │
 │                          Instance Ubuntu ARM64 (Ampere A1 - 4 OCPU, 24 Go RAM)                         │
@@ -286,9 +303,10 @@ jarvis-core/
 │                                                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────────────────────────────────────┐  │
 │  │                              FastAPI Backend Core (App.py - Port 8000)                             │  │
-│  │   • Endpoint WebSocket Gemini Live (/ws)            • Routage des requêtes REST (/api/*)          │  │
+│  │   • Endpoint WebSocket Gemini Live (/ws)            • Canal Vocal Dédié ESP32-S3 (/ws/device)     │  │
 │  │   • Supervision & Notifications (/ws/supervision)   • Relais Agent Local PC (/ws/local-agent)     │  │
 │  │   • Moteur Délibératif Antigravity CLI VPS          • Moteur Deep Research Map-Reduce             │  │
+│  │   • Régulateur Audio Pacer (55ms) & Resampler 24k->16k • Verrou d'Élocution & File VoiceInjection  │  │
 │  └──────────────────┬─────────────────────────────┬────────────────────────────┬─────────────────────┘  │
 │                     │                             │                            │                        │
 │                     ▼                             ▼                            ▼                        │
@@ -296,6 +314,7 @@ jarvis-core/
 │          │    REDIS 7 (Docker)  │      │ POSTGRES 16 (Docker) │     │    QDRANT (Docker)   │            │
 │          │    127.0.0.1:6379    │      │    127.0.0.1:5432    │     │    127.0.0.1:6333    │            │
 │          │  Cache, TTL, Pub/Sub │      │ Historique sessions  │     │ Base vectorielle RAG │            │
+│          │  Présence ESP32 & PC │      │ Métriques & Patches  │     │ Souvenirs & RAG 384d │            │
 │          └──────────────────────┘      └──────────────────────┘     └──────────────────────┘            │
 │                     │                                                                                   │
 │                     ▼                                                                                   │
@@ -304,29 +323,29 @@ jarvis-core/
 │          │ Workflows documents, │  (Slides polymorphes, tableurs xlsx, surveillance trains Trafikverket)│
 │          │ agenda et calendrier │                                                                       │
 │          └──────────────────────┘                                                                       │
-└────────────────────────────────────────────────────▲────────────────────────────────────────────────────┘
-                                                     │
-                                                     │ WebSocket Sécurisé (/ws/local-agent)
-                                                     │ Heartbeat & Télémétrie Hardware
-                                                     │
-┌────────────────────────────────────────────────────┴────────────────────────────────────────────────────┐
-│                                     PC PERSONNEL WINDOWS 11 (LOCAL)                                     │
-│                                                                                                         │
-│   ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐   │
-│   │                         Agent Relais Local (jarvis_local_agent.py)                              │   │
-│   │   • Lancement d'applications physiques (VS Code, VLC, Stremio, Notepad, Calculatrice, Terminal) │   │
-│   │   • Contrôle Chrome CDP persistant port 9222 (profil réel, cookies Google/Amazon, sessions)    │   │
-│   │   • Télémétrie matérielle physique (CPU réel, RAM réelle, état batterie, processus actifs)     │   │
-│   │   • Extraction sécurisée de fichiers locaux pour pièces jointes (fetch_file base64)            │   │
-│   └──────────────────┬──────────────────────────────────────────────┬───────────────────────────────┘   │
-│                      │                                              │                                   │
-│                      ▼                                              ▼                                   │
-│           ┌──────────────────────┐                       ┌──────────────────────┐                       │
-│           │   SPOTIFY CONNECT    │                       │ LISEUSES PHYSIQUES   │                       │
-│           │ Web API + PKCE VPS   │                       │ Kindle / Kobo via USB│                       │
-│           │ Multi-Devices Connect│                       │ Montages lecteurs    │                       │
-│           └──────────────────────┘                       └──────────────────────┘                       │
-└─────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+└──────────────────────▲─────────────────────────────────────────────────────────────▲────────────────────┘
+                       │                                                             │
+                       │ WebSocket Sécurisé (/ws/local-agent)                        │ WebSocket Dédié (/ws/device)
+                       │ Heartbeat & Télémétrie Hardware                             │ Opus 16kHz Full-Duplex
+                       │                                                             │
+┌──────────────────────┴──────────────────────────────────┐   ┌──────────────────────┴────────────────────┐
+│             PC PERSONNEL WINDOWS 11 (LOCAL)             │   │       ENCEINTE INTELLIGENTE ESP32-S3      │
+│                                                         │   │    (Waveshare ESP32-S3 Audio Board)       │
+│  ┌───────────────────────────────────────────────────┐  │   │                                           │
+│  │     Agent Relais Local (jarvis_local_agent.py)    │  │   │  • Microphones MEMS doubles + ADC ES7210  │
+│  │  • Lancement apps (VS Code, VLC, Stremio, etc.)   │  │   │  • Annulation d'écho matérielle (AEC/AFE) │
+│  │  • Contrôle Chrome CDP persistant port 9222       │  │   │  • Détecteur Wake Word local "Jarvis"     │
+│  │  • Télémétrie matérielle (CPU, RAM, batterie)     │  │   │    (ESP-SR WakeNet 9 wn9_jarvis_tts)      │
+│  │  • Extraction fichiers locaux (fetch_file base64) │  │   │  • DAC ES8311 + Ampli 3W HP 24kHz/16kHz   │
+│  └───────────────┬──────────────────────────┬────────┘  │   │  • Écran LCD SPI (JD9853 / ST7789)        │
+│                  │                          │           │   │  • Anneau LED RGB WS2812B réactif         │
+│                  ▼                          ▼           │   │  • Wi-Fi NVS auto-connect (Zéro portail)  │
+│       ┌──────────────────────┐   ┌──────────────────┐   │   │  • Auth JWT 10 ans role="device"          │
+│       │   SPOTIFY CONNECT    │   │ LISEUSES USB     │   │   └───────────────────────────────────────────┘
+│       │ Web API + PKCE VPS   │   │ Kindle / Kobo    │   │
+│       │ Multi-Devices Connect│   │ Montages disques │   │
+│       └──────────────────────┘   └──────────────────┘   │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ### 2.2. Le Serveur Cloud Central (Oracle Cloud VPS)
@@ -339,14 +358,20 @@ jarvis-core/
 ### 2.3. Le PC Physique Windows 11 & Rôle Exécutant
 - **Rôle fonctionnel** : Exécutant matériel de bureau. Ne disposant d'aucun affichage graphique direct sur le VPS Cloud, toute opération nécessitant une interface visuelle à l'écran (ouvrir VS Code, manipuler Google Chrome avec sessions authentifiées, lancer un film dans Stremio, lancer Spotify Desktop ou détecter une liseuse branchée en USB) est déléguée à l'agent local.
 
-### 2.4. Topologie Réseau, Tunnels Cloudflare & Résilience Réseau
+### 2.4. L'Écosystème Matériel : Enceinte Intelligente Autonome Waveshare ESP32-S3 Audio
+- **Rôle d'ubiquité physique** : Enceinte connectée de salon/bureau toujours à l'écoute, sans dépendre d'un smartphone ou d'un onglet de navigateur ouvert.
+- **Matériel embarqué** : Microcontrôleur Espressif ESP32-S3 (Xtensa Dual-Core 240MHz, 8 Mo PSRAM Octal, 16 Mo Flash), double micro MEMS omnidirectionnels avec frontal analogique ADC Everest ES7210, DAC ES8311 relié à un amplificateur de puissance classe D 3W, écran couleur LCD SPI (JD9853 / ST7789) et anneau LED circulaire WS2812B.
+- **Détection vocale locale instantanée** : Moteur ESP-SR WakeNet 9 (`wn9_jarvis_tts`) reconnaissant le mot d'activation *"Jarvis"* en local hors-ligne en moins de 150 ms, sans transmission continue de données privées vers le cloud.
+- **Canal audio full-duplex dédié** : Connexion WebSocket WSS directe `/ws/device` vers le VPS avec compression Opus 16kHz, régulateur temporel d'émission `DeviceAudioPacer` (55 ms/trame) et rééchantillonneur continu de haute précision `Continuous24kTo16kResampler`.
+
+### 2.5. Topologie Réseau, Tunnels Cloudflare & Résilience Réseau
 Le système utilise `tunnel_launcher.py` pour assurer une accessibilité permanente sans ouvrir le moindre port d'entrée sur la box ou le routeur :
 1. **Tunnel Principal (Cloudflare Zero Trust)** : Établi via `cloudflared.exe` avec jeton d'authentification (`CLOUDFLARE_TUNNEL_TOKEN`). Multiplexe le trafic HTTPS/WSS sortant vers `jarvis.signalcraftapps.com` (port 7844).
 2. **Repli 1 (Quick Tunnel)** : En cas d'indisponibilité, repli dynamique instantané sur un sous-domaine `*.trycloudflare.com`.
 3. **Repli 2 (Wi-Fi Direct LAN)** : Détection intelligente de l'IPv4 active via `ipconfig /all`, avec filtrage strict des adaptateurs virtuels (Cisco AnyConnect, TAP, VPNs).
 4. **Vérification de Joignabilité** : Requête HTTP de sonde réelle pour éliminer l'erreur 1033. URLs validées écrites dans `tunnel_url.txt` et `static/tunnel_url.json`.
 
-### 2.5. Pipeline de Déploiement Continu & Synchronisation (`sync_deploy.py`)
+### 2.6. Pipeline de Déploiement Continu & Synchronisation (`sync_deploy.py`)
 Déclenché via `.\venv\Scripts\python.exe sync_deploy.py -m "Description"` (ou `.\sync_deploy.bat "Description"`) :
 1. **Git Commit & Push** : `git add .`, commit horodaté et `git push origin main`.
 2. **Archive In-Memory** : Compression `tar.gz` en mémoire vive (`io.BytesIO`) excluant `.git`, `venv`, logs, caches pytest, profils Chrome.
@@ -671,9 +696,116 @@ Remontée périodique (toutes les 15 s) : CPU global, mémoire vive, pourcentage
 
 ---
 
-## 8. CATALOGUE MATRICIEL & FICHES DES 49 OUTILS UNIFIÉS (FUNCTION CALLING)
+## 8. L'ENCEINTE INTELLIGENTE MATÉRIELLE AUTONOME (WAVESHARE ESP32-S3 AUDIO BOARD & CANAL `/ws/device`)
 
-### 8.1. Matrice Globale Exhaustive des 49 Outils Déclarés
+### 8.1. Architecture Matérielle & Périphériques Électroniques
+L'enceinte physique dédiée J.A.R.V.I.S. est construite autour de la carte de développement industrielle **Waveshare ESP32-S3 Audio Board** intégrant les composants matériels suivants :
+- **Microcontrôleur Principal** : Espressif ESP32-S3-WROOM-1 (Architecture Xtensa 32-bit LX7 Dual-Core cadencée jusqu'à 240 MHz, avec extensions d'instructions vectorielles pour le traitement du signal audio, 8 Mo de PSRAM Octal haute vitesse et 16 Mo de mémoire Flash SPI).
+- **Frontal d'Acquisition Microphonique (ADC)** : Puce audio Everest ES7210 4 canaux ADC 24-bit reliée à 2 microphones MEMS omnidirectionnels à haute sensibilité, intégrant un contrôle automatique de gain (AGC), une réduction de bruit active et une annulation acoustique d'écho (AEC/AFE) assurée par la stack logicielle Espressif ESP-SR.
+- **Conversion Numérique-Analogique & Amplification (DAC & AMP)** : Puce Everest ES8311 I2S DAC haute fidélité couplée à un amplificateur de puissance audio classe D 3 Watts (8 Ohms) restituant fidèlement le spectre vocal à 24 kHz et 16 kHz.
+- **Affichage & Restitution Visuelle** : Écran LCD circulaire / rectangulaire couleur SPI (contrôleurs JD9853 ou ST7789) affichant l'état émotionnel, l'avatar dynamique Stark, le texte STT en direct et les icônes de statut.
+- **Éclairage Réactif Ambiant** : Anneau ou bandeau de LEDs RGB adressables WS2812B piloté par RMT/SPI réagissant à la voix et aux états cognitifs.
+- **Extension I/O & Alimentation** : Expandeur I2C TCA9555 pour le contrôle des broches de configuration audio et gestion d'alimentation USB-C 5V régulée.
+
+### 8.2. Moteur de Détection Wake Word Vocal On-Device (ESP-SR WakeNet 9 `wn9_jarvis_tts`)
+Pour garantir une confidentialité absolue, une latence nulle et une indépendance réseau au repos :
+1. **Traitement Local Hors-Ligne** : Le modèle de réseau neuronal convolutif `wn9_jarvis_tts` de la suite Espressif ESP-SR s'exécute en continu dans la PSRAM de l'ESP32-S3. Aucun octet sonore n'est diffusé sur Internet tant que le mot d'activation n'a pas été formellement détecté.
+2. **Mot d'Activation Dédié** : *"Jarvis"*, calibré avec un seuil de confiance optimal et une immunité accrue aux faux positifs ambiants.
+3. **Ring Buffer Pré-Trigger (33 Paquets Opus / ~2 Secondes)** : L'enceinte conserve en permanence les 2 dernières secondes de signal audio dans un tampon circulaire local. Dès que *"Jarvis"* est prononcé, l'ESP32 s'éveille en moins de 150 ms, transmet un événement JSON `{"type": "listen", "state": "detect", "text": "Jarvis"}` et injecte instantanément les 33 paquets Opus précédant et accompagnant le wake word. Ce mécanisme élimine toute coupure de la première consigne (« Jarvis, quel temps fait-il ? » est capté dans son intégralité sans nécessiter de pause).
+
+### 8.3. Pipeline Audio Full-Duplex Opus 16kHz & Rééchantillonnage Continu (`Continuous24kTo16kResampler`)
+La chaîne audio temps réel entre l'ESP32 et le serveur VPS est optimisée pour une clarté acoustique maximale et une bande passante minimale :
+- **Format de Transport** : Trame audio binaire compressée en Opus mono 16 kHz (60 ms par trame, soit 960 échantillons / 1920 octets de données PCM 16-bit par paquet).
+- **Sens Montant (Microphone ESP32 -> VPS -> Gemini Live)** :
+  1. Capture 24kHz / 16kHz par les microphones MEMS et frontal ES7210.
+  2. Traitement d'annulation d'écho et débruitage par l'AFE ESP-SR.
+  3. Compression en trames Opus 60ms par l'encodeur matériel/logiciel ESP32.
+  4. Transmission WSS binaire sur `/ws/device`.
+  5. Décodage Opus côté VPS via `opuslib.Decoder(16000, 1)` vers du PCM 16kHz linéaire.
+  6. Injection directe dans la session Gemini Live Audio (`session.send_realtime_input`).
+- **Sens Descendant (Gemini Live -> VPS -> Haut-Parleur ESP32)** :
+  1. Gemini Live Audio produit des blocs de PCM 24kHz 16-bit mono de tailles variables.
+  2. **Rééchantillonneur Continu de Phase (`Continuous24kTo16kResampler`)** :
+     - Problématique résolue : Un rééchantillonnage naïf par bloc créait des discontinuités de phase et des cliquetis audibles en cas de blocs de taille non divisible par 6 octets (triplets d'échantillons).
+     - Algorithme : Accumule les octets bruts dans un `bytearray` interne, traite exclusivement par triplets 16-bit ($3 \times 2 = 6$ octets) pour générer 2 échantillons interpolés à 16kHz ($2 \times 2 = 4$ octets) selon la formule $y_0 = s_0$ et $y_1 = \lfloor(s_1 + s_2) / 2\rfloor$, et conserve le reliquat pour le bloc suivant.
+  3. **Accumulation en Trames Calibrées 60ms** : Le flux PCM 16kHz rééchantillonné est accumulé dans un tampon de `FRAME_BYTES_16K = 1920` octets (960 échantillons).
+  4. **Encodage Opus 16kHz VOIP** : Chaque bloc de 1920 octets est compressé en trame Opus via `opuslib.Encoder(16000, 1, opuslib.APPLICATION_VOIP)`.
+  5. **Passage au Régulateur Temporel (`DeviceAudioPacer`)**.
+
+### 8.4. Régulateur Temporel de Flux Audio & Anti-Saturation de File (`DeviceAudioPacer`)
+- **Diagnostic de Cause Racine Résolu** : L'API Gemini Live transmet les réponses audio par rafales asynchrones massives (un tour de parole de 15 secondes d'Aoede est généré et transmis au VPS en moins de 500 millisecondes). Sans régulateur, le VPS envoyait 250 trames Opus en une fraction de seconde vers la WebSocket de l'ESP32. Or, la file de décodage matérielle de l'ESP32 est strictement bornée (`MAX_DECODE_PACKETS_IN_QUEUE = 20`, soit 1,2 seconde d'audio). Au bout de 20 trames reçues (1,2s), l'ESP32 rejetait silencieusement 80% des paquets suivants, provoquant une voix inintelligible (« czubxunxfexnusy ») et une coupure prématurée.
+- **Architecture du `DeviceAudioPacer` (`routers/device_voice.py`)** :
+  - File d'attente asynchrone non-bloquante `asyncio.Queue(maxsize=300)`.
+  - Tâche de fond dédiée `_pacer_loop` cadençant l'émission physique des trames vers l'ESP32 à **55 ms par trame Opus de 60 ms** (`TARGET_INTERVAL_S = 0.055`).
+  - **Burst Initial Sans Latence (`BURST_LIMIT = 3`)** : Les 3 premières trames (180 ms d'audio) partent immédiatement avec un délai de 5 ms pour remplir le buffer de lecture de l'ESP32 et démarrer l'élocution instantanément sans délai perceptible.
+  - Les trames suivantes sont envoyées au rythme naturel de la parole (55 ms), maintenant le buffer de l'ESP32 entre 2 et 4 trames (stable, sans sous-charge ni saturation).
+  - En fin de parole de Gemini, `await pacer.wait_drained()` s'assure que toutes les trames en file sont transmises avant d'émettre le message de clôture `{"type": "tts", "state": "stop"}`.
+  - En cas d'interruption ou de barge-in utilisateur, `pacer.abort()` purge instantanément la file et annule la tâche de régulation pour couper le son sans latence résiduelle.
+
+### 8.5. Protocole WebSocket `/ws/device` & Contrat Événementiel XiaoZhi
+L'implémentation respecte le standard d'échange bidirectionnel temps réel pour terminaux audio connectés :
+
+```
+    ESP32-S3 Audio Board                             Serveur VPS (routers/device_voice.py)
+            │                                                         │
+            │─── 1. HTTP Upgrade GET /ws/device (Bearer JWT) ────────►│
+            │◄── 2. HTTP 101 Switching Protocols ─────────────────────│
+            │                                                         │
+            │─── 3. JSON hello {mac, firmware_version, sample_rate} ─►│
+            │◄── 4. JSON hello {transport: "websocket", audio_params} │
+            │                                                         │
+            │    [Veille Locale WakeNet 9 "Jarvis"]                   │
+            │─── 5. JSON listen {state: "detect", text: "Jarvis"} ───►│ (Init Session Gemini Live)
+            │─── 6. Binaire : 33 trames Opus pré-trigger (2.0s) ─────►│ (Decode Opus -> Send PCM)
+            │─── 7. Binaire : Streaming continu Opus 16kHz ──────────►│
+            │─── 8. JSON listen {state: "stop"} ─────────────────────►│
+            │                                                         │
+            │◄── 9. JSON tts {state: "start"} & llm {emotion: speak} ─│
+            │◄── 10. Binaire : Trames Opus 60ms cadencées à 55ms ─────│ (ContinuousResampler + Pacer)
+            │◄── 11. JSON tts {state: "stop"} & llm {emotion: idle} ──│
+            │─── 12. JSON tts {state: "finish"} ─────────────────────►│
+            │                                                         │
+```
+
+- **Handshake HTTP 101 Garanti** : Le serveur accepte obligatoirement `await websocket.accept()` avant de vérifier le jeton JWT, prévenant les fermetures TCP abruptes avant négociation.
+- **Messages JSON Pris en Charge** :
+  - `hello` : Échange des caractéristiques matérielles et de transport.
+  - `listen` (`detect`, `start`, `stop`) : Notification de réveil vocal ou de fin de capture.
+  - `tts` (`start`, `sentence_start`, `stop`, `finish`) : Découpage des phrases et synchronisation de lecture.
+  - `stt` : Texte transcrit renvoyé vers l'ESP32 pour affichage sur l'écran LCD.
+  - `llm` (`emotion`) : Commande d'expression faciale sur l'écran (`neutral`, `speaking`, `thinking`, `happy`, `listening`).
+  - `abort` / `barge_in` : Interruption physique immédiate si Pierre coupe la parole à Jarvis pendant qu'il parle sur l'enceinte.
+
+### 8.6. Authentification Matérielle JWT, Provisioning NVS & Connexion Wi-Fi Directe
+- **Sécurité Cryptographique Dédiée** : L'enceinte est authentifiée par un jeton JWT HMAC-SHA256 émis avec le rôle dédié `role="device"` et une durée de validité de 10 ans (3650 jours). Les requêtes sont transmises via le header `Authorization: Bearer <token>` ou le paramètre d'URL `?token=<token>`.
+- **Révocation Instantanée** : Tout comme les tokens utilisateurs, les jetons d'enceinte peuvent être révoqués en temps réel dans Redis via `POST /api/auth/revoke`.
+- **Provisioning NVS Zero-Touch** :
+  - Une partition NVS dédiée (`nvs_jarvis.bin`) est flashée à l'offset standard `0x9000` de la mémoire Flash.
+  - Elle contient les clés de configuration persistantes : `wifi_ssid`, `wifi_pass`, `ws_url` (`wss://jarvis.signalcraftapps.com/ws/device`), et `device_token`.
+  - Au démarrage, le firmware ESP-IDF lit directement ces paramètres dans la NVS et se connecte au Wi-Fi en moins de 1,5 seconde, sans jamais ouvrir de point d'accès Wi-Fi temporaire (AP captive portal `192.168.4.1`), garantissant une disponibilité permanente même après une coupure de courant.
+
+### 8.7. Règle de Canal Unique, Présence Redis & Initiative Proactive (`push_speak_to_device`)
+- **Présence en Temps Réel** : Dès la connexion WebSocket, le serveur enregistre l'enceinte sous la clé Redis `jarvis:presence:device:<device_id>` avec un TTL de 90 secondes, rafraîchi toutes les 30 secondes par un heartbeat applicatif.
+- **Règle d'Or de Canal Unique & Verrou d'Élocution Partagé** : Pour éviter toute cacophonie entre les terminaux, l'enceinte ESP32-S3 respecte le verrou global `core.shared_state.speech_lock`. Si une session vocale est déjà active sur le smartphone (PWA `/ws`), l'enceinte attend la libération du canal.
+- **Initiative Proactive (`push_speak_to_device`)** :
+  - Jarvis peut prendre la parole de manière spontanée et autonome sur l'enceinte physique pour délivrer une alerte urgente (retard de train > 5 min, notification de sécurité SRE, fin de tâche Deep Research).
+  - La fonction `push_speak_to_device(device_id, text, pcm_audio)` expédie les trames audio encodées en Opus directement sur la WebSocket active de l'enceinte, réveillant l'écran LCD et l'anneau LED en mode `speaking`.
+
+### 8.8. Compilation, Flash & Outillage Firmware (`build_firmware.bat`, ESP-IDF 5.x)
+- **Environnement de Compilation** : Espressif ESP-IDF v5.2+ (GCC Xtensa, CMake, Ninja, composants ESP-SR, ESP-ADF audio pipeline).
+- **Script Windows Automatisé (`firmware_esp32/build_firmware.bat`)** :
+  - Prépare l'environnement de build avec détection automatique d'ESP-IDF.
+  - Compile le projet C++ XiaoZhi (`idf.py build`).
+  - Détecte le port série COM (par défaut `COM5` pour le convertisseur CH343 / CP2102 de la carte Waveshare).
+  - Flashe les partitions bootloader, partition-table et application (`idf.py -p COM5 flash`) **en préservant strictement la partition NVS** `0x9000` afin de ne jamais écraser les identifiants Wi-Fi et le jeton JWT.
+  - Lance automatiquement le moniteur série temps réel (`idf.py -p COM5 monitor`).
+- **Guide Déploiement Complet** : Documenté pas-à-pas dans `firmware_esp32/DEPLOY_GUIDE.sh` et `build_firmware.bat`.
+
+---
+
+## 9. CATALOGUE MATRICIEL & FICHES DES 49 OUTILS UNIFIÉS (FUNCTION CALLING)
+
+### 9.1. Matrice Globale Exhaustive des 49 Outils Déclarés
 
 > **Source de vérité** : `core/tools/declarations.py` contient exactement **49** `types.FunctionDeclaration` (vérifiable par `Select-String -Path core\tools\declarations.py -Pattern 'name="([a-z_]+)"'`). Les alias sont résolus dans `core/tools/dispatcher.py`.
 
@@ -731,13 +863,13 @@ Remontée périodique (toutes les 15 s) : CPU global, mémoire vive, pourcentage
 | **49**| `search_workspace_files` | `chercher_fichiers_workspace` | Bloquant | `query: str` (req), `subpath: str`, `extension: str`, `max_results: int` (défaut 30) | `ToolResult.done` (`matches`, `matches_count`, `verified=True`) | `services/workspace_service.py` |
 > **Total vérifié : 49 déclarations.** Les paires `browser_task`/`run_browser_task` et `run_agentic_task`/`run_agent_task` sont deux déclarations distinctes partageant le même exécuteur (compatibilité de nommage Gemini Live) ; les lignes 39 et 42 matérialisent ces déclarations jumelles.
 
-### 8.2. Moteur Multi-Agents Antigravity CLI sur VPS & Routage Intelligent de Modèles
+### 9.2. Moteur Multi-Agents Antigravity CLI sur VPS & Routage Intelligent de Modèles
 - **Fichiers** : `google_antigravity.py`, `services/model_routing/` (`model_registry.py`, `model_router.py`, `fallback_handler.py`, `prompt_builder.py`), `config/models.json`, `prompts/templates/`, `AGENTS.md`.
 - **Exécution** : Sous-processus `agy` sur Ubuntu ARM64 adossé au jeton OAuth2 Google AI Pro (`~/.gemini/antigravity-cli/antigravity-oauth-token`), coût d'API nul.
 - **Pipeline Délibératif 3 Phases** : Prospecteur → Analyste critique → Synthèse & Artefact.
 - **Règles Strictes de Drapeaux** : `--model <nom>` et optionnellement `--effort <level>` (low | medium | high | max). Bannissement formel de `--thinking` (qui causait `exit code 2`). Pré-contrôle `verify_antigravity_cli_ready()` avant d'annoncer `launched_in_background`.
 
-#### 8.2.1. Architecture du Routage Intelligent des Modèles (`services/model_routing/`)
+#### 9.2.1. Architecture du Routage Intelligent des Modèles (`services/model_routing/`)
 1. **Registre Dynamique & Catalogue (`model_registry.py`)** :
    - Découverte dynamique via la commande CLI (`agy models list --json`) avec mise en cache TTL configurable (1h).
    - Cascade de repli : Découverte CLI → Configuration déclarative `config/models.json` → Catalogue par défaut en dur (`gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.1-pro`, `gemini-3.1-pro-preview`, `claude-3-7-sonnet`).
@@ -764,7 +896,7 @@ Remontée périodique (toutes les 15 s) : CPU global, mémoire vive, pourcentage
 5. **Charte de Règles Déportée (`AGENTS.md`)** :
    - Directives universelles déployées sur le VPS et dans l'espace de travail local : autonomie sans interruption, confinement strict au workspace, interdiction des secrets/.env/paiements, vérification par tests unitaires et restitution JSON finale.
 
-### 8.3. Moteur Asynchrone Deep Research : Architecture à Double Moteur
+### 9.3. Moteur Asynchrone Deep Research : Architecture à Double Moteur
 Le système dispose de deux moteurs de Deep Research sélectionnés intelligemment :
 
 #### Moteur A (Prioritaire) : Navigation Autonome Gemini Web (`services/browser_agent/` - Recette `gemini_deep_research`)
@@ -785,7 +917,7 @@ Mobilisé automatiquement si le Moteur A échoue ou si le navigateur local n'est
 
 > **Contrat de Dispatch Vérifié (02/10/2026)** : contrairement à `browser_task` (qui rend la main immédiatement avec `{"status": "launched_in_background", "task_id": str}`), l'outil `launch_deep_research` **attend** le verdict du Moteur A. `core/tools/dispatcher.py` (branche `launch_deep_research`, l. 595-624) instancie `BrowserTask(task_id="bt_dr_<ms>", goal=consigne, recipe="gemini_deep_research")`, l'exécute via `await run_browser_agent_task(task=dr_task)` et retourne **directement** le `ToolResult` du Browser Agent si `is_success` et `dr_task.status != "failed"` (le rapport est alors expédié par e-mail si `envoyer_email=true`, destinataire par défaut `pierrecassagnettes@gmail.com`). Le repli Map-Reduce VPS n'est déclenché qu'en cas d'échec ou d'exception, après contrôle `verify_antigravity_cli_ready()` (retour `ToolResult.failed(error_hint=cli_err)` si le CLI `agy` est indisponible, sans jamais annoncer un lancement fictif). Ce contrat est verrouillé par `tests/test_deep_research.py` (9/9 verts) et `tests/test_gemini_web_automator.py` (21/21 verts).
 
-### 8.4. Moteur Délibératif Système 2 Transverse (Les 8 Missions Agentiques Spécialisées)
+### 9.4. Moteur Délibératif Système 2 Transverse (Les 8 Missions Agentiques Spécialisées)
 Orchestrées par `services/agentic_dispatcher.py` :
 1. `transport_optimizer` : Analyse comparative TGV vs train de nuit, marges de correspondances avec bagages, options de repas en gare, itinéraire exécutif.
 2. `spreadsheet_modeler` : Conception autonome de modèles financiers `.xlsx` via `openpyxl` avec formules natives (`XLOOKUP`, `SUMIFS`), charte corporate Stark (#1E293B).
@@ -796,9 +928,9 @@ Orchestrées par `services/agentic_dispatcher.py` :
 7. `memory_consolidation` : Déduplication nocturne et réconciliation de contradictions.
 8. `doc_sync` : Contrôle de cohérence entre le code des routeurs et `ARCHITECTURE_COMPLETE_JARVIS.md`.
 
-### 8.5. Interaction Web Autonome & Agent Navigateur Local (`browser_task`)
+### 9.5. Interaction Web Autonome & Agent Navigateur Local (`browser_task`)
 
-#### 8.5.1. Paradigme & Schéma du Flux Opérationnel
+#### 9.5.1. Paradigme & Schéma du Flux Opérationnel
 Le système d'interaction web repose sur une architecture découplée en tâche de fond :
 1. **Jarvis (Gemini Live)** : Reçoit l'intention vocale, déclenche `browser_task(goal, start_url, recipe)` de manière non-bloquante, confirme oralement à Pierre (« Je m'en occupe ») et reste immédiatement disponible à la voix.
 2. **Exécution en Arrière-Plan** : `core/tools/dispatcher.py` instancie un `BrowserTask` et lance `run_browser_agent_task(task, notify)` au sein d'une tâche asyncio supervisée (`BROWSER_TASKS`).
@@ -849,7 +981,7 @@ Le système d'interaction web repose sur une architecture découplée en tâche 
                                                            └───────────────────────────────┘
 ```
 
-#### 8.5.2. Répertoire des Composants & Rôles des Fichiers
+#### 9.5.2. Répertoire des Composants & Rôles des Fichiers
 - `local_browser_actions.py` : Pont CDP Playwright côté PC Windows (`BrowserBridge`), assurant la connexion sur le port 9222, le balisage dynamique du DOM (`data-jarvis-id` de 1 à 150), l'exécution ordonnée des actions et la capture d'écran JPEG viewport.
 - `services/browser_agent/__init__.py` : Point d'entrée exportant `BrowserTask`, `TASKS`, `run_browser_task`, `cancel_task`, `check_action`, `load_hint`, `save_success`.
 - `services/browser_agent/loop.py` : Orchestrateur de la boucle de navigation autonome S2 (gestion des étapes `max_steps`, du délai `max_duration`, des erreurs consécutives, de l'appel vision, du mécanisme de `handoff` et de la vérification finale).
@@ -858,12 +990,12 @@ Le système d'interaction web repose sur une architecture découplée en tâche 
 - `services/browser_agent/site_memory.py` : Persistance atomique des parcours de navigation réussis par domaine sous `data/site_memory/<domain>.json` (S6), injectant jusqu'à 2 résumés d'étapes passées comme indices pour le cerveau.
 - `services/browser_agent/recipes/` : Dossier contenant les consignes de navigation spécialisées au format Markdown.
 
-#### 8.5.3. Catalogue des Recettes Disponibles (`services/browser_agent/recipes/`)
+#### 9.5.3. Catalogue des Recettes Disponibles (`services/browser_agent/recipes/`)
 - `cart.md` : Consignes pour l'e-commerce générique (recherche de produit, sélection du meilleur compromis prix/pertinence, gestion des pop-ups/cookies, ajout au panier, arrêt strict avant commande).
 - `train.md` : Consignes pour la recherche et sélection d'itinéraires ferroviaires sur SNCF Connect (avec repli Trainline), sélection des horaires optimaux et arrêt sur la page passagers/pré-paiement.
 - `gemini_deep_research.md` : Consignes pour l'automatisation de Google Gemini (`https://gemini.google.com/app`), activation du mode Deep Research, lancement de la recherche, surveillance en boucle (`wait 120`), extraction du rapport intégral avec `extract` et transmission.
 
-#### 8.5.4. Outils Exposés à Gemini Live & Rétrocompatibilité
+#### 9.5.4. Outils Exposés à Gemini Live & Rétrocompatibilité
 - `browser_task` : Outil maître générique de navigation autonome. Accepte `goal` (objectif en langage naturel), `start_url` (URL de départ optionnelle) et `recipe` (`cart`, `train`, `gemini_deep_research`).
 - `browser_task_status` : Outil de suivi d'avancement retournant l'état, l'étape en cours et l'objectif pour un `task_id` donné.
 - `prepare_web_cart_or_checkout` (alias `prepare_cart`) : Conservé pour rétrocompatibilité ; enveloppe automatiquement `browser_task` avec la recette `cart`.
@@ -871,55 +1003,55 @@ Le système d'interaction web repose sur une architecture découplée en tâche 
 - `launch_deep_research` (alias `deep_research`, `lancer_mission_deep_research`) : Enveloppe en priorité `browser_task` avec la recette `gemini_deep_research` avant de basculer sur le pipeline Map-Reduce VPS en cas d'échec.
 - `run_browser_task` : Conservé comme alias direct / compatibilité historique vers `browser_task`.
 
-#### 8.5.5. Garde-Fous de Sécurité & Protocole de Handoff
+#### 9.5.5. Garde-Fous de Sécurité & Protocole de Handoff
 - **Anti-Paiement Inviolable** : Tout clic sur un bouton d'achat final (mots-clés : *payer, paiement, commander, passer la commande, valider et payer, pay now, place order, buy now*, etc.) est intercepté par `guards.py`. La tâche s'interrompt avec le statut `ready_for_user`, l'onglet est mis au premier plan via `browser_focus`, et Jarvis annonce oralement : « C'est prêt, il ne te reste qu'à valider. »
 - **Données Confidentielles** : Mots de passe, numéros de carte de crédit, IBAN et CVV ne sont jamais saisis par l'agent.
 - **Protocole de Handoff Utilisateur** : En cas de détection d'un obstacle non automatisable (captcha, écran de connexion obligatoire, 2FA, choix complexe), l'agent bascule en `handoff`. L'onglet est mis au premier plan, Jarvis prévient Pierre vocalement avec priorité `INTERRUPTION`, puis le système surveille l'évolution de la page par un snapshot toutes les 5 secondes pendant 5 minutes maximum. Si l'utilisateur lève le blocage, la tâche reprend de manière fluide ; sinon, elle se clôture avec le statut `needs_user`.
 - **Annulation Physique** : L'outil `stop_current_action` déclenche `cancel_task(task_id)` qui interrompt immédiatement la boucle asynchrone et libère l'onglet.
 
-#### 8.5.6. Limites Connues
+#### 9.5.6. Limites Connues
 - **Captchas & Défis Anti-Bot** : Cloudflare Turnstile, reCAPTCHA v2/v3 et puzzles interactifs ne sont pas résolus automatiquement par l'agent et nécessitent une intervention humaine via le protocole de handoff.
 - **Authentification Forte & 2FA** : Les formulaires exigeant des codes SMS, clés FIDO2 ou notifications bancaires sur smartphone requièrent le relais de l'utilisateur.
 - **Sites sans Recette Dédiée** : Pour les services complexes non couverts par une recette (`recipes/*.md`), l'agent fonctionne par heuristique générale ; son efficacité dépend de la clarté du DOM et du respect du quota des 150 éléments interactifs balisés par snapshot.
 - **Contraintes de Fenêtrage DOM** : Les snapshots filtrent les éléments interactifs à 150 éléments visibles (hauteur max 2 viewports) et tronquent le texte descriptif de la page à 1500 caractères.
 
-### 8.6. Pôle Documentaire & Présentations Google Slides Polymorphes v1
+### 9.6. Pôle Documentaire & Présentations Google Slides Polymorphes v1
 - `services/slides_service.py` : 7 layouts visuels widescreen 16:9 (`hero_title`, `key_metrics`, `cards_grid`, `split_compare`, `timeline_steps`, `quote_highlight`, `conclusion_call_to_action`).
 - Conformité Google Slides API v1 (`ROUND_RECTANGLE`), suppression automatique de la diapositive blanche initiale.
 
-### 8.7. Mobilité & Système Ferroviaire Intelligent (France & Suède)
+### 9.7. Mobilité & Système Ferroviaire Intelligent (France & Suède)
 - Décomposition multi-segments (ex: Malmö ↔ Kiruna via Stockholm Central avec TGV de jour + train de nuit).
 - Recherche de trajets et réservation : `search_train_routes` (recherche d'horaires et liaisons) et `open_train_booking` (alias `reserver_billet_train_local`, qui délègue l'interaction web sur les sites de réservation à `browser_task` avec la recette `train.md`).
 - Surveillance Trafikverket/SNCF toutes les 10 min par n8n avec alerte vocale et Telegram si retard > 5 min.
 
-### 8.8. Gestionnaire E-Book, Liseuses Physiques & Send to Kindle
+### 9.8. Gestionnaire E-Book, Liseuses Physiques & Send to Kindle
 - Scraping Anna's Archive avec contrôle strict de la langue (FR/EN) et intégrité EPUB.
 - Détection des liseuses USB montées sous Windows et téléversement direct Amazon Send to Kindle Web (fichiers jusqu'à 200 Mo).
 
-### 8.9. Contrôleur Média : Spotify & Stremio
+### 9.9. Contrôleur Média : Spotify & Stremio
 - **Spotify Web API & Connect** : Client asynchrone direct (`services/spotify_service.py`) avec OAuth 2.0 PKCE, tokens chiffrés Fernet dans SQLite et cache Redis. Contrôle lecture, recherche (titre, artiste, album, playlist), favoris, files d'attente, volume et transfert d'appareils.
   - **Gestion de l'Appareil par Défaut** : Table SQLite `user_device_preferences`. Résolution prioritaire : 1) Indice oral explicite (`device="pc"`), 2) Appareil actuellement actif, 3) Préférence utilisateur enregistrée (par défaut 'telephone'). Si le smartphone est absent de Spotify Connect, émission d'un message vocal explicite sans bascule silencieuse PC.
   - **Ducking Intelligent du Volume** : Dès que Jarvis commence à parler (`MODEL_SPEAKING`), le volume réel est sauvegardé et abaissé (~25% ou cible 15%). Dès la fin de parole (`playback_finished`, `speech_ended` ou interruption barge-in), le volume réel d'origine est restauré. Le ducking est ignoré si `supports_volume=false`, n'intervient qu'une seule fois par tour de parole, et n'écrase pas le réglage si l'utilisateur a ajusté son volume manuellement entre-temps.
 - **Stremio & VLC** : Interrogation Cinemeta / Torrentio pour trouver les flux 1080p légers et lancement via protocole URI `stremio:///detail/...` ou VLC direct via l'agent local.
 
-### 8.10. Suite de Communication & Messagerie Stark
+### 9.10. Suite de Communication & Messagerie Stark
 - Envoi SMTP avec gabarit Stark HTML et résolution floue universelle des pièces jointes (`resolve_attachment_path`). Rapatriement de fichiers locaux du PC via `fetch_file` base64.
 - Consultation IMAP Gmail et archivage automatique dans `outbox_emails/`.
 
-### 8.11. Système de Mémoire Hybride (SQLite, Qdrant & Fastembed)
+### 9.11. Système de Mémoire Hybride (SQLite, Qdrant & Fastembed)
 Arbitrage automatique entre faits de profil (SQLite) et mémoire vectorielle RAG (Qdrant + Fastembed local 384 dim).
 
-### 8.12. Télémétrie, Observabilité & Métriques des Outils (`services/metrics_service.py`)
+### 9.12. Télémétrie, Observabilité & Métriques des Outils (`services/metrics_service.py`)
 Consignation non-bloquante de chaque appel d'outil dans PostgreSQL `tool_call_metrics` (statut, latence, tier, coût, arguments). Exposition sur `/api/supervision/metrics` avec fenêtres temporelles 24h, 7j, 30j.
 Comprend également le compteur d'intégrité `claimed_success_without_verification` : incrémenté automatiquement par `normalize_result()` dès qu'un outil prétend à un succès terminé (`status="done"`) sans qu'une vérification indépendante matérielle n'ait pu être attestée (`verified=False`).
 
-### 8.13. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
+### 9.13. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
 Synchronisation bidirectionnelle Google/Samsung Calendar via n8n. Rappels push instantanés via Telegram Stark Bot (`chatId: 6849746502`). Briefing matinal compilé dans Redis (`jarvis:briefing:today`).
 
-### 8.14. Connaissance Architecturale Dynamique & Auto-évaluation
+### 9.14. Connaissance Architecturale Dynamique & Auto-évaluation
 `services/architecture_service.py` surveille `ARCHITECTURE_COMPLETE_JARVIS.md` via `mtime`. Outil `query_jarvis_architecture` permettant à Jarvis de citer ses propres spécifications.
 
-### 8.15. SRE Autonome & Auto-Guérison Système (`services/system_healing_service.py`)
+### 9.15. SRE Autonome & Auto-Guérison Système (`services/system_healing_service.py`)
 - Analyse de cause racine (RCA) suite à des crashs interceptés par `console_monitor.py`.
 - Validation syntaxique stricte (`py_compile`).
 - Exécution de tests dans une sandbox temporaire isolée (excluant `venv`, `.git`).
@@ -927,7 +1059,7 @@ Synchronisation bidirectionnelle Google/Samsung Calendar via n8n. Rappels push i
 - **Règle d'Escalade Fichiers Critiques** : Si un fichier sensible (`CRITICAL_FILES = {"auth_service.py", "dispatcher.py", "auth.py", "declarations.py", "security.py"}`) est touché, le patch passe au statut `requires_validation` et attend l'approbation orale explicite de Pierre.
 - Déploiement Blue/Green atomique (`releases/<timestamp>` + symlink `current`), rollback instantané en 1 clic ou commande vocale. Persistance PostgreSQL + SQLite.
 
-### 8.16. Contrat Universel ToolResult & Moteur de Vérification d'Effet Réel (Zero Unverified Claims)
+### 9.16. Contrat Universel ToolResult & Moteur de Vérification d'Effet Réel (Zero Unverified Claims)
 Afin de rendre structurellement impossible que Jarvis annonce oralement un succès non prouvé, le contrat canonique strict s'applique à l'intégralité des 49 outils déclarés :
 
 0. **Portail de Validation Pré-Exécution (`core/tools/arg_validator.py`)** :
@@ -971,7 +1103,7 @@ Afin de rendre structurellement impossible que Jarvis annonce oralement un succ�
    - `failed` : Jarvis énonce clairement l'échec, indique la cause probable (`error_hint`) et propose immédiatement une alternative sans minimiser.
    - `needs_user` : Jarvis pose la question ou demande la validation requise et attend la réponse de l'utilisateur.
 
-### 8.17. Orchestration Agentique, Planificateur Multi-Étapes, Consentement Payant & Espace de Travail
+### 9.17. Orchestration Agentique, Planificateur Multi-Étapes, Consentement Payant & Espace de Travail
 1. **Exécution Agentique Antigravity (`run_agentic_task` / `run_agent_task`)** :
    - Champs : `objectif` (requis), `contexte`, `livrable_attendu`, `model_override` (`flash`\|`pro`, défaut `pro` via `_resolve_agy_model`), `effort_override` (`low`\|`medium`\|`high`, défaut `high` via `_resolve_agy_effort`), `timeout` (défaut 300 s).
    - Pré-contrôle systématique `verify_antigravity_cli_ready()` : en cas d'indisponibilité de la CLI, échec explicite (`cli_not_ready`) sans annonce de lancement.
@@ -991,11 +1123,11 @@ Afin de rendre structurellement impossible que Jarvis annonce oralement un succ�
 
 ---
 
-## 9. MATRICE DES ENDPOINTS API REST & PROTOCOLES WEBSOCKETS
+## 10. MATRICE DES ENDPOINTS API REST & PROTOCOLES WEBSOCKETS
 
-### 9.1. Endpoints HTTP / REST FastAPI (Exhaustif)
+### 10.1. Endpoints HTTP / REST FastAPI (Exhaustif)
 
-> **Note d'exhaustivité (vérifiée)** : 55 routes HTTP sont déclarées par les décorateurs `@app.*` / `@router.*` (App.py : 6 ; briefing : 6 ; browser : 12 ; chat : 3 ; local_agent : 1 ; settings : 7 ; spotify : 7 ; supervision : 9 ; transport : 4). Deux paires lecture/écriture sont regroupées dans une seule ligne ci-dessous (`GET/POST /api/live-model` et `GET/POST /api/settings/paid-key`), et le montage statique `/downloads` complète le tableau. Tous les routeurs sont inclus sans préfixe **sauf** `routers/transport.py` (`APIRouter(prefix="/api/train")`). Les deux WebSockets (`/ws`, `/ws/local-agent`) sont décrits en §9.2 et §9.3.
+> **Note d'exhaustivité (vérifiée)** : 57 routes HTTP sont déclarées par les décorateurs `@app.*` / `@router.*` (App.py : 6 ; briefing : 6 ; browser : 12 ; chat : 3 ; device_voice : 2 ; local_agent : 1 ; settings : 7 ; spotify : 7 ; supervision : 9 ; transport : 4). Deux paires lecture/écriture sont regroupées dans une seule ligne ci-dessous (`GET/POST /api/live-model` et `GET/POST /api/settings/paid-key`), et le montage statique `/downloads` complète le tableau. Tous les routeurs sont inclus sans préfixe **sauf** `routers/transport.py` (`APIRouter(prefix="/api/train")`). Les trois WebSockets (`/ws`, `/ws/local-agent`, `/ws/device`) sont décrits en §10.2, §10.3 et §10.4.
 
 | Méthode | Route | Description & Rôle Opérationnel | Authentification | Payload / Paramètres Types | Réponse Type |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -1053,28 +1185,41 @@ Afin de rendre structurellement impossible que Jarvis annonce oralement un succ�
 | **POST** | `/api/train/monitor` | Active la surveillance proactive n8n d'un train. | Token JWT | `{"train_number": "...", "date": "..."}` | `{"status": "monitoring"}` |
 | **POST** | `/api/train/alert` | Webhook de réception d'alerte de retard n8n. | Secret n8n | `{"train": "...", "delay_min": 15}` | `{"status": "broadcasted"}` |
 | **POST** | `/api/train/reserve-local` | Préparation de réservation multi-onglets sur PC local. | Token JWT | `{"segments": [...]}` | `{"status": "opened_locally"}` |
+| **POST** | `/api/device/generate-token` | Génère un token JWT longue durée (10 ans) pour l'enceinte ESP32-S3. | Mot de passe admin | `{"device_name": "...", "mac_address": "...", "admin_password": "..."}` | `{"status": "ok", "token": "jwt...", "device_id": "..."}` |
+| **GET** | `/api/device/sessions` | Liste les sessions de terminaux et enceintes connectées en direct. | Token JWT admin | Aucun | `{"status": "ok", "sessions": [...], "count": int}` |
 
-### 9.2. Contrat WebSocket Audio Gemini Live (`/ws`)
+### 10.2. Contrat WebSocket Audio Gemini Live (`/ws`)
 - **URL** : `wss://jarvis.signalcraftapps.com/ws?token={jwt_token}`
 - **Messages montants (Client -> Serveur)** : Chunks audio micro base64 PCM (`{"realtime_input": {"media_chunks": [...]}}`), `{"type": "mic_mute"}` / `{"type": "mic_unmute"}`.
 - **Messages descendants (Serveur -> Client)** : Chunks audio modèle (`{"audio": "base64_pcm..."}`), états de l'avatar (`{"type": "status", "state": "thinking|speaking|coding..."}`), supervision (`{"type": "supervision_update"}`, `{"type": "subagent_spawn"}`), `{"type": "paid_consent_request"}`, `{"type": "browser_update"}`.
 
-### 9.3. Contrat WebSocket Relais Agent Local PC (`/ws/local-agent`)
+### 10.3. Contrat WebSocket Relais Agent Local PC (`/ws/local-agent`)
 - **URL** : `wss://jarvis.signalcraftapps.com/ws/local-agent?token={jwt_token}`
 - **Requête VPS -> PC** : `{"req_id": "rpc_123", "action": "open_browser", "params": {"url": "https://..."}}`
 - **Réponse PC -> VPS** : `{"req_id": "rpc_123", "result": {"status": "success", "message": "..."}}`
 - **Heartbeat PC -> VPS (toutes les 15 s)** : `{"type": "heartbeat", "cpu_percent": 12.4, "ram_percent": 48.2, "battery": {"percent": 98, "power_plugged": true}}`
 
-### 9.4. Contrat & Intégration Spotify Web API (Connect & OAuth 2.0 PKCE)
+### 10.4. Contrat WebSocket Enceinte Physique ESP32-S3 (`/ws/device`)
+- **URL** : `wss://jarvis.signalcraftapps.com/ws/device` (Token Bearer dans header `Authorization` ou paramètre `?token=`).
+- **Flux Audio Binaire Montant (ESP32 -> VPS)** : Trames audio compressées Opus 16 kHz mono (60 ms / 960 échantillons par paquet binaire).
+- **Flux Audio Binaire Descendant (VPS -> ESP32)** : Trames Opus 16 kHz mono cadencées à 55 ms par trame via `DeviceAudioPacer` (anti-saturation de la file matérielle 20 paquets).
+- **Messages de Contrôle JSON (Protocole XiaoZhi)** :
+  - Handshake : `{"type": "hello", "audio_params": {"format": "opus", "sample_rate": 16000, "frame_duration": 60}}`.
+  - Contrôle d'écoute : `{"type": "listen", "state": "detect"|"start"|"stop"}`.
+  - Retours visuels LCD : `{"type": "stt", "text": "..."}`, `{"type": "tts", "state": "sentence_start"|"start"|"stop", "text": "..."}`.
+  - Émotions Avatar : `{"type": "llm", "emotion": "speaking"|"thinking"|"idle"}`.
+  - Interruption : `{"type": "abort", "reason": "..."}` ou `{"type": "barge_in"}`.
+
+### 10.5. Contrat & Intégration Spotify Web API (Connect & OAuth 2.0 PKCE)
 - **Authentification & Tokens** : Authorization Code Grant avec PKCE côté VPS (`GET /api/media/spotify/login` et `/callback`). Tokens d'accès et de rafraîchissement chiffrés via clé Fernet dérivée de `JWT_SECRET_KEY` stockés dans SQLite (`spotify_tokens`) avec TTL Redis et verrou asynchrone anti-refresh concurrent.
 - **Contrôle & Endpoints** : `POST /api/media/spotify/control` accepte `action: str` (`play`, `pause`, `resume`, `next`, `previous`, `seek`, `volume`, `shuffle`, `repeat`, `queue_add`, `get_queue`, `list_devices`, `set_default_device`, `transfer`, `like`, `unlike`, `add_to_playlist`, `create_playlist`, `follow_artist`, `search`, `top`, `recent`).
 - **Observabilité & Vérification Réelle** : Vérification post-action via `GET /me/player` pour confirmer que `is_playing` et le volume correspondent fidèlement avant de certifier `verified=True`.
 
 ---
 
-## 10. CYCLE DE VIE, SUPERVISION & ÉVÉNEMENTS DES SOUS-AGENTS
+## 11. CYCLE DE VIE, SUPERVISION & ÉVÉNEMENTS DES SOUS-AGENTS
 
-### 10.1. Cycle de Vie d'un Sous-Agent
+### 11.1. Cycle de Vie d'un Sous-Agent
 Dans le cadre de missions Système 2 ou Deep Research, Jarvis instancie des sous-agents spécialisés via `spawn_subagent` :
 ```
                   ┌───────────────────────────────┐
@@ -1101,7 +1246,7 @@ Dans le cadre de missions Système 2 ou Deep Research, Jarvis instancie des sous
                   └───────────────────────────────┘
 ```
 
-### 10.2. Diffusion Temps Réel & Structure des Événements
+### 11.2. Diffusion Temps Réel & Structure des Événements
 Chaque transition d'état d'un sous-agent émet un événement WebSocket vers le frontend :
 ```json
 {
@@ -1120,24 +1265,24 @@ Chaque transition d'état d'un sous-agent émet un événement WebSocket vers le
 }
 ```
 
-### 10.3. Visualisation dans le HUD Mobile
+### 11.3. Visualisation dans le HUD Mobile
 Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans le modal de supervision du HUD, avec indicateurs lumineux de progression, modèle sollicité et statut en direct.
 
 ---
 
-## 11. INTERFACE UTILISATEUR, PWA & HUD MOBILE STARK INDUSTRIES
+## 12. INTERFACE UTILISATEUR, PWA & HUD MOBILE STARK INDUSTRIES
 
-### 11.1. Principes Ergonomiques & Design System Cyberpunk
+### 12.1. Principes Ergonomiques & Design System Cyberpunk
 - **Identité Visuelle** : Palette sombre profonde (`#070B14`, `#0B0F19`), cyan électrique Stark (`#38bdf8`, `#0284c7`), accents ambre et violet néon.
 - **Typographie** : Polices modernes géométriques sans-serif d'inspiration high-tech.
 - **Responsive PWA** : Conçue pour une expérience native sur smartphone (iOS Safari / Android Chrome) et desktop avec support PWA (`manifest.json`, installation sur écran d'accueil).
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.36.0 AGY MODEL ROUTING & RESILIENCE`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.37.6 ESP32 OPUS PACER & CONTINUOUS RESAMPLING`.
 
-### 11.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
+### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
 - **Réactivité Sonore Web Audio API** : Mesure l'amplitude du signal micro et audio en temps réel pour faire pulser la lueur du réacteur proportionnellement à l'intensité de la voix.
 
-### 11.3. Machine à États Visuelle
+### 12.3. Machine à États Visuelle
 L'avatar adapte ses filtres de lueur SVG et ses anneaux rotatifs selon l'état système :
 - `idle` : Cyan doux pulsant lentement (repos, écoute passive).
 - `listening` : Cyan électrique vif réactif à la voix de Pierre.
@@ -1149,8 +1294,8 @@ L'avatar adapte ses filtres de lueur SVG et ses anneaux rotatifs selon l'état s
 - `music` : Ambre doré vibrant (Spotify Connect actif).
 - `media` : Pourpre profond (lecture cinéma Stremio).
 
-### 11.4. Tiroirs, Modals Interactifs & Vues Dédiées
-1. **Modal de Supervision Globale** : Vue synoptique affichant les actions en cours, les sous-agents actifs, la télémétrie matérielle physique du PC Windows, les fenêtres d'applications ouvertes et la consommation des clés API.
+### 12.4. Tiroirs, Modals Interactifs & Vues Dédiées
+1. **Modal de Supervision Globale** : Vue synoptique affichant les actions en cours, les sous-agents actifs, la télémétrie matérielle physique du PC Windows, les enceintes et périphériques connectés et la consommation des clés API.
 2. **Drawer Messagerie Multimodale (Chat Drawer)** : Tiroir coulissant permettant d'échanger par écrit, de glisser-déposer des captures d'écran ou de photographier une panne avec la caméra du smartphone pour analyse visuelle immédiate par Gemini 3.8 Flash.
 3. **Modal Send to Kindle Dédié** : Zone de glisser-déposer pour téléversement direct de fichiers EPUB/PDF vers la liseuse de Pierre avec statut de connexion Amazon en direct.
 4. **Modal d'Arbitrage Économique** : Fenêtre d'alerte s'ouvrant automatiquement dès qu'une action payante requiert un consentement explicite.
@@ -1158,38 +1303,36 @@ L'avatar adapte ses filtres de lueur SVG et ses anneaux rotatifs selon l'état s
 
 ---
 
-## 12. ANALYSE CRITIQUE : FORCES, DETTE TECHNIQUE & PISTES D'AMÉLIORATION
+## 13. ANALYSE CRITIQUE : FORCES, DETTE TECHNIQUE & PISTES D'AMÉLIORATION
 
-### 12.1. Forces Majeures de l'Architecture Actuelle
+### 13.1. Forces Majeures de l'Architecture Actuelle
 1. **Résilience et Dégradation Gracieuse Systémique** : Zéro point de défaillance unique (SPOF). Si Redis tombe, la RAM prend le relais. Si Qdrant est inaccessible, SQLite assure la recherche textuelle. Si le PC local est éteint, le Cloud headless prend le relais. Si le quota 3.1 Pro est atteint, le Tier 2 Flash-high finalise la tâche.
-2. **Hybridation Cloud / Edge Réussie** : Répartition optimale entre le VPS Cloud toujours actif (cerveau permanent, RAG, sessions Gemini Live) et l'agent local Windows 11 (mains physiques, applications locales, audio, Chrome CDP).
+2. **Hybridation Cloud / Edge / Hardware Réussie** : Répartition optimale entre le VPS Cloud toujours actif (cerveau permanent, RAG, sessions Gemini Live), l'agent local Windows 11 (mains physiques, applications locales, Chrome CDP) et l'enceinte autonome ESP32-S3 (présence ambiante, réveil instantané WakeNet 9 "Jarvis").
 3. **Réactivité Vocale Non-Bloquante (< 300 ms)** : Confirmation orale instantanée d'Aoede couplée à l'exécution de fond, éliminant tout sentiment de latence pour l'utilisateur.
 4. **Garde-Fous Économiques et Financiers Inviolables** : Impossibilité physique d'engager des frais sans encoche active et arrêt strict avant toute transaction bancaire.
 5. **Raisonnement Délibératif Système 2 Universel** : Pipeline multi-agents complet (Prospecteur, Critique, Synthèse) capable d'adresser aussi bien le code, les transports, les Google Slides que les audits stratégiques.
 
-### 12.2. Points d'Attention & Dette Technique
+### 13.2. Points d'Attention & Dette Technique
 1. **Gestion de Concurrence sur Profils Chrome Locaux** : Lorsque Chrome CDP est sollicité alors que Pierre navigue manuellement, des verrous de profil temporaires peuvent survenir si Chrome n'est pas lancé avec le flag de débogage distant adéquat.
 2. **Volumétrie des Logs en Longue Session** : Le fichier `jarvis_agent.log` sur Windows nécessite la mise en place d'une rotation automatique des journaux (`RotatingFileHandler`).
 3. **Dépendance Réseau Cloudflare** : Bien que le tunnel Zero Trust soit exceptionnellement stable, un filtrage d'entreprise sur le port 7844 impose le repli Wi-Fi local.
-4. **Dette Documentaire & Risque de Dérive** : ce référentiel a historiquement dérivé (nombre d'outils, arborescence, versions). Toute évolution doit être répercutée immédiatement (règle `.agents/rules/architecture-knowledge-and-sync.md`). Sources de vérité à interroger : `core/tools/declarations.py` (49 déclarations), `App.py` + `routers/*.py` (routes), `config/models.json` (modèles et routage), `static/index.html` (classe `hud-version-tag`). **Campagne de vérification du 02/10/2026** : ces quatre sources ont été re-contrôlées par commande après correction des tests obsolètes — 49 déclarations (`name="`), 55 routes (App 6 / briefing 6 / browser 12 / chat 3 / local_agent 1 / settings 7 / spotify 7 / supervision 9 / transport 4), 34 modules pytest racine + 12 `tests/unit/` + 1 `tests/e2e/`, `MODEL_ROUTING_ENABLED` (défaut `true`, `config.py` l. 163), `cooldown_seconds = 300` (`config/models.json` l. 3), HUD `V 5.36.0 AGY MODEL ROUTING & RESILIENCE`. Suite complète relancée hors e2e (`python -m pytest tests --ignore=tests/e2e`) : **427 passed, 0 failed**.
-5. **Shims Rétrocompatibles à la Racine** : `model_registry.py` (8 lignes), `model_router.py` (6 lignes), `fallback_handler.py` (15 lignes) et `prompt_builder.py` (7 lignes) ne sont que des ré-exports vers `services/model_routing/` ; ils doivent être purgés dès qu'aucun import legacy ne subsiste. **Attention (correction vérifiée)** : `google_antigravity.py` racine (564 lignes) n'est **pas** un shim mais l'implémentation réelle du wrapper agy (`AntigravityAgent`, `verify_antigravity_cli_ready`, `resolve_cognitive_tier`, `resolve_cli_model_args`) ; c'est `services/google_antigravity.py` (62 lignes) qui est la façade de ré-export.
+4. **Dette Documentaire & Risque de Dérive** : ce référentiel a historiquement dérivé (nombre d'outils, arborescence, versions). Toute évolution doit être répercutée immédiatement (règle `.agents/rules/architecture-knowledge-and-sync.md`). Sources de vérité à interroger : `core/tools/declarations.py` (49 déclarations), `App.py` + `routers/*.py` (routes), `config/models.json` (modèles et routage), `static/index.html` (classe `hud-version-tag`).
+5. **Shims Rétrocompatibles à la Racine** : `model_registry.py` (8 lignes), `model_router.py` (6 lignes), `fallback_handler.py` (15 lignes) et `prompt_builder.py` (7 lignes) ne sont que des ré-exports vers `services/model_routing/` ; ils doivent être purgés dès qu'aucun import legacy ne subsiste.
 6. **Artefacts de Sauvegarde & Scripts Jetables** : `App_backup_monolith.py` (plusieurs milliers de lignes, non importé par le runtime) et les `scripts_tmp_*.py` alourdissent le dépôt et faussent les inventaires de code ; leur archivage est recommandé.
-7. **Résumé Global du Rapport de Recette Non Fiable** : `tests/run_all_tests.py` produit `tests/RAPPORT_TESTS_JARVIS.txt` (dernière campagne : 27/09/2026) dont la ligne « RESUME GLOBAL : 19/19 MODULES ET SERVICES TESTES ET 100% VALIDES » est **contredite** par son propre contenu (modules 15 « Interactive Browser & Cart », 17 « Deezer Control » et 18 « Chrome Extensions & Kindle » journalisés en `[FAILURE]`). Le compteur global du générateur doit être recalculé à partir des statuts réels avant toute communication de résultat (dette technique ouverte).
-8. **Docstring Obsolète sur `launch_deep_research_gemini_web`** : la docstring de `services/deep_research_service.py` (l. 1485-1494) annonce encore un retour immédiat `{status: launched_in_background}` alors que l'implémentation **attend** `run_browser_task()` et retourne `{status: success|error}` (contrat réel décrit en §8.3). Le commentaire doit être aligné sur le code.
 
-### 12.3. Pistes d'Évolution Stratégique & Prochaines Étapes
+### 13.3. Pistes d'Évolution Stratégique & Prochaines Étapes
 1. **Anticipation Proactive d'Agenda & Trajets** : Déclenchement automatique de la recherche de trains et de l'optimisation des correspondances dès qu'un rendez-vous extérieur est créé sur Google Calendar.
 2. **Pont Domotique Home Assistant** : Extension du catalogue d'outils pour piloter les luminaires et thermostats connectés de Pierre.
 3. **Modèles Locaux On-Premise de Secours (Ollama / Llama 3)** : Intégration d'un LLM local sur le PC Windows pour garantir des fonctions vocales de base même en cas de coupure internet totale.
 
 ---
 
-## 13. GUIDE DU DÉVELOPPEUR & RECETTES D'INGÉNIERIE POUR AGENTS IA
+## 14. GUIDE DU DÉVELOPPEUR & RECETTES D'INGÉNIERIE POUR AGENTS IA
 
 > **Section conçue spécifiquement pour les LLMs et agents d'ingénierie logicielle** :
 > Fournit les règles formelles, les conventions de code, les signatures types et les recettes opératoires pas-à-pas pour modifier, enrichir ou réparer le codebase de J.A.R.V.I.S.
 
-### 13.1. Invariants d'Implémentation & Style de Code
+### 14.1. Invariants d'Implémentation & Style de Code
 1. **Asynchronisme Non-Bloquant Absolu** :
    - Tout appel I/O (réseau, base de données, processus, disque) DOIT être asynchrone (`async`/`await`).
    - Interdiction formelle d'utiliser `time.sleep()` (utiliser `asyncio.sleep()`) ou la bibliothèque `requests` synchrone (utiliser `httpx.AsyncClient` ou `aiohttp`).
@@ -1202,8 +1345,8 @@ L'avatar adapte ses filtres de lueur SVG et ses anneaux rotatifs selon l'état s
    - L'état global et les clients partagés résident exclusivement dans `core/shared_state.py`.
    - `config.py` ne doit importer aucun service ni routeur.
 
-### 13.2. Recette 1 : Déclarer & Implémenter un Nouvel Outil Gemini Live
-Pour ajouter un 39e outil ou modifier un outil existant :
+### 14.2. Recette 1 : Déclarer & Implémenter un Nouvel Outil Gemini Live
+Pour ajouter un 50e outil ou modifier un outil existant :
 
 1. **Étape 1 — Déclaration FunctionDeclaration dans `core/tools/declarations.py`** :
    Ajouter l'outil dans la liste renvoyée par `get_tools_list()` :
@@ -1245,7 +1388,7 @@ Pour ajouter un 39e outil ou modifier un outil existant :
 4. **Étape 4 — Test Unitaire dans `tests/test_mon_outil.py`** :
    Vérifier la déclaration via `get_tools_list()` et le dispatch mocké offline.
 
-### 13.3. Recette 2 : Ajouter un Nouvel Endpoint REST ou WebSocket
+### 14.3. Recette 2 : Ajouter un Nouvel Endpoint REST ou WebSocket
 1. Créer ou ouvrir le routeur dans `routers/mon_domaine.py` :
    ```python
    from fastapi import APIRouter, Depends, Request
@@ -1268,7 +1411,7 @@ Pour ajouter un 39e outil ou modifier un outil existant :
    app.include_router(mon_domaine.router)
    ```
 
-### 13.4. Recette 3 : Ajouter une Action RPC Local Agent PC
+### 14.4. Recette 3 : Ajouter une Action RPC Local Agent PC
 1. Dans `jarvis_local_agent.py`, ajouter le handler dans la boucle `handle_rpc_message` :
    ```python
    elif action == "nouvelle_action_physique":
@@ -1281,14 +1424,14 @@ Pour ajouter un 39e outil ou modifier un outil existant :
        return await self.send_rpc_command("nouvelle_action_physique", {"param": param})
    ```
 
-### 13.5. Recette 4 : Créer une Nouvelle Mission Agentique Système 2
+### 14.5. Recette 4 : Créer une Nouvelle Mission Agentique Système 2
 1. Dans `services/agentic_dispatcher.py` :
    - Ajouter le nom de mission au type `MissionType`.
    - Ajouter le générateur de prompt spécialisé dans `_build_domain_prompt()`.
    - Déclarer le palier cognitif par défaut (Tier 1, 2 ou 3) dans `google_antigravity.py:resolve_cognitive_tier_sync()`.
    - Configurer le dossier de sortie (`artifacts/` ou `downloads/`) et la notification multicanale (Aoede + Telegram).
 
-### 13.6. Patterns d'Accès aux Bases de Données
+### 14.6. Patterns d'Accès aux Bases de Données
 - **PostgreSQL 16 (Pool asyncpg)** :
   ```python
   from services.memory import vector_memory
@@ -1312,7 +1455,7 @@ Pour ajouter un 39e outil ou modifier un outil existant :
   points = await vector_memory.search_semantic(query="lasers DFB", limit=5)
   ```
 
-### 13.7. Glossaire des Variables d'Environnement (`.env` vs `config.py`)
+### 14.7. Glossaire des Variables d'Environnement (`.env` vs `config.py`)
 - `JARVIS_PASSWORD` : Mot de passe maître initial pour générer les tokens d'appareils.
 - `JWT_SECRET_KEY` : Clé secrète 64 octets signant les JWT (générée automatiquement si absente).
 - `GEMINI_API_KEY_FREE` : Clé gratuite pour la voix Live standard et les classifications T1.
@@ -1322,12 +1465,12 @@ Pour ajouter un 39e outil ou modifier un outil existant :
 - `REDIS_HOST` / `POSTGRES_HOST` / `QDRANT_HOST` : Hôtes Docker (défaut `127.0.0.1`).
 - `VOCAL_MILESTONE_THRESHOLD_SECONDS` : Seuil en secondes pour déclencher les jalons oraux intermédiaires (défaut `90.0`).
 
-### 13.8. Exécution des Tests & Validation Hors-Ligne
+### 14.8. Exécution des Tests & Validation Hors-Ligne
 - Lancer l'intégralité des tests : `.\venv\Scripts\pytest.exe -v tests/`
 - Lancer un test ciblé : `.\venv\Scripts\pytest.exe -v tests/test_architecture_service.py`
 - *Règle d'or de test* : Tous les tests unitaires s'exécutent hors-ligne sans consommer le moindre centime d'API grâce aux mocks dans `tests/conftest.py`.
 
-### 13.9. Procédure de Déploiement & Maintenance Cloud
+### 14.9. Procédure de Déploiement & Maintenance Cloud
 - Après toute modification validée par les tests, exécuter :
   `.\venv\Scripts\python.exe sync_deploy.py -m "Description concise des changements"`
 - Sur le serveur VPS, le service est configuré sous systemd :
@@ -1337,4 +1480,4 @@ Pour ajouter un 39e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.36.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.37.6.*
