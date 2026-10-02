@@ -52,9 +52,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo.
 echo [OK] Firmware flashe avec succes !
-echo Flash de la partition NVS de configuration...
-call "%SCRIPT_DIR%flash_nvs.bat" %PORT%
-
+echo [INFO] Les parametres WiFi enregistres dans la NVS sont preserves.
 echo.
 echo ======================================================================
 echo  Lancement du moniteur serie (Ctrl+] pour quitter) :

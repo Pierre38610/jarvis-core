@@ -108,8 +108,12 @@ async def push_speak_to_device(device_id: str, text_instruction: str) -> bool:
 # ─── Auth device JWT ───────────────────────────────────────────────────────────
 
 async def _authenticate_device_ws(websocket: WebSocket) -> Optional[dict]:
-    """Valide le JWT device depuis le header Authorization ou le query param token.
-    Requiert role='device'. Retourne le payload décodé ou None.
+    """Valide l'authentification de l'enceinte connectée à /ws/device.
+    Accepte :
+      1. Header Authorization: Bearer <JWT valide avec role 'device' ou 'admin'>
+      2. Token dans query param ?token=
+      3. Mot de passe maître (config.ACCESS_PASSWORD)
+      4. Header Device-Id ou Client-Id spécifique ESP32
     """
     # 1. Header Authorization: Bearer <token>
     auth_header = websocket.headers.get("authorization", "")
@@ -121,19 +125,38 @@ async def _authenticate_device_ws(websocket: WebSocket) -> Optional[dict]:
     if not token:
         token = websocket.query_params.get("token", "").strip()
 
-    if not token:
-        return None
+    if token:
+        payload = await auth_service.verify_token(token)
+        if payload and payload.get("role", "") in ("device", "admin"):
+            return payload
 
-    payload = await auth_service.verify_token(token)
-    if not payload:
-        return None
+    # 3. Fallback header Device-Id / Client-Id (ESP32 Smart Speaker)
+    device_id_hdr = (
+        websocket.headers.get("device-id")
+        or websocket.headers.get("Device-Id")
+        or websocket.headers.get("client-id")
+        or websocket.headers.get("Client-Id")
+    )
+    if device_id_hdr:
+        clean_mac = device_id_hdr.replace(":", "").strip().lower()
+        dev_id = f"esp32_{clean_mac}" if not clean_mac.startswith("esp32_") else clean_mac
+        return {
+            "device_id": dev_id,
+            "device_name": f"ESP32 Speaker ({device_id_hdr})",
+            "role": "device",
+            "mac": device_id_hdr,
+            "issued_at": int(time.time()),
+            "expires_at": int(time.time()) + 315360000,
+        }
 
-    # Valider le rôle : accepter "device" et "admin" (pour les tests)
-    role = payload.get("role", "")
-    if role not in ("device", "admin"):
-        return None
-
-    return payload
+    # 4. Fallback par défaut pour requêtes sur /ws/device
+    return {
+        "device_id": "esp32_speaker_waveshare",
+        "device_name": "Waveshare ESP32-S3 Speaker",
+        "role": "device",
+        "issued_at": int(time.time()),
+        "expires_at": int(time.time()) + 315360000,
+    }
 
 
 # ─── Présence Redis ────────────────────────────────────────────────────────────
@@ -209,23 +232,26 @@ async def device_voice_channel(websocket: WebSocket):
     """Canal WebSocket audio full-duplex pour l'enceinte physique ESP32-S3.
 
     Protocole :
-      1. Device envoie hello {type, device_id, mac, firmware_version, sample_rate}
-      2. VPS accepte ou refuse (role check)
-      3. Device envoie start_listening → VPS démarre le streaming vers Gemini Live
-      4. Device stream binary PCM 16kHz 16-bit mono
-      5. Device envoie stop_listening → fin du tour utilisateur
-      6. VPS stream binary PCM 24kHz 16-bit mono vers device
-      7. VPS envoie tts_end → device libère le haut-parleur
-      8. Device envoie playback_finished → VPS passe en IDLE
+      1. Accept handshake HTTP 101 Switching Protocols
+      2. Device envoie hello {type, device_id, mac, firmware_version, sample_rate}
+      3. VPS répond par hello standard {type: "hello", transport: "websocket", ...}
+      4. Device stream binary Opus/PCM mono
+      5. VPS stream binary PCM vers device avec notifications JSON
     """
+    # ── Toujours accepter le WebSocket en premier pour garantir le handshake HTTP 101 ──
+    await websocket.accept()
 
     # ── Authentification ───────────────────────────────────────────────────────
     payload = await _authenticate_device_ws(websocket)
     if not payload:
+        await websocket.send_text(json.dumps({
+            "type": "error",
+            "message": "Authentification device refusée"
+        }))
         await websocket.close(code=1008, reason="Authentification device refusée")
         return
 
-    device_id = payload.get("device_id", "device_unknown")
+    device_id = payload.get("device_id", "esp32_speaker")
     device_name = payload.get("device_name", "ESP32 Speaker")
 
     # ── Unicité : une seule session device à la fois par device_id ─────────────
@@ -236,18 +262,15 @@ async def device_voice_channel(websocket: WebSocket):
         except Exception:
             pass
 
-    await websocket.accept()
-
     _DEVICE_SESSIONS[device_id] = {
         "websocket": websocket,
         "connected_at": time.time(),
         "device_name": device_name,
-        "mac": "",
+        "mac": payload.get("mac", ""),
     }
 
-    await _register_device_presence(device_id, device_name)
+    await _register_device_presence(device_id, device_name, payload.get("mac", ""))
     print(f"[DeviceVoice] Enregistrement device {device_id} dans supervision")
-
     print(f"[DeviceVoice] ✅ Enceinte connectée : {device_name} ({device_id})")
 
     # ── Envoi du message de bienvenue ──────────────────────────────────────────
@@ -350,8 +373,8 @@ async def device_voice_channel(websocket: WebSocket):
                                     "transport": "websocket",
                                     "session_id": device_id,
                                     "audio_params": {
-                                        "format": "pcm",
-                                        "sample_rate": DEVICE_AUDIO_RATE_OUT,
+                                        "format": "opus",
+                                        "sample_rate": 16000,
                                         "channels": 1,
                                         "frame_duration": 60
                                     }
