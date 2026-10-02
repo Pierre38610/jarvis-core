@@ -205,6 +205,14 @@ QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "").strip()
 # Seuil de durée estimée pour le déclenchement des jalons vocaux intermédiaires (en secondes)
 VOCAL_MILESTONE_THRESHOLD_SECONDS = float(os.getenv("VOCAL_MILESTONE_THRESHOLD_SECONDS", "90.0"))
 
+# Configuration Browser Agent (Antigravity CLI)
+BROWSER_BRAIN_MODEL = os.environ.get("BROWSER_BRAIN_MODEL", "gemini-3.8-flash")
+BROWSER_VISION_MODEL = os.environ.get("BROWSER_VISION_MODEL", "gemini-3.8-flash")
+BROWSER_VERIFIER_MODEL = os.environ.get("BROWSER_VERIFIER_MODEL", "gemini-3.8-flash")
+BROWSER_MAX_STEPS = int(os.environ.get("BROWSER_MAX_STEPS", "40"))
+BROWSER_CLI_TIMEOUT = int(os.environ.get("BROWSER_CLI_TIMEOUT", "90"))
+BROWSER_MAX_PARALLEL_TASKS = int(os.environ.get("BROWSER_MAX_PARALLEL_TASKS", "2"))
+
 
 
 # ─── Instruction système J.A.R.V.I.S. (Template) ─────────────────────────────
