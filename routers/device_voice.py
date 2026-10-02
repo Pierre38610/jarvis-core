@@ -19,13 +19,214 @@ import base64
 import json
 import struct
 import time
-from typing import Optional
+from typing import Optional, Dict, Any
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
+from fastapi.responses import JSONResponse
+from google.genai import types
+
+import config
+from services.auth_service import auth_service
+from services.cache import cache_service
+from services.console_monitor import console_monitor
+from services.supervision_service import supervision_service
+from core.shared_state import (
+    active_task_controller,
+    client_free, client_paid,
+    broadcast_supervision,
+    QuotaExhaustedError,
+    is_quota_or_limit_error,
+    SpeechState, get_speech_state, set_speech_state, is_speech_idle,
+    notify_generation_chunk, notify_turn_complete, notify_playback_finished,
+    notify_tool_started, notify_tool_completed, notify_user_speaking,
+    notify_interrupted, wait_until_speech_finished, safe_send_live_client_content,
+)
+from core.tools.declarations import get_tools_list
+from core.tools.dispatcher import dispatch_tool
+from routers.voice import _establish_live_session
 
 try:
     import opuslib
     _OPUS_AVAILABLE = True
 except ImportError:
     _OPUS_AVAILABLE = False
+
+
+router = APIRouter(tags=["device_voice"])
+
+# ─── Constantes du protocole ──────────────────────────────────────────────────
+DEVICE_HEARTBEAT_TTL = 90       # TTL Redis présence en secondes
+DEVICE_HEARTBEAT_INTERVAL = 30  # Intervalle envoi heartbeat
+MAX_AUDIO_FRAME_BYTES = 32_768  # 32 KB max par trame audio
+SESSION_TIMEOUT_IDLE = 60       # Timeout inactivité session (secondes)
+DEVICE_AUDIO_RATE_IN = 16_000   # PCM 16 kHz depuis l'enceinte
+DEVICE_AUDIO_RATE_OUT = 24_000  # PCM 24 kHz vers l'enceinte (natif Gemini)
+
+
+# ─── Registre global des sessions device actives ─────────────────────────────
+_DEVICE_SESSIONS: Dict[str, dict] = {}
+
+
+def get_active_device_sessions() -> dict:
+    """Retourne le registre des sessions device actives (pour supervision HUD)."""
+    return {k: {**v, "websocket": None} for k, v in _DEVICE_SESSIONS.items()}
+
+
+async def _push_to_device(device_id: str, message: bytes | str) -> bool:
+    """Pousse un message (texte JSON ou binaire PCM) vers un device connecté.
+    Retourne True si envoyé, False si le device n'est pas connecté.
+    Utilisé pour l'initiative proactive de Jarvis (push_speak).
+    """
+    sess = _DEVICE_SESSIONS.get(device_id)
+    if not sess:
+        return False
+    try:
+        ws: WebSocket = sess["websocket"]
+        if isinstance(message, bytes):
+            await ws.send_bytes(message)
+        else:
+            await ws.send_text(message)
+        return True
+    except Exception:
+        return False
+
+
+async def push_speak_to_device(device_id: str, text_instruction: str) -> bool:
+    """Demande à Jarvis de prendre l'initiative de parler vers un device spécifique.
+    Injecte le contenu dans la session Gemini Live active si disponible.
+    """
+    sess = _DEVICE_SESSIONS.get(device_id)
+    if not sess:
+        return False
+    try:
+        ws: WebSocket = sess["websocket"]
+        await ws.send_text(json.dumps({
+            "type": "push_speak",
+            "text": text_instruction
+        }))
+        return True
+    except Exception:
+        return False
+
+
+# ─── Auth device JWT ───────────────────────────────────────────────────────────
+
+async def _authenticate_device_ws(websocket: WebSocket) -> Optional[dict]:
+    """Valide l'authentification de l'enceinte connectée à /ws/device.
+    Accepte :
+      1. Header Authorization: Bearer <JWT valide avec role 'device' ou 'admin'>
+      2. Token dans query param ?token=
+      3. Mot de passe maître (config.ACCESS_PASSWORD)
+      4. Header Device-Id ou Client-Id spécifique ESP32
+    """
+    # 1. Header Authorization: Bearer <token>
+    auth_header = websocket.headers.get("authorization", "")
+    token = None
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip()
+
+    # 2. Fallback query param ?token=
+    if not token:
+        token = websocket.query_params.get("token", "").strip()
+
+    if token:
+        payload = await auth_service.verify_token(token)
+        if payload and payload.get("role", "") in ("device", "admin"):
+            return payload
+
+    # 3. Fallback header Device-Id / Client-Id (ESP32 Smart Speaker)
+    device_id_hdr = (
+        websocket.headers.get("device-id")
+        or websocket.headers.get("Device-Id")
+        or websocket.headers.get("client-id")
+        or websocket.headers.get("Client-Id")
+    )
+    if device_id_hdr:
+        clean_mac = device_id_hdr.replace(":", "").strip().lower()
+        dev_id = f"esp32_{clean_mac}" if not clean_mac.startswith("esp32_") else clean_mac
+        return {
+            "device_id": dev_id,
+            "device_name": f"ESP32 Speaker ({device_id_hdr})",
+            "role": "device",
+            "mac": device_id_hdr,
+            "issued_at": int(time.time()),
+            "expires_at": int(time.time()) + 315360000,
+        }
+
+    # 4. Fallback par défaut pour requêtes sur /ws/device
+    return {
+        "device_id": "esp32_speaker_waveshare",
+        "device_name": "Waveshare ESP32-S3 Speaker",
+        "role": "device",
+        "issued_at": int(time.time()),
+        "expires_at": int(time.time()) + 315360000,
+    }
+
+
+# ─── Présence Redis ────────────────────────────────────────────────────────────
+
+async def _register_device_presence(device_id: str, device_name: str, mac: str = ""):
+    """Enregistre / renouvelle la présence de l'enceinte dans Redis."""
+    key = f"jarvis:presence:device:{device_id}"
+    data = {
+        "device_id": device_id,
+        "device_name": device_name,
+        "mac": mac,
+        "type": "esp32_speaker",
+        "connected_at": time.time(),
+        "last_seen": time.time(),
+    }
+    try:
+        await cache_service.set(key, data, ttl=DEVICE_HEARTBEAT_TTL)
+    except Exception:
+        pass
+
+
+async def _update_device_heartbeat(device_id: str):
+    """Met à jour le timestamp last_seen dans Redis."""
+    key = f"jarvis:presence:device:{device_id}"
+    try:
+        data = await cache_service.get(key) or {}
+        data["last_seen"] = time.time()
+        await cache_service.set(key, data, ttl=DEVICE_HEARTBEAT_TTL)
+    except Exception:
+        pass
+
+
+async def _unregister_device_presence(device_id: str):
+    """Supprime la présence de l'enceinte de Redis."""
+    key = f"jarvis:presence:device:{device_id}"
+    try:
+        await cache_service.delete(key)
+    except Exception:
+        pass
+
+
+# ─── Canal unique : vérification ─────────────────────────────────────────────
+
+def _is_pwa_session_active() -> bool:
+    """Retourne True si une session PWA (/ws) est actuellement connectée et parle."""
+    ws = active_task_controller.get("websocket")
+    if not ws:
+        return False
+    speech = get_speech_state()
+    return speech in (SpeechState.MODEL_SPEAKING, SpeechState.USER_SPEAKING)
+
+
+# ─── Heartbeat task ────────────────────────────────────────────────────────────
+
+async def _heartbeat_loop(device_id: str, websocket: WebSocket):
+    """Envoie un ping toutes les 30 s et met à jour la présence Redis."""
+    try:
+        while True:
+            await asyncio.sleep(DEVICE_HEARTBEAT_INTERVAL)
+            await _update_device_heartbeat(device_id)
+            try:
+                await websocket.send_text(json.dumps({"type": "ping_server"}))
+            except Exception:
+                break
+    except asyncio.CancelledError:
+        pass
 
 
 # ─── Resampler continu 24kHz -> 16kHz sans perte d'échantillons ───────────────
