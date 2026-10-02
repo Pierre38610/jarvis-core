@@ -12,10 +12,17 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional
 
-# Configuration de l'environnement racine
+# Configuration de l'environnement racine et de l'encodage
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 from core.tools.result import ToolResult
 from services.browser_agent import cli_brain, loop
