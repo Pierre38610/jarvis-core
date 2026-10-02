@@ -267,5 +267,13 @@ def test_site_memory_load_hint_and_save_success():
         shutil.rmtree(test_dir, ignore_errors=True)
 
 
-
-
+def test_load_recipe_train():
+    """Vérifie que load_recipe('train') renvoie max_steps=50 et extrait les bonnes clés."""
+    from services.browser_agent.loop import load_recipe
+    recipe = load_recipe("train")
+    assert recipe is not None
+    assert recipe["max_steps"] == 50
+    assert recipe.max_steps == 50
+    assert recipe["max_duration"] == 900
+    assert "https://www.sncf-connect.com" in recipe["start_url"]
+    assert "sncf-connect" in recipe["text"]

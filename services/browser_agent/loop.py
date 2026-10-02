@@ -68,27 +68,83 @@ async def _call_rpc(action: str, timeout: float = 30.0, **params) -> Dict[str, A
     return await local_agent_service.execute_command(action, timeout=timeout, **params)
 
 
+class RecipeDict(dict):
+    """Dictionnaire de recette permettant l'accès par clé ou par attribut."""
+
+    def __getattr__(self, item: str) -> Any:
+        return self.get(item)
+
+    def __setattr__(self, key: str, value: Any) -> None:
+        self[key] = value
+
+
+def load_recipe(name: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Lit recipes/<name>.md et en extrait start_url, max_steps, max_duration, critere et le texte complet."""
+    if not name:
+        return None
+
+    recipe_text: Optional[str] = None
+    if "\n" in name:
+        recipe_text = name
+    else:
+        recipes_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recipes")
+        candidates = [
+            name,
+            os.path.join(recipes_dir, name),
+            os.path.join(recipes_dir, f"{name}.md"),
+        ]
+        for cand in candidates:
+            if os.path.isfile(cand):
+                try:
+                    with open(cand, "r", encoding="utf-8") as f:
+                        recipe_text = f.read()
+                    break
+                except Exception as e:
+                    logger.warning("[BrowserLoop] Impossible de lire la recette %s: %s", cand, e)
+
+    if recipe_text is None:
+        return None
+
+    result = RecipeDict({
+        "start_url": "",
+        "max_steps": getattr(config, "BROWSER_MAX_STEPS", 40),
+        "max_duration": getattr(config, "BROWSER_MAX_DURATION", 1800),
+        "critere": "",
+        "text": recipe_text,
+    })
+
+    for line in recipe_text.splitlines():
+        line_clean = line.strip()
+        if not line_clean:
+            continue
+        if ":" in line_clean:
+            key, _, val = line_clean.partition(":")
+            key_norm = key.strip().lower().replace("è", "e").replace("é", "e").replace("ê", "e")
+            val_clean = val.strip()
+
+            if key_norm in ("start_url", "url"):
+                result["start_url"] = val_clean
+            elif key_norm in ("max_steps", "steps", "max_step"):
+                try:
+                    result["max_steps"] = int(val_clean)
+                except ValueError:
+                    pass
+            elif key_norm in ("max_duration", "duration", "timeout"):
+                try:
+                    result["max_duration"] = int(val_clean)
+                except ValueError:
+                    pass
+            elif key_norm in ("critere", "critere_de_reussite", "criteria"):
+                result["critere"] = val_clean
+                result["critère"] = val_clean
+
+    return result
+
+
 def _load_recipe_text(recipe: Optional[str]) -> Optional[str]:
     """Charge le contenu textuel d'une recette si un nom ou un chemin est fourni."""
-    if not recipe:
-        return None
-    if "\n" in recipe:
-        return recipe
-
-    recipes_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recipes")
-    candidates = [
-        recipe,
-        os.path.join(recipes_dir, recipe),
-        os.path.join(recipes_dir, f"{recipe}.md"),
-    ]
-    for cand in candidates:
-        if os.path.isfile(cand):
-            try:
-                with open(cand, "r", encoding="utf-8") as f:
-                    return f.read()
-            except Exception as e:
-                logger.warning("[BrowserLoop] Impossible de lire la recette %s: %s", cand, e)
-    return recipe
+    rec = load_recipe(recipe)
+    return rec["text"] if rec else recipe
 
 
 def _extract_success_criteria(recipe_text: Optional[str], default_goal: str) -> str:
@@ -96,7 +152,7 @@ def _extract_success_criteria(recipe_text: Optional[str], default_goal: str) -> 
     if not recipe_text:
         return default_goal
     match = re.search(
-        r"crit[èe]re\s+de\s+r[ée]ussite\s*:\s*(.+)$",
+        r"crit[èe]re\s*(?:de\s+r[ée]ussite)?\s*:\s*(.+)$",
         recipe_text,
         re.IGNORECASE | re.MULTILINE,
     )
@@ -121,8 +177,19 @@ async def run_browser_task(
                 error_hint="cancelled",
             )
 
-        recipe_text = _load_recipe_text(task.recipe)
-        success_criteria = _extract_success_criteria(recipe_text, task.goal)
+        recipe_data = load_recipe(task.recipe) if task.recipe else None
+        recipe_text = recipe_data["text"] if recipe_data else _load_recipe_text(task.recipe)
+
+        if recipe_data:
+            if not task.start_url and recipe_data.get("start_url"):
+                task.start_url = recipe_data["start_url"]
+            max_steps = recipe_data.get("max_steps") or getattr(config, "BROWSER_MAX_STEPS", 40)
+            max_duration = float(recipe_data.get("max_duration") or getattr(config, "BROWSER_MAX_DURATION", 1800))
+            success_criteria = recipe_data.get("critere") or _extract_success_criteria(recipe_text, task.goal)
+        else:
+            max_steps = getattr(config, "BROWSER_MAX_STEPS", 40)
+            max_duration = float(getattr(config, "BROWSER_MAX_DURATION", 1800))
+            success_criteria = _extract_success_criteria(recipe_text, task.goal)
 
         # 1. Ouverture de la tâche sur le navigateur local
         open_res = await _call_rpc(
@@ -140,15 +207,26 @@ async def run_browser_task(
                 error_hint=err_msg,
             )
 
-        max_steps = getattr(config, "BROWSER_MAX_STEPS", 40)
         consecutive_errors = 0
         need_screenshot = False
         step_thoughts: List[str] = []
         current_url = task.start_url or ""
+        start_time = time.time()
 
         # 2. Boucle principale de navigation (S2)
         for step_n in range(1, max_steps + 1):
             task.steps = step_n
+
+            if time.time() - start_time > max_duration:
+                task.status = "failed"
+                await _call_rpc("browser_close_task", task_id=task.task_id)
+                logger.warning("[BrowserLoop] task=%s timeout max_duration=%ss", task.task_id, max_duration)
+                return ToolResult.failed(
+                    user_message=f"La tâche de navigation a dépassé la durée maximale de {int(max_duration)}s.",
+                    task_id=task.task_id,
+                    error_hint="max_duration_exceeded",
+                    evidence=current_url,
+                )
 
             if task.cancel_event.is_set():
                 task.status = "cancelled"
