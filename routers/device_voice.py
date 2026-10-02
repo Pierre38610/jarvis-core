@@ -336,7 +336,7 @@ async def device_voice_channel(websocket: WebSocket):
                             payload_msg = json.loads(msg["text"])
                             msg_type = payload_msg.get("type", "")
 
-                            # ─ hello : handshake initial ──────────────────────
+                            # ─ hello : handshake initial (compatible XiaoZhi + Jarvis) ──
                             if msg_type == "hello":
                                 mac_address = payload_msg.get("mac", "")
                                 fw_version = payload_msg.get("firmware_version", "unknown")
@@ -344,24 +344,64 @@ async def device_voice_channel(websocket: WebSocket):
                                 _DEVICE_SESSIONS[device_id]["mac"] = mac_address
                                 await _register_device_presence(device_id, device_name, mac_address)
                                 print(f"[DeviceVoice] Hello reçu — fw={fw_version}, mac={mac_address}, rate={sample_rate}Hz")
+                                # Réponse standard XiaoZhi WebSocket
+                                await websocket.send_text(json.dumps({
+                                    "type": "hello",
+                                    "transport": "websocket",
+                                    "session_id": device_id,
+                                    "audio_params": {
+                                        "format": "pcm",
+                                        "sample_rate": DEVICE_AUDIO_RATE_OUT,
+                                        "channels": 1,
+                                        "frame_duration": 60
+                                    }
+                                }))
+                                # Réponse additionnelle hello_ack Jarvis
                                 await websocket.send_text(json.dumps({
                                     "type": "hello_ack",
                                     "status": "ok",
                                     "server_time": time.time()
                                 }))
 
-                            # ─ start_listening : wake word détecté ───────────
+                            # ─ listen : événements d'écoute XiaoZhi (detect, start, stop) ─
+                            elif msg_type == "listen":
+                                state = payload_msg.get("state", "")
+                                if state in ("detect", "start"):
+                                    listening_active = True
+                                    notify_user_speaking()
+                                    await broadcast_supervision()
+                                    print(f"[DeviceVoice] 🎙️ Écoute active (state={state}, text={payload_msg.get('text', '')})")
+                                elif state == "stop":
+                                    listening_active = False
+                                    await broadcast_supervision()
+                                    print(f"[DeviceVoice] 🔇 Fin écoute utilisateur")
+
+                            # ─ start_listening : wake word détecté (Jarvis natif) ───────
                             elif msg_type == "start_listening":
                                 listening_active = True
                                 notify_user_speaking()
                                 await broadcast_supervision()
                                 print(f"[DeviceVoice] 🎙️ Wake word détecté — écoute active")
 
-                            # ─ stop_listening : fin du tour utilisateur ───────
+                            # ─ stop_listening : fin du tour utilisateur (Jarvis natif) ───
                             elif msg_type == "stop_listening":
                                 listening_active = False
                                 await broadcast_supervision()
                                 print(f"[DeviceVoice] 🔇 Fin écoute utilisateur")
+
+                            # ─ abort : interruption XiaoZhi (barge-in / wake word) ───────
+                            elif msg_type == "abort":
+                                speaking_state["active"] = False
+                                notify_interrupted("user_barge_in")
+                                try:
+                                    from services.metrics_service import metrics_service
+                                    metrics_service.record_speech_cut(
+                                        "user_barge_in",
+                                        details=f"Device abort reason={payload_msg.get('reason', '')}"
+                                    )
+                                except Exception:
+                                    pass
+                                print(f"[DeviceVoice] ⚡ Abort / Barge-in depuis le device (reason={payload_msg.get('reason', '')})")
 
                             # ─ playback_finished : device a fini de jouer ─────
                             elif msg_type == "playback_finished":
@@ -438,6 +478,8 @@ async def device_voice_channel(websocket: WebSocket):
                                 speaking_state["active"] = False
                                 try:
                                     await websocket.send_text(json.dumps({"type": "interrupted"}))
+                                    await websocket.send_text(json.dumps({"type": "tts", "state": "stop", "session_id": device_id}))
+                                    await websocket.send_text(json.dumps({"type": "llm", "emotion": "idle", "session_id": device_id}))
                                 except Exception:
                                     pass
 
@@ -447,6 +489,13 @@ async def device_voice_channel(websocket: WebSocket):
                                 user_txt = sc.input_transcription.text
                             if user_txt:
                                 try:
+                                    # Format XiaoZhi STT
+                                    await websocket.send_text(json.dumps({
+                                        "type": "stt",
+                                        "text": user_txt,
+                                        "session_id": device_id
+                                    }))
+                                    # Format Jarvis transcript
                                     await websocket.send_text(json.dumps({
                                         "type": "transcript",
                                         "role": "user",
@@ -462,6 +511,14 @@ async def device_voice_channel(websocket: WebSocket):
                                     # Transcription texte de la réponse
                                     if part.text and not getattr(sc, "output_transcription", None):
                                         try:
+                                            # Format XiaoZhi TTS sentence
+                                            await websocket.send_text(json.dumps({
+                                                "type": "tts",
+                                                "state": "sentence_start",
+                                                "text": part.text,
+                                                "session_id": device_id
+                                            }))
+                                            # Format Jarvis transcript
                                             await websocket.send_text(json.dumps({
                                                 "type": "transcript",
                                                 "role": "jarvis",
@@ -479,8 +536,20 @@ async def device_voice_channel(websocket: WebSocket):
                                         if not speaking_state["active"]:
                                             speaking_state["active"] = True
                                             await broadcast_supervision()
-                                            # Signal tts_start avant le premier chunk
+                                            # Signal XiaoZhi tts start & emotion
                                             try:
+                                                await websocket.send_text(json.dumps({
+                                                    "type": "tts",
+                                                    "state": "start",
+                                                    "sample_rate": DEVICE_AUDIO_RATE_OUT,
+                                                    "session_id": device_id
+                                                }))
+                                                await websocket.send_text(json.dumps({
+                                                    "type": "llm",
+                                                    "emotion": "speaking",
+                                                    "session_id": device_id
+                                                }))
+                                                # Signal Jarvis tts_start
                                                 await websocket.send_text(json.dumps({
                                                     "type": "tts_start",
                                                     "sample_rate": DEVICE_AUDIO_RATE_OUT,
@@ -502,6 +571,18 @@ async def device_voice_channel(websocket: WebSocket):
                                 speaking_state["active"] = False
                                 await broadcast_supervision()
                                 try:
+                                    # Format XiaoZhi TTS stop & emotion idle
+                                    await websocket.send_text(json.dumps({
+                                        "type": "tts",
+                                        "state": "stop",
+                                        "session_id": device_id
+                                    }))
+                                    await websocket.send_text(json.dumps({
+                                        "type": "llm",
+                                        "emotion": "idle",
+                                        "session_id": device_id
+                                    }))
+                                    # Format Jarvis tts_end
                                     await websocket.send_text(json.dumps({"type": "tts_end"}))
                                 except Exception:
                                     pass
@@ -514,6 +595,11 @@ async def device_voice_channel(websocket: WebSocket):
                                 notify_tool_started(name)
 
                                 try:
+                                    await websocket.send_text(json.dumps({
+                                        "type": "llm",
+                                        "emotion": "thinking",
+                                        "session_id": device_id
+                                    }))
                                     await websocket.send_text(json.dumps({
                                         "type": "tool_start",
                                         "tool_name": name
