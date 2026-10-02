@@ -14,13 +14,35 @@ Présence Redis   : jarvis:presence:device:<device_id>  TTL 90 s, heartbeat 30 s
 Canal unique     : si une session /ws (PWA) parle déjà, le device attend.
 """
 
-from __future__ import annotations
-
 import asyncio
 import base64
 import json
+import struct
 import time
 from typing import Optional
+
+try:
+    import opuslib
+    _OPUS_AVAILABLE = True
+except ImportError:
+    _OPUS_AVAILABLE = False
+
+
+def _resample_24k_to_16k(pcm24k_bytes: bytes) -> bytes:
+    """Downsample 24kHz 16-bit mono to 16kHz 16-bit mono (3 input samples -> 2 output samples)."""
+    n_samples = len(pcm24k_bytes) // 2
+    if n_samples < 3:
+        return b""
+    samples_in = struct.unpack(f"<{n_samples}h", pcm24k_bytes)
+    n_triplets = n_samples // 3
+    out = []
+    for i in range(n_triplets):
+        s0 = samples_in[i * 3]
+        s1 = samples_in[i * 3 + 1]
+        s2 = samples_in[i * 3 + 2]
+        out.append(s0)
+        out.append((s1 + s2) // 2)
+    return struct.pack(f"<{len(out)}h", *out)
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketDisconnected
@@ -273,18 +295,9 @@ async def device_voice_channel(websocket: WebSocket):
     print(f"[DeviceVoice] Enregistrement device {device_id} dans supervision")
     print(f"[DeviceVoice] ✅ Enceinte connectée : {device_name} ({device_id})")
 
-    # ── Envoi du message de bienvenue ──────────────────────────────────────────
-    try:
-        await websocket.send_text(json.dumps({
-            "type": "welcome",
-            "device_id": device_id,
-            "server": "J.A.R.V.I.S.",
-            "version": getattr(config, "APP_VERSION", "5.36.0"),
-            "audio_out_rate": DEVICE_AUDIO_RATE_OUT,
-            "message": "Canal device opérationnel"
-        }))
-    except Exception:
-        pass
+    # ── Initialisation Codec Opus ──────────────────────────────────────────────
+    opus_decoder = opuslib.Decoder(16000, 1) if _OPUS_AVAILABLE else None
+    opus_encoder = opuslib.Encoder(16000, 1, opuslib.APPLICATION_VOIP) if _OPUS_AVAILABLE else None
 
     # ── Session Gemini Live dédiée au device ───────────────────────────────────
     session = None
@@ -293,6 +306,7 @@ async def device_voice_channel(websocket: WebSocket):
     listening_active = False
     mac_address = ""
     heartbeat_task: Optional[asyncio.Task] = None
+    out_pcm_buffer = bytearray()
 
     try:
         # Sélection du client Gemini (même logique que /ws)
@@ -323,17 +337,12 @@ async def device_voice_channel(websocket: WebSocket):
         async def device_to_gemini():
             nonlocal listening_active, mac_address
             try:
-                await websocket.send_text(json.dumps({
-                    "type": "ready",
-                    "message": "Prêt à recevoir le wake word"
-                }))
-
                 while True:
                     msg = await websocket.receive()
                     if msg.get("type") == "websocket.disconnect":
                         raise WebSocketDisconnect(code=1000)
 
-                    # ── Trames audio binaires (PCM 16kHz) ────────────────────
+                    # ── Trames audio binaires (Opus 16kHz depuis l'ESP32) ──────
                     if "bytes" in msg and msg["bytes"]:
                         raw = msg["bytes"]
                         if len(raw) > MAX_AUDIO_FRAME_BYTES:
@@ -347,11 +356,26 @@ async def device_voice_channel(websocket: WebSocket):
                         if not session:
                             continue
 
-                        # Vérifier si une session PWA est active et "parle"
-                        # On garde l'audio du device même si la PWA est active mais IDLE
-                        await session.send_realtime_input(
-                            audio=types.Blob(data=raw, mime_type=f"audio/pcm;rate={DEVICE_AUDIO_RATE_IN}")
-                        )
+                        # Décodage Opus vers PCM 16kHz linéaire si disponible
+                        pcm_data = raw
+                        if opus_decoder:
+                            try:
+                                # Trame 60ms standard (960 échantillons)
+                                pcm_data = opus_decoder.decode(raw, 960)
+                            except Exception:
+                                try:
+                                    # Trame 20ms standard (320 échantillons)
+                                    pcm_data = opus_decoder.decode(raw, 320)
+                                except Exception:
+                                    pcm_data = raw
+
+                        # Envoi à Gemini Live
+                        try:
+                            await session.send_realtime_input(
+                                audio=types.Blob(data=pcm_data, mime_type=f"audio/pcm;rate={DEVICE_AUDIO_RATE_IN}")
+                            )
+                        except Exception as e:
+                            print(f"[DeviceVoice] Erreur forward audio Gemini : {e}")
 
                     # ── Messages JSON de contrôle ─────────────────────────────
                     elif "text" in msg and msg["text"]:
@@ -359,7 +383,7 @@ async def device_voice_channel(websocket: WebSocket):
                             payload_msg = json.loads(msg["text"])
                             msg_type = payload_msg.get("type", "")
 
-                            # ─ hello : handshake initial (compatible XiaoZhi + Jarvis) ──
+                            # ─ hello : handshake initial standard XiaoZhi ────────────
                             if msg_type == "hello":
                                 mac_address = payload_msg.get("mac", "")
                                 fw_version = payload_msg.get("firmware_version", "unknown")
@@ -379,12 +403,6 @@ async def device_voice_channel(websocket: WebSocket):
                                         "frame_duration": 60
                                     }
                                 }))
-                                # Réponse additionnelle hello_ack Jarvis
-                                await websocket.send_text(json.dumps({
-                                    "type": "hello_ack",
-                                    "status": "ok",
-                                    "server_time": time.time()
-                                }))
 
                             # ─ listen : événements d'écoute XiaoZhi (detect, start, stop) ─
                             elif msg_type == "listen":
@@ -393,20 +411,20 @@ async def device_voice_channel(websocket: WebSocket):
                                     listening_active = True
                                     notify_user_speaking()
                                     await broadcast_supervision()
-                                    print(f"[DeviceVoice] 🎙️ Écoute active (state={state}, text={payload_msg.get('text', '')})")
+                                    print(f"[DeviceVoice] 🎙️ Écoute active (state={state})")
                                 elif state == "stop":
                                     listening_active = False
                                     await broadcast_supervision()
                                     print(f"[DeviceVoice] 🔇 Fin écoute utilisateur")
 
-                            # ─ start_listening : wake word détecté (Jarvis natif) ───────
+                            # ─ start_listening : wake word détecté ───────────────────
                             elif msg_type == "start_listening":
                                 listening_active = True
                                 notify_user_speaking()
                                 await broadcast_supervision()
                                 print(f"[DeviceVoice] 🎙️ Wake word détecté — écoute active")
 
-                            # ─ stop_listening : fin du tour utilisateur (Jarvis natif) ───
+                            # ─ stop_listening : fin du tour utilisateur ───────────────
                             elif msg_type == "stop_listening":
                                 listening_active = False
                                 await broadcast_supervision()
@@ -424,7 +442,7 @@ async def device_voice_channel(websocket: WebSocket):
                                     )
                                 except Exception:
                                     pass
-                                print(f"[DeviceVoice] ⚡ Abort / Barge-in depuis le device (reason={payload_msg.get('reason', '')})")
+                                print(f"[DeviceVoice] ⚡ Abort / Barge-in depuis le device")
 
                             # ─ playback_finished : device a fini de jouer ─────
                             elif msg_type == "playback_finished":
@@ -437,14 +455,6 @@ async def device_voice_channel(websocket: WebSocket):
                             elif msg_type == "barge_in":
                                 speaking_state["active"] = False
                                 notify_interrupted("user_barge_in")
-                                try:
-                                    from services.metrics_service import metrics_service
-                                    metrics_service.record_speech_cut(
-                                        "user_barge_in",
-                                        details="Device barge-in ESP32"
-                                    )
-                                except Exception:
-                                    pass
                                 listening_active = True
                                 notify_user_speaking()
                                 print(f"[DeviceVoice] ⚡ Barge-in depuis le device")
@@ -459,7 +469,6 @@ async def device_voice_channel(websocket: WebSocket):
 
                             # ─ switch_output : basculer voix vers ce device ───
                             elif msg_type == "request_voice_switch":
-                                # L'enceinte demande à devenir le canal audio principal
                                 active_task_controller["preferred_output"] = "device"
                                 active_task_controller["preferred_device_id"] = device_id
                                 await websocket.send_text(json.dumps({
@@ -489,7 +498,8 @@ async def device_voice_channel(websocket: WebSocket):
 
         # ── Tâche : Gemini Live → Device (audio + transcriptions + outils) ────
         async def gemini_to_device():
-            nonlocal listening_active
+            nonlocal listening_active, out_pcm_buffer
+            FRAME_BYTES_16K = 1920  # 60ms à 16kHz 16-bit mono = 960 échantillons = 1920 octets
             try:
                 while True:
                     async for chunk in session.receive():
@@ -499,8 +509,8 @@ async def device_voice_channel(websocket: WebSocket):
                             if getattr(sc, "interrupted", False):
                                 notify_interrupted("user_barge_in")
                                 speaking_state["active"] = False
+                                out_pcm_buffer.clear()
                                 try:
-                                    await websocket.send_text(json.dumps({"type": "interrupted"}))
                                     await websocket.send_text(json.dumps({"type": "tts", "state": "stop", "session_id": device_id}))
                                     await websocket.send_text(json.dumps({"type": "llm", "emotion": "idle", "session_id": device_id}))
                                 except Exception:
@@ -512,17 +522,10 @@ async def device_voice_channel(websocket: WebSocket):
                                 user_txt = sc.input_transcription.text
                             if user_txt:
                                 try:
-                                    # Format XiaoZhi STT
                                     await websocket.send_text(json.dumps({
                                         "type": "stt",
                                         "text": user_txt,
                                         "session_id": device_id
-                                    }))
-                                    # Format Jarvis transcript
-                                    await websocket.send_text(json.dumps({
-                                        "type": "transcript",
-                                        "role": "user",
-                                        "text": user_txt
                                     }))
                                 except Exception:
                                     pass
@@ -534,23 +537,16 @@ async def device_voice_channel(websocket: WebSocket):
                                     # Transcription texte de la réponse
                                     if part.text and not getattr(sc, "output_transcription", None):
                                         try:
-                                            # Format XiaoZhi TTS sentence
                                             await websocket.send_text(json.dumps({
                                                 "type": "tts",
                                                 "state": "sentence_start",
                                                 "text": part.text,
                                                 "session_id": device_id
                                             }))
-                                            # Format Jarvis transcript
-                                            await websocket.send_text(json.dumps({
-                                                "type": "transcript",
-                                                "role": "jarvis",
-                                                "text": part.text
-                                            }))
                                         except Exception:
                                             pass
 
-                                    # Audio PCM 24kHz → device
+                                    # Audio PCM 24kHz → Resampling 16kHz + Encodage Opus → Device
                                     elif part.inline_data and part.inline_data.data:
                                         chunk_data = part.inline_data.data
                                         chunk_dur = len(chunk_data) / (DEVICE_AUDIO_RATE_OUT * 2)
@@ -559,12 +555,10 @@ async def device_voice_channel(websocket: WebSocket):
                                         if not speaking_state["active"]:
                                             speaking_state["active"] = True
                                             await broadcast_supervision()
-                                            # Signal XiaoZhi tts start & emotion
                                             try:
                                                 await websocket.send_text(json.dumps({
                                                     "type": "tts",
                                                     "state": "start",
-                                                    "sample_rate": DEVICE_AUDIO_RATE_OUT,
                                                     "session_id": device_id
                                                 }))
                                                 await websocket.send_text(json.dumps({
@@ -572,29 +566,47 @@ async def device_voice_channel(websocket: WebSocket):
                                                     "emotion": "speaking",
                                                     "session_id": device_id
                                                 }))
-                                                # Signal Jarvis tts_start
-                                                await websocket.send_text(json.dumps({
-                                                    "type": "tts_start",
-                                                    "sample_rate": DEVICE_AUDIO_RATE_OUT,
-                                                    "bits": 16,
-                                                    "channels": 1
-                                                }))
                                             except Exception:
                                                 pass
 
-                                        # Envoi de la trame audio binaire
-                                        try:
-                                            await websocket.send_bytes(chunk_data)
-                                        except Exception:
-                                            break
+                                        # Rééchantillonnage 24kHz vers 16kHz
+                                        pcm_16k = _resample_24k_to_16k(chunk_data)
+                                        out_pcm_buffer.extend(pcm_16k)
+
+                                        # Découpage et encodage en trames Opus 60ms
+                                        while len(out_pcm_buffer) >= FRAME_BYTES_16K:
+                                            frame_pcm = bytes(out_pcm_buffer[:FRAME_BYTES_16K])
+                                            del out_pcm_buffer[:FRAME_BYTES_16K]
+                                            try:
+                                                if opus_encoder:
+                                                    opus_packet = opus_encoder.encode(frame_pcm, 960)
+                                                    await websocket.send_bytes(opus_packet)
+                                                else:
+                                                    await websocket.send_bytes(frame_pcm)
+                                            except Exception:
+                                                break
 
                             # Fin de tour (turn_complete)
                             if getattr(sc, "turn_complete", False):
+                                # Vider le reliquat du buffer audio vers l'enceinte
+                                if len(out_pcm_buffer) > 0:
+                                    pad_len = FRAME_BYTES_16K - len(out_pcm_buffer)
+                                    out_pcm_buffer.extend(b"\x00" * pad_len)
+                                    frame_pcm = bytes(out_pcm_buffer[:FRAME_BYTES_16K])
+                                    out_pcm_buffer.clear()
+                                    try:
+                                        if opus_encoder:
+                                            opus_packet = opus_encoder.encode(frame_pcm, 960)
+                                            await websocket.send_bytes(opus_packet)
+                                        else:
+                                            await websocket.send_bytes(frame_pcm)
+                                    except Exception:
+                                        pass
+
                                 notify_turn_complete()
                                 speaking_state["active"] = False
                                 await broadcast_supervision()
                                 try:
-                                    # Format XiaoZhi TTS stop & emotion idle
                                     await websocket.send_text(json.dumps({
                                         "type": "tts",
                                         "state": "stop",
@@ -605,8 +617,6 @@ async def device_voice_channel(websocket: WebSocket):
                                         "emotion": "idle",
                                         "session_id": device_id
                                     }))
-                                    # Format Jarvis tts_end
-                                    await websocket.send_text(json.dumps({"type": "tts_end"}))
                                 except Exception:
                                     pass
 
@@ -623,14 +633,9 @@ async def device_voice_channel(websocket: WebSocket):
                                         "emotion": "thinking",
                                         "session_id": device_id
                                     }))
-                                    await websocket.send_text(json.dumps({
-                                        "type": "tool_start",
-                                        "tool_name": name
-                                    }))
                                 except Exception:
                                     pass
 
-                                # Dispatch vers le module métier (même dispatcher que /ws)
                                 tool_resp = await dispatch_tool(
                                     name=name,
                                     args=args,
@@ -640,7 +645,6 @@ async def device_voice_channel(websocket: WebSocket):
                                     live_display_label="ESP32 Device",
                                 )
 
-                                # Réponse transmise à Gemini Live
                                 await session.send_tool_response(
                                     function_responses=[
                                         types.FunctionResponse(
