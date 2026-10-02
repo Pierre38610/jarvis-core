@@ -4,7 +4,11 @@ echo ======================================================================
 echo    COMPILATION ET FLASH DU FIRMWARE J.A.R.V.I.S. ESP32-S3
 echo ======================================================================
 
-set PORT=COM5
+if not "%~1"=="" (
+    set PORT=%~1
+) else (
+    set PORT=COM5
+)
 set SCRIPT_DIR=%~dp0
 set PROJECT_DIR=%SCRIPT_DIR%xiaozhi-esp32
 
@@ -33,10 +37,23 @@ echo.
 echo [3/3] Flash du firmware sur %PORT%...
 idf.py -p %PORT% flash
 
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo ======================================================================
+    echo [ERREUR] Impossible de flasher sur %PORT%.
+    echo Verifications :
+    echo  1. Votre carte ESP32-S3 est-elle bien branchee avec un cable USB de DONNEES ?
+    echo  2. Le port COM est-il bien %PORT% ? (Verifiez dans le Gestionnaire de peripheriques)
+    echo  3. Mode Bootloader : Maintenez le bouton BOOT, appuyez sur RESET (RST), relachez BOOT.
+    echo ======================================================================
+    pause
+    exit /b 1
+)
+
 echo.
 echo [OK] Firmware flashe avec succes !
 echo Flash de la partition NVS de configuration...
-call "%SCRIPT_DIR%flash_nvs.bat"
+call "%SCRIPT_DIR%flash_nvs.bat" %PORT%
 
 echo.
 echo ======================================================================

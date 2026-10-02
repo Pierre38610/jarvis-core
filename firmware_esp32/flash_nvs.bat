@@ -4,7 +4,11 @@ echo ======================================================================
 echo    FLASH DE LA PARTITION NVS J.A.R.V.I.S. (TOKEN + WEBSOCKET)
 echo ======================================================================
 
-set PORT=COM5
+if not "%~1"=="" (
+    set PORT=%~1
+) else (
+    set PORT=COM5
+)
 set BAUD=460800
 set SCRIPT_DIR=%~dp0
 set NVS_BIN=%SCRIPT_DIR%nvs_jarvis.bin
@@ -19,7 +23,7 @@ echo Port : %PORT%
 echo Fichier NVS : %NVS_BIN%
 echo.
 echo Flash de la partition NVS a l'adresse 0x9000...
-python -m esptool --port %PORT% --baud %BAUD% write-flash 0x9000 "%NVS_BIN%"
+python -m esptool --port %PORT% --baud %BAUD% write_flash 0x9000 "%NVS_BIN%"
 
 if %ERRORLEVEL% EQU 0 (
     echo.
