@@ -159,6 +159,9 @@ def is_paid_key_active() -> bool:
     return bool((is_paid_key_authorized() or get_effective_paid_key()) and GEMINI_API_KEY_PAID and HAS_PAID_API_KEY)
 
 
+# Drapeau d'activation du routage intelligent de modèles pour les agents Antigravity CLI
+MODEL_ROUTING_ENABLED = os.environ.get("MODEL_ROUTING_ENABLED", "true").lower() in ("true", "1", "yes", "on")
+
 # Voix préconstruite Gemini Live (Voix féminines disponibles : Aoede, Kore, Leda)
 JARVIS_VOICE = os.environ.get("JARVIS_VOICE", "Aoede").strip()
 

@@ -1,0 +1,91 @@
+{
+  "default_model": "gemini-3.7-flash",
+  "cooldown_seconds": 300,
+  "models": [
+    {
+      "name": "gemini-3.7-flash",
+      "provider": "gemini",
+      "tier": "flash",
+      "supports_effort": true,
+      "context_window": 1048576,
+      "cost_rank": 1,
+      "latency_rank": 1,
+      "strengths": ["simple", "diagnostic", "doc_sync", "email_simple", "quick_answer", "transport", "spreadsheet"],
+      "aliases": ["3.7-flash", "flash-3.7", "gemini-flash"]
+    },
+    {
+      "name": "gemini-3.8-flash",
+      "provider": "gemini",
+      "tier": "flash",
+      "supports_effort": true,
+      "context_window": 1048576,
+      "cost_rank": 1,
+      "latency_rank": 1,
+      "strengths": ["simple", "tactical", "intermediate", "transport", "spreadsheet", "morning_briefing"],
+      "aliases": ["3.8-flash", "flash-3.8"]
+    },
+    {
+      "name": "gemini-3.1-pro",
+      "provider": "gemini",
+      "tier": "pro",
+      "supports_effort": true,
+      "context_window": 2097152,
+      "cost_rank": 2,
+      "latency_rank": 2,
+      "strengths": ["complex", "deep_research", "system_healing", "refactoring", "code_refactoring", "auto_guerison_systeme", "engineering"],
+      "aliases": ["3.1-pro", "pro-3.1", "gemini-pro"]
+    },
+    {
+      "name": "gemini-3.1-pro-preview",
+      "provider": "gemini",
+      "tier": "pro",
+      "supports_effort": true,
+      "context_window": 2097152,
+      "cost_rank": 2,
+      "latency_rank": 2,
+      "strengths": ["complex", "deep_research", "system_healing", "refactoring", "engineering"],
+      "aliases": ["3.1-pro-preview"]
+    },
+    {
+      "name": "claude-3-7-sonnet",
+      "provider": "claude",
+      "tier": "sonnet",
+      "supports_effort": false,
+      "context_window": 200000,
+      "cost_rank": 3,
+      "latency_rank": 2,
+      "strengths": ["code", "reasoning_long", "complex_reasoning", "claude_preference", "software_architecture"],
+      "aliases": ["claude-3.7-sonnet", "sonnet-3.7", "claude"]
+    }
+  ],
+  "routing_rules": [
+    {
+      "task_type": "simple",
+      "model": "gemini-3.7-flash",
+      "effort": "low",
+      "fallback_chain": ["gemini-3.8-flash", "api_paid_gemini"],
+      "description": "Tâches simples, vérifications d'état, synchronisation de documentation, diagnostics légers"
+    },
+    {
+      "task_type": "medium",
+      "model": "gemini-3.7-flash",
+      "effort": "medium",
+      "fallback_chain": ["gemini-3.8-flash", "gemini-3.1-pro", "api_paid_gemini"],
+      "description": "Tâches intermédiaires, transport, tableurs, rédaction et analyse d'e-mails"
+    },
+    {
+      "task_type": "complex",
+      "model": "gemini-3.1-pro",
+      "effort": "high",
+      "fallback_chain": ["gemini-3.7-flash", "gemini-3.8-flash", "api_paid_gemini"],
+      "description": "Recherche approfondie, refactoring lourd, auto-réparation système, ingénierie complexe"
+    },
+    {
+      "task_type": "code",
+      "model": "claude-3-7-sonnet",
+      "effort": null,
+      "fallback_chain": ["gemini-3.1-pro", "gemini-3.7-flash", "api_paid_gemini"],
+      "description": "Génération de code intensif, raisonnement long ou demande explicite de Claude"
+    }
+  ]
+}

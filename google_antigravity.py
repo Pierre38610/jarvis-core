@@ -262,6 +262,14 @@ def resolve_antigravity_model(model_name: str | None = None, api_key: str | None
             level = ThinkingLevel.LOW
             label_level = "Low"
 
+    # 0. Claude 3.7 Sonnet / Opus
+    if "claude" in key or "sonnet" in key:
+        target = ModelTarget(
+            name="claude-3-7-sonnet",
+            endpoint=GeminiAPIEndpoint(api_key=effective_key, options=GeminiModelOptions(thinking_level=level))
+        )
+        return target, "Claude 3.7 Sonnet"
+
     # 1. Gemini 3.1 Pro (nom officiel API: gemini-3.1-pro-preview)
     if "3.1" in key or "pro" in key:
         target = ModelTarget(
@@ -406,43 +414,58 @@ async def verify_antigravity_cli_ready(force_refresh: bool = False) -> tuple[boo
         return False, msg, binary
 
 
-def resolve_cli_model_args(model_name: Any = None, thinking_level: str | None = None) -> list[str]:
+def resolve_cli_model_args(model_name: Any = None, thinking_level: str | None = None, effort: str | None = None) -> list[str]:
     """Résout les arguments de modèle pour le binaire agy CLI (avec modèle et effort valides).
     RÈGLE ABSOLUE : agy supporte uniquement --model et optionnellement --effort (low|medium|high|max).
     Le drapeau --thinking est INEXISTANT dans agy et cause une erreur fatale code 2.
     """
+    effective_effort = effort or thinking_level
+
     if isinstance(model_name, CognitiveConfig):
         cfg = model_name
         model_name = cfg.cli_model_arg or cfg.model
-        thinking_level = thinking_level or cfg.thinking_level
+        effective_effort = effective_effort or cfg.thinking_level
 
     if not model_name:
-        return ["--model", "gemini-3.8-flash-high", "--effort", "high"]
+        return ["--model", "gemini-3.7-flash-high", "--effort", "high"]
 
-    m = model_name.lower().strip()
+    m = str(model_name).lower().strip()
 
-    # Gemini 3.1 Pro models (agy: gemini-3.1-pro-high, gemini-3.1-pro-low)
+    # Modèles Claude : pas d'argument --effort
+    if "claude" in m or "sonnet" in m:
+        return ["--model", str(model_name)]
+
+    # Gemini 3.1 Pro models
     if "3.1" in m or "pro" in m:
-        th = thinking_level or ("low" if "low" in m else "high")
-        effort = "low" if th == "low" else "high"
-        return ["--model", f"gemini-3.1-pro-{effort}", "--effort", effort]
+        th = effective_effort or ("low" if "low" in m else "high")
+        eff = "low" if th == "low" else "high"
+        base_name = str(model_name) if ("-" in str(model_name) and not str(model_name).endswith("-pro")) else f"gemini-3.1-pro-{eff}"
+        return ["--model", base_name, "--effort", eff]
 
-    # Gemini 3.8 Flash models (agy: gemini-3.8-flash-high, gemini-3.8-flash-medium, gemini-3.8-flash-low)
+    # Gemini 3.7 Flash models
+    if "3.7" in m:
+        th = effective_effort or ("low" if "low" in m else "medium" if ("med" in m or "medium" in m) else "high")
+        eff = "low" if th == "low" else "medium" if th == "medium" else "high"
+        base_name = str(model_name) if ("-" in str(model_name) and not str(model_name).endswith("-flash")) else f"gemini-3.7-flash-{eff}"
+        return ["--model", base_name, "--effort", eff]
+
+    # Gemini 3.8 Flash models
     if "3.8" in m or "flash" in m:
-        th = thinking_level or ("low" if "low" in m else "medium" if ("med" in m or "medium" in m) else "high")
-        effort = "low" if th == "low" else "medium" if th == "medium" else "high"
-        return ["--model", f"gemini-3.8-flash-{effort}", "--effort", effort]
+        th = effective_effort or ("low" if "low" in m else "medium" if ("med" in m or "medium" in m) else "high")
+        eff = "low" if th == "low" else "medium" if th == "medium" else "high"
+        base_name = str(model_name) if ("-" in str(model_name) and not str(model_name).endswith("-flash")) else f"gemini-3.8-flash-{eff}"
+        return ["--model", base_name, "--effort", eff]
 
     # Fallback générique
-    th = thinking_level or ("low" if "low" in m else "high")
-    effort = "low" if th == "low" else "high"
-    return ["--model", model_name, "--effort", effort]
+    th = effective_effort or ("low" if "low" in m else "high")
+    eff = "low" if th == "low" else "high"
+    return ["--model", str(model_name), "--effort", eff]
 
 
 class AntigravityAgent:
     """Agent Antigravity CLI exécutant les tâches via le binaire agy/antigravity-cli sur le VPS."""
 
-    def __init__(self, workspace: str = "./my-project", model: str | None = None, api_key: str | None = None, thinking_level: str | None = None, **kwargs):
+    def __init__(self, workspace: str = "./my-project", model: str | None = None, api_key: str | None = None, thinking_level: str | None = None, effort: str | None = None, **kwargs):
         self.workspace = os.path.abspath(workspace)
         os.makedirs(self.workspace, exist_ok=True)
         # Règle d'impossibilité physique : si la clé payante n'est pas cochée/autorisée dans l'application,
@@ -454,7 +477,8 @@ class AntigravityAgent:
         self.is_cancelled = False
         self.cli_process = None
         self.requested_model = model
-        self.thinking_level = thinking_level or ("low" if model and "low" in model.lower() else "medium" if model and ("med" in model.lower() or "medium" in model.lower()) else "high" if model and "high" in model.lower() else None)
+        self.effort = effort or thinking_level or ("low" if model and "low" in str(model).lower() else "medium" if model and ("med" in str(model).lower() or "medium" in str(model).lower()) else "high" if model and "high" in str(model).lower() else None)
+        self.thinking_level = self.effort
         self.target_model, self.model_label = resolve_antigravity_model(model, api_key=self.api_key)
 
     def cancel(self):

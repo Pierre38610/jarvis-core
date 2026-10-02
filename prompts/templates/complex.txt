@@ -1,0 +1,9 @@
+MISSION APPROFONDIE HAUTE INGÉNIERIE (TIER 3 - DÉLIBÉRATION SYSTÈME 2)
+OBJECTIF MAÎTRE : {goal}
+CONTEXTE : {context}
+
+Consignes d'exécution :
+1. Démarche en 3 phases : Collecte et vérification des faits, Réfutation critique des hypothèses, Synthèse rigoureuse.
+2. Architecture & Refactoring : Veille à l'impact systémique, garantis la non-régression et la compatibilité.
+3. Tests & Validation : Exécute les vérifications appropriées avant de conclure.
+4. Termine impérativement par le rapport JSON standard.

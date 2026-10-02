@@ -1,0 +1,8 @@
+MISSION TACTIQUE INTERMÉDIAIRE (TIER 2 - ANALYSE & TRAITEMENT)
+OBJECTIF : {goal}
+CONTEXTE : {context}
+
+Consignes d'exécution :
+1. Analyse le contexte et applique un raisonnement structuré.
+2. Traite les données avec rigueur (tableurs, calculs, comparatifs, synthèses).
+3. Produis le résultat demandé et termine impérativement par le rapport JSON standard.

@@ -1,0 +1,9 @@
+MISSION CODE & INGÉNIERIE LOGICIELLE
+OBJECTIF : {goal}
+CONTEXTE : {context}
+
+Consignes d'exécution :
+1. Code propre, moderne, typé et exempt de bugs ou d'effets de bord.
+2. Respecte scrupuleusement l'architecture existante et les règles de modularité.
+3. Vérifie par tests unitaires ou syntaxe chaque bloc modifié.
+4. Termine impérativement par le rapport JSON standard.

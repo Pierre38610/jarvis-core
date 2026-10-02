@@ -253,47 +253,57 @@ async def test_dispatch_tool_ask_deep_reasoning_requires_confirmation_with_tier(
     mock_ws = AsyncMock()
     mock_session = AsyncMock()
 
-    # Requête rapide -> Tier 1
-    res1 = await dispatch_tool(
-        name="ask_deep_reasoning",
-        args={"question": "Inspecte rapidement ces logs", "intensite_reflexion": "rapide"},
-        websocket=mock_ws,
-        session=mock_session,
-        is_paid_live=False,
-        live_display_label="Gemini 3.8 Live",
-    )
-    assert res1.get("status") in ("requires_user_confirmation", "needs_user")
-    assert res1.get("cognitive_tier") == 1
+    mock_output_1 = MagicMock(conclusion="Logs inspectés", model="flash", effort="low", confidence=0.95, sources=[], open_questions=[], artifacts=[], status="success")
+    mock_output_3 = MagicMock(conclusion="Refactoring validé", model="pro", effort="high", confidence=0.98, sources=[], open_questions=[], artifacts=[], status="success")
 
-    # Requête de fond -> Tier 3
-    res2 = await dispatch_tool(
-        name="ask_deep_reasoning",
-        args={"question": "Refactorisation complète et audit d'architecture", "intensite_reflexion": "approfondie"},
-        websocket=mock_ws,
-        session=mock_session,
-        is_paid_live=False,
-        live_display_label="Gemini 3.8 Live",
-    )
-    assert res2.get("status") in ("requires_user_confirmation", "needs_user")
-    assert res2.get("cognitive_tier") == 3
+    with patch("core.tools.dispatcher.verify_antigravity_cli_ready", new_callable=AsyncMock, return_value=(True, "Antigravity CLI opérationnel", "/home/opc/.local/bin/agy")), \
+         patch("core.tools.dispatcher.spawn_subagent", new_callable=AsyncMock), \
+         patch("core.tools.dispatcher.update_subagent", new_callable=AsyncMock), \
+         patch("core.tools.dispatcher.complete_subagent", new_callable=AsyncMock), \
+         patch("core.tools.dispatcher.run_agentic", new_callable=AsyncMock) as mock_agentic:
+
+        mock_agentic.return_value = mock_output_1
+        res1 = await dispatch_tool(
+            name="ask_deep_reasoning",
+            args={"question": "Inspecte rapidement ces logs", "intensite_reflexion": "rapide"},
+            websocket=mock_ws,
+            session=mock_session,
+            is_paid_live=False,
+            live_display_label="Gemini 3.8 Live",
+        )
+        assert res1.get("status") == "done"
+        assert res1.get("verified") is True
+        assert "flash" in res1.get("evidence", "").lower()
+
+        mock_agentic.return_value = mock_output_3
+        res2 = await dispatch_tool(
+            name="ask_deep_reasoning",
+            args={"question": "Refactorisation complète et audit d'architecture", "intensite_reflexion": "approfondie"},
+            websocket=mock_ws,
+            session=mock_session,
+            is_paid_live=False,
+            live_display_label="Gemini 3.8 Live",
+        )
+        assert res2.get("status") == "done"
+        assert res2.get("verified") is True
+        assert "pro" in res2.get("evidence", "").lower()
 
 
 @pytest.mark.asyncio
 async def test_dispatch_tool_ask_deep_reasoning_confirmed_launches_bg_task():
     """
-    Vérifie que lorsque confirmed_by_user=True et que le pré-vol CLI est validé,
-    dispatch_tool lance la tâche d'arrière-plan avec le modèle et le palier cognitif résolus.
+    Vérifie que lorsque dispatch_tool exécute ask_deep_reasoning,
+    l'outil délègue avec succès à l'agent avec le modèle et l'effort résolus.
     """
     mock_ws = AsyncMock()
     mock_session = AsyncMock()
+    mock_output = MagicMock(conclusion="Modélisation de formule terminée", model="pro", effort="medium", confidence=0.9, sources=[], open_questions=[], artifacts=[], status="success")
 
-    with patch("google_antigravity.verify_antigravity_cli_ready", new_callable=AsyncMock, return_value=(True, "Antigravity CLI opérationnel", "/home/opc/.local/bin/agy")), \
-         patch("services.reasoning_service.run_deep_reasoning", new_callable=AsyncMock) as mock_run:
-        mock_run.return_value = {
-            "status": "completed",
-            "summary": "Analyse tactique achevée.",
-            "artifact_filename": "rapport.md"
-        }
+    with patch("core.tools.dispatcher.verify_antigravity_cli_ready", new_callable=AsyncMock, return_value=(True, "Antigravity CLI opérationnel", "/home/opc/.local/bin/agy")), \
+         patch("core.tools.dispatcher.spawn_subagent", new_callable=AsyncMock), \
+         patch("core.tools.dispatcher.update_subagent", new_callable=AsyncMock), \
+         patch("core.tools.dispatcher.complete_subagent", new_callable=AsyncMock), \
+         patch("core.tools.dispatcher.run_agentic", new_callable=AsyncMock, return_value=mock_output) as mock_agentic:
 
         res = await dispatch_tool(
             name="ask_deep_reasoning",
@@ -308,8 +318,9 @@ async def test_dispatch_tool_ask_deep_reasoning_confirmed_launches_bg_task():
             live_display_label="Gemini 3.8 Live",
         )
 
-        assert res.get("status") in ("launched_in_background", "started")
-        assert "Antigravity" in res.get("engine", "")
+        assert res.get("status") == "done"
+        assert res.get("verified") is True
+        mock_agentic.assert_called_once()
 
 
 @pytest.mark.asyncio

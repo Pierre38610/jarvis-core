@@ -58,9 +58,9 @@
 8. [Catalogue Matriciel & Fiches des 38 Outils Unifiés (Function Calling)](#8-catalogue-matriciel--fiches-des-38-outils-unifiés-function-calling)
    - 8.1. Matrice Globale Exhaustive des 38 Outils Déclarés (Spécifications Exactes)
    - 8.2. Moteur Multi-Agents Antigravity CLI sur VPS (`ask_deep_reasoning`, `guide_active_task`, `stop_current_action`)
-   - 8.3. Moteur Asynchrone Deep Research : Architecture à Double Moteur (Moteur A Gemini Web Automator + Moteur B Map-Reduce VPS)
+   - 8.3. Moteur Asynchrone Deep Research : Architecture à Double Moteur (Moteur A Browser Agent Gemini Web + Moteur B Map-Reduce VPS)
    - 8.4. Moteur Délibératif Système 2 Transverse (Les 8 Missions Agentiques Spécialisées)
-   - 8.5. Navigation Web Autonome, E-Commerce & Chrome CDP
+   - 8.5. Interaction Web Autonome & Agent Navigateur Local (`browser_task`)
    - 8.6. Pôle Documentaire & Présentations Google Slides Polymorphes v1
    - 8.7. Mobilité & Système Ferroviaire Intelligent (France & Suède)
    - 8.8. Gestionnaire E-Book, Liseuses Physiques & Send to Kindle
@@ -132,7 +132,7 @@
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 1. **Impossibilité Physique sur la Clé Payante** : Si l'encoche n'est pas cochée par Pierre sur le HUD, la fonction `get_effective_paid_key()` renvoie `""`. Aucune requête payante n'est techniquement possible au niveau réseau/code.
-2. **Zéro Paiement Bancaire Automatique** : Lors de commandes e-commerce (`prepare_web_cart_or_checkout`) ou de réservations ferroviaires (`reserver_billet_train_local`), l'agent recherche le produit, remplit le panier et les coordonnées de Pierre, puis **s'arrête impérativement** avant l'étape de validation d'achat pour que Pierre valide lui-même son paiement.
+2. **Zéro Paiement Bancaire Automatique** : Lors de commandes e-commerce (`prepare_web_cart_or_checkout`) ou de réservations ferroviaires (`open_train_booking` / `reserver_billet_train_local`), l'agent autonome `browser_task` (protégé par `services/browser_agent/guards.py`) recherche le produit ou trajet, remplit le panier et les formulaires, puis **s'arrête impérativement** avant l'étape de validation d'achat (`ready_for_user`) pour que Pierre valide lui-même son paiement physique.
 3. **Accord Préalable Obligatoire sur Téléchargement** : Avant de rapatrier un fichier ou un livre (`download_file`), Jarvis énonce la provenance et la taille estimée et attend la validation orale explicite de Pierre.
 4. **Interdiction de Réciter du Code à l'Oral** : Les flux audio vocaux ne doivent jamais être pollués par la lecture de syntaxes informatiques, backticks ou symboles. Tout développement est délégué aux agents Antigravity CLI sur le VPS.
 5. **Arrêt Physique Immédiat (`stop_current_action`)** : Dès que Pierre prononce un ordre d'interruption ("arrête", "stop", "annule", "laisse tomber"), l'orchestrateur coupe physiquement les sous-processus et les tâches de fond sans délai.
@@ -147,6 +147,7 @@ jarvis-core/
 ├── auth.py                              # Wrapper d'authentification légère et compatibilité
 ├── google_antigravity.py                # Wrapper Antigravity CLI VPS, routage cognitif 3 tiers, détection 429 et exécuteur de sous-agents
 ├── jarvis_local_agent.py                # Agent client WebSocket s'exécutant sur le PC Windows 11 (actions physiques, Chrome CDP, Spotify Desktop, Stremio)
+├── local_browser_actions.py             # Pont CDP Playwright côté PC (port 9222), balisage DOM data-jarvis-id, exécution d'actions et screenshots
 ├── tunnel_launcher.py                   # Gestionnaire du tunnel Cloudflare Zero Trust, fallback Quick Tunnel et LAN Wi-Fi
 ├── sync_deploy.py                       # Pipeline automatisé : Git commit/push + archive in-memory tar.gz + SFTP + relance systemd VPS
 ├── docker-compose.yml                   # Définition conteneurs Redis 7, Postgres 16, Qdrant et n8n (bound sur 127.0.0.1)
@@ -156,8 +157,8 @@ jarvis-core/
 ├── core/                                # Cœur applicatif transverse
 │   ├── shared_state.py                  # État global partagé, clients Gemini, active_task_controller, verrou d'élocution, broadcast
 │   └── tools/
-│       ├── declarations.py              # Définitions Google GenAI FunctionDeclarations des 38 outils (schémas, descriptions ASR)
-│       └── dispatcher.py                # Routeur central d'exécution des 38 outils, instrumentation des métriques et latences
+│       ├── declarations.py              # Définitions Google GenAI FunctionDeclarations des outils (schémas, descriptions ASR, browser_task)
+│       └── dispatcher.py                # Routeur central d'exécution des outils, boucle browser_task en arrière-plan, métriques et latences
 │
 ├── routers/                             # Routeurs modulaires FastAPI (/api/* et /ws/*)
 │   ├── voice.py                         # WebSocket /ws : session bidirectionnelle Gemini Live Audio, streaming PCM et injection client
@@ -171,7 +172,12 @@ jarvis-core/
 │   └── transport.py                     # /api/train/* : recherche de trains, surveillance proactive n8n, alertes et résa multi-onglets
 │
 ├── services/                            # Services métier d'arrière-plan et d'intégration
-│   ├── gemini_web_automator.py          # Moteur A Deep Research : pilotage gemini.google.com via Chrome CDP 9222, sans vision, map UI
+│   ├── browser_agent/                   # Moteur de navigation autonome piloté par Antigravity CLI (S1/S2)
+│   │   ├── loop.py                      # Boucle de navigation S2 (run_browser_task, cycle snapshot-decide-act, handoff, verifier)
+│   │   ├── cli_brain.py                 # Cerveau décisionnel S4 et vérificateur s'appuyant sur les agents CLI agy
+│   │   ├── guards.py                    # Garde-fous de sécurité S5 (anti-paiement strict, interdiction données bancaires/mots de passe)
+│   │   ├── site_memory.py               # Persistance atomique par domaine des parcours de navigation réussis (S6)
+│   │   └── recipes/                     # Recettes de navigation spécialisées (cart.md, train.md, gemini_deep_research.md)
 │   ├── deep_research_service.py         # Moteur B Deep Research : pipeline Map-Reduce VPS (spec, MAP 3 ouvriers, REDUCE, Quality Gate)
 │   ├── agentic_dispatcher.py            # Orchestrateur Système 2 universel : 8 missions spécialisées (transport, excel, healing, etc.)
 │   ├── system_healing_service.py        # SRE autonome : analyse RCA, tests sandbox isolés, auto-tests, Blue/Green releases, symlink
@@ -203,7 +209,7 @@ jarvis-core/
 │   └── schema.sql                       # Schéma PostgreSQL (conversations, memories, tier_routing_log, tool_call_metrics, patches)
 ├── static/                              # Interface HUD PWA mobile Stark Industries (HTML, CSS cyberpunk, JS, SVGs)
 ├── data/
-│   └── gemini_ui_map.json               # Coordonnées et sélecteurs DOM persistants pour l'automatisation gemini.google.com
+│   └── site_memory/                     # Mémoire persistante JSON des parcours web réussis par nom de domaine (<domain>.json)
 └── tests/                               # Suite de validation automatisée (15+ fichiers de tests unitaires et d'intégration)
 ```
 
@@ -565,7 +571,7 @@ Le VPS distant n'a pas accès à l'écran, au Chrome réel, ni aux périphériqu
 - Connexion sortante vers `wss://jarvis.signalcraftapps.com/ws/local-agent?token=...`.
 - Reconnexion automatique avec backoff exponentiel. Messages RPC structurés (`{"req_id": "...", "action": "...", "params": {...}}`).
 
-### 7.3. Catalogue des 10 Actions Locales Supportées (Schémas & Paramètres)
+### 7.3. Catalogue des Actions Locales Supportées (Schémas & Paramètres)
 
 | Action RPC | Description Opérationnelle | Paramètres Entrants | Structure Retournée |
 | :--- | :--- | :--- | :--- |
@@ -573,10 +579,15 @@ Le VPS distant n'a pas accès à l'écran, au Chrome réel, ni aux périphériqu
 | `open_browser` | Ouvre Google Chrome à l'écran sur une URL donnée. | `url: str`, `new_window: bool` (défaut False) | `{"status": "success", "message": str}` |
 | `launch_media` | Déclenche la lecture multimédia dans VLC ou Stremio. | `title: str`, `content_type: str` (`movie`, `series`, `music`) | `{"status": "success", "launched": str}` |
 | `spotify_launch`| Déclenche le lancement de Spotify Desktop sur le PC. | `uri: str` (opt) | `{"status": "success", "launched": "spotify"}` |
+| `browser_open_task` | Ouvre un onglet dédié dans le Chrome existant (CDP 9222) pour une tâche. | `task_id: str`, `start_url: str` | `{"ok": bool, "url": str}` |
+| `browser_snapshot` | Injecte `data-jarvis-id` (1..150) et extrait le snapshot DOM & texte visible. | `task_id: str` | `{"ok": bool, "url": str, "title": str, "elements": str, "text": str}` |
+| `browser_act` | Exécute une série de 1 à 3 actions (`click`, `type`, `select`, `scroll`, `goto`, `wait`, `back`, `extract`). | `task_id: str`, `actions: list[dict]` | `[{"action": dict, "ok": bool, "text"?: str, "error"?: str}]` |
+| `browser_screenshot` | Capture d'écran JPEG qualité 60 du viewport encodée en base64. | `task_id: str` | `{"ok": bool, "image": str, "screenshot": str}` |
+| `browser_focus` | Met l'onglet actif de la tâche au premier plan à l'écran. | `task_id: str` | `{"ok": bool}` |
+| `browser_close_task` | Oublie la référence de l'onglet sans fermer la page physique. | `task_id: str` | `{"ok": bool}` |
 | `prepare_train_checkout` | Ouvre en parallèle les onglets Omio/Trainline préremplis. | `segments: list[dict]`, `urls: list[str]` | `{"status": "opened_locally", "count": int}` |
-| `prepare_web_cart_or_checkout` | Ajoute au panier sur Chrome et s'arrête avant paiement. | `url: str`, `product: str` | `{"status": "cart_ready", "awaiting_payment": true}` |
+| `prepare_web_cart_or_checkout` | Ajoute au panier sur Chrome et s'arrête avant paiement (délègue à `browser_task`). | `url: str`, `product: str` | `{"status": "cart_ready", "awaiting_payment": true}` |
 | `interact_web_page` | Interagit unitairement avec une page web ouverte. | `url: str`, `instruction: str`, `selector: str` | `{"status": "interacted", "result": str}` |
-| `execute_cdp_browser_action` | Contrôle Chrome via CDP `http://localhost:9222`. | `action: str` (`click`, `type`, `evaluate`), `selector: str`, `text: str` | `{"status": "cdp_executed", "data": any}` |
 | `get_status` | Relève la télémétrie matérielle physique en direct. | Aucun | `{"cpu_percent": float, "ram_percent": float, "battery": dict}` |
 | `fetch_file` | Extrait et encode en base64 un fichier local PC pour le Cloud. | `file_path: str` | `{"status": "ok", "filename": str, "data_b64": str, "size": int}` |
 | `list_workspace_dir` | Liste récursivement dossiers et fichiers dans `_anti_gravity` (lecture seule). | `relative_path: str`, `depth: int`, `pattern: str` | `{"status": "success", "items": list, "items_count": int}` |
@@ -605,9 +616,9 @@ Remontée périodique (toutes les 15 s) : CPU global, mémoire vive, pourcentage
 | **1** | `stop_current_action` | `stop` | Bloquant | `reason: str` (opt) | `{"status": "stopped", "message": str, "instruction_to_jarvis": str}` | `core/shared_state.py` |
 | **2** | `guide_active_task` | `guide` | Non-bloquant | `directive: str` (req) | `{"status": "adapted", "directive": str, "message": str}` | `core/shared_state.py` |
 | **3** | `ask_deep_reasoning` | `deep_reasoning` | Non-bloquant | `question: str` (req), `model: str`, `intensite_reflexion: str`, `confirmed_by_user: bool` | `{"status": "launched_in_background"|"success", "summary": str}` | `services/reasoning_service.py` |
-| **4** | `launch_deep_research` | `lancer_mission_deep_research` | Non-bloquant | `consigne_utilisateur: str` (req) | `{"status": "launched_in_background", "mission_spec": dict}` | `services/deep_research_service.py` |
+| **4** | `launch_deep_research` | `lancer_mission_deep_research`, `deep_research` | Non-bloquant | `consigne: str` (req), `envoyer_email: bool`, `destinataire_email: str` | `ToolResult` (`done`\|`failed`) | `services/browser_agent` (recette `gemini_deep_research`) avec repli `services/deep_research_service.py` |
 | **5** | `search_web` | `web_search` | Bloquant | `query: str` (req) | `{"status": "success", "results": list[dict], "summary": str}` | `services/browser_service.py` |
-| **6** | `run_browser_task` | `browser_task` | Non-bloquant | `goal: str` (req), `execution_target: str`, `url: str` | `{"status": "launched_in_background"|"completed", "result": str}` | `services/browser_service.py` |
+| **6** | `browser_task` | `run_browser_task` | Non-bloquant | `goal: str` (req), `start_url: str`, `recipe: str` (`cart`\|`train`\|`gemini_deep_research`) | `{"status": "launched_in_background", "task_id": str}` | `services/browser_agent/loop.py` & `local_browser_actions.py` |
 | **7** | `open_user_browser` | `open_browser` | Bloquant | `url: str` (req), `reason: str` | `{"status": "opened", "url": str, "message": str}` | `services/browser_service.py` |
 | **8** | `set_browser_link` | `browser_link` | Bloquant | `url: str` (req), `title: str` | `{"status": "updated", "url": str, "title": str}` | `core/shared_state.py` |
 | **9** | `save_memory` | `remember_user_fact`, `memoriser_information` | Bloquant | `fact: str` (req), `category: str`, `key: str` | `{"status": "saved", "fact": str, "storage": str}` | `services/unified_memory.py` |
@@ -620,7 +631,7 @@ Remontée périodique (toutes les 15 s) : CPU global, mémoire vive, pourcentage
 | **16**| `read_emails` | `get_emails` | Bloquant | `count: int`, `query: str`, `unread_only: bool` | `{"status": "success", "emails": list[dict], "summary": str}` | `services/email_service.py` |
 | **17**| `check_console_errors` | `console_errors` | Bloquant | `action: str` (`diagnose`\|`clear`) | `{"status": "diagnosed", "errors": list[dict], "advice": str}` | `services/console_monitor.py` |
 | **18**| `interact_web_page` | `web_interaction` | Non-bloquant | `url: str` (req), `action: str`, `selector: str`, `text: str` | `{"status": "interacted", "result": str}` | `services/browser_service.py` |
-| **19**| `prepare_web_cart_or_checkout` | `prepare_cart` | Non-bloquant | `product_or_service: str` (req), `merchant_url: str` | `{"status": "cart_ready", "awaiting_user_payment": true}` | `services/browser_service.py` |
+| **19**| `prepare_web_cart_or_checkout` | `prepare_cart` | Non-bloquant | `product_or_service: str` (req), `merchant_url: str` | Enveloppe `browser_task` (`recipe="cart"`) | `services/browser_agent/loop.py` |
 | **20**| `download_file` | `file_download` | Non-bloquant | `url: str` (req), `filename: str` | `{"status": "downloaded", "path": str, "size_mb": float}` | `services/download_service.py` |
 | **21**| `send_to_ereader` | `send_page_to_kindle`, `send_file_to_kindle` | Non-bloquant | `source: str` (req), `source_type: str` (`file`\|`url`), `method: str` | `{"status": "sent_to_ereader", "destination": str}` | `services/download_service.py` |
 | **22**| `search_and_download_ebook` | `download_ebook` | Non-bloquant | `query: str` (req), `lang: str` (`fr`\|`en`) | `{"status": "ebook_delivered", "title": str, "epub_path": str}` | `services/download_service.py` |
@@ -635,7 +646,7 @@ Remontée périodique (toutes les 15 s) : CPU global, mémoire vive, pourcentage
 | **31**| `get_morning_briefing` | `demander_morning_briefing` | Bloquant | `force_refresh: bool` | `{"status": "ready", "briefing_text": str, "cached": bool}` | `services/briefing_service.py` |
 | **32**| `search_train_routes` | `rechercher_train` | Bloquant | `origine: str` (req), `destination: str` (req), `date_depart: str`, `optimiser_avec_agent: bool` | `{"status": "success", "segments": list, "deep_links": list}` | `services/transport_service.py` |
 | **33**| `monitor_train` | `surveiller_train` | Non-bloquant | `numero_train: str` (req), `date: str` | `{"status": "monitoring_active", "train": str}` | `services/transport_service.py` |
-| **34**| `open_train_booking` | `reserver_billet_train_local` | Non-bloquant | `operateur: str`, `urls_trajets: list[str]` | `{"status": "opened_locally", "tabs_count": int}` | `services/transport_service.py` |
+| **34**| `open_train_booking` | `reserver_billet_train_local` | Non-bloquant | `origine: str`, `destination: str`, `date_depart: str`, `url_trajet: str` | Enveloppe `browser_task` (`recipe="train"`) | `services/browser_agent/loop.py` |
 | **35**| `query_jarvis_architecture` | `consulter_architecture_jarvis` | Bloquant | `sujet: str`, `section: str` | `{"status": "success", "content": str, "matched_titles": list}` | `services/architecture_service.py` |
 | **36**| `draft_email_response` | `triage_et_brouillon_email` | Non-bloquant | `query: str`, `consigne: str` | `{"status": "draft_created", "file": str, "summary": str}` | `services/agentic_dispatcher.py` |
 | **37**| `generate_book_summary` | `curation_livre_synthese` | Non-bloquant | `titre_livre: str` (req) | `{"status": "summary_ready", "epub_path": str}` | `services/agentic_dispatcher.py` |
@@ -650,23 +661,20 @@ Remontée périodique (toutes les 15 s) : CPU global, mémoire vive, pourcentage
 ### 8.3. Moteur Asynchrone Deep Research : Architecture à Double Moteur
 Le système dispose de deux moteurs de Deep Research sélectionnés intelligemment :
 
-#### Moteur A (Prioritaire) : Automatisation Gemini Web (`services/gemini_web_automator.py`)
-- **Principe** : Automatisation directe de l'interface officielle `https://gemini.google.com` (Deep Research natif) via Chrome CDP port 9222 ou Playwright connecté au profil réel de Pierre.
-- **Zéro Modèle de Vision** : Interactions déterministes par coordonnées mémorisées et inspection du DOM.
-- **Cartographie UI Persistante (`data/gemini_ui_map.json`)** : Mémorise les coordonnées exactes des boutons ('Tools', 'Deep Research toggle', saisie prompt, bouton d'envoi).
-- **Auto-Réparation de Dérive DOM** : Si un clic ne produit pas l'état attendu, inspection DOM par sélecteurs sémantiques (`button:has-text("Deep Research")`), recalcul des coordonnées et mise à jour automatique du JSON.
-- **Polling Asynchrone Non-Bloquant** : Vérification toutes les 5s (`RESEARCH_POLL_INTERVAL`), timeout 20 min (`RESEARCH_MAX_WAIT`).
-- **Livraison Conditionnelle** : Si le PC de Pierre est allumé, affichage en direct à l'écran dans Google Chrome. Si le PC est hors ligne, capture du snapshot HTML, génération de livrable et expédition par courriel Stark HTML.
+#### Moteur A (Prioritaire) : Navigation Autonome Gemini Web (`services/browser_agent/` - Recette `gemini_deep_research`)
+- **Principe** : Pilotage autonome de `https://gemini.google.com/app` via l'agent `browser_task` et la recette `gemini_deep_research.md` sur le Chrome connecté de l'utilisateur (port 9222).
+- **Cycle d'Exécution** : Activation du mode Deep Research, saisie du sujet de recherche, validation du plan proposé par Gemini, attente active non-bloquante (`wait 120` répété pendant la génération), extraction intégrale du rapport Markdown (`extract`) et restitution vocale / courriel Stark HTML.
+- **Gestion de Session** : Réutilisation directe du profil et des cookies Google existants sans ressaisie d'identifiants. En cas de déconnexion, déclenchement immédiat d'un `handoff` utilisateur.
 
-#### Moteur B (Repli / Legacy) : Pipeline Map-Reduce VPS (`services/deep_research_service.py`)
-Mobilisé si le Moteur A échoue ou si `use_legacy_engine=True` :
+#### Moteur B (Repli) : Pipeline Map-Reduce VPS (`services/deep_research_service.py`)
+Mobilisé automatiquement si le Moteur A échoue ou si le navigateur local n'est pas disponible :
 1. *Compilateur de Spécification Dynamique* : Tier 1 Flash JSON (`MissionSpec`).
 2. *Override Géographique Absolu* : Bannissement formel des localisations par défaut de la mémoire (`DEFAULT_MEMORY_LOCATIONS`).
 3. *Phase MAP* : 3 ouvriers Antigravity CLI parallèles (Startups/Incubateurs, Scale-ups/R&D, Grands Groupes).
 4. *Phase REDUCE* : Déduplication stricte et normalisation (`NormalizedEntity`).
 5. *Phase QUALITY GATE* : Agent critique appliquant 3 règles (volume, géographie, critères).
    - **Zéro Tolérance aux Livraisons Maquillées** : Si l'audit échoue après relances, `quality_gate_passed = False`. Aoede alerte immédiatement Pierre de vive voix, bannière rouge dans le rapport Markdown, et mention `[PARTIEL - AUDIT NON VALIDÉ]` dans les e-mails et messages Telegram.
-6. *Livraison Déterministe Multi-Canal* : Rapport Markdown `/artifacts/`, deck Google Slides via n8n, notification Telegram et 5 jalons vocaux intermédiaires.
+6. *Livraison Déterministe Multi-Canal* : Rapport Markdown `/artifacts/`, deck Google Slides via n8n, notification Telegram et jalons vocaux intermédiaires.
 
 ### 8.4. Moteur Délibératif Système 2 Transverse (Les 8 Missions Agentiques Spécialisées)
 Orchestrées par `services/agentic_dispatcher.py` :
@@ -679,9 +687,92 @@ Orchestrées par `services/agentic_dispatcher.py` :
 7. `memory_consolidation` : Déduplication nocturne et réconciliation de contradictions.
 8. `doc_sync` : Contrôle de cohérence entre le code des routeurs et `ARCHITECTURE_COMPLETE_JARVIS.md`.
 
-### 8.5. Navigation Web Autonome, E-Commerce & Chrome CDP
-- Cibles : `vps_headless` (Playwright headless Linux), `local_chrome_cdp` (Chrome réel de Pierre sur PC Windows port 9222 avec cookies et sessions), `local_gui`.
-- Assistant d'achat : remplit le panier et s'arrête strictement avant le paiement.
+### 8.5. Interaction Web Autonome & Agent Navigateur Local (`browser_task`)
+
+#### 8.5.1. Paradigme & Schéma du Flux Opérationnel
+Le système d'interaction web repose sur une architecture découplée en tâche de fond :
+1. **Jarvis (Gemini Live)** : Reçoit l'intention vocale, déclenche `browser_task(goal, start_url, recipe)` de manière non-bloquante, confirme oralement à Pierre (« Je m'en occupe ») et reste immédiatement disponible à la voix.
+2. **Exécution en Arrière-Plan** : `core/tools/dispatcher.py` instancie un `BrowserTask` et lance `run_browser_agent_task(task, notify)` au sein d'une tâche asyncio supervisée (`BROWSER_TASKS`).
+3. **Agent Local PC (`jarvis_local_agent.py` & `local_browser_actions.py`)** : Se connecte via CDP sur l'instance Chrome réelle ouverte de Pierre (`http://localhost:9222`), conservant tous ses cookies et sessions authentifiées. Il exécute les ordres physiques (DOM, clics, saisie, captures) sans logique décisionnelle locale.
+4. **Cerveau Décisionnel Cloud (`services/browser_agent/cli_brain.py`)** : TOUTE la réflexion (analyse du snapshot DOM, décision d'action S4, analyse d'image par vision si nécessaire, vérification de réussite) est déléguée aux agents CLI Antigravity (`agy`) exécutés en sous-processus sur le VPS.
+5. **Boucle d'Action & Vérification (S2)** :
+   - *Observer* : RPC `browser_snapshot` → extrait l'URL, le titre, le texte visible (1500 car) et numérote jusqu'à 150 éléments interactifs avec l'attribut `data-jarvis-id`.
+   - *Décider* : Appel CLI `agy` (`decide`) avec objectif, recette, mémoire du site, snapshot et 6 dernières actions.
+   - *Vision* : Si `need_screenshot=true` (ou après 3 erreurs consécutives), RPC `browser_screenshot` (JPEG qualité 60), enregistrement dans le cache (`step_<n>.jpg`), et appel CLI `agy` multimodal analysant l'image.
+   - *Garde-Fou* : Validation de chaque action par `guards.check_action()`.
+   - *Agir* : RPC `browser_act` exécutant 1 à 3 actions (`click`, `type`, `select`, `scroll`, `goto`, `wait`, `back`, `extract`).
+   - *Vérifier* : Lorsque `done=true`, appel CLI `agy` (`verify`) pour valider formellement le critère de réussite.
+6. **Mise au Premier Plan & Notification Vocale** : Jarvis ne génère jamais d'URL de résultat artificielle. À la fin, RPC `browser_focus` met l'onglet actif au premier plan et le résultat est injecté dans le flux vocal via `VoiceInjectionQueue`.
+
+```
+┌─────────────────┐       (1) Tool Call Non-Bloquant       ┌───────────────────────────────┐
+│   Gemini Live   ├───────────────────────────────────────►│ core/tools/dispatcher.py      │
+│  (Session Voix) │◄───────────────────────────────────────┤ (asyncio bg task + RPC bridge)│
+└────────┬────────┘       (6) Injection Vocale Finale      └───────────────┬───────────────┘
+         │            (VoiceInjectionQueue: TOOL_RESPONSE)                 │
+         │                                                                 │ (2) RPC WebSocket
+         ▼                                                                 ▼
+┌─────────────────┐                                        ┌───────────────────────────────┐
+│   Supervision   │                                        │  jarvis_local_agent.py (PC)   │
+│ & HUD Mobile UI │                                        │  local_browser_actions.py     │
+└─────────────────┘                                        └───────────────┬───────────────┘
+                                                                           │ (3) Playwright CDP
+                                                                           ▼
+                                                           ┌───────────────────────────────┐
+                                                           │ Google Chrome Réel (Port 9222)│
+                                                           │ (Sessions & Cookies de Pierre)│
+                                                           └───────────────┬───────────────┘
+                                                                           │
+                                                                           │ (4) DOM balisé data-jarvis-id
+                                                                           │     & Captures d'écran JPEG
+                                                                           ▼
+                                                           ┌───────────────────────────────┐
+                                                           │ services/browser_agent/       │
+                                                           │ - loop.py (Boucle S2)         │
+                                                           │ - guards.py (Garde-fous S5)   │
+                                                           │ - site_memory.py (Mémoire S6) │
+                                                           └───────────────┬───────────────┘
+                                                                           │ (5) Invocation CLI
+                                                                           ▼
+                                                           ┌───────────────────────────────┐
+                                                           │ Antigravity CLI (agy VPS)     │
+                                                           │ cli_brain.py (decide, verify) │
+                                                           └───────────────────────────────┘
+```
+
+#### 8.5.2. Répertoire des Composants & Rôles des Fichiers
+- `local_browser_actions.py` : Pont CDP Playwright côté PC Windows (`BrowserBridge`), assurant la connexion sur le port 9222, le balisage dynamique du DOM (`data-jarvis-id` de 1 à 150), l'exécution ordonnée des actions et la capture d'écran JPEG viewport.
+- `services/browser_agent/__init__.py` : Point d'entrée exportant `BrowserTask`, `TASKS`, `run_browser_task`, `cancel_task`, `check_action`, `load_hint`, `save_success`.
+- `services/browser_agent/loop.py` : Orchestrateur de la boucle de navigation autonome S2 (gestion des étapes `max_steps`, du délai `max_duration`, des erreurs consécutives, de l'appel vision, du mécanisme de `handoff` et de la vérification finale).
+- `services/browser_agent/cli_brain.py` : Cerveau décisionnel et vérificateur s'appuyant sur Antigravity CLI (`agy`), avec invite textuelle ou multimodale (analyse de captures d'écran), validation stricte du format JSON S4 et réessai automatique en cas d'anomalie de syntaxe.
+- `services/browser_agent/guards.py` : Garde-fous de sécurité S5 vérifiant chaque action avant exécution. Bloque tout clic sur élément de paiement/commande final (`PAYMENT_PATTERN`) et interdit la saisie automatique de mots de passe ou coordonnées bancaires (`PASSWORD_PATTERN`, `SENSITIVE_FIELD_PATTERN`).
+- `services/browser_agent/site_memory.py` : Persistance atomique des parcours de navigation réussis par domaine sous `data/site_memory/<domain>.json` (S6), injectant jusqu'à 2 résumés d'étapes passées comme indices pour le cerveau.
+- `services/browser_agent/recipes/` : Dossier contenant les consignes de navigation spécialisées au format Markdown.
+
+#### 8.5.3. Catalogue des Recettes Disponibles (`services/browser_agent/recipes/`)
+- `cart.md` : Consignes pour l'e-commerce générique (recherche de produit, sélection du meilleur compromis prix/pertinence, gestion des pop-ups/cookies, ajout au panier, arrêt strict avant commande).
+- `train.md` : Consignes pour la recherche et sélection d'itinéraires ferroviaires sur SNCF Connect (avec repli Trainline), sélection des horaires optimaux et arrêt sur la page passagers/pré-paiement.
+- `gemini_deep_research.md` : Consignes pour l'automatisation de Google Gemini (`https://gemini.google.com/app`), activation du mode Deep Research, lancement de la recherche, surveillance en boucle (`wait 120`), extraction du rapport intégral avec `extract` et transmission.
+
+#### 8.5.4. Outils Exposés à Gemini Live & Rétrocompatibilité
+- `browser_task` : Outil maître générique de navigation autonome. Accepte `goal` (objectif en langage naturel), `start_url` (URL de départ optionnelle) et `recipe` (`cart`, `train`, `gemini_deep_research`).
+- `browser_task_status` : Outil de suivi d'avancement retournant l'état, l'étape en cours et l'objectif pour un `task_id` donné.
+- `prepare_web_cart_or_checkout` (alias `prepare_cart`) : Conservé pour rétrocompatibilité ; enveloppe automatiquement `browser_task` avec la recette `cart`.
+- `open_train_booking` (alias `reserver_billet_train_local`) : Conservé pour rétrocompatibilité ; enveloppe automatiquement `browser_task` avec la recette `train`.
+- `launch_deep_research` (alias `deep_research`, `lancer_mission_deep_research`) : Enveloppe en priorité `browser_task` avec la recette `gemini_deep_research` avant de basculer sur le pipeline Map-Reduce VPS en cas d'échec.
+- `run_browser_task` : Conservé comme alias direct / compatibilité historique vers `browser_task`.
+
+#### 8.5.5. Garde-Fous de Sécurité & Protocole de Handoff
+- **Anti-Paiement Inviolable** : Tout clic sur un bouton d'achat final (mots-clés : *payer, paiement, commander, passer la commande, valider et payer, pay now, place order, buy now*, etc.) est intercepté par `guards.py`. La tâche s'interrompt avec le statut `ready_for_user`, l'onglet est mis au premier plan via `browser_focus`, et Jarvis annonce oralement : « C'est prêt, il ne te reste qu'à valider. »
+- **Données Confidentielles** : Mots de passe, numéros de carte de crédit, IBAN et CVV ne sont jamais saisis par l'agent.
+- **Protocole de Handoff Utilisateur** : En cas de détection d'un obstacle non automatisable (captcha, écran de connexion obligatoire, 2FA, choix complexe), l'agent bascule en `handoff`. L'onglet est mis au premier plan, Jarvis prévient Pierre vocalement avec priorité `INTERRUPTION`, puis le système surveille l'évolution de la page par un snapshot toutes les 5 secondes pendant 5 minutes maximum. Si l'utilisateur lève le blocage, la tâche reprend de manière fluide ; sinon, elle se clôture avec le statut `needs_user`.
+- **Annulation Physique** : L'outil `stop_current_action` déclenche `cancel_task(task_id)` qui interrompt immédiatement la boucle asynchrone et libère l'onglet.
+
+#### 8.5.6. Limites Connues
+- **Captchas & Défis Anti-Bot** : Cloudflare Turnstile, reCAPTCHA v2/v3 et puzzles interactifs ne sont pas résolus automatiquement par l'agent et nécessitent une intervention humaine via le protocole de handoff.
+- **Authentification Forte & 2FA** : Les formulaires exigeant des codes SMS, clés FIDO2 ou notifications bancaires sur smartphone requièrent le relais de l'utilisateur.
+- **Sites sans Recette Dédiée** : Pour les services complexes non couverts par une recette (`recipes/*.md`), l'agent fonctionne par heuristique générale ; son efficacité dépend de la clarté du DOM et du respect du quota des 150 éléments interactifs balisés par snapshot.
+- **Contraintes de Fenêtrage DOM** : Les snapshots filtrent les éléments interactifs à 150 éléments visibles (hauteur max 2 viewports) et tronquent le texte descriptif de la page à 1500 caractères.
 
 ### 8.6. Pôle Documentaire & Présentations Google Slides Polymorphes v1
 - `services/slides_service.py` : 7 layouts visuels widescreen 16:9 (`hero_title`, `key_metrics`, `cards_grid`, `split_compare`, `timeline_steps`, `quote_highlight`, `conclusion_call_to_action`).
@@ -689,7 +780,7 @@ Orchestrées par `services/agentic_dispatcher.py` :
 
 ### 8.7. Mobilité & Système Ferroviaire Intelligent (France & Suède)
 - Décomposition multi-segments (ex: Malmö ↔ Kiruna via Stockholm Central avec TGV de jour + train de nuit).
-- Deep links Omio directs et réservables. Ouverture multi-onglets simultanés sur Chrome local.
+- Recherche de trajets et réservation : `search_train_routes` (recherche d'horaires et liaisons) et `open_train_booking` (alias `reserver_billet_train_local`, qui délègue l'interaction web sur les sites de réservation à `browser_task` avec la recette `train.md`).
 - Surveillance Trafikverket/SNCF toutes les 10 min par n8n avec alerte vocale et Telegram si retard > 5 min.
 
 ### 8.8. Gestionnaire E-Book, Liseuses Physiques & Send to Kindle

@@ -1,0 +1,8 @@
+MISSION RAPIDE & LÉGÈRE (TIER 1 - RAPIDITÉ / SYNCHRONISATION)
+OBJECTIF : {goal}
+CONTEXTE : {context}
+
+Consignes d'exécution :
+1. Réalise la tâche de façon directe, concise et factuelle.
+2. Évite toute délibération superflue ou analyse théorique longue.
+3. Vérifie tes modifications et termine impérativement par le rapport JSON standard.
