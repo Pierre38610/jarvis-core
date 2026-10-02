@@ -857,11 +857,56 @@ async def agent_loop():
                                 )
                             except Exception as e:
                                 result = {"status": "error", "message": f"Erreur gemini_deep_research local : {e}"}
+                        elif action == "browser_open_task":
+                            try:
+                                from local_browser_actions import browser_bridge
+                                task_id = params.get("task_id", "")
+                                start_url = params.get("start_url", "")
+                                result = await browser_bridge.browser_open_task(task_id, start_url)
+                            except Exception as e:
+                                result = {"ok": False, "error": str(e)}
+                        elif action == "browser_snapshot":
+                            try:
+                                from local_browser_actions import browser_bridge
+                                task_id = params.get("task_id", "")
+                                result = await browser_bridge.browser_snapshot(task_id)
+                            except Exception as e:
+                                result = {"ok": False, "error": str(e)}
+                        elif action == "browser_act":
+                            try:
+                                from local_browser_actions import browser_bridge
+                                task_id = params.get("task_id", "")
+                                actions = params.get("actions", [])
+                                result = await browser_bridge.browser_act(task_id, actions)
+                            except Exception as e:
+                                result = {"ok": False, "error": str(e)}
+                        elif action == "browser_screenshot":
+                            try:
+                                from local_browser_actions import browser_bridge
+                                task_id = params.get("task_id", "")
+                                result = await browser_bridge.browser_screenshot(task_id)
+                            except Exception as e:
+                                result = {"ok": False, "error": str(e)}
+                        elif action == "browser_focus":
+                            try:
+                                from local_browser_actions import browser_bridge
+                                task_id = params.get("task_id", "")
+                                result = await browser_bridge.browser_focus(task_id)
+                            except Exception as e:
+                                result = {"ok": False, "error": str(e)}
+                        elif action == "browser_close_task":
+                            try:
+                                from local_browser_actions import browser_bridge
+                                task_id = params.get("task_id", "")
+                                result = await browser_bridge.browser_close_task(task_id)
+                            except Exception as e:
+                                result = {"ok": False, "error": str(e)}
                         else:
                             result = {"status": "error", "message": f"Action inconnue : {action}"}
 
 
-                        print(f"  -> Résultat : {result.get('message', result.get('status'))}", flush=True)
+                        res_summary = result.get('message', result.get('status', result.get('ok'))) if isinstance(result, dict) else f"{len(result)} action(s)"
+                        print(f"  -> Résultat : {res_summary}", flush=True)
 
                         # Répond au VPS
                         response = {
