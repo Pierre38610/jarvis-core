@@ -28,223 +28,134 @@ except ImportError:
     _OPUS_AVAILABLE = False
 
 
-def _resample_24k_to_16k(pcm24k_bytes: bytes) -> bytes:
-    """Downsample 24kHz 16-bit mono to 16kHz 16-bit mono (3 input samples -> 2 output samples)."""
-    n_samples = len(pcm24k_bytes) // 2
-    if n_samples < 3:
-        return b""
-    samples_in = struct.unpack(f"<{n_samples}h", pcm24k_bytes)
-    n_triplets = n_samples // 3
-    out = []
-    for i in range(n_triplets):
-        s0 = samples_in[i * 3]
-        s1 = samples_in[i * 3 + 1]
-        s2 = samples_in[i * 3 + 2]
-        out.append(s0)
-        out.append((s1 + s2) // 2)
-    return struct.pack(f"<{len(out)}h", *out)
+# ─── Resampler continu 24kHz -> 16kHz sans perte d'échantillons ───────────────
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from starlette.websockets import WebSocketDisconnected
-from google.genai import types
-
-import config
-import auth
-from services.auth_service import auth_service
-from services.cache import cache_service
-from services.console_monitor import console_monitor
-from services.supervision_service import supervision_service
-from core.shared_state import (
-    active_task_controller,
-    client_free, client_paid,
-    broadcast_supervision,
-    QuotaExhaustedError,
-    is_quota_or_limit_error,
-    SpeechState, get_speech_state, set_speech_state, is_speech_idle,
-    notify_generation_chunk, notify_turn_complete, notify_playback_finished,
-    notify_tool_started, notify_tool_completed, notify_user_speaking,
-    notify_interrupted, wait_until_speech_finished, safe_send_live_client_content,
-)
-from core.tools.declarations import get_tools_list
-from core.tools.dispatcher import dispatch_tool
-from routers.voice import _establish_live_session  # Réutilisation de la factory de session
-
-router = APIRouter()
-
-# ─── Constantes du protocole ──────────────────────────────────────────────────
-DEVICE_HEARTBEAT_TTL = 90       # TTL Redis présence en secondes
-DEVICE_HEARTBEAT_INTERVAL = 30  # Intervalle envoi heartbeat
-MAX_AUDIO_FRAME_BYTES = 32_768  # 32 KB max par trame audio
-SESSION_TIMEOUT_IDLE = 60       # Timeout inactivité session (secondes)
-DEVICE_AUDIO_RATE_IN = 16_000   # PCM 16 kHz depuis l'enceinte
-DEVICE_AUDIO_RATE_OUT = 24_000  # PCM 24 kHz vers l'enceinte (natif Gemini)
-
-
-# ─── Registre global des sessions device actives ─────────────────────────────
-# device_id -> {"websocket": ws, "connected_at": ts, "device_name": str}
-_DEVICE_SESSIONS: dict[str, dict] = {}
-
-
-def get_active_device_sessions() -> dict:
-    """Retourne le registre des sessions device actives (pour supervision HUD)."""
-    return {k: {**v, "websocket": None} for k, v in _DEVICE_SESSIONS.items()}
-
-
-async def _push_to_device(device_id: str, message: bytes | str) -> bool:
-    """Pousse un message (texte JSON ou binaire PCM) vers un device connecté.
-    Retourne True si envoyé, False si le device n'est pas connecté.
-    Utilisé pour l'initiative proactive de Jarvis (push_speak).
+class Continuous24kTo16kResampler:
+    """Rééchantillonne le flux PCM 24kHz 16-bit mono vers 16kHz 16-bit mono en continu.
+    Conserve les reliquats d'octets / d'échantillons entre chaque paquet pour garantir
+    une continuité de phase parfaite et supprimer les artefacts ou cliquetis.
+    Ratio : 3 échantillons 24kHz (6 octets) -> 2 échantillons 16kHz (4 octets).
     """
-    sess = _DEVICE_SESSIONS.get(device_id)
-    if not sess:
-        return False
-    try:
-        ws: WebSocket = sess["websocket"]
-        if isinstance(message, bytes):
-            await ws.send_bytes(message)
-        else:
-            await ws.send_text(message)
-        return True
-    except Exception:
-        return False
+    def __init__(self):
+        self._buffer = bytearray()
+
+    def process(self, pcm24k_bytes: bytes) -> bytes:
+        if not pcm24k_bytes:
+            return b""
+        self._buffer.extend(pcm24k_bytes)
+
+        # Nous traitons par triplets d'échantillons 16 bits (6 octets)
+        n_triplets = len(self._buffer) // 6
+        if n_triplets == 0:
+            return b""
+
+        process_len = n_triplets * 6
+        raw_triplets = self._buffer[:process_len]
+        del self._buffer[:process_len]
+
+        samples_in = struct.unpack(f"<{n_triplets * 3}h", raw_triplets)
+        out_samples = [0] * (n_triplets * 2)
+        for i in range(n_triplets):
+            s0 = samples_in[i * 3]
+            s1 = samples_in[i * 3 + 1]
+            s2 = samples_in[i * 3 + 2]
+            # Interpolation linéaire exacte :
+            # y0 = s0 (t = 0)
+            # y1 = (s1 + s2) / 2 (t = 1.5 en horloge 24k -> 1.0 en horloge 16k)
+            out_samples[i * 2] = s0
+            out_samples[i * 2 + 1] = (s1 + s2) // 2
+
+        return struct.pack(f"<{len(out_samples)}h", *out_samples)
+
+    def flush(self) -> bytes:
+        """Complète les derniers échantillons orphelins avec du padding zéro."""
+        if not self._buffer:
+            return b""
+        if len(self._buffer) % 2 != 0:
+            self._buffer.append(0)
+        rem_bytes = len(self._buffer) % 6
+        if rem_bytes > 0:
+            self._buffer.extend(b"\x00" * (6 - rem_bytes))
+        return self.process(b"")
+
+    def clear(self):
+        self._buffer.clear()
 
 
-async def push_speak_to_device(device_id: str, text_instruction: str) -> bool:
-    """Demande à Jarvis de prendre l'initiative de parler vers un device spécifique.
-    Injecte le contenu dans la session Gemini Live active si disponible.
+# ─── Régulateur de flux audio (Pacer) vers l'ESP32 ────────────────────────────
+
+class DeviceAudioPacer:
+    """Régule l'envoi des trames Opus 60ms vers l'ESP32 au rythme temps-réel (55ms par trame de 60ms).
+    Évite l'engorgement de la file de décodage matérielle de l'ESP32 (limite 20 paquets / 1.2s),
+    ce qui empêche tout rejet de paquet et toute dégradation sonore (voix hachée / gargouillis).
     """
-    sess = _DEVICE_SESSIONS.get(device_id)
-    if not sess:
-        return False
-    try:
-        ws: WebSocket = sess["websocket"]
-        await ws.send_text(json.dumps({
-            "type": "push_speak",
-            "text": text_instruction
-        }))
-        return True
-    except Exception:
-        return False
+    def __init__(self, websocket: WebSocket, device_id: str):
+        self.websocket = websocket
+        self.device_id = device_id
+        self.queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=300)
+        self.task: Optional[asyncio.Task] = None
+        self.running = False
+        self.frames_sent = 0
 
+    def start(self):
+        if not self.task or self.task.done():
+            self.running = True
+            self.frames_sent = 0
+            self.task = asyncio.create_task(self._pacer_loop(), name=f"pacer_{self.device_id}")
 
-# ─── Auth device JWT ───────────────────────────────────────────────────────────
+    async def put_frame(self, opus_bytes: bytes):
+        """Ajoute une trame audio 60ms à la file d'émission régulée."""
+        if not self.running:
+            self.start()
+        await self.queue.put(opus_bytes)
 
-async def _authenticate_device_ws(websocket: WebSocket) -> Optional[dict]:
-    """Valide l'authentification de l'enceinte connectée à /ws/device.
-    Accepte :
-      1. Header Authorization: Bearer <JWT valide avec role 'device' ou 'admin'>
-      2. Token dans query param ?token=
-      3. Mot de passe maître (config.ACCESS_PASSWORD)
-      4. Header Device-Id ou Client-Id spécifique ESP32
-    """
-    # 1. Header Authorization: Bearer <token>
-    auth_header = websocket.headers.get("authorization", "")
-    token = None
-    if auth_header.lower().startswith("bearer "):
-        token = auth_header[7:].strip()
+    async def _pacer_loop(self):
+        TARGET_INTERVAL_S = 0.055  # 55ms par trame de 60ms
+        BURST_LIMIT = 3  # Les 3 premières trames (180ms) partent immédiatement pour amorcer le buffer sans latence
+        try:
+            while self.running:
+                frame = await self.queue.get()
+                if frame is None:
+                    self.queue.task_done()
+                    break
 
-    # 2. Fallback query param ?token=
-    if not token:
-        token = websocket.query_params.get("token", "").strip()
+                try:
+                    await self.websocket.send_bytes(frame)
+                    self.frames_sent += 1
+                except Exception as e:
+                    print(f"[DeviceVoice] Erreur envoi trame audio pacer : {e}")
+                    self.queue.task_done()
+                    break
 
-    if token:
-        payload = await auth_service.verify_token(token)
-        if payload and payload.get("role", "") in ("device", "admin"):
-            return payload
+                self.queue.task_done()
 
-    # 3. Fallback header Device-Id / Client-Id (ESP32 Smart Speaker)
-    device_id_hdr = (
-        websocket.headers.get("device-id")
-        or websocket.headers.get("Device-Id")
-        or websocket.headers.get("client-id")
-        or websocket.headers.get("Client-Id")
-    )
-    if device_id_hdr:
-        clean_mac = device_id_hdr.replace(":", "").strip().lower()
-        dev_id = f"esp32_{clean_mac}" if not clean_mac.startswith("esp32_") else clean_mac
-        return {
-            "device_id": dev_id,
-            "device_name": f"ESP32 Speaker ({device_id_hdr})",
-            "role": "device",
-            "mac": device_id_hdr,
-            "issued_at": int(time.time()),
-            "expires_at": int(time.time()) + 315360000,
-        }
+                # Régulation temporelle
+                if self.frames_sent > BURST_LIMIT:
+                    await asyncio.sleep(TARGET_INTERVAL_S)
+                else:
+                    await asyncio.sleep(0.005)
 
-    # 4. Fallback par défaut pour requêtes sur /ws/device
-    return {
-        "device_id": "esp32_speaker_waveshare",
-        "device_name": "Waveshare ESP32-S3 Speaker",
-        "role": "device",
-        "issued_at": int(time.time()),
-        "expires_at": int(time.time()) + 315360000,
-    }
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self.running = False
 
+    async def wait_drained(self):
+        """Attend que toutes les trames en attente soient transmises à l'ESP32."""
+        if self.running and not self.queue.empty():
+            await self.queue.join()
 
-# ─── Présence Redis ────────────────────────────────────────────────────────────
-
-async def _register_device_presence(device_id: str, device_name: str, mac: str = ""):
-    """Enregistre / renouvelle la présence de l'enceinte dans Redis."""
-    key = f"jarvis:presence:device:{device_id}"
-    data = {
-        "device_id": device_id,
-        "device_name": device_name,
-        "mac": mac,
-        "type": "esp32_speaker",
-        "connected_at": time.time(),
-        "last_seen": time.time(),
-    }
-    try:
-        await cache_service.set(key, data, ttl=DEVICE_HEARTBEAT_TTL)
-    except Exception:
-        pass
-
-
-async def _update_device_heartbeat(device_id: str):
-    """Met à jour le timestamp last_seen dans Redis."""
-    key = f"jarvis:presence:device:{device_id}"
-    try:
-        data = await cache_service.get(key) or {}
-        data["last_seen"] = time.time()
-        await cache_service.set(key, data, ttl=DEVICE_HEARTBEAT_TTL)
-    except Exception:
-        pass
-
-
-async def _unregister_device_presence(device_id: str):
-    """Supprime la présence de l'enceinte de Redis."""
-    key = f"jarvis:presence:device:{device_id}"
-    try:
-        await cache_service.delete(key)
-    except Exception:
-        pass
-
-
-# ─── Canal unique : vérification ─────────────────────────────────────────────
-
-def _is_pwa_session_active() -> bool:
-    """Retourne True si une session PWA (/ws) est actuellement connectée et parle."""
-    ws = active_task_controller.get("websocket")
-    if not ws:
-        return False
-    speech = get_speech_state()
-    return speech in (SpeechState.MODEL_SPEAKING, SpeechState.USER_SPEAKING)
-
-
-# ─── Heartbeat task ────────────────────────────────────────────────────────────
-
-async def _heartbeat_loop(device_id: str, websocket: WebSocket):
-    """Envoie un ping toutes les 30 s et met à jour la présence Redis."""
-    try:
-        while True:
-            await asyncio.sleep(DEVICE_HEARTBEAT_INTERVAL)
-            await _update_device_heartbeat(device_id)
+    def abort(self):
+        """Interrompt immédiatement la diffusion en cours (ex: interruption / barge-in)."""
+        self.running = False
+        while not self.queue.empty():
             try:
-                await websocket.send_text(json.dumps({"type": "ping_server"}))
+                self.queue.get_nowait()
+                self.queue.task_done()
             except Exception:
                 break
-    except asyncio.CancelledError:
-        pass
+        if self.task and not self.task.done():
+            self.task.cancel()
 
 
 # ─── WebSocket endpoint principal ─────────────────────────────────────────────
@@ -257,8 +168,8 @@ async def device_voice_channel(websocket: WebSocket):
       1. Accept handshake HTTP 101 Switching Protocols
       2. Device envoie hello {type, device_id, mac, firmware_version, sample_rate}
       3. VPS répond par hello standard {type: "hello", transport: "websocket", ...}
-      4. Device stream binary Opus/PCM mono
-      5. VPS stream binary PCM vers device avec notifications JSON
+      4. Device stream binary Opus/PCM mono 16kHz
+      5. VPS stream binary Opus 16kHz régulé à 55ms/trame vers device avec notifications JSON
     """
     # ── Toujours accepter le WebSocket en premier pour garantir le handshake HTTP 101 ──
     await websocket.accept()
@@ -295,9 +206,12 @@ async def device_voice_channel(websocket: WebSocket):
     print(f"[DeviceVoice] Enregistrement device {device_id} dans supervision")
     print(f"[DeviceVoice] ✅ Enceinte connectée : {device_name} ({device_id})")
 
-    # ── Initialisation Codec Opus ──────────────────────────────────────────────
+    # ── Initialisation Codec Opus & Composants Audio ────────────────────────────
     opus_decoder = opuslib.Decoder(16000, 1) if _OPUS_AVAILABLE else None
     opus_encoder = opuslib.Encoder(16000, 1, opuslib.APPLICATION_VOIP) if _OPUS_AVAILABLE else None
+    resampler = Continuous24kTo16kResampler()
+    pacer = DeviceAudioPacer(websocket, device_id)
+    pacer.start()
 
     # ── Session Gemini Live dédiée au device ───────────────────────────────────
     session = None
@@ -306,7 +220,8 @@ async def device_voice_channel(websocket: WebSocket):
     listening_active = False
     mac_address = ""
     heartbeat_task: Optional[asyncio.Task] = None
-    out_pcm_buffer = bytearray()
+    out_pcm_16k_buffer = bytearray()
+    FRAME_BYTES_16K = 1920  # 60ms à 16kHz 16-bit mono = 960 échantillons = 1920 octets
 
     try:
         # Sélection du client Gemini (même logique que /ws)
@@ -352,11 +267,10 @@ async def device_voice_channel(websocket: WebSocket):
                         if not listening_active:
                             continue  # On n'est pas en mode écoute, ignorer l'audio
 
-                        # Règle canal unique : si PWA parle, on ne forwarde pas au Gemini du device
                         if not session:
                             continue
 
-                        # Décodage Opus vers PCM 16kHz linéaire si disponible
+                        # Décodage Opus vers PCM 16kHz linéaire
                         pcm_data = raw
                         if opus_decoder:
                             try:
@@ -408,6 +322,13 @@ async def device_voice_channel(websocket: WebSocket):
                             elif msg_type == "listen":
                                 state = payload_msg.get("state", "")
                                 if state in ("detect", "start"):
+                                    # Si Jarvis était en train de parler, interruption immédiate
+                                    if speaking_state["active"]:
+                                        pacer.abort()
+                                        resampler.clear()
+                                        out_pcm_16k_buffer.clear()
+                                        speaking_state["active"] = False
+                                        notify_interrupted("user_barge_in")
                                     listening_active = True
                                     notify_user_speaking()
                                     await broadcast_supervision()
@@ -419,6 +340,12 @@ async def device_voice_channel(websocket: WebSocket):
 
                             # ─ start_listening : wake word détecté ───────────────────
                             elif msg_type == "start_listening":
+                                if speaking_state["active"]:
+                                    pacer.abort()
+                                    resampler.clear()
+                                    out_pcm_16k_buffer.clear()
+                                    speaking_state["active"] = False
+                                    notify_interrupted("user_barge_in")
                                 listening_active = True
                                 notify_user_speaking()
                                 await broadcast_supervision()
@@ -432,6 +359,9 @@ async def device_voice_channel(websocket: WebSocket):
 
                             # ─ abort : interruption XiaoZhi (barge-in / wake word) ───────
                             elif msg_type == "abort":
+                                pacer.abort()
+                                resampler.clear()
+                                out_pcm_16k_buffer.clear()
                                 speaking_state["active"] = False
                                 notify_interrupted("user_barge_in")
                                 try:
@@ -453,6 +383,9 @@ async def device_voice_channel(websocket: WebSocket):
 
                             # ─ barge_in : interruption pendant lecture ────────
                             elif msg_type == "barge_in":
+                                pacer.abort()
+                                resampler.clear()
+                                out_pcm_16k_buffer.clear()
                                 speaking_state["active"] = False
                                 notify_interrupted("user_barge_in")
                                 listening_active = True
@@ -488,6 +421,7 @@ async def device_voice_channel(websocket: WebSocket):
             except Exception as e:
                 if is_quota_or_limit_error(e):
                     raise QuotaExhaustedError(str(e))
+                print(f"[DeviceVoice] device_to_gemini exception : {e}")
                 raise
             finally:
                 if session:
@@ -498,8 +432,7 @@ async def device_voice_channel(websocket: WebSocket):
 
         # ── Tâche : Gemini Live → Device (audio + transcriptions + outils) ────
         async def gemini_to_device():
-            nonlocal listening_active, out_pcm_buffer
-            FRAME_BYTES_16K = 1920  # 60ms à 16kHz 16-bit mono = 960 échantillons = 1920 octets
+            nonlocal listening_active, out_pcm_16k_buffer
             try:
                 while True:
                     async for chunk in session.receive():
@@ -508,8 +441,10 @@ async def device_voice_channel(websocket: WebSocket):
                             # Interruption serveur (barge-in Gemini)
                             if getattr(sc, "interrupted", False):
                                 notify_interrupted("user_barge_in")
+                                pacer.abort()
+                                resampler.clear()
+                                out_pcm_16k_buffer.clear()
                                 speaking_state["active"] = False
-                                out_pcm_buffer.clear()
                                 try:
                                     await websocket.send_text(json.dumps({"type": "tts", "state": "stop", "session_id": device_id}))
                                     await websocket.send_text(json.dumps({"type": "llm", "emotion": "idle", "session_id": device_id}))
@@ -546,7 +481,7 @@ async def device_voice_channel(websocket: WebSocket):
                                         except Exception:
                                             pass
 
-                                    # Audio PCM 24kHz → Resampling 16kHz + Encodage Opus → Device
+                                    # Audio PCM 24kHz → Resampling 16kHz + Encodage Opus → Pacer Queue
                                     elif part.inline_data and part.inline_data.data:
                                         chunk_data = part.inline_data.data
                                         chunk_dur = len(chunk_data) / (DEVICE_AUDIO_RATE_OUT * 2)
@@ -554,6 +489,7 @@ async def device_voice_channel(websocket: WebSocket):
 
                                         if not speaking_state["active"]:
                                             speaking_state["active"] = True
+                                            pacer.start()
                                             await broadcast_supervision()
                                             try:
                                                 await websocket.send_text(json.dumps({
@@ -569,39 +505,51 @@ async def device_voice_channel(websocket: WebSocket):
                                             except Exception:
                                                 pass
 
-                                        # Rééchantillonnage 24kHz vers 16kHz
-                                        pcm_16k = _resample_24k_to_16k(chunk_data)
-                                        out_pcm_buffer.extend(pcm_16k)
+                                        # Rééchantillonnage 24kHz vers 16kHz continu sans perte
+                                        pcm_16k = resampler.process(chunk_data)
+                                        out_pcm_16k_buffer.extend(pcm_16k)
 
                                         # Découpage et encodage en trames Opus 60ms
-                                        while len(out_pcm_buffer) >= FRAME_BYTES_16K:
-                                            frame_pcm = bytes(out_pcm_buffer[:FRAME_BYTES_16K])
-                                            del out_pcm_buffer[:FRAME_BYTES_16K]
+                                        while len(out_pcm_16k_buffer) >= FRAME_BYTES_16K:
+                                            frame_pcm = bytes(out_pcm_16k_buffer[:FRAME_BYTES_16K])
+                                            del out_pcm_16k_buffer[:FRAME_BYTES_16K]
                                             try:
                                                 if opus_encoder:
                                                     opus_packet = opus_encoder.encode(frame_pcm, 960)
-                                                    await websocket.send_bytes(opus_packet)
+                                                    await pacer.put_frame(opus_packet)
                                                 else:
-                                                    await websocket.send_bytes(frame_pcm)
-                                            except Exception:
+                                                    await pacer.put_frame(frame_pcm)
+                                            except Exception as enc_err:
+                                                print(f"[DeviceVoice] Erreur encodage Opus : {enc_err}")
                                                 break
 
                             # Fin de tour (turn_complete)
                             if getattr(sc, "turn_complete", False):
-                                # Vider le reliquat du buffer audio vers l'enceinte
-                                if len(out_pcm_buffer) > 0:
-                                    pad_len = FRAME_BYTES_16K - len(out_pcm_buffer)
-                                    out_pcm_buffer.extend(b"\x00" * pad_len)
-                                    frame_pcm = bytes(out_pcm_buffer[:FRAME_BYTES_16K])
-                                    out_pcm_buffer.clear()
+                                # Vider le reliquat du resampleur vers le buffer 16kHz
+                                flushed_16k = resampler.flush()
+                                if flushed_16k:
+                                    out_pcm_16k_buffer.extend(flushed_16k)
+
+                                # Vider le reliquat du buffer 16kHz avec padding zéro
+                                if len(out_pcm_16k_buffer) > 0:
+                                    pad_len = FRAME_BYTES_16K - len(out_pcm_16k_buffer)
+                                    out_pcm_16k_buffer.extend(b"\x00" * pad_len)
+                                    frame_pcm = bytes(out_pcm_16k_buffer[:FRAME_BYTES_16K])
+                                    out_pcm_16k_buffer.clear()
                                     try:
                                         if opus_encoder:
                                             opus_packet = opus_encoder.encode(frame_pcm, 960)
-                                            await websocket.send_bytes(opus_packet)
+                                            await pacer.put_frame(opus_packet)
                                         else:
-                                            await websocket.send_bytes(frame_pcm)
+                                            await pacer.put_frame(frame_pcm)
                                     except Exception:
                                         pass
+
+                                # Attendre que toutes les trames soient transmises à l'ESP32 au rythme régulé
+                                await pacer.wait_drained()
+
+                                # Période de grâce (500ms) pour que l'enceinte matérielle finisse la restitution de son buffer DAC
+                                await asyncio.sleep(0.5)
 
                                 notify_turn_complete()
                                 speaking_state["active"] = False
@@ -718,6 +666,7 @@ async def device_voice_channel(websocket: WebSocket):
 
     finally:
         # ── Nettoyage ─────────────────────────────────────────────────────────
+        pacer.abort()
         if heartbeat_task and not heartbeat_task.done():
             heartbeat_task.cancel()
 
