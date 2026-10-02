@@ -43,8 +43,8 @@ if %ERRORLEVEL% NEQ 0 (
     echo [ERREUR] Impossible de flasher sur %PORT%.
     echo Verifications :
     echo  1. Votre carte ESP32-S3 est-elle bien branchee avec un cable USB de DONNEES ?
-    echo  2. Le port COM est-il bien %PORT% ? (Verifiez dans le Gestionnaire de peripheriques)
-    echo  3. Mode Bootloader : Maintenez le bouton BOOT, appuyez sur RESET (RST), relachez BOOT.
+    echo  2. Le port COM est-il bien %PORT% ?
+    echo  3. Mode Bootloader : Maintenez le bouton BOOT, appuyez sur RESET, relachez BOOT.
     echo ======================================================================
     pause
     exit /b 1
