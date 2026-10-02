@@ -5,6 +5,8 @@ Tests unitaires du planificateur multi-etapes de J.A.R.V.I.S.
 
 import asyncio
 import json
+import os
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -42,6 +44,29 @@ def reset_plan():
     clear_active_plan()
     yield
     clear_active_plan()
+
+@pytest.fixture(autouse=True)
+def restore_free_api_key():
+    """Isole l'etat global de config.GEMINI_API_KEY_FREE.
+
+    Plusieurs tests de ce module ecrasent cette constante globale pour simuler la
+    presence d'une cle gratuite. Sans restauration, les tests executes ensuite dans
+    la meme session (ex. tests/test_paid_key_authorization.py) echouent a cause de
+    cette pollution d'etat : les modules ayant fait `from config import ...` gardent
+    leur propre copie de la valeur d'origine, ce qui cree un desaccord visible.
+    """
+    import config
+
+    orig_free = getattr(config, "GEMINI_API_KEY_FREE", "")
+    orig_env_free = os.environ.get("GEMINI_API_KEY_FREE")
+    yield
+    config.GEMINI_API_KEY_FREE = orig_free
+    if orig_env_free is None:
+        os.environ.pop("GEMINI_API_KEY_FREE", None)
+    else:
+        os.environ["GEMINI_API_KEY_FREE"] = orig_env_free
+
+
 
 
 # ─── needs_planning() ---------------------------------------------------------

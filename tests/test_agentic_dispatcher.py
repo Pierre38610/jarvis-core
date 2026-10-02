@@ -154,7 +154,7 @@ async def test_tool_dispatcher_agentic_extensions():
     with patch("services.agentic_dispatcher.agentic_dispatcher.launch_agentic_mission", new_callable=AsyncMock):
         res_heal = await dispatch_tool(
             name="auto_guerison_systeme",
-            args={"motif": "Erreur 500 sur /ws"},
+            args={"motif": "Erreur 500 sur /ws", "confirmed_by_user": True},
             websocket=mock_ws,
             session=MagicMock(),
             is_paid_live=False,

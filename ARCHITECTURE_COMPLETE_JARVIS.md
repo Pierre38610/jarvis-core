@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.26.0 — Accès Lecture Seule Espace _anti_gravity (Stages, LTH, Micro-SaaS, jarvis, etc.), Service WorkspaceService étanche & Outils Live Dédiés (list_workspace_files, read_workspace_file, search_workspace_files).*
+> *Dernière révision majeure : Version 5.37.0 — Canal vocal enceinte physique ESP32-S3 Waveshare AI Smart Speaker (`routers/device_voice.py`, `/ws/device`, `/api/device/*`), protocole WebSocket JSON+binaire PCM, wake word `wn9_jarvis_tts` (ESP-SR WakeNet 9), JWT `role=device`, présence Redis `jarvis:presence:device:<id>`, règle canal unique. Précédent : Routage Intelligent des Modèles Antigravity CLI (`services/model_routing/`, `config/models.json`), exécuteur agentique `services/agentic_runner.py`, gouvernance des clés `services/key_gate.py`, planificateur multi-étapes `services/task_planner.py` & audit anti-fausses-affirmations `services/turn_audit.py`.*
 
 ---
 
@@ -39,6 +39,7 @@
    - 5.3. Routage Cognitif Dynamique en 3 Paliers (Tiers 1, 2, 3)
    - 5.4. Mécanismes d'Arbitrage Ordonnés (`resolve_cognitive_tier`) & Télémétrie (`tier_routing_log`)
    - 5.5. Protocole de Résilience Quota-Aware & Dégradation Gracieuse (429)
+   - 5.6. Routage Intelligent Antigravity CLI, Résilience Quota & Politique Vocale
 6. [Le Moteur Vocal Temps Réel (Gemini Live Audio)](#6-le-moteur-vocal-temps-réel-gemini-live-audio)
    - 6.1. Protocole Audio Full-Duplex & Streaming PCM
    - 6.2. Assemblage Dynamique de l'Instruction Système & Contexte
@@ -51,12 +52,12 @@
 7. [L'Agent Relais Local PC Windows (`jarvis_local_agent`)](#7-lagent-relais-local-pc-windows-jarvis_local_agent)
    - 7.1. Problématique Résolue & Rôle Exécutant Physique
    - 7.2. Protocole WebSocket RPC & Reconnexion Résiliente
-   - 7.3. Catalogue des 10 Actions Locales Supportées (Schémas & Paramètres)
+   - 7.3. Catalogue des 20 Actions Locales Supportées (Schémas & Paramètres)
    - 7.4. Journalisation Auto-Flush & Interception Globale des Crashs
    - 7.5. Exécution Silencieuse VBScript & Scripts d'Automatisation Windows
    - 7.6. Télémétrie Matérielle Réelle (`psutil`)
-8. [Catalogue Matriciel & Fiches des 38 Outils Unifiés (Function Calling)](#8-catalogue-matriciel--fiches-des-38-outils-unifiés-function-calling)
-   - 8.1. Matrice Globale Exhaustive des 38 Outils Déclarés (Spécifications Exactes)
+8. [Catalogue Matriciel & Fiches des 49 Outils Unifiés (Function Calling)](#8-catalogue-matriciel--fiches-des-49-outils-unifiés-function-calling)
+   - 8.1. Matrice Globale Exhaustive des 49 Outils Déclarés (Spécifications Exactes)
    - 8.2. Moteur Multi-Agents Antigravity CLI sur VPS (`ask_deep_reasoning`, `guide_active_task`, `stop_current_action`)
    - 8.3. Moteur Asynchrone Deep Research : Architecture à Double Moteur (Moteur A Browser Agent Gemini Web + Moteur B Map-Reduce VPS)
    - 8.4. Moteur Délibératif Système 2 Transverse (Les 8 Missions Agentiques Spécialisées)
@@ -142,34 +143,45 @@ Pour permettre à tout agent d'ingénierie d'éditer le code avec la même préc
 
 ```
 jarvis-core/
-├── App.py                               # Point d'entrée FastAPI, middleware CORS, montage statique & cycle de vie startup/shutdown
-├── config.py                            # Constantes, répertoires, clés API, MODEL_ROUTING_ENABLED, switch payant, prompts
+├── App.py                               # Point d'entrée FastAPI, montage /static & /downloads, routes d'auth (/api/auth*, /api/verify), startup/shutdown
+├── App_backup_monolith.py               # Sauvegarde de l'ancien monolithe App.py (dette technique, non importé par le runtime)
+├── config.py                            # Constantes, répertoires, clés FREE/PAID, encoche paid_key_authorized, MODEL_ROUTING_ENABLED
 ├── auth.py                              # Wrapper d'authentification légère et compatibilité
-├── google_antigravity.py                # Wrapper Antigravity CLI VPS, support effort, Claude & compatibilité ascendante
+├── google_antigravity.py                # Implémentation racine du wrapper Antigravity CLI VPS (AntigravityAgent, resolve_cognitive_tier(_sync), verify_antigravity_cli_ready, resolve_cli_model_args, find_antigravity_binary)
 ├── model_registry.py                    # Shim racine du registre de découverte et catalogue des modèles (Gemini / Claude)
 ├── model_router.py                      # Shim racine du routeur intelligent de modèles (select_model)
 ├── fallback_handler.py                  # Shim racine du gestionnaire de repli résilient quota (execute_with_fallback)
 ├── prompt_builder.py                    # Shim racine du constructeur de prompts adaptés et parseur JSON tolérant
 ├── AGENTS.md                            # Charte générale et règles obligatoires pour tout agent autonome Antigravity CLI
-├── jarvis_local_agent.py                # Agent client WebSocket s'exécutant sur le PC Windows 11 (actions physiques, Chrome CDP, Spotify Desktop, Stremio)
+├── jarvis_local_agent.py                # Agent client WebSocket s'exécutant sur le PC Windows 11 (20 actions physiques, Chrome CDP, Spotify Desktop, Stremio)
 ├── local_browser_actions.py             # Pont CDP Playwright côté PC (port 9222), balisage DOM data-jarvis-id, exécution d'actions et screenshots
 ├── tunnel_launcher.py                   # Gestionnaire du tunnel Cloudflare Zero Trust, fallback Quick Tunnel et LAN Wi-Fi
 ├── sync_deploy.py                       # Pipeline automatisé : Git commit/push + archive in-memory tar.gz + SFTP + relance systemd VPS
 ├── docker-compose.yml                   # Définition conteneurs Redis 7, Postgres 16, Qdrant et n8n (bound sur 127.0.0.1)
 ├── PROFIL_CANDIDATURE_PIERRE_CASSAGNETTES.md # Dossier complet académique et pro de Pierre (Phelma SICOM, Scintil, Teem, Suède)
 ├── ARCHITECTURE_COMPLETE_JARVIS.md      # Le présent référentiel architectural complet maître
+├── requirements.txt / pytest.ini / README.md
+├── start_jarvis.bat / start_local_agent.bat / stop_agent.bat / view_logs.bat / sync_deploy.bat / open_n8n_tunnel.bat
+├── start_agent_silent.vbs               # Lancement invisible du relais PC via wscript.exe (zéro console)
+├── install_autostart.bat / uninstall_autostart.bat / install_antigravity_arm64.sh / cloudflared.exe
+├── authorized_devices.json / qr_tickets.json / jarvis_memory.db / tunnel_url.txt / jarvis_agent.log
+├── scripts_tmp_fix_slides*.py / scripts_tmp_append_tests.py # Scripts jetables historiques (dette technique, purge recommandée)
+├── .agents/rules/                       # Règles agents locales (AGENTS.md, architecture-knowledge-and-sync.md, git-sync.md)
 │
 ├── config/
-│   └── models.json                      # Catalogue déclaratif des modèles (Gemini, Claude, fenêtres, coûts, règles de routage)
+│   └── models.json                      # Catalogue déclaratif (5 modèles Gemini/Claude) + routing_rules + fallback_chain + cooldown 300s
 │
 ├── prompts/
-│   └── templates/                       # Templates modulaires par type de tâche (simple.txt, medium.txt, complex.txt, code.txt)
+│   └── templates/                       # Templates modulaires par complexité (simple.txt, medium.txt, complex.txt, code.txt)
 │
 ├── core/                                # Cœur applicatif transverse
-│   ├── shared_state.py                  # État global partagé, clients Gemini, active_task_controller, verrou d'élocution, broadcast
+│   ├── shared_state.py                  # État global partagé, clients Gemini FREE/PAID, active_task_controller, verrou d'élocution, broadcast
 │   └── tools/
-│       ├── declarations.py              # Définitions Google GenAI FunctionDeclarations des outils (schémas, descriptions ASR, browser_task)
-│       └── dispatcher.py                # Routeur central d'exécution des outils, boucle browser_task en arrière-plan, métriques et latences
+│       ├── declarations.py              # 49 FunctionDeclarations Google GenAI (schémas, descriptions ASR, behavior BLOCKING/NON_BLOCKING)
+│       ├── dispatcher.py                # Routeur central d'exécution (49 outils + alias), boucle browser_task, métriques, consentement payant
+│       ├── arg_validator.py             # Validation stricte des arguments (validate_tool_arguments) & rappel multi-actions
+│       ├── result.py                    # Contrat canonique ToolResult (done/failed/started/partial/needs_user) + normalize_result
+│       └── verifier.py                  # Vérifications post-exécution d'effet réel (email, slides, xlsx, download, process, agenda, mémoire, navigateur)
 │
 ├── routers/                             # Routeurs modulaires FastAPI (/api/* et /ws/*)
 │   ├── voice.py                         # WebSocket /ws : session bidirectionnelle Gemini Live Audio, streaming PCM et injection client
@@ -196,14 +208,28 @@ jarvis-core/
 │   │   └── recipes/                     # Recettes de navigation spécialisées (cart.md, train.md, gemini_deep_research.md)
 │   ├── deep_research_service.py         # Moteur B Deep Research : pipeline Map-Reduce VPS (spec, MAP 3 ouvriers, REDUCE, Quality Gate)
 │   ├── agentic_dispatcher.py            # Orchestrateur Système 2 universel : 8 missions spécialisées (transport, excel, healing, etc.)
+│   ├── agentic_runner.py                # Exécuteur agy : prompt JSON strict, validation de schéma, retry, repli Gemini payant via key_gate
+│   ├── antigravity_models.py            # Modèles & efforts agy (MODEL_FLASH/MODEL_PRO, validate_model_and_effort, choose_model_and_effort)
+│   ├── antigravity_prompts.py           # Prompts de rôle Antigravity, exigences de sortie JSON et prompt de retry
+│   ├── key_gate.py                      # Gouvernance FREE/PAID : consentement par tâche, échec qualifié, action en attente, get_key()
+│   ├── llm_router.py                    # Routeur LLM unifié (Live standard/thinking sur clé FREE, bascule PAID via key_gate)
+│   ├── live_mode_policy.py              # Politique voice_mode (thinking vs standard), hystérésis, détection besoin agentique, log tier routing
+│   ├── task_planner.py                  # Planificateur multi-étapes (needs_planning, decompose, get_plan_status, mark_plan_step, HUD)
+│   ├── turn_audit.py                    # Audit de tour : détection de fausses affirmations, contexte plan/sous-agents injecté au prompt
+│   ├── gemini_web_automator.py          # Automatisation de l'UI Gemini Web (Moteur A Deep Research via Chrome local)
+│   ├── chat_service.py                  # Messagerie écrite multimodale (clients FREE/PAID, consentement key_gate)
 │   ├── system_healing_service.py        # SRE autonome : analyse RCA, tests sandbox isolés, auto-tests, Blue/Green releases, symlink
 │   ├── metrics_service.py               # Observabilité : enregistrement asynchrone Postgres/RAM des appels d'outils, latences, tiers
 │   ├── browser_service.py               # Navigation Playwright headless VPS et local Chrome CDP, recherche DuckDuckGo, Send to Kindle
 │   ├── download_service.py              # Téléchargement fichiers/ebooks (Anna's Archive), validation EPUB, détection liseuses USB
 │   ├── email_service.py                 # Envoi SMTP Stark HTML et réception IMAP Gmail avec résolution floue des pièces jointes
-│   ├── slides_service.py                # Générateur de présentations Google Slides polymorphes (7 layouts 16:9, conformité API v1)
+│   ├── slides_service.py                # Générateur & modificateur de présentations Google Slides (7 layouts 16:9, conformité API v1)
 │   ├── transport_service.py             # Calcul d'itinéraires ferroviaires France/Suède, découpage multi-segments, deep links Omio
 │   ├── briefing_service.py              # Compilation morning briefing à 6h45, météo Open-Meteo, alertes et push Telegram
+│   ├── spotify_service.py               # Spotify Web API (OAuth PKCE, playback, devices, vérification post-action /me/player)
+│   ├── deezer_migration_service.py      # Migration Deezer -> Spotify (ISRC puis fuzzy matching, scoring de confiance, rapports)
+│   ├── media_service.py                 # Routage des commandes audio Deezer et vidéo Stremio (URI protocol)
+│   ├── automation.py                    # Webhooks n8n génériques, export tableur XLSX et intégration Notion
 │   ├── user_profile_service.py          # Hot-reload de PROFIL_CANDIDATURE... via mtime, synchro SQLite et injection Live context
 │   ├── unified_memory.py                # Façade unifiée : déduplication SQLite (profil) vs vectoriel Qdrant (souvenirs)
 │   ├── memory.py                        # Client vectoriel Qdrant & modèle local fastembed BAAI/bge-small-en-v1.5 (384 dim)
@@ -211,25 +237,25 @@ jarvis-core/
 │   ├── cache.py                         # Cache Redis asynchrone, TTL, présence équipements et fallback mémoire vive dégradé
 │   ├── auth_service.py                  # Cryptographie JWT HMAC-SHA256, tickets QR uniques 300s, révocation Redis et migration
 │   ├── local_agent_service.py           # Client RPC émettant les requêtes vers jarvis_local_agent.py via WebSocket
-│   ├── media_service.py                 # Routage des commandes audio Deezer et vidéo Stremio (URI protocol)
 │   ├── supervision_service.py           # Agrégateur d'état système, sous-agents, métriques et fenêtres actives
 │   ├── console_monitor.py               # Capture continue des logs et exceptions Python avec suggestions de diagnostics
 │   ├── reasoning_service.py             # Pipeline d'agents Antigravity CLI et classification cognitive LLM légère Tier 1
-│   ├── automation.py                    # Webhooks n8n génériques, export tableur XLSX et intégration Notion
+│   ├── google_antigravity.py            # Façade de ré-export agy (google_antigravity racine + antigravity_models + agentic_runner) ; l'implémentation réelle du wrapper est à la racine
 │   ├── system_service.py                # Télémétrie système serveur/local et ouverture d'applications
 │   ├── voice_injection_queue.py         # File d'attente à priorités FIFO pour injection vocale sans collision (Aoede)
 │   ├── workspace_service.py             # Exploration et lecture seule stricte des projets locaux _anti_gravity (anti-traversal, filtres)
 │   └── architecture_service.py          # Hot-reload de ARCHITECTURE_COMPLETE_JARVIS.md et outil live query_jarvis_architecture
 │
-├── scripts/
-│   └── install_agent_rules.py           # Installation de la règle AGENTS.md sur VPS et environnements locaux
+├── scripts/                             # install_agent_rules.py, quality_report.py, deploy_n8n_vps.py, setup_*.py, show_qr.py, try_browser_task.py, *.bat
 │
 ├── db/
-│   └── schema.sql                       # Schéma PostgreSQL (conversations, memories, tier_routing_log, tool_call_metrics, patches)
-├── static/                              # Interface HUD PWA mobile Stark Industries (HTML, CSS cyberpunk, JS, SVGs)
-├── data/
-│   └── site_memory/                     # Mémoire persistante JSON des parcours web réussis par nom de domaine (<domain>.json)
-└── tests/                               # Suite de validation automatisée (48+ tests unitaires et d'intégration)
+│   ├── schema.sql                       # Schéma PostgreSQL (conversations, memories, tier_routing_log, tool_call_metrics, patches)
+│   ├── spotify_schema.sql               # Tables SQLite des tokens OAuth Spotify
+│   └── migrations/001_create_tool_call_metrics.sql
+├── docs/                                # BROWSER_AGENT_SPEC.md, N8N_GUIDE.md, n8n_workflows/*.json (documents_suite, time_and_briefing, train_monitoring)
+├── static/                              # HUD PWA Stark Industries (index.html, app.js, style.css, manifest.json, SVG/PNG, latest_screenshot.jpg, tunnel_url.json)
+├── data/                                # site_memory/<domain>.json (parcours web réussis), gemini_ui_map.json, migration_reports/
+└── tests/                               # 34 modules pytest racine + tests/unit/ (12) + tests/e2e/ (1), conftest.py, run_all_tests.py (génère `tests/RAPPORT_TESTS_JARVIS.txt`, dernière campagne le 27/09/2026 — 19 modules/services vérifiés), dossiers scratch : tests/scratch_healing/, tests/_test_scratch/)
 ```
 
 ---
@@ -491,8 +517,13 @@ Consigne pour chaque équipement : `device_id`, `device_name`, `ip_address`, `us
 ## 5. GOUVERNANCE DES MODÈLES IA, VERROU ÉCONOMIQUE & ROUTAGE COGNITIF EN 3 TIERS
 
 ### 5.1. Répartition Bimodale des Clés API (Gratuite vs Payante)
-- **Clé Gratuite (`GEMINI_API_KEY_FREE`)** : Flux vocal standard (`gemini-3.8-live`), recherches factuelles, diagnostics légers.
-- **Clé Payante (`GEMINI_API_KEY_PAID`)** : `gemini-3.8-live-extended-thinking`, `gemini-3.8-flash` haute vitesse, modèles lourds Antigravity (`gemini-3.1-pro-preview`, `claude-3-7-sonnet`, `claude-3-opus`) et vision Browser-Use.
+- **Clé Gratuite (`GEMINI_API_KEY_FREE`)** : Flux vocal standard (`gemini-3.8-live`), recherches factuelles, diagnostics légers, exécution Antigravity CLI (coût d'API nul via jeton OAuth2 Google AI Pro).
+- **Clé Payante (`GEMINI_API_KEY_PAID`)** : `gemini-3.8-live-extended-thinking`, `gemini-3.8-flash` haute vitesse, modèles lourds Antigravity (`gemini-3.1-pro-preview`, `claude-3-7-sonnet`), vision Browser-Use et repli `api_paid_gemini`.
+- **Gouvernance Centralisée (`services/key_gate.py`)** : `get_key()` est le point unique de distribution des clés. Le module expose :
+  - `grant_paid_consent()` / `has_paid_consent()` / `revoke_paid_consent()` / `consume_paid_consent()` : consentement payant **par session ou par tâche** (clé dérivée par `_make_consent_key(session_id, task_id)`), révocable et à usage unique.
+  - `is_qualified_free_key_failure(error, retry_count)` : qualification stricte des échecs autorisant un repli payant (quota épuisé, 429, refus serveur) et renvoi du motif.
+  - `set_pending_action()` / `get_pending_action()` / `clear_pending_action()` : action en attente d'autorisation (`PendingAction`), consommée par l'outil `confirm_paid_key`.
+  - `clear_all_consents()` : purge globale (fin de session ou coupure d'urgence).
 
 ### 5.2. Verrou Physique Applicatif & Double Consentement Oral
 1. **Encoche Applicative (Switch UI)** : Persistée dans SQLite `user_profile` (`paid_key_authorized`). Si décochée, `get_effective_paid_key()` renvoie `""`. Aucune requête payante n'est émise au niveau réseau.
@@ -507,6 +538,8 @@ Consigne pour chaque équipement : `device_id`, `device_name`, `ip_address`, `us
 | **TIER 2 — Raisonnement Tactique** | `gemini-3.8-flash` | `high` (renforcé) | `transport_optimizer`, `spreadsheet_modeler`, `email_drafting`, requêtes libres par défaut. | 4 à 10 secondes | Nul sur le quota 3.1 Pro |
 | **TIER 3 — Délibération Système 2** | `gemini-3.1-pro` | `high` (délibératif) | `deep_research` multi-sources, `system_healing` critique, `code_refactoring`, ingénierie. | 20 à 60 secondes | Consommation mesurée sur Pro |
 
+> **Résolution Déclarative Complémentaire** : `config/models.json` porte la table `routing_rules` (task_type `simple` → `gemini-3.7-flash`/`low`, `medium` → `gemini-3.7-flash`/`medium`, `complex` → `gemini-3.1-pro`/`high`, `code` → `claude-3-7-sonnet` sans effort) avec `fallback_chain` explicite par règle et `cooldown_seconds = 300`. Le drapeau `MODEL_ROUTING_ENABLED` (`config.py`, variable d'environnement, `true` par défaut) active ou désactive ce routage intelligent.
+
 ### 5.4. Mécanismes d'Arbitrage Ordonnés (`resolve_cognitive_tier`) & Télémétrie (`tier_routing_log`)
 1. **Priorité 1 — Surcharge Explicite (Override)** : Mots-clés de rapidité ("fais vite", "passe rapide") → Tier 1 ; mots-clés de profondeur ("analyse en profondeur", "prends tout ton temps") → Tier 3 ; paramètre `intensite_reflexion` forcé.
 2. **Priorité 2 — Table Déterministe (`mission_type`)** : `deep_research` → T3, `transport_optimizer` → T2, `doc_sync` → T1.
@@ -518,6 +551,15 @@ En cas d'exception `AntigravityQuotaExhaustedError` ou HTTP 429 sur `gemini-3.1-
 - Bascule automatique transparente sur Tier 2 (`gemini-3.8-flash-high`).
 - Garantie d'inviolabilité : le modèle de repli utilise strictement la clé gratuite sauf si l'encoche payante est cochée.
 - Notification proactive Aoede et inscription de l'incident dans `SupervisionService` et `tier_routing_log` (`final_tier = 2`).
+
+### 5.6. Routage Intelligent Antigravity CLI, Résilience Quota & Politique Vocale
+1. **Activation (`MODEL_ROUTING_ENABLED`)** : `config.py` lit la variable d'environnement (défaut `true`). Si désactivée, le pipeline retombe sur la sélection statique historique (`MODEL_FLASH` / `MODEL_PRO`).
+2. **Registre (`services/model_routing/model_registry.py`)** : découverte dynamique (`agy models list --json`) avec cache TTL 1 h et cascade de repli CLI → `config/models.json` → catalogue par défaut en dur.
+3. **Routeur (`services/model_routing/model_router.py`)** : `select_model()` arbitre modèle et niveau d'effort selon le type de tâche, la complexité et le contexte. Les alias de modèle/effort sont normalisés par `services/antigravity_models.py` (`validate_model_and_effort`, `choose_model_and_effort`, `MODEL_FLASH`, `MODEL_PRO`) et côté dispatcher par `_resolve_agy_model()` / `_resolve_agy_effort()`.
+4. **Repli (`services/model_routing/fallback_handler.py`)** : `execute_with_fallback()` enchaîne Claude → Gemini CLI → `api_paid_gemini`, détecte les 429/quota, gère les cooldowns (300 s) et n'appelle la clé payante que si `config.is_paid_key_authorized()` est vrai (`config.get_effective_paid_key()`).
+5. **Prompts (`services/model_routing/prompt_builder.py`)** : formatage XML (Claude) / Markdown (Gemini), injection des templates `prompts/templates/` et parseur JSON tolérant.
+6. **Exécution Agentique (`services/agentic_runner.py`)** : `run_agentic()` construit la commande `agy` (`_build_command`), exige une sortie JSON stricte (`_extract_json_payload` + `_validate_json_schema`), détecte l'épuisement de quota (`_is_quota_error`) puis bascule sur `_execute_gemini_paid_fallback()` en s'appuyant sur `key_gate`.
+7. **Politique Vocale (`services/live_mode_policy.py`)** : `decide()` arbitre en direct le mode `thinking` vs `standard` du Live (hystérésis via `get_policy()`, détection du besoin agentique par `_detect_agentic_need()`) et journalise chaque décision dans `tier_routing_log` via `log_tier_routing_decision()`.
 
 ---
 
@@ -590,7 +632,7 @@ Le VPS distant n'a pas accès à l'écran, au Chrome réel, ni aux périphériqu
 - Connexion sortante vers `wss://jarvis.signalcraftapps.com/ws/local-agent?token=...`.
 - Reconnexion automatique avec backoff exponentiel. Messages RPC structurés (`{"req_id": "...", "action": "...", "params": {...}}`).
 
-### 7.3. Catalogue des Actions Locales Supportées (Schémas & Paramètres)
+### 7.3. Catalogue des 20 Actions Locales Supportées (Schémas & Paramètres)
 
 | Action RPC | Description Opérationnelle | Paramètres Entrants | Structure Retournée |
 | :--- | :--- | :--- | :--- |
@@ -612,6 +654,9 @@ Le VPS distant n'a pas accès à l'écran, au Chrome réel, ni aux périphériqu
 | `list_workspace_dir` | Liste récursivement dossiers et fichiers dans `_anti_gravity` (lecture seule). | `relative_path: str`, `depth: int`, `pattern: str` | `{"status": "success", "items": list, "items_count": int}` |
 | `read_workspace_file` | Lit le contenu textuel paginé d'un fichier dans `_anti_gravity` (lecture seule). | `file_path: str`, `max_lines: int`, `offset_line: int` | `{"status": "success", "content": str, "total_lines": int}` |
 | `search_workspace_files` | Recherche textuelle (grep) au sein des projets sous `_anti_gravity`. | `query: str`, `subpath: str`, `extension: str`, `max_results: int` | `{"status": "success", "matches": list, "matches_count": int}` |
+| `execute_cdp_browser_action` | Exécute une séquence d'actions CDP sur une URL dans le Chrome local (pont Playwright). | `url: str`, `actions: list[dict]`, `instruction: str`, `task_id: str` | `{"status": "success", "url": str, "title": str, "performed_actions": list, "screenshot_path": str, "result_summary": str}` |
+| `gemini_deep_research` | Lance le Moteur A Deep Research via l'interface Gemini Web dans le Chrome local. | `topic: str` | `{"status": str, "message": str}` |
+
 
 ### 7.4. Journalisation Auto-Flush & Interception Globale des Crashs
 Flux standards encapsulés dans `AutoFlushStream` (`buffering=1`, `flush()` immédiat) dans `jarvis_agent.log`. `sys.excepthook` capturant toute exception avec traceback horodaté.
@@ -626,18 +671,20 @@ Remontée périodique (toutes les 15 s) : CPU global, mémoire vive, pourcentage
 
 ---
 
-## 8. CATALOGUE MATRICIEL & FICHES DES 38 OUTILS UNIFIÉS (FUNCTION CALLING)
+## 8. CATALOGUE MATRICIEL & FICHES DES 49 OUTILS UNIFIÉS (FUNCTION CALLING)
 
-### 8.1. Matrice Globale Exhaustive des 38 Outils Déclarés
+### 8.1. Matrice Globale Exhaustive des 49 Outils Déclarés
+
+> **Source de vérité** : `core/tools/declarations.py` contient exactement **49** `types.FunctionDeclaration` (vérifiable par `Select-String -Path core\tools\declarations.py -Pattern 'name="([a-z_]+)"'`). Les alias sont résolus dans `core/tools/dispatcher.py`.
 
 | # | Nom Officiel (`declarations.py`) | Alias Supportés (`dispatcher.py`) | Mode d'Exécution | Arguments Clés & Types | Format de Réponse (`tool_resp`) | Service Exécutant |
 | :- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **1** | `stop_current_action` | `stop` | Bloquant | `reason: str` (opt) | `{"status": "stopped", "message": str, "instruction_to_jarvis": str}` | `core/shared_state.py` |
 | **2** | `guide_active_task` | `guide` | Non-bloquant | `directive: str` (req) | `{"status": "adapted", "directive": str, "message": str}` | `core/shared_state.py` |
 | **3** | `ask_deep_reasoning` | `deep_reasoning` | Non-bloquant | `question: str` (req), `model: str`, `intensite_reflexion: str`, `confirmed_by_user: bool` | `{"status": "launched_in_background"|"success", "summary": str}` | `services/reasoning_service.py` |
-| **4** | `launch_deep_research` | `lancer_mission_deep_research`, `deep_research` | Non-bloquant | `consigne: str` (req), `envoyer_email: bool`, `destinataire_email: str` | `ToolResult` (`done`\|`failed`) | `services/browser_agent` (recette `gemini_deep_research`) avec repli `services/deep_research_service.py` |
+| **4** | `launch_deep_research` | `lancer_mission_deep_research`, `deep_research` | Non-bloquant | `consigne: str`, `consigne_utilisateur: str` (alias ASR), `envoyer_email: bool`, `destinataire_email: str` — *aucun champ marqué requis* (le dispatcher accepte `consigne` / `consigne_utilisateur` / `sujet`) | `ToolResult` (`done`\|`failed`) | `services/browser_agent` (recette `gemini_deep_research`, résultat attendu en direct) avec repli `services/deep_research_service.py` |
 | **5** | `search_web` | `web_search` | Bloquant | `query: str` (req) | `{"status": "success", "results": list[dict], "summary": str}` | `services/browser_service.py` |
-| **6** | `browser_task` | `run_browser_task` | Non-bloquant | `goal: str` (req), `start_url: str`, `recipe: str` (`cart`\|`train`\|`gemini_deep_research`) | `{"status": "launched_in_background", "task_id": str}` | `services/browser_agent/loop.py` & `local_browser_actions.py` |
+| **6** | `browser_task` | `run_browser_task` (déclaration jumelle) | Non-bloquant | `goal: str` (req), `start_url: str`, `recipe: str` (`cart`\|`train`\|`gemini_deep_research`) | `{"status": "launched_in_background", "task_id": str}` | `services/browser_agent/loop.py` & `local_browser_actions.py` |
 | **7** | `open_user_browser` | `open_browser` | Bloquant | `url: str` (req), `reason: str` | `{"status": "opened", "url": str, "message": str}` | `services/browser_service.py` |
 | **8** | `set_browser_link` | `browser_link` | Bloquant | `url: str` (req), `title: str` | `{"status": "updated", "url": str, "title": str}` | `core/shared_state.py` |
 | **9** | `save_memory` | `remember_user_fact`, `memoriser_information` | Bloquant | `fact: str` (req), `category: str`, `key: str` | `{"status": "saved", "fact": str, "storage": str}` | `services/unified_memory.py` |
@@ -670,6 +717,19 @@ Remontée périodique (toutes les 15 s) : CPU global, mémoire vive, pourcentage
 | **36**| `draft_email_response` | `triage_et_brouillon_email` | Non-bloquant | `query: str`, `consigne: str` | `{"status": "draft_created", "file": str, "summary": str}` | `services/agentic_dispatcher.py` |
 | **37**| `generate_book_summary` | `curation_livre_synthese` | Non-bloquant | `titre_livre: str` (req) | `{"status": "summary_ready", "epub_path": str}` | `services/agentic_dispatcher.py` |
 | **38**| `system_self_healing` | `auto_guerison_systeme` | Non-bloquant | `motif: str`, `action: str` (`diagnose`\|`apply`\|`rollback`), `patch_id: str` | `{"status": "healing_in_progress"|"applied"|"requires_validation", "patch_id": str}` | `services/system_healing_service.py` |
+
+| **39**| `run_browser_task` | `browser_task` (déclaration jumelle) | Non-bloquant | `goal: str` (req), `start_url: str`, `recipe: str` (`cart`\|`train`\|`gemini_deep_research`) | `{"status": "launched_in_background", "task_id": str}` | `services/browser_agent/loop.py` & `local_browser_actions.py` |
+| **40**| `browser_task_status` | — | Bloquant | `task_id: str` (opt) | `{"status": str, "task_id": str, "steps": int, "goal": str, "result": any}` ou `{"status": "success", "tasks": list[dict]}` (sans `task_id`) | `core/tools/dispatcher.py` (registre `BROWSER_TASKS`) |
+| **41**| `run_agentic_task` | `run_agent_task` (déclaration jumelle) | Non-bloquant | `objectif: str` (req), `contexte: str`, `livrable_attendu: str`, `model_override: str` (`flash`\|`pro`), `effort_override: str` (`low`\|`medium`\|`high`), `timeout: int` (défaut 300) | `ToolResult` (`started` \| `done` \| `failed`) | `services/agentic_runner.py` (via `services/agentic_dispatcher.py`) |
+| **42**| `run_agent_task` | `run_agentic_task` (déclaration jumelle) | Non-bloquant | Identiques à `run_agentic_task` (`objectif`, `contexte`, `livrable_attendu`, `model_override`, `effort_override`, `timeout`) | `ToolResult` (`started` \| `done` \| `failed`) | `services/agentic_runner.py` (via `services/agentic_dispatcher.py`) |
+| **43**| `modify_presentation` | `modifier_presentation` | Non-bloquant | `instruction: str` (req), `presentation_id: str` (`last` par défaut) | `ToolResult` (`done` avec `presentation_id`, `presentation_url`, `verified`) | `services/slides_service.py` |
+| **44**| `get_plan_status` | — | Bloquant | Aucun | `{"status": "done", "verified": true, "has_plan": bool, "plan_id": str, "total_steps": int, "pending_count": int, "done_count": int, "failed_count": int, "is_complete": bool, "steps": list[dict], "next_pending": dict}` | `services/task_planner.py` |
+| **45**| `mark_plan_step` | — | Bloquant | `step_id: str` (req), `status: str` (req : `done`\|`failed`\|`skipped`\|`pending`), `note: str` | `{"status": "done"\|"failed", "verified": bool, "user_message": str, "evidence": str, "error_hint": str}` (+ broadcast HUD) | `services/task_planner.py` |
+| **46**| `confirm_paid_key` | `confirmer_cle_payante` | Bloquant | `accept: bool` (req) | `ToolResult` (`done`, ou `failed` avec `error_hint="no_pending_action"`) | `services/key_gate.py` |
+| **47**| `list_workspace_files` | `lister_fichiers_workspace` | Bloquant | `relative_path: str`, `depth: int` (1 à 3, défaut 1), `pattern: str` | `ToolResult.done` (`items`, `items_count`, `truncated`, `verified=True`) | `services/workspace_service.py` |
+| **48**| `read_workspace_file` | `lire_fichier_workspace` | Bloquant | `file_path: str` (req), `max_lines: int` (défaut 200, max 500), `offset_line: int` (défaut 1) | `ToolResult.done` (`content`, `total_lines`, `lines_shown`, `verified=True`) | `services/workspace_service.py` |
+| **49**| `search_workspace_files` | `chercher_fichiers_workspace` | Bloquant | `query: str` (req), `subpath: str`, `extension: str`, `max_results: int` (défaut 30) | `ToolResult.done` (`matches`, `matches_count`, `verified=True`) | `services/workspace_service.py` |
+> **Total vérifié : 49 déclarations.** Les paires `browser_task`/`run_browser_task` et `run_agentic_task`/`run_agent_task` sont deux déclarations distinctes partageant le même exécuteur (compatibilité de nommage Gemini Live) ; les lignes 39 et 42 matérialisent ces déclarations jumelles.
 
 ### 8.2. Moteur Multi-Agents Antigravity CLI sur VPS & Routage Intelligent de Modèles
 - **Fichiers** : `google_antigravity.py`, `services/model_routing/` (`model_registry.py`, `model_router.py`, `fallback_handler.py`, `prompt_builder.py`), `config/models.json`, `prompts/templates/`, `AGENTS.md`.
@@ -711,6 +771,7 @@ Le système dispose de deux moteurs de Deep Research sélectionnés intelligemme
 - **Principe** : Pilotage autonome de `https://gemini.google.com/app` via l'agent `browser_task` et la recette `gemini_deep_research.md` sur le Chrome connecté de l'utilisateur (port 9222).
 - **Cycle d'Exécution** : Activation du mode Deep Research, saisie du sujet de recherche, validation du plan proposé par Gemini, attente active non-bloquante (`wait 120` répété pendant la génération), extraction intégrale du rapport Markdown (`extract`) et restitution vocale / courriel Stark HTML.
 - **Gestion de Session** : Réutilisation directe du profil et des cookies Google existants sans ressaisie d'identifiants. En cas de déconnexion, déclenchement immédiat d'un `handoff` utilisateur.
+- **Point d'Entrée Unifié (vérifié le 02/10/2026)** : `services/deep_research_service.launch_deep_research_gemini_web(topic, live_session=None, use_legacy_engine=False)` encapsule ce Moteur A : elle instancie `BrowserTask(task_id="bt_dr_<ms>", goal=topic, recipe="gemini_deep_research")`, exécute `await run_browser_task(task)` et retourne `{"status": "success", "task_id": str, "result": dict}` en cas de succès, sinon `{"status": "error", "error": str, "fallback": "legacy"}`. Avec `use_legacy_engine=True`, elle court-circuite le Browser Agent vers le Moteur B (`{"status": "legacy_engine"}`).
 
 #### Moteur B (Repli) : Pipeline Map-Reduce VPS (`services/deep_research_service.py`)
 Mobilisé automatiquement si le Moteur A échoue ou si le navigateur local n'est pas disponible :
@@ -721,6 +782,8 @@ Mobilisé automatiquement si le Moteur A échoue ou si le navigateur local n'est
 5. *Phase QUALITY GATE* : Agent critique appliquant 3 règles (volume, géographie, critères).
    - **Zéro Tolérance aux Livraisons Maquillées** : Si l'audit échoue après relances, `quality_gate_passed = False`. Aoede alerte immédiatement Pierre de vive voix, bannière rouge dans le rapport Markdown, et mention `[PARTIEL - AUDIT NON VALIDÉ]` dans les e-mails et messages Telegram.
 6. *Livraison Déterministe Multi-Canal* : Rapport Markdown `/artifacts/`, deck Google Slides via n8n, notification Telegram et jalons vocaux intermédiaires.
+
+> **Contrat de Dispatch Vérifié (02/10/2026)** : contrairement à `browser_task` (qui rend la main immédiatement avec `{"status": "launched_in_background", "task_id": str}`), l'outil `launch_deep_research` **attend** le verdict du Moteur A. `core/tools/dispatcher.py` (branche `launch_deep_research`, l. 595-624) instancie `BrowserTask(task_id="bt_dr_<ms>", goal=consigne, recipe="gemini_deep_research")`, l'exécute via `await run_browser_agent_task(task=dr_task)` et retourne **directement** le `ToolResult` du Browser Agent si `is_success` et `dr_task.status != "failed"` (le rapport est alors expédié par e-mail si `envoyer_email=true`, destinataire par défaut `pierrecassagnettes@gmail.com`). Le repli Map-Reduce VPS n'est déclenché qu'en cas d'échec ou d'exception, après contrôle `verify_antigravity_cli_ready()` (retour `ToolResult.failed(error_hint=cli_err)` si le CLI `agy` est indisponible, sans jamais annoncer un lancement fictif). Ce contrat est verrouillé par `tests/test_deep_research.py` (9/9 verts) et `tests/test_gemini_web_automator.py` (21/21 verts).
 
 ### 8.4. Moteur Délibératif Système 2 Transverse (Les 8 Missions Agentiques Spécialisées)
 Orchestrées par `services/agentic_dispatcher.py` :
@@ -865,7 +928,14 @@ Synchronisation bidirectionnelle Google/Samsung Calendar via n8n. Rappels push i
 - Déploiement Blue/Green atomique (`releases/<timestamp>` + symlink `current`), rollback instantané en 1 clic ou commande vocale. Persistance PostgreSQL + SQLite.
 
 ### 8.16. Contrat Universel ToolResult & Moteur de Vérification d'Effet Réel (Zero Unverified Claims)
-Afin de rendre structurellement impossible que Jarvis annonce oralement un succès non prouvé, la version 5.12.0 unifie l'intégralité des 38 outils sous un contrat canonique strict :
+Afin de rendre structurellement impossible que Jarvis annonce oralement un succès non prouvé, le contrat canonique strict s'applique à l'intégralité des 49 outils déclarés :
+
+0. **Portail de Validation Pré-Exécution (`core/tools/arg_validator.py`)** :
+   - `validate_tool_arguments(name, args)` est invoqué en toute première instruction de `_execute_dispatch_tool()` (`core/tools/dispatcher.py`, section « 0. Validation stricte des arguments et confirmation utilisateur »), **avant** toute logique métier.
+   - Il ne s'applique qu'aux outils sensibles déclarés dans `SENSITIVE_TOOLS` (`send_email`/`mail_send`, `draft_email_response`, `generate_presentation`/`generer_presentation`, `modify_presentation`/`modifier_presentation`, `manage_calendar_event`/`agenda_gerer_evenement`, `system_self_healing`/`auto_guerison_systeme`) et retourne `None` (exécution autorisée) pour tous les autres.
+   - `is_generic_or_empty(val, min_length)` rejette les valeurs absentes, trop courtes ou présentes dans le lexique `GENERIC_STRINGS` (`"test"`, `"mail"`, `"présentation"`, `"titre"`, `"bug"`, `"todo"`, …).
+   - Les actions irréversibles (`IRREVERSIBLE_TOOLS`, suppression d'événement d'agenda, auto-guérison) exigent en outre `confirmed_by_user=True` ; à défaut, le portail renvoie un `ToolResult.needs_user` (`"Confirmation requise : …"`) et l'outil n'est jamais exécuté.
+   - Ce portail est la première ligne de défense du « Zero Unverified Claims » : une requête d'e-mail à objet vide/générique, ou un envoi non confirmé, ne peut structurellement pas atteindre le SMTP. *(Reconciliation vérifiée le 02/10/2026 : `tests/test_tool_result.py::test_verify_email_sent_fail` passait auparavant `subject="Test Sujet"` sans `confirmed_by_user`, donc le portail interceptait l'appel en `needs_user` ; le test transmet désormais `confirmed_by_user=True` et valide bien la bascule `failed` post-vérification — 17/17 tests verts.)*
 
 1. **La Dataclass Canonique `ToolResult` (`core/tools/result.py`)** :
    - `status ∈ {"done", "failed", "started", "partial", "needs_user"}` (5 valeurs cardinales exhaustives, validation immédiate en `__post_init__`).
@@ -901,11 +971,31 @@ Afin de rendre structurellement impossible que Jarvis annonce oralement un succ�
    - `failed` : Jarvis énonce clairement l'échec, indique la cause probable (`error_hint`) et propose immédiatement une alternative sans minimiser.
    - `needs_user` : Jarvis pose la question ou demande la validation requise et attend la réponse de l'utilisateur.
 
+### 8.17. Orchestration Agentique, Planificateur Multi-Étapes, Consentement Payant & Espace de Travail
+1. **Exécution Agentique Antigravity (`run_agentic_task` / `run_agent_task`)** :
+   - Champs : `objectif` (requis), `contexte`, `livrable_attendu`, `model_override` (`flash`\|`pro`, défaut `pro` via `_resolve_agy_model`), `effort_override` (`low`\|`medium`\|`high`, défaut `high` via `_resolve_agy_effort`), `timeout` (défaut 300 s).
+   - Pré-contrôle systématique `verify_antigravity_cli_ready()` : en cas d'indisponibilité de la CLI, échec explicite (`cli_not_ready`) sans annonce de lancement.
+   - Exécution par `services/agentic_runner.py` (`run_agentic`) : sortie JSON stricte, retry, puis repli `_execute_gemini_paid_fallback()` sous contrôle de `services/key_gate.py`.
+2. **Planificateur Multi-Étapes (`services/task_planner.py`)** :
+   - `needs_planning(utterance)` détecte les consignes multi-actions ; `decompose()` construit un `Plan` (étapes + statuts) persisté dans Redis (`_persist_plan_redis`).
+   - Outils dédiés : `get_plan_status` (checklist, `pending_count`, `next_pending`) et `mark_plan_step` (`step_id`, `status`, `note`).
+   - Mise à jour automatique : `update_step_with_tool_result()` est appelée par la boucle Live (`routers/voice.py`, à la réception du `ToolResult`) ; `get_plan_hud_payload()` alimente le HUD mobile, `build_continuation_prompt()` / `build_final_report_prompt()` pilotent la voix, `clear_active_plan()` clôt le plan.
+   - **Règle absolue** : Jarvis ne peut jamais annoncer « c'est fait » pour l'ensemble tant que `pending_count > 0`.
+3. **Consentement Payant (`confirm_paid_key`)** : résout l'action en attente (`get_pending_action()`), accorde ou révoque le consentement (`grant_paid_consent` / `revoke_paid_consent`) et ne permet la bascule payante que pour la tâche concernée. Sans action en attente, l'outil échoue avec `error_hint="no_pending_action"`.
+4. **Espace de Travail Local en Lecture Seule (`list_workspace_files`, `read_workspace_file`, `search_workspace_files`)** :
+   - Périmètre strict : racine `_anti_gravity` fournie par `ANTI_GRAVITY_DIR` (`config.py`), exposée par `workspace_service.ANTI_GRAVITY_ROOT = os.path.realpath(config.ANTI_GRAVITY_DIR)`, avec garde-fous `is_path_safe()` (anti-traversée) et `is_binary_file()` (détection binaire).
+   - Tiers cognitif et coût inférés par `_infer_tool_tier_and_cost()` (`core/tools/dispatcher.py`) ; provenance de la donnée tracée dans l'evidence (`items_count`, `lines_shown`, `matches_count`) et bornes appliquées côté service (`depth` borné à 1‑3, `max_lines` borné à 500).
+   - Aucune opération d'écriture, de modification ou de suppression n'est exposée par ces outils.
+5. **Statut de Navigation Web (`browser_task_status`)** : expose l'état d'une tâche `browser_task` (`task_id`, `status`, `steps`, `goal`, `result`) ou la liste complète du registre `BROWSER_TASKS` ; complète l'outil `get_active_task_status` (vue supervision) par une vue orientée navigateur.
+6. **Modification de Présentation (`modify_presentation`)** : applique une instruction vocale/texte à une présentation Google Slides existante (`presentation_id` ou `last`), avec contre-vérification d'effet réel via `core/tools/verifier.py`.
+
 ---
 
 ## 9. MATRICE DES ENDPOINTS API REST & PROTOCOLES WEBSOCKETS
 
 ### 9.1. Endpoints HTTP / REST FastAPI (Exhaustif)
+
+> **Note d'exhaustivité (vérifiée)** : 55 routes HTTP sont déclarées par les décorateurs `@app.*` / `@router.*` (App.py : 6 ; briefing : 6 ; browser : 12 ; chat : 3 ; local_agent : 1 ; settings : 7 ; spotify : 7 ; supervision : 9 ; transport : 4). Deux paires lecture/écriture sont regroupées dans une seule ligne ci-dessous (`GET/POST /api/live-model` et `GET/POST /api/settings/paid-key`), et le montage statique `/downloads` complète le tableau. Tous les routeurs sont inclus sans préfixe **sauf** `routers/transport.py` (`APIRouter(prefix="/api/train")`). Les deux WebSockets (`/ws`, `/ws/local-agent`) sont décrits en §9.2 et §9.3.
 
 | Méthode | Route | Description & Rôle Opérationnel | Authentification | Payload / Paramètres Types | Réponse Type |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -924,6 +1014,7 @@ Afin de rendre structurellement impossible que Jarvis annonce oralement un succ�
 | **GET** | `/downloads/*` | Téléchargement direct des fichiers générés (.xlsx, .md). | Ouvert | Chemin du fichier | Flux binaire |
 | **GET** | `/api/media/spotify/login` | Initialisation OAuth 2.0 PKCE Spotify (redirection). | Token JWT | Aucun | Redirection 307 |
 | **GET** | `/api/media/spotify/callback` | Callback OAuth Spotify (échange code PKCE + stockage SQLite/Redis). | Ouvert | `?code=...&state=...` | Redirection HUD |
+| **GET** | `/api/media/spotify/auth-status` | Indique si Spotify est connecté et quel utilisateur est lié. | Token JWT | Aucun | `{"authenticated": true, "display_name": str, "spotify_user_id": str, "scope": str}` |
 | **GET** | `/api/media/spotify/status` | Retourne l'état temps réel du lecteur Spotify Connect. | Token JWT | Aucun | `{"is_playing": true, ...}` |
 | **POST** | `/api/media/spotify/control` | Contrôle direct du lecteur Spotify (play, pause, next, like, etc.). | Token JWT | `{"action": "play", "query": "..."}` | `{"status": "done"}` |
 | **GET** | `/api/media/spotify/migration/status` | Statut temps réel de la migration Deezer->Spotify. | Token JWT | Aucun | `{"status": "completed", ...}` |
@@ -941,17 +1032,20 @@ Afin de rendre structurellement impossible que Jarvis annonce oralement un succ�
 | **GET** | `/api/supervision/patches` | Historique des patches d'auto-guérison SRE. | Token JWT | Aucun | `{"patches": [...]}` |
 | **POST** | `/api/supervision/patches/{id}/rollback` | Annule un patch déployé et restaure la version précédente. | Token JWT | Path param `id` | `{"status": "rolled_back"}` |
 | **POST** | `/api/supervision/patches/{id}/approve` | Approuve un patch critique en attente de validation. | Token JWT | Path param `id` | `{"status": "applied"}` |
+| **GET** | `/api/supervision/turns` | Audit des tours de dialogue (outils, transcript, fausses affirmations, durée, coupures). | Token JWT | `?since=...&limit=50` | `{"turns": [...]}` |
 | **POST** | `/api/task/directive` | Injecte une consigne en direct dans la tâche active. | Token JWT | `{"directive": "..."}` | `{"status": "adapted"}` |
 | **POST** | `/api/task/stop` | Interruption physique d'urgence de la tâche active. | Token JWT | `{"reason": "..."}` | `{"status": "stopped"}` |
 | **GET** | `/api/chat/history` | Historique de la messagerie multimodale écrite. | Token JWT | Aucun | `{"messages": [...]}` |
 | **POST** | `/api/chat/message` | Envoi d'un message texte + photo pour analyse vision. | Token JWT | Multipart (`message`, `image`) | `{"reply": "Markdown..."}` |
 | **POST** | `/api/chat/clear` | Efface l'historique de clavardage. | Token JWT | Aucun | `{"status": "cleared"}` |
 | **GET/POST**| `/api/live-model` | Lecture ou permutation à chaud du modèle vocal Live. | Token JWT | `{"model": "gemini-3.8-live-extended-thinking"}`| `{"current_model": "..."}` |
+| **POST** | `/api/supervision/set-model` | Alias de `/api/live-model` : permutation à chaud du modèle vocal Live. | Token JWT | `{"model": "..."}` | `{"current_model": "..."}` |
 | **GET/POST**| `/api/settings/paid-key` | État et verrouillage de l'encoche de clé payante. | Token JWT | `{"authorized": true}` | `{"paid_key_authorized": true}` |
 | **POST** | `/api/paid-consent` | Approbation ou refus d'une demande de coût payant. | Token JWT | `{"consent": true}` | `{"status": "acknowledged"}` |
 | **GET** | `/api/local-agent/status` | Statut de connexion et télémétrie du PC local Windows. | Token JWT | Aucun | `{"connected": true, "telemetry": {}}` |
 | **POST** | `/api/briefing/compile` | Déclenche la compilation du Morning Briefing. | Token JWT | Aucun | `{"status": "compiled"}` |
 | **GET** | `/api/briefing/today` | Récupère le Morning Briefing compilé du jour. | Token JWT | Aucun | `{"briefing": "..."}` |
+| **GET** | `/api/briefing` | Alias de `/api/briefing/today` (paramètre `?refresh=true` pour forcer la recompilation). | Token JWT | `?refresh=bool` | `{"briefing": "..."}` |
 | **GET** | `/api/agenda/today` | Récupère les rendez-vous du jour en cache. | Token JWT | Aucun | `{"events": [...]}` |
 | **POST** | `/api/device/location` | Enregistre les coordonnées GPS du terminal mobile. | Token JWT | `{"latitude": float, "longitude": float}` | `{"status": "updated"}` |
 | **GET** | `/api/device/location` | Récupère la dernière position GPS enregistrée. | Token JWT | Aucun | `{"location": {...}}` |
@@ -1037,7 +1131,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre profonde (`#070B14`, `#0B0F19`), cyan électrique Stark (`#38bdf8`, `#0284c7`), accents ambre et violet néon.
 - **Typographie** : Polices modernes géométriques sans-serif d'inspiration high-tech.
 - **Responsive PWA** : Conçue pour une expérience native sur smartphone (iOS Safari / Android Chrome) et desktop avec support PWA (`manifest.json`, installation sur écran d'accueil).
-- **Version affichée dans l'en-tête** : `V 5.11.0 SPÉCIFICATIONS ARCHITECTURALES & RÉFÉRENTIEL COMPLET IA`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.36.0 AGY MODEL ROUTING & RESILIENCE`.
 
 ### 11.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
@@ -1077,6 +1171,11 @@ L'avatar adapte ses filtres de lueur SVG et ses anneaux rotatifs selon l'état s
 1. **Gestion de Concurrence sur Profils Chrome Locaux** : Lorsque Chrome CDP est sollicité alors que Pierre navigue manuellement, des verrous de profil temporaires peuvent survenir si Chrome n'est pas lancé avec le flag de débogage distant adéquat.
 2. **Volumétrie des Logs en Longue Session** : Le fichier `jarvis_agent.log` sur Windows nécessite la mise en place d'une rotation automatique des journaux (`RotatingFileHandler`).
 3. **Dépendance Réseau Cloudflare** : Bien que le tunnel Zero Trust soit exceptionnellement stable, un filtrage d'entreprise sur le port 7844 impose le repli Wi-Fi local.
+4. **Dette Documentaire & Risque de Dérive** : ce référentiel a historiquement dérivé (nombre d'outils, arborescence, versions). Toute évolution doit être répercutée immédiatement (règle `.agents/rules/architecture-knowledge-and-sync.md`). Sources de vérité à interroger : `core/tools/declarations.py` (49 déclarations), `App.py` + `routers/*.py` (routes), `config/models.json` (modèles et routage), `static/index.html` (classe `hud-version-tag`). **Campagne de vérification du 02/10/2026** : ces quatre sources ont été re-contrôlées par commande après correction des tests obsolètes — 49 déclarations (`name="`), 55 routes (App 6 / briefing 6 / browser 12 / chat 3 / local_agent 1 / settings 7 / spotify 7 / supervision 9 / transport 4), 34 modules pytest racine + 12 `tests/unit/` + 1 `tests/e2e/`, `MODEL_ROUTING_ENABLED` (défaut `true`, `config.py` l. 163), `cooldown_seconds = 300` (`config/models.json` l. 3), HUD `V 5.36.0 AGY MODEL ROUTING & RESILIENCE`. Suite complète relancée hors e2e (`python -m pytest tests --ignore=tests/e2e`) : **427 passed, 0 failed**.
+5. **Shims Rétrocompatibles à la Racine** : `model_registry.py` (8 lignes), `model_router.py` (6 lignes), `fallback_handler.py` (15 lignes) et `prompt_builder.py` (7 lignes) ne sont que des ré-exports vers `services/model_routing/` ; ils doivent être purgés dès qu'aucun import legacy ne subsiste. **Attention (correction vérifiée)** : `google_antigravity.py` racine (564 lignes) n'est **pas** un shim mais l'implémentation réelle du wrapper agy (`AntigravityAgent`, `verify_antigravity_cli_ready`, `resolve_cognitive_tier`, `resolve_cli_model_args`) ; c'est `services/google_antigravity.py` (62 lignes) qui est la façade de ré-export.
+6. **Artefacts de Sauvegarde & Scripts Jetables** : `App_backup_monolith.py` (plusieurs milliers de lignes, non importé par le runtime) et les `scripts_tmp_*.py` alourdissent le dépôt et faussent les inventaires de code ; leur archivage est recommandé.
+7. **Résumé Global du Rapport de Recette Non Fiable** : `tests/run_all_tests.py` produit `tests/RAPPORT_TESTS_JARVIS.txt` (dernière campagne : 27/09/2026) dont la ligne « RESUME GLOBAL : 19/19 MODULES ET SERVICES TESTES ET 100% VALIDES » est **contredite** par son propre contenu (modules 15 « Interactive Browser & Cart », 17 « Deezer Control » et 18 « Chrome Extensions & Kindle » journalisés en `[FAILURE]`). Le compteur global du générateur doit être recalculé à partir des statuts réels avant toute communication de résultat (dette technique ouverte).
+8. **Docstring Obsolète sur `launch_deep_research_gemini_web`** : la docstring de `services/deep_research_service.py` (l. 1485-1494) annonce encore un retour immédiat `{status: launched_in_background}` alors que l'implémentation **attend** `run_browser_task()` et retourne `{status: success|error}` (contrat réel décrit en §8.3). Le commentaire doit être aligné sur le code.
 
 ### 12.3. Pistes d'Évolution Stratégique & Prochaines Étapes
 1. **Anticipation Proactive d'Agenda & Trajets** : Déclenchement automatique de la recherche de trains et de l'optimisation des correspondances dès qu'un rendez-vous extérieur est créé sur Google Calendar.
@@ -1238,4 +1337,4 @@ Pour ajouter un 39e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.14.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.36.0.*

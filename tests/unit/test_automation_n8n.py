@@ -305,6 +305,7 @@ class TestDispatchDocumentTools:
                 args={
                     "titre": "Projet Stark",
                     "theme": "stark",
+                    "consignes": "Créer un deck de présentation détaillé sur le projet Stark",
                     "slides": [{"titre_slide": "S1", "points": ["P1"]}]
                 },
                 websocket=mock_ws,

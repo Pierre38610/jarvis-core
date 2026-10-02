@@ -35,12 +35,15 @@ def test_declaration_lancer_mission_deep_research():
     tool_decl = next((d for d in declarations if d.name in ("lancer_mission_deep_research", "launch_deep_research")), None)
 
     assert tool_decl is not None
-    assert "recherche de fond" in tool_decl.description.lower()
+    assert "recherche approfondie" in tool_decl.description.lower()
     props = tool_decl.parameters.properties
-    assert "consigne_utilisateur" in props
+    assert "consigne" in props or "consigne_utilisateur" in props
     assert "envoyer_email" in props
     assert "destinataire_email" in props
-    assert "consigne_utilisateur" in tool_decl.parameters.required
+    # Schéma volontairement tolérant : aucun champ marqué requis côté déclaration.
+    # Le dispatcher accepte consigne / consigne_utilisateur / sujet et renvoie un needs_user
+    # si aucune consigne exploitable n'est fournie.
+    assert not tool_decl.parameters.required
 
 
 @pytest.mark.asyncio
@@ -68,20 +71,25 @@ async def test_compiler_spec_mission():
 
 
 @pytest.mark.asyncio
-async def test_dispatch_lancer_mission_deep_research_immediate_return():
-    """Valide le décrochage vocal instantané (< 300 ms) et le lancement asynchrone lorsque le CLI est opérationnel."""
+async def test_dispatch_lancer_mission_deep_research_uses_browser_recipe_first():
+    """Le dispatch tente d'abord le Browser Agent local (recipe gemini_deep_research) et retourne son résultat."""
+    from core.tools.result import ToolResult
+
     mock_ws = AsyncMock()
     mock_session = AsyncMock()
+    fake_browser_res = ToolResult.done(
+        user_message="Synthèse deep research (browser agent)",
+        evidence="recipe gemini_deep_research",
+        verified=True,
+    )
 
-    with patch("google_antigravity.verify_antigravity_cli_ready", new_callable=AsyncMock, return_value=(True, "Antigravity CLI opérationnel", "/home/opc/.local/bin/agy")), \
-         patch("core.tools.dispatcher.deep_research_service.executer_mission_complete", new_callable=AsyncMock) as mock_exec:
-        mock_exec.return_value = {"status": "completed"}
-
+    with patch("core.tools.dispatcher.run_browser_agent_task", new_callable=AsyncMock, return_value=fake_browser_res) as mock_browser, \
+         patch("core.tools.dispatcher.verify_antigravity_cli_ready", new_callable=AsyncMock) as mock_cli:
         resp = await dispatch_tool(
             name="lancer_mission_deep_research",
             args={
-                "consigne_utilisateur": "Trouve 20 entreprises à Malmö pour mon stage IA et envoie le rapport par mail",
-                "envoyer_email": True
+                "consigne_utilisateur": "Trouve 20 entreprises à Malmö pour mon stage IA",
+                "envoyer_email": False
             },
             websocket=mock_ws,
             session=mock_session,
@@ -89,22 +97,29 @@ async def test_dispatch_lancer_mission_deep_research_immediate_return():
             live_display_label="Gemini Live"
         )
 
-        assert resp["status"] in ("launched_in_background", "started")
-        assert resp["action"] == "deep_research"
-        assert "arrière-plan" in resp["message"] or "arrière-plan" in resp.get("user_message", "")
-
-        deep_task = active_task_controller.get("deep_research_task")
-        assert deep_task is not None
-        await asyncio.sleep(0.05)
+    mock_browser.assert_awaited_once()
+    browser_task = mock_browser.await_args.kwargs.get("task") or mock_browser.await_args.args[0]
+    assert browser_task.recipe == "gemini_deep_research"
+    assert browser_task.goal == "Trouve 20 entreprises à Malmö pour mon stage IA"
+    assert resp["status"] == "done"
+    # Le repli Map-Reduce (CLI Antigravity sur le VPS) ne doit pas être sollicité si le browser réussit
+    mock_cli.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_dispatch_lancer_mission_deep_research_fails_robustly_if_cli_unavailable():
     """Vérifie que la mission deep research n'est JAMAIS déclarée lancée si Antigravity CLI n'est pas opérationnel."""
+    from core.tools.result import ToolResult
+
     mock_ws = AsyncMock()
     mock_session = AsyncMock()
+    failed_browser_res = ToolResult.failed(
+        user_message="PC local indisponible",
+        error_hint="pc_offline",
+    )
 
-    with patch("google_antigravity.verify_antigravity_cli_ready", new_callable=AsyncMock, return_value=(False, "Binaire 'agy' introuvable", None)):
+    with patch("core.tools.dispatcher.run_browser_agent_task", new_callable=AsyncMock, return_value=failed_browser_res), \
+         patch("core.tools.dispatcher.verify_antigravity_cli_ready", new_callable=AsyncMock, return_value=(False, "Binaire 'agy' introuvable", None)):
         resp = await dispatch_tool(
             name="lancer_mission_deep_research",
             args={
@@ -116,9 +131,10 @@ async def test_dispatch_lancer_mission_deep_research_fails_robustly_if_cli_unava
             live_display_label="Gemini Live"
         )
 
-        assert resp["status"] in ("error", "failed")
-        assert resp.get("error") == "Antigravity CLI indisponible" or "Antigravity" in str(resp.get("error_hint", ""))
-        assert "Ne prétends SURTOUT PAS" in resp.get("instruction_to_jarvis", "") or "indisponible" in str(resp.get("user_message", "")).lower()
+    assert resp["status"] in ("error", "failed")
+    assert resp.get("error_hint") == "Binaire 'agy' introuvable"
+    message = str(resp.get("user_message", "")).lower()
+    assert "indisponible" in message or "pas disponible" in message
 
 
 @pytest.mark.asyncio

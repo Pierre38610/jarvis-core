@@ -522,18 +522,24 @@ class TestGeminiDeepResearchEngine(unittest.IsolatedAsyncioTestCase):
 class TestLaunchDeepResearchGeminiWeb(unittest.IsolatedAsyncioTestCase):
     """Teste le point d'entrée unifié dans deep_research_service.py."""
 
-    async def test_delegates_to_gemini_engine(self):
-        """launch_deep_research_gemini_web() délègue au GeminiDeepResearchEngine."""
+    async def test_delegates_to_browser_agent_recipe(self):
+        """launch_deep_research_gemini_web() délègue au Browser Agent local (recipe gemini_deep_research)."""
         from services.deep_research_service import launch_deep_research_gemini_web
 
-        mock_result = {"status": "launched_in_background", "topic": "IA spatiale"}
+        fake_browser_res = MagicMock()
+        fake_browser_res.is_success = True
+        fake_browser_res.to_dict.return_value = {"status": "done", "recipe": "gemini_deep_research"}
 
-        with patch("services.gemini_web_automator.gemini_deep_research_engine.launch",
-                   new_callable=AsyncMock, return_value=mock_result) as mock_launch:
+        with patch("services.browser_agent.loop.run_browser_task",
+                   new_callable=AsyncMock, return_value=fake_browser_res) as mock_run:
             result = await launch_deep_research_gemini_web("IA spatiale")
 
-        self.assertEqual(result["status"], "launched_in_background")
-        mock_launch.assert_awaited_once()
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(str(result["task_id"]).startswith("bt_dr_"))
+        mock_run.assert_awaited_once()
+        called_task = mock_run.await_args.args[0]
+        self.assertEqual(called_task.recipe, "gemini_deep_research")
+        self.assertEqual(called_task.goal, "IA spatiale")
 
     async def test_legacy_engine_flag(self):
         """use_legacy_engine=True retourne legacy_engine sans appeler GeminiWebAutomator."""

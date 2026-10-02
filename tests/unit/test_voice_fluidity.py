@@ -17,20 +17,22 @@ from routers.voice import _build_system_instruction
 
 
 class TestVoiceFluidityPrompt:
-    def test_prompt_contains_anti_repetition_and_fluid_rules(self):
-        prompt = config.JARVIS_SYSTEM_INSTRUCTION_TEMPLATE
-        assert "ANTI-RÉPÉTITION" in prompt
-        assert "ZÉRO RÉPÉTITION" in prompt
-        assert "c'est bon c'est terminé" in prompt
+    @pytest.mark.asyncio
+    async def test_prompt_contains_anti_repetition_and_fluid_rules(self):
+        """Les règles d'élocution naturelle sont composées par routers/voice.py (_build_system_instruction)."""
+        instruction = await _build_system_instruction()
+        assert "ANTI-TICS VERBAUX" in instruction
+        assert "Bannis les amorces robotiques et répétitives" in instruction
         # Verify old robotic order is removed
-        assert "ANNONCE SYSTÉMATIQUE DU LANCEMENT DES ACTIONS" not in prompt
-        assert "SANS attendre la fin de l'outil" not in prompt
+        assert "ANNONCE SYSTÉMATIQUE DU LANCEMENT DES ACTIONS" not in instruction
+        assert "SANS attendre la fin de l'outil" not in instruction
 
-    def test_prompt_anti_tics_directives(self):
-        prompt = config.JARVIS_SYSTEM_INSTRUCTION_TEMPLATE
-        assert "Bannis les amorces robotiques et répétitives" in prompt
-        assert "verbe d'action" in prompt
-        assert "C'est noté" in prompt
+    @pytest.mark.asyncio
+    async def test_prompt_anti_tics_directives(self):
+        instruction = await _build_system_instruction()
+        assert "Bannis les amorces robotiques et répétitives" in instruction
+        assert "verbe d'action" in instruction
+        assert "C'est noté" in instruction
 
     @pytest.mark.asyncio
     async def test_unified_memory_anti_tics_guidelines(self):
@@ -212,7 +214,7 @@ class TestHeavyAsyncTasks:
 
         res = await dispatch_tool(
             name="generer_presentation",
-            args={"titre": "Stratégie IA", "sujet": "IA 2026"},
+            args={"titre": "Stratégie IA", "sujet": "IA 2026", "consignes": "Présenter la stratégie IA 2026 de Stark Industries"},
             websocket=mock_ws,
             session=mock_session,
             is_paid_live=False,

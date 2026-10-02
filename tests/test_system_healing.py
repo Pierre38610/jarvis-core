@@ -345,7 +345,8 @@ async def test_tool_dispatcher_system_self_healing_actions():
         mock_rb.return_value = {"success": True, "patch_id": "p123", "target_file": "services/dummy.py"}
         res = await dispatch_tool(
             name="system_self_healing",
-            args={"action": "rollback", "patch_id": "p123"},
+            # Le portail arg_validator exige confirmed_by_user=True pour rollback/approve
+            args={"action": "rollback", "patch_id": "p123", "confirmed_by_user": True},
             websocket=mock_ws,
             session=MagicMock(),
             is_paid_live=False,
@@ -359,7 +360,7 @@ async def test_tool_dispatcher_system_self_healing_actions():
         mock_app.return_value = {"success": True, "patch_id": "p456", "target_file": "services/auth_service.py"}
         res_app = await dispatch_tool(
             name="system_self_healing",
-            args={"action": "approve", "patch_id": "p456"},
+            args={"action": "approve", "patch_id": "p456", "confirmed_by_user": True},
             websocket=mock_ws,
             session=MagicMock(),
             is_paid_live=False,

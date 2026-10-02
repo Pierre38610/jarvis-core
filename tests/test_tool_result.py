@@ -155,7 +155,13 @@ async def test_verify_email_sent_fail():
 
         res = await dispatch_tool(
             name="send_email",
-            args={"to": "test@example.com", "subject": "Test Sujet", "body": "Contenu"},
+            args={
+                "to": "test@example.com",
+                "subject": "Test Sujet",
+                "body": "Contenu",
+                # Le portail arg_validator exige une confirmation explicite avant tout envoi
+                "confirmed_by_user": True,
+            },
             websocket=mock_ws,
         )
 

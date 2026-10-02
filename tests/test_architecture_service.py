@@ -33,7 +33,9 @@ class TestArchitectureService(unittest.TestCase):
         self.assertTrue(len(toc) >= 10, f"Nombre de chapitres attendu >= 10, reçu : {len(toc)}")
         
         # Recherche par mot clé
-        res_deezer = architecture_service.lookup(query="deezer")
+        # max_chars élargi : le §1.4 (arborescence complète) a grandi et la mention "Deezer"
+        # peut désormais tomber au-delà de la fenêtre de 4000 caractères par défaut.
+        res_deezer = architecture_service.lookup(query="deezer", max_chars=20000)
         self.assertEqual(res_deezer["status"], "success")
         self.assertIn("Deezer", res_deezer["content"])
 
