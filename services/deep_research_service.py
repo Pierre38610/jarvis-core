@@ -1497,20 +1497,16 @@ async def launch_deep_research_gemini_web(
         return {"status": "legacy_engine", "message": "Délégué au moteur Map-Reduce legacy."}
 
     try:
-        from services.gemini_web_automator import gemini_deep_research_engine
-        return await gemini_deep_research_engine.launch(
-            topic=topic,
-            live_session=live_session,
-        )
-    except ImportError as e:
-        logger.error(f"[DR] Import GeminiWebAutomator impossible : {e}. Repli vers moteur legacy.")
-        return {
-            "status": "error",
-            "error": "Service gemini_web_automator introuvable.",
-            "fallback": "legacy",
-        }
+        from services.browser_agent.loop import BrowserTask, run_browser_task
+        task_id = f"bt_dr_{int(time.time() * 1000)}"
+        task = BrowserTask(task_id=task_id, goal=topic, recipe="gemini_deep_research")
+        res = await run_browser_task(task)
+        if res and res.is_success and task.status != "failed":
+            return {"status": "success", "task_id": task_id, "result": res.to_dict()}
+        logger.info(f"[DR] Browser Agent non réussi ({task.status if task else 'unknown'}), repli vers moteur legacy.")
+        return {"status": "error", "error": res.error_hint if res else "browser_task_failed", "fallback": "legacy"}
     except Exception as e:
-        logger.error(f"[DR] Erreur moteur Gemini Web : {e}. Repli vers moteur legacy.", exc_info=True)
+        logger.error(f"[DR] Erreur moteur Browser Agent : {e}. Repli vers moteur legacy.", exc_info=True)
         return {
             "status": "error",
             "error": str(e),

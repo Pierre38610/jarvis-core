@@ -144,6 +144,10 @@ class ToolResult:
 
         return res
 
+    @property
+    def is_success(self) -> bool:
+        return self.status in ("done", "started")
+
     @classmethod
     def done(
         cls,

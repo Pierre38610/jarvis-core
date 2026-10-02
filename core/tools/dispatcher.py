@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 from typing import Any, Optional
@@ -14,6 +15,7 @@ from typing import Any, Optional
 from google.genai import types
 
 import config
+logger = logging.getLogger("jarvis.dispatcher")
 from google_antigravity import resolve_antigravity_model, is_stop_directive
 from services.google_antigravity import (
     MODEL_FLASH,
@@ -111,7 +113,7 @@ def _infer_tool_tier_and_cost(
         tier = 2
     elif name in (
         "system_self_healing", "auto_guerison_systeme",
-        "launch_deep_research", "deep_research"
+        "launch_deep_research", "deep_research", "lancer_mission_deep_research"
     ):
         tier = 3
     elif name in ("ask_deep_reasoning", "deep_reasoning"):
@@ -142,7 +144,7 @@ def _infer_tool_tier_and_cost(
             cost = 0.001
         else:
             cost = 0.02
-    elif name in ("launch_deep_research", "deep_research"):
+    elif name in ("launch_deep_research", "deep_research", "lancer_mission_deep_research"):
         cost = 0.05
     elif name in ("run_agentic_task", "run_agent_task"):
         cost = 0.03
@@ -590,11 +592,38 @@ async def _execute_dispatch_tool(
             )
 
     # ─── launch_deep_research (Deep Research 3 phases Map-Reduce) ─────────────
-    elif name in ("launch_deep_research", "deep_research"):
+    elif name in ("launch_deep_research", "deep_research", "lancer_mission_deep_research"):
         consigne = args.get("consigne") or args.get("consigne_utilisateur") or args.get("sujet") or ""
         envoyer_email = bool(args.get("envoyer_email", False))
         destinataire_email = args.get("destinataire_email")
 
+        # 1. Tentative préalable via Browser Agent avec recipe="gemini_deep_research"
+        try:
+            bt_id = f"bt_dr_{int(time.time() * 1000)}"
+            dr_task = BrowserTask(
+                task_id=bt_id,
+                goal=consigne,
+                recipe="gemini_deep_research",
+            )
+            browser_res: ToolResult = await run_browser_agent_task(task=dr_task)
+            if browser_res and browser_res.is_success and dr_task.status != "failed":
+                if envoyer_email and browser_res.user_message:
+                    try:
+                        dest = destinataire_email or "pierrecassagnettes@gmail.com"
+                        await send_email_async(
+                            subject=f"[Deep Research] Synthèse : {consigne[:60]}",
+                            body=browser_res.user_message,
+                            to_email=dest,
+                        )
+                    except Exception as mail_err:
+                        logger.warning(f"[Deep Research Mail Error] {mail_err}")
+                return browser_res
+            else:
+                logger.info(f"[DeepResearch] Browser task gemini_deep_research non réussi ({dr_task.status if dr_task else 'unknown'}), repli vers le moteur Map-Reduce.")
+        except Exception as b_err:
+            logger.warning(f"[DeepResearch] Erreur browser task gemini_deep_research ({b_err}), repli vers le moteur Map-Reduce.")
+
+        # 2. Repli existant Map-Reduce (Phase 1: Prospecteur, Phase 2: Analyste, Phase 3: Synthèse)
         cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
         if not cli_ok:
             return ToolResult.failed(
@@ -1486,21 +1515,24 @@ async def _execute_dispatch_tool(
 
     # ─── prepare_web_cart_or_checkout ──────────────────────────────────────────
     elif name in ("prepare_web_cart_or_checkout", "prepare_cart"):
-        product_or_service = args.get("product_or_service", "")
-        merchant_url = args.get("merchant_url") or ""
-        open_when_ready = bool(args.get("open_when_ready", True))
-        execution_target = args.get("execution_target", "local_chrome_cdp")
-        supervision_service.start_action("prepare_web_cart_or_checkout", "Création Panier & Commande", "prepare_web_cart_or_checkout", f"Panier : {product_or_service}", "Playwright E-Commerce Engine", api_type="free", api_label="Local / Playwright", cost_est="0.00 $")
-        await broadcast_supervision()
-        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Préparation de votre panier pour {product_or_service}...", "voice": False}))
-        await websocket.send_text(json.dumps({"type": "status", "state": "shopping", "msg": "Préparation du panier et préremplissage...", "task": f"Panier : {product_or_service}", "engine": "Playwright E-Commerce", "model": "Chrome Automation", "api_type": "free", "api_label": "Clé Gratuite"}))
-        res = await prepare_web_cart_or_checkout(product_or_service=product_or_service, merchant_url=merchant_url, open_when_ready=open_when_ready, execution_target=execution_target)
-        supervision_service.complete_action("prepare_web_cart_or_checkout", status=res.get("status", "completed"), summary=f"Panier {product_or_service} préparé")
-        if res.get("cart_url"):
-            supervision_service.track_browser_window(res.get("cart_url"), f"Panier : {product_or_service}")
-        await broadcast_supervision()
-        await websocket.send_text(json.dumps({"type": "browser_update", "url": res.get("cart_url", merchant_url), "title": f"Panier : {product_or_service}", "screenshot": "/static/latest_screenshot.jpg"}))
-        return {"status": res.get("status"), "cart_url": res.get("cart_url"), "prefilled_fields": res.get("prefilled_fields", []), "browser_opened": res.get("browser_opened", True), "result_message": res.get("message", ""), "instruction_to_jarvis": f"Le panier pour '{product_or_service}' est prêt et les coordonnées de Pierre sont préremplies sur son écran. Dis à Pierre avec ta voix Aoede que le panier est ouvert à l'écran et qu'il n'a plus qu'à régler et valider sa commande."}
+        product_or_service = args.get("product_or_service") or args.get("product") or ""
+        merchant_url = args.get("merchant_url") or args.get("url") or ""
+        goal_parts = [f"Préparer le panier pour {product_or_service}"]
+        if merchant_url:
+            goal_parts.append(f"sur {merchant_url}")
+        goal = " ".join(goal_parts)
+        return await _execute_dispatch_tool(
+            name="browser_task",
+            args={
+                "goal": goal,
+                "recipe": "cart",
+                "start_url": merchant_url or None,
+            },
+            websocket=websocket,
+            session=session,
+            is_paid_live=is_paid_live,
+            live_display_label=live_display_label,
+        )
 
     # ─── download_file ─────────────────────────────────────────────────────────
     elif name in ("download_file", "file_download"):
@@ -2697,7 +2729,7 @@ async def _execute_dispatch_tool(
             date_depart=date_depart,
             heure_souhaitee=heure_souhaitee,
             pays=pays,
-            reserver_automatiquement=reserver_automatiquement,
+            reserver_automatiquement=False,
             optimiser_avec_agent=optimiser_avec_agent
         )
         best = res.get("best_option", {})
@@ -2705,7 +2737,6 @@ async def _execute_dispatch_tool(
         link_title = res.get("primary_title") or f"Train {origine} → {destination}"
         is_multi = res.get("is_multi_segment", False)
 
-        supervision_service.track_browser_window(primary_link, link_title)
         if is_multi:
             summary_text = (
                 f"Enchaînement {best.get('type_train', 'SJ')} ({res.get('total_duration', '')}) : "
@@ -2723,12 +2754,6 @@ async def _execute_dispatch_tool(
         if current_ws:
             try:
                 await current_ws.send_text(json.dumps({
-                    "type": "browser_update",
-                    "url": primary_link,
-                    "title": link_title,
-                    "screenshot": "/static/latest_screenshot.jpg"
-                }))
-                await current_ws.send_text(json.dumps({
                     "type": "task_completed",
                     "is_error": False,
                     "status": "completed",
@@ -2744,19 +2769,13 @@ async def _execute_dispatch_tool(
             seg1 = segs[0] if len(segs) > 0 else {}
             seg2 = segs[1] if len(segs) > 1 else {}
             esc = res.get("escale", {})
-            booked_txt = (
-                "J'ai ouvert directement les pages de réservation de tes deux trains sur ton navigateur : "
-                "les gares et dates sont préremplies."
-                if reserver_automatiquement else
-                "J'ai affiché l'enchaînement avec les liens de réservation directement sur ton écran."
-            )
             instruction = (
                 f"Pour le voyage de {origine} vers {destination} le {date_depart} : "
                 f"Il n'existe pas de liaison directe. Annonce naturellement l'enchaînement des 2 trains : "
                 f"1) {seg1.get('type_train', 'SJ')} de {seg1.get('origine')} ({seg1.get('heure_depart')}) à {seg1.get('destination')} ({seg1.get('heure_arrivee')}), "
                 f"2) escale de {esc.get('duree', '2h45')} à {esc.get('gare', 'Stockholm Central')}, "
                 f"3) train {seg2.get('type_train', 'SJ')} de {seg2.get('origine')} ({seg2.get('heure_depart')}) avec arrivée demain à {seg2.get('heure_arrivee')}. "
-                f"Durée totale {res.get('total_duration', '')}, prix {res.get('prix_total', '')}. {booked_txt} "
+                f"Durée totale {res.get('total_duration', '')}, prix {res.get('prix_total', '')}. "
                 f"Fais une seule annonce fluide avec ta voix Aoede sans répétition."
             )
         else:
@@ -2765,7 +2784,6 @@ async def _execute_dispatch_tool(
                 f"Pour le trajet {origine} → {destination} le {date_depart} : "
                 f"départ à {best.get('heure_depart')} en {best.get('type_train')}{track_txt}, "
                 f"arrivée à {best.get('heure_arrivee')} (durée {best.get('duree')}), prix {best.get('prix')}. "
-                f"Le lien direct est affiché sur ton écran. "
                 f"Annonce-le naturellement et directement à Pierre avec ta voix Aoede en une seule fois sans phrases redondantes."
             )
 
@@ -2826,58 +2844,34 @@ async def _execute_dispatch_tool(
 
     # ─── reserver_billet_train_local ──────────────────────────────────────────
     elif name in ("open_train_booking", "reserver_billet_train_local"):
-        operateur = args.get("operateur", "auto")
-        url_trajet = args.get("url_trajet", "")
-        urls_trajets = args.get("urls_trajets", [])
-        desc = args.get("description_trajet", "")
         origine = args.get("origine", "")
         destination = args.get("destination", "")
         date_depart = args.get("date_depart", "")
+        url_trajet = args.get("url_trajet") or (args.get("urls_trajets")[0] if args.get("urls_trajets") else "")
+        desc = args.get("description_trajet") or ""
+        goal_parts = ["Réserver le billet de train"]
+        if origine and destination:
+            goal_parts.append(f"de {origine} à {destination}")
+        if date_depart:
+            goal_parts.append(f"le {date_depart}")
+        if desc:
+            goal_parts.append(f"({desc})")
+        elif not (origine and destination) and url_trajet:
+            goal_parts.append(f"sur {url_trajet}")
+        goal = " ".join(goal_parts)
 
-        supervision_service.start_action(
-            "reserver_billet_train_local",
-            "Réservation Train Locale",
-            "reserver_billet_train_local",
-            f"Ouverture session {operateur.upper()} sur PC Windows",
-            "jarvis_local_agent",
-            api_type="free",
-            api_label="Local Windows GUI",
-            cost_est="0.00 $"
+        return await _execute_dispatch_tool(
+            name="browser_task",
+            args={
+                "goal": goal,
+                "recipe": "train",
+                "start_url": url_trajet or None,
+            },
+            websocket=websocket,
+            session=session,
+            is_paid_live=is_paid_live,
+            live_display_label=live_display_label,
         )
-        await broadcast_supervision()
-
-        res_local = await transport_service.reserver_billet_train_local(
-            operateur=operateur,
-            url_trajet=url_trajet,
-            urls_trajets=urls_trajets,
-            description_trajet=desc,
-            origine=origine,
-            destination=destination,
-            date_depart=date_depart
-        )
-
-        supervision_service.complete_action(
-            "reserver_billet_train_local",
-            status="completed" if res_local.get("status") == "success" else "warning",
-            summary=res_local.get("message", "Ouverture effectuée sur PC")
-        )
-        await broadcast_supervision()
-
-        resolved_urls = res_local.get("urls", urls_trajets or ([url_trajet] if url_trajet else []))
-        n_trains = len(resolved_urls)
-        train_phrase = f"les {n_trains} billets de train de l'enchaînement" if n_trains > 1 else f"la page de réservation {operateur.upper()}"
-        return {
-            "status": res_local.get("status", "success"),
-            "operateur": operateur,
-            "url_trajet": url_trajet,
-            "urls_trajets": resolved_urls,
-            "message": res_local.get("message", ""),
-            "instruction_to_jarvis": (
-                f"{train_phrase.capitalize()} ont été ouverts dans Chrome sur le PC de Pierre. "
-                f"Confirme-lui avec ta voix Aoede que ses pages de réservation directes sont prêtes sur son écran et qu'il n'a plus qu'à choisir ses places "
-                f"et procéder au paiement en toute sécurité."
-            )
-        }
 
     # ─── consulter_architecture_jarvis ─────────────────────────────────────────
     elif name in ("query_jarvis_architecture", "consulter_architecture_jarvis"):

@@ -1,3 +1,4 @@
+# DEPRECATED: remplacé par browser_agent
 """services/gemini_web_automator.py
 Moteur d'Automatisation Gemini Web pour J.A.R.V.I.S. - Stark Industries.
 Pilote l'interface officielle gemini.google.com via Chrome DevTools Protocol (CDP) /

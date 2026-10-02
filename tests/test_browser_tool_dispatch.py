@@ -246,3 +246,125 @@ async def test_browser_task_voice_injection_priority_and_result():
     # 3eme message : résultat final
     assert enqueued_items[2][0] == "Navigation terminée : billet trouvé à 45€."
     assert enqueued_items[2][1] == InjectionPriority.TOOL_RESPONSE
+
+
+@pytest.mark.asyncio
+async def test_prepare_web_cart_or_checkout_delegates_to_browser_task():
+    """Vérifie que prepare_web_cart_or_checkout route vers browser_task avec recipe=cart."""
+    mock_ws = AsyncMock()
+    mock_session = MagicMock()
+
+    async def mock_run_agent(task, notify=None):
+        return ToolResult.done(
+            user_message="Panier préparé avec succès.",
+            task_id=task.task_id,
+            verified=True,
+        )
+
+    with patch("core.tools.dispatcher.run_browser_agent_task", side_effect=mock_run_agent), \
+         patch("services.browser_agent.loop.run_browser_task", side_effect=mock_run_agent):
+        res = await dispatch_tool(
+            name="prepare_web_cart_or_checkout",
+            args={"product_or_service": "Câble HDMI 2.1", "merchant_url": "https://amazon.fr"},
+            websocket=mock_ws,
+            session=mock_session,
+        )
+        assert res.get("status") in ("launched_in_background", "started")
+        task_id = res.get("task_id")
+        assert task_id in BROWSER_TASKS
+        task = BROWSER_TASKS[task_id]
+        assert task.recipe == "cart"
+        assert "Câble HDMI 2.1" in task.goal
+        assert task.start_url == "https://amazon.fr"
+
+
+@pytest.mark.asyncio
+async def test_open_train_booking_delegates_to_browser_task():
+    """Vérifie que open_train_booking / reserver_billet_train_local route vers browser_task avec recipe=train."""
+    mock_ws = AsyncMock()
+    mock_session = MagicMock()
+
+    async def mock_run_agent(task, notify=None):
+        return ToolResult.done(
+            user_message="Réservation prête.",
+            task_id=task.task_id,
+            verified=True,
+        )
+
+    with patch("core.tools.dispatcher.run_browser_agent_task", side_effect=mock_run_agent), \
+         patch("services.browser_agent.loop.run_browser_task", side_effect=mock_run_agent):
+        res = await dispatch_tool(
+            name="open_train_booking",
+            args={"origine": "Paris", "destination": "Lyon", "date_depart": "2026-10-15"},
+            websocket=mock_ws,
+            session=mock_session,
+        )
+        assert res.get("status") in ("launched_in_background", "started")
+        task_id = res.get("task_id")
+        assert task_id in BROWSER_TASKS
+        task = BROWSER_TASKS[task_id]
+        assert task.recipe == "train"
+        assert "Paris" in task.goal and "Lyon" in task.goal
+
+
+@pytest.mark.asyncio
+async def test_search_train_routes_no_deep_link_opened():
+    """Vérifie que search_train_routes renvoie les infos orales sans ouvrir de navigateur."""
+    mock_ws = AsyncMock()
+    mock_session = MagicMock()
+
+    mock_routes = {
+        "status": "success",
+        "best_option": {
+            "heure_depart": "14:00",
+            "heure_arrivee": "18:30",
+            "type_train": "SJ Snabbtåg",
+            "duree": "4h30",
+            "prix": "495 SEK",
+        },
+        "primary_deep_link": "https://www.omio.fr/trains/malmo-stockholm",
+        "primary_title": "Train Malmö → Stockholm",
+        "is_multi_segment": False,
+    }
+
+    with patch("services.transport_service.transport_service.rechercher_itineraires", new_callable=AsyncMock) as mock_rech, \
+         patch("services.supervision_service.supervision_service.track_browser_window") as mock_track:
+        mock_rech.return_value = mock_routes
+        res = await dispatch_tool(
+            name="search_train_routes",
+            args={"origine": "Malmö", "destination": "Stockholm", "date_depart": "2026-10-15"},
+            websocket=mock_ws,
+            session=mock_session,
+        )
+
+        assert res.get("status") in ("success", "done")
+        assert mock_track.call_count == 0
+        instruction = res.get("instruction_to_jarvis", "")
+        assert "affiché sur ton écran" not in instruction
+        assert "ouvert directement" not in instruction
+
+
+@pytest.mark.asyncio
+async def test_launch_deep_research_browser_agent_success():
+    """Vérifie que launch_deep_research utilise le BrowserTask gemini_deep_research si succès."""
+    mock_ws = AsyncMock()
+    mock_session = MagicMock()
+
+    async def mock_run_agent(task, notify=None):
+        return ToolResult.done(
+            user_message="Rapport Deep Research complet sur l'informatique quantique.",
+            task_id=task.task_id,
+            verified=True,
+        )
+
+    with patch("core.tools.dispatcher.run_browser_agent_task", side_effect=mock_run_agent):
+        res = await dispatch_tool(
+            name="launch_deep_research",
+            args={"consigne": "Étude quantique 2026"},
+            websocket=mock_ws,
+            session=mock_session,
+        )
+
+        assert res.get("status") in ("success", "done")
+        assert "Rapport Deep Research" in str(res.get("user_message", ""))
+
