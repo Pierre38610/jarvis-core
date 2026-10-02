@@ -143,9 +143,14 @@ Pour permettre à tout agent d'ingénierie d'éditer le code avec la même préc
 ```
 jarvis-core/
 ├── App.py                               # Point d'entrée FastAPI, middleware CORS, montage statique & cycle de vie startup/shutdown
-├── config.py                            # Constantes, répertoires, clés API, détection Chrome, switch payant, template prompt système
+├── config.py                            # Constantes, répertoires, clés API, MODEL_ROUTING_ENABLED, switch payant, prompts
 ├── auth.py                              # Wrapper d'authentification légère et compatibilité
-├── google_antigravity.py                # Wrapper Antigravity CLI VPS, routage cognitif 3 tiers, détection 429 et exécuteur de sous-agents
+├── google_antigravity.py                # Wrapper Antigravity CLI VPS, support effort, Claude & compatibilité ascendante
+├── model_registry.py                    # Shim racine du registre de découverte et catalogue des modèles (Gemini / Claude)
+├── model_router.py                      # Shim racine du routeur intelligent de modèles (select_model)
+├── fallback_handler.py                  # Shim racine du gestionnaire de repli résilient quota (execute_with_fallback)
+├── prompt_builder.py                    # Shim racine du constructeur de prompts adaptés et parseur JSON tolérant
+├── AGENTS.md                            # Charte générale et règles obligatoires pour tout agent autonome Antigravity CLI
 ├── jarvis_local_agent.py                # Agent client WebSocket s'exécutant sur le PC Windows 11 (actions physiques, Chrome CDP, Spotify Desktop, Stremio)
 ├── local_browser_actions.py             # Pont CDP Playwright côté PC (port 9222), balisage DOM data-jarvis-id, exécution d'actions et screenshots
 ├── tunnel_launcher.py                   # Gestionnaire du tunnel Cloudflare Zero Trust, fallback Quick Tunnel et LAN Wi-Fi
@@ -153,6 +158,12 @@ jarvis-core/
 ├── docker-compose.yml                   # Définition conteneurs Redis 7, Postgres 16, Qdrant et n8n (bound sur 127.0.0.1)
 ├── PROFIL_CANDIDATURE_PIERRE_CASSAGNETTES.md # Dossier complet académique et pro de Pierre (Phelma SICOM, Scintil, Teem, Suède)
 ├── ARCHITECTURE_COMPLETE_JARVIS.md      # Le présent référentiel architectural complet maître
+│
+├── config/
+│   └── models.json                      # Catalogue déclaratif des modèles (Gemini, Claude, fenêtres, coûts, règles de routage)
+│
+├── prompts/
+│   └── templates/                       # Templates modulaires par type de tâche (simple.txt, medium.txt, complex.txt, code.txt)
 │
 ├── core/                                # Cœur applicatif transverse
 │   ├── shared_state.py                  # État global partagé, clients Gemini, active_task_controller, verrou d'élocution, broadcast
@@ -172,6 +183,11 @@ jarvis-core/
 │   └── transport.py                     # /api/train/* : recherche de trains, surveillance proactive n8n, alertes et résa multi-onglets
 │
 ├── services/                            # Services métier d'arrière-plan et d'intégration
+│   ├── model_routing/                   # Module de routage intelligent et résilience de quota pour Antigravity CLI
+│   │   ├── model_registry.py            # Registre dynamique avec cache TTL (1h) et cascade CLI -> Config -> Liste par défaut
+│   │   ├── model_router.py              # Sélection optimale du modèle et niveau d'effort selon type, complexité et contexte
+│   │   ├── fallback_handler.py          # Cascade de repli Claude -> Gemini CLI -> API PAID, gestion cooldowns et détection 429
+│   │   └── prompt_builder.py            # Formatage adapté (XML pour Claude, Markdown pour Gemini) et parseur JSON tolérant
 │   ├── browser_agent/                   # Moteur de navigation autonome piloté par Antigravity CLI (S1/S2)
 │   │   ├── loop.py                      # Boucle de navigation S2 (run_browser_task, cycle snapshot-decide-act, handoff, verifier)
 │   │   ├── cli_brain.py                 # Cerveau décisionnel S4 et vérificateur s'appuyant sur les agents CLI agy
@@ -205,12 +221,15 @@ jarvis-core/
 │   ├── workspace_service.py             # Exploration et lecture seule stricte des projets locaux _anti_gravity (anti-traversal, filtres)
 │   └── architecture_service.py          # Hot-reload de ARCHITECTURE_COMPLETE_JARVIS.md et outil live query_jarvis_architecture
 │
+├── scripts/
+│   └── install_agent_rules.py           # Installation de la règle AGENTS.md sur VPS et environnements locaux
+│
 ├── db/
 │   └── schema.sql                       # Schéma PostgreSQL (conversations, memories, tier_routing_log, tool_call_metrics, patches)
 ├── static/                              # Interface HUD PWA mobile Stark Industries (HTML, CSS cyberpunk, JS, SVGs)
 ├── data/
 │   └── site_memory/                     # Mémoire persistante JSON des parcours web réussis par nom de domaine (<domain>.json)
-└── tests/                               # Suite de validation automatisée (15+ fichiers de tests unitaires et d'intégration)
+└── tests/                               # Suite de validation automatisée (48+ tests unitaires et d'intégration)
 ```
 
 ---
@@ -652,11 +671,38 @@ Remontée périodique (toutes les 15 s) : CPU global, mémoire vive, pourcentage
 | **37**| `generate_book_summary` | `curation_livre_synthese` | Non-bloquant | `titre_livre: str` (req) | `{"status": "summary_ready", "epub_path": str}` | `services/agentic_dispatcher.py` |
 | **38**| `system_self_healing` | `auto_guerison_systeme` | Non-bloquant | `motif: str`, `action: str` (`diagnose`\|`apply`\|`rollback`), `patch_id: str` | `{"status": "healing_in_progress"|"applied"|"requires_validation", "patch_id": str}` | `services/system_healing_service.py` |
 
-### 8.2. Moteur Multi-Agents Antigravity CLI sur VPS
-- **Fichiers** : `google_antigravity.py`, `services/reasoning_service.py`, `core/tools/declarations.py`, `core/tools/dispatcher.py`.
+### 8.2. Moteur Multi-Agents Antigravity CLI sur VPS & Routage Intelligent de Modèles
+- **Fichiers** : `google_antigravity.py`, `services/model_routing/` (`model_registry.py`, `model_router.py`, `fallback_handler.py`, `prompt_builder.py`), `config/models.json`, `prompts/templates/`, `AGENTS.md`.
 - **Exécution** : Sous-processus `agy` sur Ubuntu ARM64 adossé au jeton OAuth2 Google AI Pro (`~/.gemini/antigravity-cli/antigravity-oauth-token`), coût d'API nul.
 - **Pipeline Délibératif 3 Phases** : Prospecteur → Analyste critique → Synthèse & Artefact.
-- **Règles Strictes de Drapeaux** : `--model <nom>` et optionnellement `--effort <level>`. Bannissement formel de `--thinking` (qui causait `exit code 2`). Pré-contrôle `verify_antigravity_cli_ready()` avant d'annoncer `launched_in_background`.
+- **Règles Strictes de Drapeaux** : `--model <nom>` et optionnellement `--effort <level>` (low | medium | high | max). Bannissement formel de `--thinking` (qui causait `exit code 2`). Pré-contrôle `verify_antigravity_cli_ready()` avant d'annoncer `launched_in_background`.
+
+#### 8.2.1. Architecture du Routage Intelligent des Modèles (`services/model_routing/`)
+1. **Registre Dynamique & Catalogue (`model_registry.py`)** :
+   - Découverte dynamique via la commande CLI (`agy models list --json`) avec mise en cache TTL configurable (1h).
+   - Cascade de repli : Découverte CLI → Configuration déclarative `config/models.json` → Catalogue par défaut en dur (`gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.1-pro`, `gemini-3.1-pro-preview`, `claude-3-7-sonnet`).
+   - Métadonnées complètes par modèle : `provider` (gemini/claude), `tier` (flash/pro/sonnet), `supports_effort` (bool), `context_window` (200k à 2M tokens), `cost_rank`, `latency_rank`, `strengths` et `aliases`.
+2. **Routeur Intelligent d'Arbitrage (`model_router.py`)** :
+   - Fonction maître `select_model(task, query, context_size, user_preference, intensite_reflexion) -> RoutingDecision`.
+   - Matrice de décision par tâche :
+     - *Simple (Tier 1)* : `gemini-3.7-flash`, réflexion `low` (diagnostics, synchronisation doc).
+     - *Moyenne (Tier 2)* : `gemini-3.7-flash`, réflexion `medium` ou `high` (tableurs, transport, e-mails).
+     - *Complexe (Tier 3)* : `gemini-3.1-pro`, réflexion `high` (recherche approfondie, refactoring, auto-réparation Système 2).
+     - *Code / Raisonnement Long* : `claude-3-7-sonnet`, sans argument effort (ingénierie logicielle ou préférence Claude explicite).
+   - Surclassement automatique vers les modèles à grande fenêtre (2M tokens) si la taille du contexte dépasse la capacité du modèle initial.
+3. **Gestionnaire de Repli Quota Résilient (`fallback_handler.py`)** :
+   - Cascade automatique : Modèle Claude (CLI) → Modèle Gemini équivalent (CLI) → API Directe Gemini avec clé PAID (strictement conditionnée à `user_profile.paid_key_authorized` / `get_effective_paid_key()`) → Erreur explicite.
+   - Détection exhaustive des erreurs 429 et saturations de quota (`RESOURCE_EXHAUSTED`, `rate limit`, `too many requests`, `quota 5h`).
+   - Mise en quarantaine temporaire (cooldown de 300s) des modèles saturés pour éviter les blocages répétés.
+   - Les erreurs non liées au quota (syntaxe, timeouts, annulations) sont remontées immédiatement sans bascule de modèle.
+   - Inviolabilité absolue : aucune clé secrète ni token n'est jamais journalisé ou exposé.
+4. **Constructeur de Prompts Adaptés & Parseur Tolérant (`prompt_builder.py`)** :
+   - Adaptation du format d'instruction par fournisseur : balises XML structurées pour Claude (`<system_role>`, `<objective>`, `<constraints>`, `<output_format>`), structure Markdown concise et directive pour Gemini.
+   - Templates modulaires par type de mission dans `prompts/templates/` (`simple.txt`, `medium.txt`, `complex.txt`, `code.txt`).
+   - Exigence de rapport final au format JSON standard `{status, summary, actions_done, files_changed, errors, next_steps}`.
+   - Parseur tolérant capable d'extraire le JSON valide même en présence de texte introductif ou de logs d'exécution.
+5. **Charte de Règles Déportée (`AGENTS.md`)** :
+   - Directives universelles déployées sur le VPS et dans l'espace de travail local : autonomie sans interruption, confinement strict au workspace, interdiction des secrets/.env/paiements, vérification par tests unitaires et restitution JSON finale.
 
 ### 8.3. Moteur Asynchrone Deep Research : Architecture à Double Moteur
 Le système dispose de deux moteurs de Deep Research sélectionnés intelligemment :
