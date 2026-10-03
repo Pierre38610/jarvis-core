@@ -252,7 +252,9 @@ class SystemHealingService:
         """Copie le repository dans un répertoire temporaire isolé hors production."""
         parent_dir = os.path.join(self.workspace_dir, ".healing_sandboxes")
         os.makedirs(parent_dir, exist_ok=True)
-        sandbox_dir = tempfile.mkdtemp(prefix="heal_", dir=parent_dir)
+        import random
+        sandbox_dir = os.path.join(parent_dir, f"heal_{int(time.time() * 1000)}_{random.randint(1000, 9999)}")
+        os.makedirs(sandbox_dir, exist_ok=True)
 
         def _ignore_filter(src, names):
             ignored = set()
@@ -270,7 +272,7 @@ class SystemHealingService:
             src_path = os.path.join(self.workspace_dir, item)
             dst_path = os.path.join(sandbox_dir, item)
             if os.path.isdir(src_path):
-                shutil.copytree(src_path, dst_path, ignore=_ignore_filter, symlinks=True)
+                shutil.copytree(src_path, dst_path, ignore=_ignore_filter, symlinks=False if sys.platform == "win32" else True)
             elif os.path.isfile(src_path) and not item.endswith((".key", ".tmp")):
                 shutil.copy2(src_path, dst_path)
 
@@ -430,7 +432,12 @@ class SystemHealingService:
     async def execute_tests_in_sandbox(self, sandbox_dir: str, test_files: List[str]) -> Dict[str, Any]:
         """Exécute pytest dans l'environnement isolé."""
         python_bin = sys.executable
-        start_t = time.time()
+        if sys.platform == "win32":
+            venv_py = os.path.join(sys.prefix, "Scripts", "python.exe")
+            if os.path.exists(venv_py):
+                python_bin = venv_py
+            elif os.path.exists(os.path.join(BASE_DIR, "venv", "Scripts", "python.exe")):
+                python_bin = os.path.join(BASE_DIR, "venv", "Scripts", "python.exe")
 
         env = os.environ.copy()
         env["PYTHONPATH"] = sandbox_dir
@@ -463,31 +470,35 @@ class SystemHealingService:
         )
         cmd = [python_bin, "-c", runner_script]
 
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
+        start_t = time.time()
+        loop = asyncio.get_running_loop()
+
+        def _run_sync():
+            return subprocess.run(
+                cmd,
                 cwd=sandbox_dir,
                 env=env,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                capture_output=True,
+                timeout=120
             )
-            stdout_b, stderr_b = await proc.communicate()
+
+        try:
+            completed_proc = await loop.run_in_executor(None, _run_sync)
             duration = round(time.time() - start_t, 2)
 
-            stdout_txt = stdout_b.decode(errors="replace")
-            stderr_txt = stderr_b.decode(errors="replace")
-            passed = (proc.returncode == 0)
+            stdout_txt = completed_proc.stdout.decode(errors="replace")
+            stderr_txt = completed_proc.stderr.decode(errors="replace")
+            passed = (completed_proc.returncode == 0)
 
-            # Extraction rapide du résumé pytest
             summary_match = re.search(r'==+ (.*?) ==+', stdout_txt)
-            summary_str = summary_match.group(1) if summary_match else f"returncode {proc.returncode}"
+            summary_str = summary_match.group(1) if summary_match else f"returncode {completed_proc.returncode}"
 
             return {
                 "passed": passed,
-                "returncode": proc.returncode,
+                "returncode": completed_proc.returncode,
                 "duration_s": duration,
                 "summary": summary_str,
-                "stdout": stdout_txt[-1500:],  # tronqué pour logs
+                "stdout": stdout_txt[-1500:],
                 "stderr": stderr_txt[-1000:],
                 "test_files": test_files
             }
@@ -534,7 +545,7 @@ class SystemHealingService:
             src_path = os.path.join(self.workspace_dir, item)
             dst_path = os.path.join(release_dir, item)
             if os.path.isdir(src_path):
-                shutil.copytree(src_path, dst_path, ignore=_ignore_filter, symlinks=True)
+                shutil.copytree(src_path, dst_path, ignore=_ignore_filter, symlinks=False if sys.platform == "win32" else True)
             elif os.path.isfile(src_path) and not item.endswith((".key", ".tmp")):
                 shutil.copy2(src_path, dst_path)
 

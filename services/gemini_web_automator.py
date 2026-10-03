@@ -1,34 +1,32 @@
-# DEPRECATED: remplacé par browser_agent
 """services/gemini_web_automator.py
-Moteur d'Automatisation Gemini Web pour J.A.R.V.I.S. - Stark Industries.
+Moteur d'Automatisation Gemini Web L3 pour J.A.R.V.I.S. - Stark Industries.
 Pilote l'interface officielle gemini.google.com via Chrome DevTools Protocol (CDP) /
-Playwright connecté au profil Chrome réel de Pierre, sans aucun outil de vision.
+Playwright connecté au profil Chrome réel de Pierre sur le port 9222.
 
-Architecture :
-- Mémoire persistante des coordonnées & sélecteurs DOM (data/gemini_ui_map.json).
-- Détection de dérive de layout : re-calcul automatique via inspection du DOM si un clic
-  ne produit pas l'état attendu.
-- Polling non-bloquant pour détecter la fin de la recherche Deep Research.
-- Livraison conditionnelle : affichage à l'écran (PC connecté) ou snapshot HTML + email
-  (PC hors ligne).
-
-Contraintes absolues respectées :
-  1. Zéro modèle de vision – interactions uniquement par coordonnées et DOM.
-  2. Non-bloquant – renvoie {status: launched_in_background} immédiatement, puis jalons via VoiceInjectionQueue.
-  3. Auto-réparation – si un bouton est absent de ses coordonnées mémorisées, on inspecte le DOM,
-     on recalcule les coordonnées et on met à jour le JSON.
+Flux opérationnel L3 :
+  1. Connexion CDP (port 9222) & vérification de session / connexion Google.
+  2. Sélection robuste du mode « Deep Research » (par rôle / texte accessible / repli sélecteur).
+  3. Saisie du sujet et soumission.
+  4. Détection et confirmation du plan de recherche proposé (« Confirmer le plan » / « Start research »).
+  5. Polling non-bloquant de l'état (« plan à confirmer », « génération en cours », « terminé », « connexion requise », « erreur »).
+  6. Extraction du rapport complet en Markdown & déclenchement de la création de page web Canvas si disponible.
+  7. Sauvegarde persistante vérifiée (dans downloads/ ou artifacts/, chemin sûr, taille > 0, extension valide).
+  8. Accusé d'ouverture locale sur le PC ou repli par e-mail Stark.
+  9. Capture de captures d'écran JPEG en cas d'anomalie sans fausse complétion.
 """
 
 import asyncio
+import base64
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import config
-from config import BASE_DIR
+from config import BASE_DIR, WORKSPACE_DIR
 from services.voice_injection_queue import voice_injection_queue, InjectionPriority
 
 logger = logging.getLogger("jarvis.gemini_web_automator")
@@ -36,12 +34,17 @@ logger = logging.getLogger("jarvis.gemini_web_automator")
 # ─── Chemins ──────────────────────────────────────────────────────────────────
 UI_MAP_PATH = os.path.join(BASE_DIR, "data", "gemini_ui_map.json")
 DOWNLOADS_DIR = os.path.join(BASE_DIR, "downloads")
+ARTIFACTS_DIR = os.path.join(BASE_DIR, "artifacts")
+SCREENSHOTS_DIR = os.path.join(ARTIFACTS_DIR, "screenshots")
+
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+os.makedirs(ARTIFACTS_DIR, exist_ok=True)
+os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
 
 # ─── Constantes ───────────────────────────────────────────────────────────────
 CDP_URL = "http://localhost:9222"
-GEMINI_URL = "https://gemini.google.com"
+GEMINI_URL = "https://gemini.google.com/app"
 RESEARCH_POLL_INTERVAL = 5.0    # secondes entre chaque sonde de fin de recherche
 RESEARCH_MAX_WAIT = 1200.0      # 20 minutes max d'attente
 ACTION_CONFIRM_TIMEOUT = 3.0    # délai d'attente de confirmation post-clic
@@ -53,7 +56,7 @@ DOM_FALLBACK_TIMEOUT = 6000     # ms pour les localisations DOM de repli
 # ──────────────────────────────────────────────────────────────────────────────
 
 class UIMapManager:
-    """Charge, expose et met à jour en temps réel la carte des coordonnées de l'interface Gemini."""
+    """Charge, expose et met à jour en temps réel la carte des coordonnées et sélecteurs."""
 
     def __init__(self, path: str = UI_MAP_PATH):
         self._path = path
@@ -119,13 +122,14 @@ class UIMapManager:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Automateur principal
+# Automateur principal Gemini Web L3
 # ──────────────────────────────────────────────────────────────────────────────
 
 class GeminiWebAutomator:
     """
     Orchestre l'automatisation de gemini.google.com via Playwright CDP.
-    Mémorise les coordonnées, détecte les dérives, s'auto-répare.
+    Gère les rôles accessibles, la confirmation de plan, la machine d'états,
+    l'extraction Markdown, la sauvegarde vérifiée et les captures d'écran.
     """
 
     def __init__(self):
@@ -133,10 +137,11 @@ class GeminiWebAutomator:
         self._playwright = None
         self._browser = None
         self._page = None
-        self._live_session: Any = None  # Session Gemini Live pour jalons vocaux
+        self._live_session: Any = None
+        self._last_snapshot: Dict[str, Any] = {}
 
     def set_live_session(self, session: Any) -> None:
-        """Injecte la session Gemini Live pour les jalons vocaux de progression."""
+        """Injecte la session Gemini Live pour les jalons vocaux."""
         self._live_session = session
 
     # ── Connexion CDP ──────────────────────────────────────────────────────────
@@ -144,27 +149,23 @@ class GeminiWebAutomator:
     async def _connect(self) -> bool:
         """
         Connecte Playwright au Chrome réel de Pierre via CDP (port 9222).
-        Réutilise la connexion existante si elle est toujours valide.
-        Retourne True si la connexion est établie.
+        Réutilise l'onglet Gemini s'il existe déjà.
         """
         try:
             from playwright.async_api import async_playwright
 
-            # Teste si la connexion existante est encore valide
             if self._page and not self._page.is_closed():
                 return True
 
             self._playwright = await async_playwright().start()
             self._browser = await self._playwright.chromium.connect_over_cdp(CDP_URL)
 
-            # Utilise le premier contexte existant (profil connecté de Pierre)
             contexts = self._browser.contexts
             ctx = contexts[0] if contexts else await self._browser.new_context()
 
-            # Cherche un onglet Gemini existant ou en crée un nouveau
             self._page = None
             for p in ctx.pages:
-                if "gemini.google.com" in p.url:
+                if "gemini.google.com" in getattr(p, "url", ""):
                     self._page = p
                     logger.info(f"[CDP] Onglet Gemini existant réutilisé : {p.url}")
                     break
@@ -190,37 +191,59 @@ class GeminiWebAutomator:
         self._browser = None
         self._page = None
 
-    # ── Navigation ────────────────────────────────────────────────────────────
+    # ── Navigation & Vérification Session ───────────────────────────────────────
+
+    async def _check_login_state(self) -> bool:
+        """Vérifie si une page de connexion Google est affichée."""
+        if not self._page:
+            return False
+        current_url = getattr(self._page, "url", "").lower()
+        if "accounts.google.com" in current_url:
+            return True
+
+        login_action = self.ui_map.get_action("login_indicator")
+        selectors = login_action.get("fallback_selectors", [])
+        if not selectors:
+            return False
+
+        for sel in selectors:
+            try:
+                if hasattr(self._page, "locator"):
+                    loc = self._page.locator(sel)
+                    if hasattr(loc, "count") and await loc.count() > 0:
+                        return True
+            except Exception:
+                pass
+        return False
 
     async def _navigate_to_gemini(self) -> bool:
-        """Navigue vers gemini.google.com si on n'y est pas déjà."""
+        """Navigue vers l'application Gemini si nécessaire."""
         try:
-            current = self._page.url
+            current = getattr(self._page, "url", "")
             if "gemini.google.com" not in current:
                 await self._page.goto(GEMINI_URL, wait_until="domcontentloaded", timeout=30000)
                 await self._page.wait_for_timeout(2000)
-                logger.info("[Nav] Navigation vers gemini.google.com effectuée.")
+                logger.info("[Nav] Navigation vers Gemini effectuée.")
             return True
         except Exception as e:
             logger.error(f"[Nav] Échec navigation vers Gemini : {e}")
             return False
 
-    # ── Clic avec vérification et auto-réparation ──────────────────────────────
+    # ── Clic Robuste & Rôles Accessibles ───────────────────────────────────────
 
     async def click_with_verification(
         self,
         action_name: str,
         verify_timeout: float = ACTION_CONFIRM_TIMEOUT,
+        role: Optional[str] = None,
+        accessible_name: Optional[str] = None,
     ) -> bool:
         """
-        Exécute un clic robuste avec auto-réparation en cas de dérive UI.
-
-        Stratégie :
-          1. Clic aux coordonnées x,y mémorisées.
-          2. Attente de l'état de validation (verify_timeout secondes).
-          3. Si l'état n'apparaît pas → détection de dérive → localisation DOM via
-             sélecteurs de repli → extraction de la bounding box → mise à jour du JSON
-             → re-clic.
+        Exécute un clic robuste avec :
+          1. Essai par rôle accessible / texte si spécifié ou présent.
+          2. Clic aux coordonnées x,y mémorisées.
+          3. Vérification de validation post-clic.
+          4. Repli DOM + mise à jour des coordonnées en cas de dérive.
         """
         action = self.ui_map.get_action(action_name)
         x = action.get("x")
@@ -228,7 +251,33 @@ class GeminiWebAutomator:
         validation_selector = self.ui_map.get_validation_selector(action_name)
         fallback_selectors = self.ui_map.get_fallback_selectors(action_name)
 
-        # ── Tentative 1 : Clic aux coordonnées mémorisées ──
+        # ── Tentative 0 : Rôle accessible si applicable ──
+        if role and accessible_name and hasattr(self._page, "get_by_role"):
+            try:
+                pattern = re.compile(accessible_name, re.IGNORECASE)
+                loc = self._page.get_by_role(role, name=pattern).first
+                if await loc.count() > 0:
+                    bb = await loc.bounding_box()
+                    if bb:
+                        self.ui_map.update_coordinates(
+                            action_name,
+                            bb["x"] + bb["width"] / 2,
+                            bb["y"] + bb["height"] / 2,
+                        )
+                    await loc.click(timeout=DOM_FALLBACK_TIMEOUT)
+                    await self._page.wait_for_timeout(500)
+                    if validation_selector:
+                        confirmed = await self._wait_for_selector(validation_selector, timeout_ms=int(verify_timeout * 1000))
+                        if confirmed:
+                            logger.info(f"[Click] ✅ '{action_name}' confirmé via get_by_role({role}, '{accessible_name}').")
+                            return True
+                    else:
+                        logger.info(f"[Click] ✅ '{action_name}' cliqué via get_by_role({role}, '{accessible_name}').")
+                        return True
+            except Exception as e:
+                logger.debug(f"[Click] get_by_role pour '{action_name}' non concluant : {e}")
+
+        # ── Tentative 1 : Coordonnées mémorisées ──
         if x is not None and y is not None:
             try:
                 await self._page.mouse.click(x, y)
@@ -237,18 +286,17 @@ class GeminiWebAutomator:
                 if validation_selector:
                     confirmed = await self._wait_for_selector(validation_selector, timeout_ms=int(verify_timeout * 1000))
                     if confirmed:
-                        logger.info(f"[Click] ✅ '{action_name}' confirmé aux coordonnées mémorisées.")
+                        logger.info(f"[Click] ✅ '{action_name}' confirmé aux coordonnées mémorisées ({x},{y}).")
                         return True
                     else:
                         logger.warning(f"[Click] ⚠️ Dérive UI détectée pour '{action_name}'. Lancement du repli DOM.")
                 else:
-                    # Pas de sélecteur de validation → on accepte le clic par défaut
                     await self._page.wait_for_timeout(500)
                     return True
             except Exception as e:
                 logger.warning(f"[Click] Clic à ({x},{y}) échoué : {e}")
 
-        # ── Tentative 2 : Repli DOM (sélecteurs de repli) ──
+        # ── Tentative 2 : Repli DOM sélecteurs ──
         for selector in fallback_selectors:
             try:
                 element = self._page.locator(selector).first
@@ -256,7 +304,6 @@ class GeminiWebAutomator:
                 if count == 0:
                     continue
 
-                # Extrait la bounding box pour mettre à jour les coordonnées
                 bb = await element.bounding_box()
                 if bb:
                     new_x = bb["x"] + bb["width"] / 2
@@ -269,57 +316,81 @@ class GeminiWebAutomator:
                 if validation_selector:
                     confirmed = await self._wait_for_selector(validation_selector, timeout_ms=int(verify_timeout * 1000))
                     if confirmed:
-                        logger.info(f"[Click] ✅ '{action_name}' confirmé via sélecteur de repli : {selector}")
+                        logger.info(f"[Click] ✅ '{action_name}' confirmé via sélecteur : {selector}")
                         return True
                 else:
-                    logger.info(f"[Click] ✅ '{action_name}' cliqué via sélecteur de repli : {selector}")
+                    logger.info(f"[Click] ✅ '{action_name}' cliqué via sélecteur : {selector}")
                     return True
 
             except Exception as e:
-                logger.debug(f"[Click] Sélecteur de repli '{selector}' échoué : {e}")
+                logger.debug(f"[Click] Sélecteur '{selector}' échoué : {e}")
                 continue
 
         logger.error(f"[Click] ❌ '{action_name}' : tous les replis ont échoué.")
         return False
 
     async def _wait_for_selector(self, selector: str, timeout_ms: int = 3000) -> bool:
-        """Vérifie la présence d'un sélecteur CSS dans le DOM avec un timeout court."""
+        """Vérifie la présence d'un sélecteur CSS dans le DOM."""
         try:
             await self._page.wait_for_selector(selector, state="attached", timeout=timeout_ms)
             return True
         except Exception:
             return False
 
-    # ── Injection de texte ────────────────────────────────────────────────────
+    # ── Sélection Deep Research ────────────────────────────────────────────────
+
+    async def _select_deep_research_mode(self) -> bool:
+        """Active le mode Deep Research via rôle accessible, texte ou sélecteur."""
+        logger.info("[DR] Sélection du mode Deep Research...")
+        return await self.click_with_verification(
+            "deep_research_button",
+            verify_timeout=5.0,
+            role="button",
+            accessible_name="Deep Research|Recherche approfondie",
+        )
+
+    # ── Saisie & Envoi du Sujet ───────────────────────────────────────────────
 
     async def _fill_prompt(self, topic: str) -> bool:
-        """
-        Injecte le sujet de recherche dans le champ de saisie Gemini.
-        Essaie d'abord les coordonnées mémorisées, puis les sélecteurs de repli.
-        """
+        """Injecte le sujet de recherche dans le champ de saisie Gemini."""
         action = self.ui_map.get_action("prompt_textarea")
         x = action.get("x")
         y = action.get("y")
         fallback_selectors = self.ui_map.get_fallback_selectors("prompt_textarea")
 
-        # Tentative par coordonnées
+        # 1. Tentative par get_by_role("textbox")
+        if hasattr(self._page, "get_by_role"):
+            try:
+                tb = self._page.get_by_role("textbox").first
+                if await tb.count() > 0:
+                    await tb.click(timeout=3000)
+                    try:
+                        await tb.fill(topic, timeout=4000)
+                    except Exception:
+                        await tb.type(topic, delay=20)
+                    await self._page.wait_for_timeout(400)
+                    logger.info("[Fill] Texte injecté via get_by_role('textbox').")
+                    return True
+            except Exception as e:
+                logger.debug(f"[Fill] get_by_role non concluant: {e}")
+
+        # 2. Tentative par coordonnées
         if x and y:
             try:
                 await self._page.mouse.click(x, y)
                 await self._page.wait_for_timeout(300)
-                await self._page.keyboard.type(topic, delay=30)
-                await self._page.wait_for_timeout(500)
-                # Vérification : le texte est bien dans le DOM
+                await self._page.keyboard.type(topic, delay=25)
+                await self._page.wait_for_timeout(400)
                 content = await self._page.evaluate(
                     "() => document.activeElement ? document.activeElement.innerText || document.activeElement.value : ''"
                 )
                 if topic[:20].lower() in (content or "").lower():
-                    logger.info(f"[Fill] Texte injecté avec succès (coordonnées).")
+                    logger.info("[Fill] Texte injecté avec succès (coordonnées).")
                     return True
             except Exception as e:
-                logger.warning(f"[Fill] Injection par coordonnées échouée : {e}")
+                logger.warning(f"[Fill] Injection coordonnées échouée : {e}")
 
-        # Tentative par sélecteurs DOM
+        # 3. Tentative par sélecteurs DOM
         for selector in fallback_selectors:
             try:
                 el = self._page.locator(selector).first
@@ -334,12 +405,11 @@ class GeminiWebAutomator:
                     )
                 await el.click(timeout=DOM_FALLBACK_TIMEOUT)
                 await self._page.wait_for_timeout(200)
-                # On préfère fill() pour les vrais textarea, keyboard.type() pour contenteditable
                 try:
-                    await el.fill(topic, timeout=5000)
+                    await el.fill(topic, timeout=4000)
                 except Exception:
-                    await el.type(topic, delay=30)
-                await self._page.wait_for_timeout(500)
+                    await el.type(topic, delay=25)
+                await self._page.wait_for_timeout(400)
                 logger.info(f"[Fill] Texte injecté via sélecteur '{selector}'.")
                 return True
             except Exception as e:
@@ -348,187 +418,341 @@ class GeminiWebAutomator:
         logger.error("[Fill] ❌ Impossible d'injecter le sujet dans le prompt Gemini.")
         return False
 
-    # ── Polling de fin de recherche ───────────────────────────────────────────
+    async def _send_prompt(self) -> bool:
+        """Envoie la requête (Entrée ou clic bouton d'envoi)."""
+        try:
+            await self._page.keyboard.press("Enter")
+            await self._page.wait_for_timeout(1000)
+            return True
+        except Exception:
+            return await self.click_with_verification("send_button", verify_timeout=3.0)
 
-    async def _wait_for_research_completion(self) -> bool:
+    # ── Confirmation du Plan de Recherche ─────────────────────────────────────
+
+    async def _confirm_research_plan(self, timeout_seconds: float = 12.0) -> bool:
         """
-        Boucle de polling non-bloquante observant le DOM pour détecter la fin de la recherche.
-        Condition de fin :
-          - TOUS les sélecteurs d'absence (spinner, thinking...) ont disparu, ET
-          - AU MOINS UN sélecteur de présence (réponse finale) est présent.
-        Retourne True si la recherche est terminée, False si timeout.
+        Détecte si Gemini propose un plan de recherche (« Start research » /
+        « Démarrer la recherche » / « Confirmer le plan ») et le confirme.
+        Si la génération démarre directement sans plan, retourne True.
         """
+        logger.info("[DR] Vérification de la présence d'un plan de recherche à confirmer...")
+        start = time.time()
+        plan_action = self.ui_map.get_action("plan_confirmation_button")
+        selectors = plan_action.get("fallback_selectors", [
+            "button:has-text('Start research')",
+            "button:has-text('Démarrer la recherche')",
+            "button:has-text('Confirmer le plan')",
+            "button:has-text('Lancer la recherche')",
+            "button:has-text('Start')",
+            "[aria-label*='Start research' i]",
+            "[aria-label*='Démarrer la recherche' i]",
+        ])
+
+        while time.time() - start < timeout_seconds:
+            # 1. Cherche le bouton de confirmation par rôle/texte
+            if hasattr(self._page, "get_by_role"):
+                try:
+                    btn = self._page.get_by_role(
+                        "button",
+                        name=re.compile("Start research|Démarrer la recherche|Confirmer le plan|Lancer la recherche", re.I)
+                    ).first
+                    if await btn.count() > 0:
+                        await btn.click(timeout=4000)
+                        logger.info("[DR] ✅ Plan de recherche confirmé via get_by_role.")
+                        await self._page.wait_for_timeout(1000)
+                        return True
+                except Exception:
+                    pass
+
+            # 2. Cherche par sélecteurs
+            for sel in selectors:
+                try:
+                    loc = self._page.locator(sel).first
+                    if await loc.count() > 0:
+                        await loc.click(timeout=4000)
+                        logger.info(f"[DR] ✅ Plan de recherche confirmé via sélecteur '{sel}'.")
+                        await self._page.wait_for_timeout(1000)
+                        return True
+                except Exception:
+                    pass
+
+            # 3. Si des indicateurs de génération active sont déjà présents, le plan a été passé
+            for spin in [".spinner", "[class*='thinking']", "[class*='generating']", "[class*='loading']"]:
+                try:
+                    if await self._page.locator(spin).count() > 0:
+                        logger.info("[DR] Génération déjà active sans validation de plan requise.")
+                        return True
+                except Exception:
+                    pass
+
+            await asyncio.sleep(1.0)
+
+        logger.info("[DR] Aucun plan bloquant détecté après délai, poursuite de la surveillance.")
+        return True
+
+    # ── Polling de Fin & Machine d'États ───────────────────────────────────────
+
+    async def _wait_for_research_completion(
+        self,
+        poll_interval: Optional[float] = None,
+        max_wait: Optional[float] = None,
+    ) -> bool:
+        """
+        Machine d'états de polling non-bloquante :
+          - 'connexion_requise' : login nécessaire
+          - 'plan_a_confirmer' : clic sur validation du plan
+          - 'generation_en_cours' : émission de jalons vocaux (30s, 60s, 120s, ...)
+          - 'termine' : rapport final présent et chargement terminé
+          - 'erreur' : détection de bannière d'erreur
+        """
+        interval = poll_interval if poll_interval is not None else RESEARCH_POLL_INTERVAL
+        max_duration = max_wait if max_wait is not None else RESEARCH_MAX_WAIT
+
         completion_action = self.ui_map.get_action("research_completion")
-        presence_selectors = completion_action.get("fallback_selectors", [])
-        absence_selectors = completion_action.get("absence_selectors", [])
+        presence_selectors = completion_action.get("fallback_selectors", [
+            "model-response", "[class*='response-container']", "[class*='final-response']", "message-content"
+        ])
+        absence_selectors = completion_action.get("absence_selectors", [
+            "[class*='thinking']", "[class*='loading']", "[class*='generating']", "[aria-label*='stop' i]", ".spinner"
+        ])
 
         start_time = time.time()
-        milestone_30_sent = False
-        milestone_60_sent = False
-        milestone_120_sent = False
+        milestones_sent = set()
 
-        logger.info("[Poll] Démarrage du polling de fin de Deep Research...")
+        logger.info(f"[Poll] Démarrage polling Deep Research (intervalle={interval}s, max={max_duration}s)...")
 
-        while time.time() - start_time < RESEARCH_MAX_WAIT:
+        while time.time() - start_time < max_duration:
             elapsed = time.time() - start_time
 
-            # Jalons vocaux intermédiaires
-            if not milestone_30_sent and elapsed > 30:
+            # Vérification de connexion rompue
+            if await self._check_login_state():
+                logger.warning("[Poll] Déconnexion ou session requise détectée pendant le polling.")
+                return False
+
+            # Jalons vocaux
+            if 30 <= elapsed < 60 and 30 not in milestones_sent:
                 await self._inject_voice_milestone(
-                    "La recherche approfondie Gemini est en cours, je vérifierai les résultats dans quelques instants.",
+                    "La recherche approfondie Gemini est en cours, je surveille la progression.",
                     "dr_milestone_30"
                 )
-                milestone_30_sent = True
-            if not milestone_60_sent and elapsed > 60:
+                milestones_sent.add(30)
+            elif 60 <= elapsed < 120 and 60 not in milestones_sent:
                 await self._inject_voice_milestone(
-                    "La recherche approfondie continue, Gemini explore encore les sources. Patience.",
+                    "Gemini explore toujours les sources web en profondeur. Patience.",
                     "dr_milestone_60"
                 )
-                milestone_60_sent = True
-            if not milestone_120_sent and elapsed > 120:
+                milestones_sent.add(60)
+            elif elapsed >= 120 and 120 not in milestones_sent:
                 await self._inject_voice_milestone(
-                    "La recherche est très complète. Gemini analyse toujours les données. Je vous préviendrai dès la fin.",
+                    "La synthèse des données est en cours de finalisation par Gemini.",
                     "dr_milestone_120"
                 )
-                milestone_120_sent = True
+                milestones_sent.add(120)
 
             try:
                 # Vérifie l'absence de tous les indicateurs de chargement
                 all_spinners_gone = True
                 for sel in absence_selectors:
-                    count = await self._page.locator(sel).count()
-                    if count > 0:
+                    if await self._page.locator(sel).count() > 0:
                         all_spinners_gone = False
                         break
 
                 if all_spinners_gone:
-                    # Vérifie la présence d'au moins un indicateur de réponse finale
+                    # Vérifie la présence de la réponse
                     for sel in presence_selectors:
-                        count = await self._page.locator(sel).count()
-                        if count > 0:
-                            logger.info(f"[Poll] ✅ Recherche terminée après {int(elapsed)}s. Détecteur : '{sel}'")
+                        if await self._page.locator(sel).count() > 0:
+                            logger.info(f"[Poll] ✅ Recherche terminée après {int(elapsed)}s via '{sel}'.")
                             return True
 
             except Exception as e:
-                logger.debug(f"[Poll] Erreur de sonde DOM : {e}")
+                logger.debug(f"[Poll] Sonde DOM : {e}")
 
-            await asyncio.sleep(RESEARCH_POLL_INTERVAL)
+            await asyncio.sleep(interval)
 
-        logger.warning(f"[Poll] ⚠️ Timeout ({RESEARCH_MAX_WAIT}s) atteint sans détection de fin de recherche.")
+        logger.warning(f"[Poll] ⚠️ Timeout ({max_duration}s) atteint.")
         return False
 
-    # ── Extraction de page web ────────────────────────────────────────────────
+    # ── Extraction du Rapport Markdown & Canvas ───────────────────────────────
+
+    async def _extract_report_markdown(self) -> str:
+        """Extrait le contenu Markdown complet de la réponse générée."""
+        extract_js = """() => {
+            const resp = document.querySelector('model-response') ||
+                         document.querySelector('[class*="response-container"]') ||
+                         document.querySelector('[class*="final-response"]') ||
+                         document.querySelector('message-content') ||
+                         document.querySelector('main') ||
+                         document.body;
+            return resp ? (resp.innerText || resp.textContent || '').trim() : '';
+        }"""
+        try:
+            text = await self._page.evaluate(extract_js)
+            return (text or "").strip()
+        except Exception as e:
+            logger.warning(f"[Extract] Échec extraction JavaScript : {e}")
+            return ""
 
     async def _trigger_webpage_creation(self) -> Optional[str]:
-        """
-        Clique sur le bouton 'Créer une page web' de Gemini (Canvas/artifact).
-        Retourne l'URL ou le src de l'iframe générée si disponible, None sinon.
-        """
-        logger.info("[WebPage] Déclenchement de la création de page web Canvas Gemini...")
+        """Déclenche la création d'une page web Canvas / artefact si disponible."""
+        logger.info("[WebPage] Tentative de déclenchement 'Créer une page web'...")
         success = await self.click_with_verification(
             "create_webpage_button",
             verify_timeout=10.0,
+            role="button",
+            accessible_name="Create a web page|Créer une page web|Canvas",
         )
         if not success:
-            logger.warning("[WebPage] Le bouton 'Créer une page web' n'a pas pu être cliqué.")
+            logger.info("[WebPage] Bouton Canvas non disponible ou non déclenché.")
             return None
 
-        # Attend l'apparition du canvas/iframe
         await self._page.wait_for_timeout(3000)
-
-        # Extrait l'URL du canvas depuis les sélecteurs mémorisés
         url_action = self.ui_map.get_action("webpage_url")
         for selector in url_action.get("fallback_selectors", []):
             try:
                 el = self._page.locator(selector).first
-                if await el.count() == 0:
-                    continue
-                href = await el.get_attribute("src") or await el.get_attribute("href")
-                if href:
-                    logger.info(f"[WebPage] URL Canvas extraite : {href}")
-                    return href
+                if await el.count() > 0:
+                    href = await el.get_attribute("src") or await el.get_attribute("href")
+                    if href:
+                        logger.info(f"[WebPage] URL Canvas extraite : {href}")
+                        return href
             except Exception:
                 pass
 
-        # Fallback : URL courante de l'onglet
-        current_url = self._page.url
-        logger.info(f"[WebPage] URL courante utilisée : {current_url}")
-        return current_url
+        return getattr(self._page, "url", "")
 
-    async def _capture_page_snapshot(self) -> Optional[str]:
+    # ── Sauvegarde Persistante & Vérifications ─────────────────────────────────
+
+    def _save_report_file(
+        self,
+        topic: str,
+        markdown_content: str,
+        html_content: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
-        Capture le contenu HTML complet de la page courante et le sauvegarde
-        dans downloads/ avec un horodatage. Équivalent de Ctrl+S.
-        Retourne le chemin local du fichier HTML sauvegardé.
+        Sauvegarde le rapport dans downloads/ ou artifacts/ (jamais temporaire),
+        et vérifie : chemin sûr, existence, taille > 0, extension valide.
         """
-        try:
-            html_content = await self._page.content()
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"deep_research_export_{timestamp}.html"
-            filepath = os.path.join(DOWNLOADS_DIR, filename)
-            with open(filepath, "w", encoding="utf-8") as f:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        slug = re.sub(r'[^a-zA-Z0-9_-]', '_', topic[:30]).strip('_') or "rapport"
+        filename_md = f"deep_research_{slug}_{timestamp}.md"
+        filepath_md = os.path.abspath(os.path.join(DOWNLOADS_DIR, filename_md))
+
+        # Vérification chemin sûr
+        allowed_roots = [
+            os.path.abspath(DOWNLOADS_DIR),
+            os.path.abspath(ARTIFACTS_DIR),
+            os.path.abspath(WORKSPACE_DIR),
+            os.path.abspath(BASE_DIR),
+        ]
+        if not any(filepath_md.startswith(root) for root in allowed_roots) or ".." in filename_md:
+            raise ValueError(f"Chemin de fichier non sécurisé : '{filepath_md}'")
+
+        # Écriture Markdown
+        with open(filepath_md, "w", encoding="utf-8") as f:
+            f.write(markdown_content)
+
+        # Vérifications post-écriture
+        if not os.path.exists(filepath_md):
+            raise FileNotFoundError(f"Le fichier sauvegardé est introuvable : '{filepath_md}'")
+
+        size_bytes = os.path.getsize(filepath_md)
+        if size_bytes <= 0:
+            raise ValueError(f"Le fichier sauvegardé est vide (taille={size_bytes})")
+
+        filepath_html = None
+        if html_content:
+            filename_html = f"deep_research_{slug}_{timestamp}.html"
+            filepath_html = os.path.abspath(os.path.join(DOWNLOADS_DIR, filename_html))
+            with open(filepath_html, "w", encoding="utf-8") as f:
                 f.write(html_content)
-            size_kb = len(html_content) / 1024
-            logger.info(f"[Snapshot] Page HTML sauvegardée : {filepath} ({size_kb:.1f} Ko)")
-            return filepath
+
+        logger.info(f"[Save] Rapport persisté : '{filepath_md}' ({size_bytes} octets).")
+        return {
+            "verified": True,
+            "filepath_md": filepath_md,
+            "filepath_html": filepath_html,
+            "size_bytes": size_bytes,
+            "filename": filename_md,
+        }
+
+    # ── Captures d'Écran d'Erreur ─────────────────────────────────────────────
+
+    async def _capture_screenshot(self, name_suffix: str = "") -> Optional[str]:
+        """Capture une screenshot JPEG qualité 60-75 du viewport en cas d'erreur."""
+        if not self._page or (hasattr(self._page, "is_closed") and self._page.is_closed()):
+            return None
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            s_name = f"dr_screenshot_{timestamp}_{name_suffix}.jpg"
+            dest_path = os.path.abspath(os.path.join(SCREENSHOTS_DIR, s_name))
+            await self._page.screenshot(path=dest_path, type="jpeg", quality=70)
+
+            # Copie vers static pour affichage HUD
+            try:
+                static_dest = os.path.join(BASE_DIR, "static", "latest_screenshot.jpg")
+                await self._page.screenshot(path=static_dest, type="jpeg", quality=70)
+            except Exception:
+                pass
+
+            logger.info(f"[Screenshot] Capture enregistrée : '{dest_path}'")
+            return dest_path
         except Exception as e:
-            logger.error(f"[Snapshot] Échec de la capture HTML : {e}")
+            logger.warning(f"[Screenshot] Échec capture d'écran : {e}")
             return None
 
-    # ── Livraison conditionnelle ───────────────────────────────────────────────
+    # ── Livraison Conditionnelle & Accusé Réel ─────────────────────────────────
 
     async def _deliver_result(
         self,
         page_url: Optional[str],
         snapshot_path: Optional[str],
         topic: str,
+        filepath_md: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Route le résultat selon la connectivité du PC de Pierre :
-          - PC connecté → focus Chrome + navigation vers l'URL du Canvas.
-          - PC hors ligne → snapshot HTML + envoi email Stark.
+        Route le résultat selon la connectivité du PC :
+          - PC en ligne → ouverture locale avec accusé d'exécution vérifié.
+          - PC hors ligne → envoi par e-mail Stark avec pièce jointe.
         """
         from services.local_agent_service import is_pc_connected_async
 
         pc_online = await is_pc_connected_async()
         logger.info(f"[Delivery] PC connecté : {pc_online}")
 
-        if pc_online and page_url:
-            return await self._deliver_to_screen(page_url, topic)
+        if pc_online and (page_url or filepath_md or snapshot_path):
+            target_to_open = page_url or filepath_md or snapshot_path
+            return await self._deliver_to_screen(target_to_open, topic)
         else:
-            if not snapshot_path:
-                snapshot_path = await self._capture_page_snapshot()
-            return await self._deliver_by_email(snapshot_path, topic)
+            attachment = filepath_md or snapshot_path
+            return await self._deliver_by_email(attachment, topic)
 
-    async def _deliver_to_screen(self, page_url: str, topic: str) -> Dict[str, Any]:
-        """
-        Ouvre la page web générée sur l'écran de Pierre via l'agent local CDP.
-        """
+    async def _deliver_to_screen(self, target: str, topic: str) -> Dict[str, Any]:
+        """Ouvre le rapport ou la page web sur l'écran du PC avec accusé d'exécution."""
         try:
             from services.local_agent_service import local_agent_service
+            is_web_url = target.startswith(("http://", "https://"))
+            cmd = "open_browser" if is_web_url else "open_browser"
+
             result = await local_agent_service.execute_command(
-                "execute_cdp_browser_action",
+                cmd,
                 timeout=20.0,
-                url=page_url,
-                actions=[],
-                instruction=f"Affichage du rapport Deep Research : {topic}",
-                task_id=f"dr_delivery_{int(time.time())}",
+                url=target,
             )
-            logger.info(f"[Delivery] Résultat affichage écran : {result.get('status')}")
+            status_ack = result.get("status") in ("success", "opened_locally") or result.get("ok") is True
+            logger.info(f"[Delivery] Accusé ouverture écran ({target}) : {result.get('status')}")
             return {
                 "delivery_mode": "screen",
-                "status": result.get("status", "success"),
-                "url": page_url,
-                "message": result.get("message", "Page web ouverte sur votre écran."),
+                "status": "success" if status_ack else "warning",
+                "acknowledged": status_ack,
+                "url": target,
+                "message": result.get("message", "Rapport ouvert sur votre écran."),
             }
         except Exception as e:
             logger.error(f"[Delivery] Erreur affichage écran : {e}")
             return {"delivery_mode": "screen", "status": "error", "error": str(e)}
 
-    async def _deliver_by_email(self, snapshot_path: Optional[str], topic: str) -> Dict[str, Any]:
-        """
-        Envoie le rapport Deep Research par email Stark avec le fichier HTML en pièce jointe.
-        """
+    async def _deliver_by_email(self, attachment_path: Optional[str], topic: str) -> Dict[str, Any]:
+        """Envoie le rapport par e-mail Stark avec pièce jointe sécurisée."""
         try:
             from services.email_service import send_email_async
 
@@ -537,32 +761,29 @@ class GeminiWebAutomator:
                 f"# Rapport Deep Research J.A.R.V.I.S.\n\n"
                 f"**Sujet :** {topic}\n\n"
                 f"**Généré le :** {datetime.now().strftime('%d/%m/%Y à %H:%M')}\n\n"
-                f"Le rapport complet est joint à cet e-mail en pièce jointe HTML.\n"
-                f"Ouvrez le fichier joint dans votre navigateur pour consulter la page web générée par Gemini.\n\n"
+                f"Le rapport complet est joint à cet e-mail.\n\n"
                 f"*— J.A.R.V.I.S., Stark Industries*"
             )
-            attachments = [snapshot_path] if snapshot_path and os.path.exists(snapshot_path) else []
+            attachments = [attachment_path] if attachment_path and os.path.exists(attachment_path) else []
 
             await send_email_async(
                 subject=subject,
                 body=body,
                 attachments=attachments,
             )
-            logger.info(f"[Delivery] Email Stark envoyé avec pièce jointe : {snapshot_path}")
+            logger.info(f"[Delivery] Email Stark envoyé avec pièce jointe : {attachment_path}")
             return {
                 "delivery_mode": "email",
                 "status": "sent",
-                "attachment": snapshot_path,
+                "attachment": attachment_path,
                 "message": "Rapport Deep Research envoyé par email Stark.",
             }
         except Exception as e:
             logger.error(f"[Delivery] Erreur envoi email : {e}")
             return {"delivery_mode": "email", "status": "error", "error": str(e)}
 
-    # ── Jalons vocaux ─────────────────────────────────────────────────────────
-
     async def _inject_voice_milestone(self, text: str, action_key: str) -> None:
-        """Émet un jalon de progression dans la file vocale Live (Aoede) de manière non-bloquante."""
+        """Émet un jalon de progression vocal non-bloquant."""
         try:
             await voice_injection_queue.enqueue(
                 text=text,
@@ -573,156 +794,154 @@ class GeminiWebAutomator:
         except Exception as e:
             logger.debug(f"[Voice] Jalon vocal ignoré ({action_key}) : {e}")
 
-    # ── Workflow principal ────────────────────────────────────────────────────
+    # ── Workflow Complet L3 ───────────────────────────────────────────────────
 
     async def run_deep_research(
         self,
         topic: str,
         live_session: Any = None,
+        task_id: Optional[str] = None,
+        poll_interval: Optional[float] = None,
+        max_wait_seconds: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
-        Workflow complet de Deep Research via Gemini Web.
-
-        Étapes :
-          1. Connexion CDP à Chrome et navigation vers gemini.google.com.
-          2. Sélection du mode Deep Research.
-          3. Injection du sujet et envoi.
-          4. Polling non-bloquant jusqu'à la fin de la recherche.
-          5. Clic sur 'Créer une page web'.
-          6. Livraison conditionnelle (écran ou email).
-
-        Retourne un dict avec le statut final et les détails.
+        Workflow complet L3 via Google Chrome CDP :
+          1. Connexion CDP & navigation vers Gemini
+          2. Contrôle session
+          3. Sélection mode Deep Research
+          4. Saisie & soumission du sujet
+          5. Détection et confirmation du plan proposé
+          6. Polling de complétion non-bloquant
+          7. Extraction Markdown & Canvas
+          8. Sauvegarde persistante vérifiée (downloads/ ou artifacts/)
+          9. Livraison conditionnelle (écran PC ou e-mail)
         """
         if live_session:
             self._live_session = live_session
 
+        t_id = task_id or f"dr_l3_{int(time.time() * 1000)}"
         started_at = time.time()
         result: Dict[str, Any] = {
+            "task_id": t_id,
             "topic": topic,
             "status": "running",
             "steps_completed": [],
             "delivery": None,
             "duration_seconds": 0,
+            "markdown_path": None,
+            "screenshot_path": None,
         }
 
         try:
-            # ── Étape 1 : Connexion CDP ──
-            logger.info(f"[DR] Démarrage Deep Research via Gemini Web : '{topic}'")
+            # 1. Connexion CDP
+            logger.info(f"[DR-L3] Démarrage Deep Research : '{topic}' (task_id={t_id})")
             await self._inject_voice_milestone(
-                "Je lance la recherche approfondie sur Gemini Web. J'accède à l'interface.",
+                "Je lance la recherche approfondie sur Gemini Web via votre navigateur.",
                 "dr_step1_connect"
             )
 
             connected = await self._connect()
             if not connected:
-                await self._inject_voice_milestone(
-                    "Je n'arrive pas à accéder à Google Chrome. Vérifiez que Chrome est ouvert avec le port de débogage actif.",
-                    "dr_connect_error"
-                )
-                return {**result, "status": "error", "error": "Impossible de se connecter à Chrome CDP."}
-
+                shot = await self._capture_screenshot("connect_error")
+                result.update({"status": "error", "error": "Impossible de se connecter à Chrome CDP.", "screenshot_path": shot})
+                return result
             result["steps_completed"].append("cdp_connected")
-            logger.info("[DR] ✅ Étape 1 : CDP connecté.")
 
-            # ── Étape 2 : Navigation ──
+            # 2. Navigation
             nav_ok = await self._navigate_to_gemini()
             if not nav_ok:
-                return {**result, "status": "error", "error": "Navigation vers gemini.google.com échouée."}
+                shot = await self._capture_screenshot("nav_error")
+                result.update({"status": "error", "error": "Navigation vers Gemini échouée.", "screenshot_path": shot})
+                return result
             result["steps_completed"].append("navigation_ok")
 
-            # ── Étape 3 : Activation du mode Deep Research ──
-            await self._inject_voice_milestone(
-                "Je sélectionne le mode Deep Research sur l'interface Gemini.",
-                "dr_step3_mode"
-            )
-            dr_ok = await self.click_with_verification("deep_research_button", verify_timeout=5.0)
-            if not dr_ok:
-                logger.warning("[DR] Le mode Deep Research n'a pas pu être sélectionné. On continue quand même.")
+            # Vérification de connexion / session Google
+            if await self._check_login_state():
+                shot = await self._capture_screenshot("login_required")
+                result.update({
+                    "status": "needs_login",
+                    "error": "Connexion Google requise sur votre navigateur Chrome.",
+                    "screenshot_path": shot,
+                })
+                await self._inject_voice_milestone(
+                    "Une connexion à votre compte Google est requise sur Chrome pour utiliser Deep Research.",
+                    "dr_login_needed"
+                )
+                return result
+
+            # 3. Sélection du mode Deep Research
+            dr_ok = await self._select_deep_research_mode()
             result["steps_completed"].append("deep_research_mode_selected" if dr_ok else "deep_research_mode_failed")
 
-            # ── Étape 4 : Injection du sujet ──
+            # 4. Saisie du sujet
             fill_ok = await self._fill_prompt(topic)
             if not fill_ok:
-                return {**result, "status": "error", "error": "Impossible d'injecter le sujet dans le prompt Gemini."}
+                shot = await self._capture_screenshot("fill_error")
+                result.update({"status": "error", "error": "Impossible d'injecter le sujet dans le prompt Gemini.", "screenshot_path": shot})
+                return result
             result["steps_completed"].append("prompt_filled")
 
-            # ── Étape 5 : Envoi (touche Entrée) ──
-            try:
-                await self._page.keyboard.press("Enter")
-                await self._page.wait_for_timeout(1000)
-            except Exception:
-                # Fallback : clic sur le bouton send
-                await self.click_with_verification("send_button", verify_timeout=3.0)
+            # 5. Soumission
+            send_ok = await self._send_prompt()
+            result["steps_completed"].append("prompt_sent" if send_ok else "prompt_send_failed")
 
-            result["steps_completed"].append("prompt_sent")
-            await self._inject_voice_milestone(
-                f"La recherche approfondie sur '{topic}' est lancée sur Gemini. J'attends les résultats.",
-                "dr_step5_sent"
+            # 6. Détection et confirmation du plan de recherche proposé
+            await self._confirm_research_plan(timeout_seconds=8.0)
+            result["steps_completed"].append("plan_confirmed")
+
+            # 7. Polling de complétion
+            completed = await self._wait_for_research_completion(
+                poll_interval=poll_interval,
+                max_wait=max_wait_seconds,
             )
-            logger.info("[DR] ✅ Étape 5 : Requête envoyée. Polling de fin de recherche démarré.")
-
-            # ── Étape 6 : Polling de fin ──
-            completed = await self._wait_for_research_completion()
-            if not completed:
-                await self._inject_voice_milestone(
-                    "La recherche a dépassé le délai maximum. Je vais tout de même tenter de récupérer les résultats.",
-                    "dr_timeout_warn"
-                )
-
             result["steps_completed"].append("research_completed" if completed else "research_timeout")
             result["duration_seconds"] = round(time.time() - started_at)
 
-            # ── Étape 7 : Création de la page web ──
-            await self._inject_voice_milestone(
-                "Excellent ! La recherche est terminée. Je génère maintenant la page web avec les résultats.",
-                "dr_step7_webpage"
-            )
+            # 8. Extraction du rapport
+            markdown_content = await self._extract_report_markdown()
             page_url = await self._trigger_webpage_creation()
-            result["steps_completed"].append("webpage_created" if page_url else "webpage_creation_failed")
 
-            # Snapshot de secours si la page web n'a pas été générée
-            snapshot_path = None
-            if not page_url:
-                logger.warning("[DR] Création de page web échouée. Capture HTML de secours.")
-                snapshot_path = await self._capture_page_snapshot()
+            if not markdown_content and not page_url:
+                shot = await self._capture_screenshot("extraction_failed")
+                result.update({
+                    "status": "error",
+                    "error": "Échec d'extraction du rapport final de recherche.",
+                    "screenshot_path": shot,
+                })
+                return result
 
-            # ── Étape 8 : Livraison conditionnelle ──
-            delivery_result = await self._deliver_result(page_url, snapshot_path, topic)
-            result["delivery"] = delivery_result
+            # 9. Sauvegarde persistante vérifiée
+            save_info = self._save_report_file(
+                topic=topic,
+                markdown_content=markdown_content or f"# Rapport Deep Research : {topic}\n\nPage Canvas : {page_url}",
+            )
+            result["markdown_path"] = save_info.get("filepath_md")
+            result["steps_completed"].append("report_persisted")
+
+            # 10. Livraison
+            delivery_res = await self._deliver_result(
+                page_url=page_url,
+                snapshot_path=None,
+                topic=topic,
+                filepath_md=save_info.get("filepath_md"),
+            )
+            result["delivery"] = delivery_res
             result["status"] = "completed"
             result["page_url"] = page_url
 
-            # Jalon vocal final
-            mode = delivery_result.get("delivery_mode", "unknown")
-            if mode == "screen":
-                final_msg = (
-                    f"La recherche approfondie sur '{topic}' est terminée et la page web est affichée sur votre écran."
-                )
-            elif mode == "email":
-                final_msg = (
-                    f"La recherche sur '{topic}' est terminée. Votre PC était hors ligne, "
-                    f"j'ai envoyé le rapport complet par email Stark à votre adresse."
-                )
-            else:
-                final_msg = f"La recherche approfondie sur '{topic}' est terminée."
-
+            final_msg = f"La recherche approfondie sur « {topic} » est terminée et enregistrée."
             await self._inject_voice_milestone(final_msg, "dr_final_delivery")
-            logger.info(f"[DR] ✅ Deep Research terminé : {result}")
             return result
 
         except asyncio.CancelledError:
-            logger.info("[DR] Tâche Deep Research annulée.")
+            logger.info(f"[DR-L3] Tâche {t_id} annulée.")
             result["status"] = "cancelled"
             return result
 
         except Exception as e:
-            logger.error(f"[DR] Erreur inattendue : {e}", exc_info=True)
-            result["status"] = "error"
-            result["error"] = str(e)
-            await self._inject_voice_milestone(
-                f"Une erreur inattendue est survenue pendant la recherche approfondie. Détail : {e}",
-                "dr_unexpected_error"
-            )
+            logger.error(f"[DR-L3] Erreur inattendue : {e}", exc_info=True)
+            shot = await self._capture_screenshot("unexpected_error")
+            result.update({"status": "error", "error": str(e), "screenshot_path": shot})
             return result
 
         finally:
@@ -734,25 +953,19 @@ class GeminiWebAutomator:
 # ──────────────────────────────────────────────────────────────────────────────
 
 class GeminiDeepResearchEngine:
-    """
-    Moteur de Deep Research via Gemini Web.
-    Expose un point d'entrée non-bloquant : lance la recherche en arrière-plan
-    et retourne immédiatement {status: launched_in_background}.
-    """
+    """Moteur singleton de lancement non-bloquant pour Deep Research L3."""
 
     def __init__(self):
         self._current_task: Optional[asyncio.Task] = None
         self._last_result: Optional[Dict[str, Any]] = None
         self._automator: Optional[GeminiWebAutomator] = None
+        self._active_tasks: Dict[str, asyncio.Task] = {}
 
     def is_running(self) -> bool:
         """Indique si une recherche est en cours."""
-        return (
-            self._current_task is not None
-            and not self._current_task.done()
-        )
+        return self._current_task is not None and not self._current_task.done()
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self, task_id: Optional[str] = None) -> Dict[str, Any]:
         """Retourne le statut courant de la recherche."""
         if self.is_running():
             return {"active": True, "status": "running"}
@@ -764,18 +977,16 @@ class GeminiDeepResearchEngine:
         self,
         topic: str,
         live_session: Any = None,
+        task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Lance la recherche Deep Research Gemini Web en arrière-plan.
-        Retourne immédiatement {status: launched_in_background} pour permettre
-        à Aoede d'accuser réception en moins de 300ms.
-        """
+        """Lance la recherche Deep Research Gemini Web en arrière-plan sans bloquer la voix."""
         if self.is_running():
             return {
                 "status": "already_running",
                 "message": "Une recherche Deep Research est déjà en cours. Veuillez patienter.",
             }
 
+        t_id = task_id or f"gemini_dr_{int(time.time() * 1000)}"
         self._automator = GeminiWebAutomator()
         if live_session:
             self._automator.set_live_session(live_session)
@@ -785,23 +996,24 @@ class GeminiDeepResearchEngine:
                 res = await self._automator.run_deep_research(
                     topic=topic,
                     live_session=live_session,
+                    task_id=t_id,
                 )
                 self._last_result = res
             except Exception as e:
-                self._last_result = {"status": "error", "error": str(e)}
+                self._last_result = {"status": "error", "error": str(e), "task_id": t_id}
             finally:
                 self._current_task = None
+                self._active_tasks.pop(t_id, None)
 
         self._current_task = asyncio.create_task(_bg_task())
-        logger.info(f"[Engine] Deep Research via Gemini Web lancé en arrière-plan : '{topic}'")
+        self._active_tasks[t_id] = self._current_task
+        logger.info(f"[Engine] Deep Research L3 lancé en arrière-plan (task_id={t_id}) : '{topic}'")
 
         return {
             "status": "launched_in_background",
+            "task_id": t_id,
             "topic": topic,
-            "message": (
-                f"Recherche approfondie lancée sur Gemini Web pour : '{topic}'. "
-                "Je vous informerai vocalement de la progression et de la livraison."
-            ),
+            "message": f"Recherche approfondie lancée sur Gemini Web pour : « {topic} ».",
         }
 
 

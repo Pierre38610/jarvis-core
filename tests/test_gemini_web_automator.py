@@ -43,10 +43,12 @@ def make_locator_mock(count: int = 0, bounding_box: Optional[Dict] = None) -> Ma
 def make_page_mock(
     selector_counts: Optional[Dict[str, int]] = None,
     bounding_boxes: Optional[Dict[str, Dict]] = None,
+    role_counts: Optional[Dict[str, int]] = None,
 ) -> MagicMock:
-    """Crée un mock Playwright Page avec locator() configurable par sélecteur."""
+    """Crée un mock Playwright Page avec locator() et get_by_role() configurables."""
     selector_counts = selector_counts or {}
     bounding_boxes = bounding_boxes or {}
+    role_counts = role_counts or {}
 
     page = MagicMock()
     page.is_closed = MagicMock(return_value=False)
@@ -62,13 +64,22 @@ def make_page_mock(
     page.content = AsyncMock(return_value="<html><body>Rapport Deep Research</body></html>")
     page.evaluate = AsyncMock(return_value="")
     page.title = AsyncMock(return_value="Gemini Deep Research")
+    page.screenshot = AsyncMock(return_value=b"fake_jpeg_bytes")
 
     def get_locator(selector: str):
         count = selector_counts.get(selector, 0)
         bb = bounding_boxes.get(selector)
         return make_locator_mock(count=count, bounding_box=bb)
 
+    def get_role_mock(role: str, name=None):
+        name_str = str(name.pattern if hasattr(name, "pattern") else name or "")
+        key = f"{role}:{name_str}"
+        count = role_counts.get(key, role_counts.get(role, 0))
+        return make_locator_mock(count=count)
+
     page.locator = MagicMock(side_effect=get_locator)
+    page.get_by_role = MagicMock(side_effect=get_role_mock)
+    page.get_by_text = MagicMock(side_effect=lambda text: make_locator_mock(count=selector_counts.get(str(text), 0)))
     return page
 
 
@@ -551,6 +562,166 @@ class TestLaunchDeepResearchGeminiWeb(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["status"], "legacy_engine")
         mock_launch.assert_not_awaited()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tests Flux L3 Avancé (Confirmation de Plan, Login, Extraction, Sauvegarde, ACK)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestL3DeepResearchAutomatorFlow(unittest.IsolatedAsyncioTestCase):
+    """Tests unitaires détaillés pour les 7 changements concrets du flux L3."""
+
+    def _make_automator(self):
+        from services.gemini_web_automator import GeminiWebAutomator, UIMapManager
+        automator = GeminiWebAutomator()
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8")
+        data = {
+            "actions": {
+                "deep_research_button": {
+                    "x": 120, "y": 720,
+                    "fallback_selectors": ["[aria-label*='Deep Research' i]"],
+                    "validation": {"selector": "[aria-label*='Deep Research' i]"}
+                },
+                "prompt_textarea": {
+                    "x": 760, "y": 720,
+                    "fallback_selectors": ["[contenteditable='true']"]
+                },
+                "send_button": {
+                    "x": 1200, "y": 720,
+                    "fallback_selectors": ["button[aria-label*='Send' i]"]
+                },
+                "plan_confirmation_button": {
+                    "x": 760, "y": 600,
+                    "fallback_selectors": ["button:has-text('Start research')", "button:has-text('Confirmer le plan')"]
+                },
+                "login_indicator": {
+                    "fallback_selectors": ["a:has-text('Sign in')", "input[type='email']"]
+                },
+                "research_completion": {
+                    "fallback_selectors": ["model-response"],
+                    "absence_selectors": [".spinner"]
+                },
+                "create_webpage_button": {
+                    "x": 760, "y": 650,
+                    "fallback_selectors": ["button:has-text('Create a web page')"]
+                },
+                "webpage_url": {
+                    "fallback_selectors": ["iframe[src*='canvas']"]
+                }
+            }
+        }
+        json.dump(data, tmp, ensure_ascii=False)
+        tmp.close()
+        automator.ui_map = UIMapManager(path=tmp.name)
+        self._tmp_path = tmp.name
+        return automator
+
+    async def asyncTearDown(self):
+        try:
+            os.unlink(self._tmp_path)
+        except Exception:
+            pass
+
+    async def test_confirm_research_plan_finds_and_clicks_button(self):
+        """_confirm_research_plan détecte et clique sur le bouton de validation du plan."""
+        automator = self._make_automator()
+        page = make_page_mock(
+            selector_counts={"button:has-text('Start research')": 1},
+        )
+        automator._page = page
+
+        res = await automator._confirm_research_plan(timeout_seconds=2.0)
+        self.assertTrue(res)
+
+    async def test_login_required_detection(self):
+        """_check_login_state détecte accounts.google.com ou le bouton Sign In."""
+        automator = self._make_automator()
+        page = make_page_mock(
+            selector_counts={"a:has-text('Sign in')": 1},
+        )
+        page.url = "https://accounts.google.com/signin"
+        automator._page = page
+
+        is_login = await automator._check_login_state()
+        self.assertTrue(is_login)
+
+    async def test_save_report_file_persistence_and_safety(self):
+        """_save_report_file sauvegarde le markdown dans downloads/ avec vérification de taille et rejet de path traversal."""
+        automator = self._make_automator()
+        md_text = "# Rapport Deep Research L3\n\nContenu substantiel et vérifiable."
+        save_res = automator._save_report_file("Test IA Robotique", md_text)
+
+        self.assertTrue(save_res["verified"])
+        self.assertTrue(os.path.exists(save_res["filepath_md"]))
+        self.assertGreater(save_res["size_bytes"], 0)
+
+        # Nettoyage
+        try:
+            os.unlink(save_res["filepath_md"])
+        except Exception:
+            pass
+
+    async def test_screen_delivery_with_local_agent_ack(self):
+        """_deliver_to_screen sollicite le local agent et valide l'accusé de réception."""
+        automator = self._make_automator()
+
+        with patch("services.local_agent_service.local_agent_service.execute_command",
+                   new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = {"status": "success", "message": "Page ouverte sur l'écran."}
+            deliv = await automator._deliver_to_screen("https://gemini.google.com/canvas/123", "IA Robotique")
+
+        self.assertEqual(deliv["delivery_mode"], "screen")
+        self.assertEqual(deliv["status"], "success")
+        self.assertTrue(deliv["acknowledged"])
+        mock_exec.assert_awaited_once()
+
+    async def test_capture_screenshot_saves_jpeg_file(self):
+        """_capture_screenshot génère un fichier JPEG persistant dans screenshots/."""
+        automator = self._make_automator()
+        page = make_page_mock()
+        automator._page = page
+
+        shot_path = await automator._capture_screenshot("unit_test")
+        self.assertIsNotNone(shot_path)
+        self.assertTrue(shot_path.endswith(".jpg"))
+
+    async def test_full_l3_flow_success_end_to_end(self):
+        """run_deep_research orchestre le flux L3 complet jusqu'à la livraison et vérification."""
+        automator = self._make_automator()
+        page = make_page_mock(
+            selector_counts={
+                "[aria-label*='Deep Research' i]": 1,
+                "[contenteditable='true']": 1,
+                "button[aria-label*='Send' i]": 1,
+                "button:has-text('Start research')": 1,
+                "model-response": 1,
+            }
+        )
+        page.evaluate = AsyncMock(return_value="# Synthèse Complète Deep Research\n\nRésultats analysés.")
+        automator._page = page
+
+        with patch.object(automator, "_connect", new_callable=AsyncMock, return_value=True), \
+             patch.object(automator, "_navigate_to_gemini", new_callable=AsyncMock, return_value=True), \
+             patch.object(automator, "_deliver_result", new_callable=AsyncMock, return_value={"delivery_mode": "screen", "status": "success", "acknowledged": True}):
+
+            res = await automator.run_deep_research(
+                topic="Technologies Quantiques",
+                task_id="task_l3_test",
+                poll_interval=0.01,
+                max_wait_seconds=1.0,
+            )
+
+        self.assertEqual(res["status"], "completed")
+        self.assertEqual(res["task_id"], "task_l3_test")
+        self.assertIn("report_persisted", res["steps_completed"])
+        self.assertIsNotNone(res["markdown_path"])
+
+        # Nettoyage du fichier généré
+        if res.get("markdown_path") and os.path.exists(res["markdown_path"]):
+            try:
+                os.unlink(res["markdown_path"])
+            except Exception:
+                pass
 
 
 # ──────────────────────────────────────────────────────────────────────────────

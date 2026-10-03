@@ -25,9 +25,11 @@ from core.tools.dispatcher import dispatch_tool
 @pytest.fixture
 def mock_healing_workspace():
     """Crée un environnement temporaire simulant le workspace jarvis-core."""
-    scratch_dir = os.path.join(os.path.dirname(__file__), "_test_scratch")
+    import time, random
+    scratch_dir = os.path.join(os.path.dirname(__file__), "scratch_healing")
     os.makedirs(scratch_dir, exist_ok=True)
-    temp_dir = tempfile.mkdtemp(prefix="test_healing_ws_", dir=scratch_dir)
+    temp_dir = os.path.join(scratch_dir, f"ws_{int(time.time() * 1000)}_{random.randint(1000, 9999)}")
+    os.makedirs(temp_dir, exist_ok=True)
     services_dir = os.path.join(temp_dir, "services")
     core_tools_dir = os.path.join(temp_dir, "core", "tools")
     tests_dir = os.path.join(temp_dir, "tests")
