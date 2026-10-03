@@ -46,6 +46,7 @@ from core.shared_state import (
     notify_generation_chunk, notify_turn_complete, notify_playback_finished,
     notify_tool_started, notify_tool_completed, notify_user_speaking,
     notify_interrupted, wait_until_speech_finished, safe_send_live_client_content,
+    handle_user_barge_in,
 )
 from core.tools.declarations import get_tools_list
 from core.tools.dispatcher import dispatch_tool
@@ -593,6 +594,33 @@ async def device_voice_channel(websocket: WebSocket):
 
                         if not listening_active:
                             pre_listen_buffer.append(pcm_data)
+                            # Si l'enceinte est en train de parler et qu'une voix est détectée au micro avec AEC
+                            if speaking_state["active"] and _calculate_audio_rms(pcm_data) > RMS_VOICE_THRESHOLD:
+                                print(f"[DeviceVoice][DEBUG][{time.monotonic():.3f}] Barge-in détecté par RMS micro pendant la parole")
+                                await handle_user_barge_in(
+                                    session=session,
+                                    source="esp32",
+                                    reason="voice_rms_barge_in",
+                                    pacer=pacer,
+                                    speaking_state=speaking_state,
+                                    out_pcm_buffer=out_pcm_16k_buffer,
+                                    resampler=resampler,
+                                    websocket=websocket,
+                                    device_id=device_id,
+                                )
+                                _cancel_followup()
+                                listening_active = True
+                                listening_started_at = time.time()
+                                voice_detected_in_followup = True
+                                if session and pre_listen_buffer:
+                                    while pre_listen_buffer:
+                                        chunk_pcm = pre_listen_buffer.popleft()
+                                        try:
+                                            await session.send_realtime_input(
+                                                audio=types.Blob(data=chunk_pcm, mime_type=f"audio/pcm;rate={DEVICE_AUDIO_RATE_IN}")
+                                            )
+                                        except Exception as e:
+                                            print(f"[DeviceVoice] Erreur flush deque Gemini : {e}")
                             continue
 
                         if not session:
@@ -643,7 +671,7 @@ async def device_voice_channel(websocket: WebSocket):
                                         "channels": 1,
                                         "frame_duration": 60
                                     }
-                                }))
+                                    }))
 
                             # ─ listen : événements d'écoute XiaoZhi (detect, start, stop) ─
                             elif msg_type == "listen":
@@ -652,18 +680,24 @@ async def device_voice_channel(websocket: WebSocket):
                                     print(f"[DeviceVoice][DEBUG][{time.monotonic():.3f}] Réception detect (listen:{state})")
                                     awaiting_first_frame_after_detect = True
                                     awaiting_first_transcription = True
-                                    # Si Jarvis était en train de parler, interruption immédiate
-                                    if speaking_state["active"]:
-                                        await pacer.abort()
-                                        resampler.clear()
-                                        out_pcm_16k_buffer.clear()
-                                        speaking_state["active"] = False
-                                        notify_interrupted("user_barge_in")
+                                    if speaking_state["active"] or get_speech_state() == SpeechState.MODEL_SPEAKING:
+                                        await handle_user_barge_in(
+                                            session=session,
+                                            source="esp32",
+                                            reason=f"listen_{state}",
+                                            pacer=pacer,
+                                            speaking_state=speaking_state,
+                                            out_pcm_buffer=out_pcm_16k_buffer,
+                                            resampler=resampler,
+                                            websocket=websocket,
+                                            device_id=device_id,
+                                        )
+                                    else:
+                                        notify_user_speaking(True)
                                     _cancel_followup()
                                     listening_active = True
                                     listening_started_at = time.time()
                                     voice_detected_in_followup = True
-                                    notify_user_speaking()
                                     await broadcast_supervision()
                                     # Envoi immédiat du contenu du deque à Gemini dans l'ordre puis vidage
                                     if session and pre_listen_buffer:
@@ -680,6 +714,7 @@ async def device_voice_channel(websocket: WebSocket):
                                     _cancel_followup()
                                     listening_active = False
                                     pre_listen_buffer.clear()
+                                    notify_user_speaking(False)
                                     await broadcast_supervision()
                                     print(f"[DeviceVoice] 🔇 Fin écoute utilisateur")
 
@@ -688,17 +723,24 @@ async def device_voice_channel(websocket: WebSocket):
                                 print(f"[DeviceVoice][DEBUG][{time.monotonic():.3f}] Réception detect (start_listening)")
                                 awaiting_first_frame_after_detect = True
                                 awaiting_first_transcription = True
-                                if speaking_state["active"]:
-                                    await pacer.abort()
-                                    resampler.clear()
-                                    out_pcm_16k_buffer.clear()
-                                    speaking_state["active"] = False
-                                    notify_interrupted("user_barge_in")
+                                if speaking_state["active"] or get_speech_state() == SpeechState.MODEL_SPEAKING:
+                                    await handle_user_barge_in(
+                                        session=session,
+                                        source="esp32",
+                                        reason="start_listening",
+                                        pacer=pacer,
+                                        speaking_state=speaking_state,
+                                        out_pcm_buffer=out_pcm_16k_buffer,
+                                        resampler=resampler,
+                                        websocket=websocket,
+                                        device_id=device_id,
+                                    )
+                                else:
+                                    notify_user_speaking(True)
                                 _cancel_followup()
                                 listening_active = True
                                 listening_started_at = time.time()
                                 voice_detected_in_followup = True
-                                notify_user_speaking()
                                 await broadcast_supervision()
                                 if session and pre_listen_buffer:
                                     while pre_listen_buffer:
@@ -716,27 +758,37 @@ async def device_voice_channel(websocket: WebSocket):
                                 _cancel_followup()
                                 listening_active = False
                                 pre_listen_buffer.clear()
+                                notify_user_speaking(False)
                                 await broadcast_supervision()
                                 print(f"[DeviceVoice] 🔇 Fin écoute utilisateur")
 
                             # ─ abort : interruption XiaoZhi (barge-in / wake word) ───────
                             elif msg_type == "abort":
-                                await pacer.abort()
-                                resampler.clear()
-                                out_pcm_16k_buffer.clear()
-                                speaking_state["active"] = False
+                                await handle_user_barge_in(
+                                    session=session,
+                                    source="esp32",
+                                    reason=f"device_abort_{payload_msg.get('reason', 'none')}",
+                                    pacer=pacer,
+                                    speaking_state=speaking_state,
+                                    out_pcm_buffer=out_pcm_16k_buffer,
+                                    resampler=resampler,
+                                    websocket=websocket,
+                                    device_id=device_id,
+                                )
                                 _cancel_followup()
-                                listening_active = False
-                                notify_interrupted("user_barge_in")
-                                try:
-                                    from services.metrics_service import metrics_service
-                                    metrics_service.record_speech_cut(
-                                        "user_barge_in",
-                                        details=f"Device abort reason={payload_msg.get('reason', '')}"
-                                    )
-                                except Exception:
-                                    pass
-                                print(f"[DeviceVoice] ⚡ Abort / Barge-in depuis le device")
+                                listening_active = True
+                                listening_started_at = time.time()
+                                voice_detected_in_followup = True
+                                if session and pre_listen_buffer:
+                                    while pre_listen_buffer:
+                                        chunk_pcm = pre_listen_buffer.popleft()
+                                        try:
+                                            await session.send_realtime_input(
+                                                audio=types.Blob(data=chunk_pcm, mime_type=f"audio/pcm;rate={DEVICE_AUDIO_RATE_IN}")
+                                            )
+                                        except Exception as e:
+                                            print(f"[DeviceVoice] Erreur flush deque Gemini : {e}")
+                                print(f"[DeviceVoice] ⚡ Abort / Barge-in depuis le device (écoute active)")
 
                             # ─ playback_finished : device a fini de jouer ─────
                             elif msg_type == "playback_finished":
@@ -747,16 +799,30 @@ async def device_voice_channel(websocket: WebSocket):
 
                             # ─ barge_in : interruption pendant lecture ────────
                             elif msg_type == "barge_in":
-                                await pacer.abort()
-                                resampler.clear()
-                                out_pcm_16k_buffer.clear()
-                                speaking_state["active"] = False
+                                await handle_user_barge_in(
+                                    session=session,
+                                    source="esp32",
+                                    reason="device_barge_in",
+                                    pacer=pacer,
+                                    speaking_state=speaking_state,
+                                    out_pcm_buffer=out_pcm_16k_buffer,
+                                    resampler=resampler,
+                                    websocket=websocket,
+                                    device_id=device_id,
+                                )
                                 _cancel_followup()
                                 listening_active = True
                                 listening_started_at = time.time()
                                 voice_detected_in_followup = True
-                                notify_interrupted("user_barge_in")
-                                notify_user_speaking()
+                                if session and pre_listen_buffer:
+                                    while pre_listen_buffer:
+                                        chunk_pcm = pre_listen_buffer.popleft()
+                                        try:
+                                            await session.send_realtime_input(
+                                                audio=types.Blob(data=chunk_pcm, mime_type=f"audio/pcm;rate={DEVICE_AUDIO_RATE_IN}")
+                                            )
+                                        except Exception as e:
+                                            print(f"[DeviceVoice] Erreur flush deque Gemini : {e}")
                                 print(f"[DeviceVoice] ⚡ Barge-in depuis le device")
 
                             # ─ ping : keepalive ───────────────────────────────

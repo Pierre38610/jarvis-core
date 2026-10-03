@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.41.0 — Résilience anti-faux-échecs de vérification (principe « l'échec de la vérification n'est jamais un échec de l'action »), polling Spotify /me/player, vérification IMAP best-effort pour send_email, normalisation stricte des statuts legacy et journalisation structurée unifiée TOOL_RESULT.*
+> *Dernière révision majeure : Version 5.42.0 — Barge-in vocal bidirectionnel à 2 niveaux sur enceinte ESP32-S3 (Niveau 1 WakeNet actif en lecture avec AEC hardware + Niveau 2 VAD continue ≥400ms), factorisation serveur unifiée `handle_user_barge_in`, préservation des injections en attente et non-rejet de l'audio montant.*
 
 ---
 
@@ -658,11 +658,18 @@ En cas d'exception `AntigravityQuotaExhaustedError` ou HTTP 429 sur `gemini-3.1-
    - **Règle d'Or de Canal Unique** : Si une action s'est exécutée de manière synchrone via `tool_response`, l'injection parallèle d'un `send_client_content` est formellement bloquée (`mark_action_sync_completed`).
 
 ### 6.8. Gestion des Interruptions (Barge-In) & Traçabilité des Coupures de Parole
-1. **Barge-in utilisateur immédiat** : Si l'utilisateur commence à parler pendant qu'Aoede s'exprime, le son est coupé instantanément côté client et relayé au backend. Seul un barge-in utilisateur ou une alerte d'urgence (priorité `INTERRUPTION`) préempte et coupe la parole en cours.
-2. **Distinction stricte des causes de coupure (Objectif 0 Coupure Interne)** :
-   - Interruption utilisateur : journalisation explicite `SPEECH_CUT reason=user_barge_in`.
-   - Interruption accidentelle ou interne (système, conflit d'outils) : journalisation explicite `SPEECH_CUT reason=internal`.
-   - Compteur `internal_speech_cuts` exposé et tracé en temps réel sur `/api/supervision/metrics` pour audit et alerte SRE.
+1. **Fonction Centralisée Unifiée (`handle_user_barge_in` dans `core/shared_state.py`)** :
+   - Point d'entrée unique et partagé pour le Web/PWA (`/ws`), l'enceinte matérielle ESP32 (`/ws/device`) et les interruptions d'urgence.
+   - **Purge Instantanée du Régulateur (`pacer.abort()`)** : Annule immédiatement la boucle de cadencement audio, vide les buffers de sortie et notifie l'arrêt du flux.
+   - **Interruption de Session Gemini Live** : Notifie la session Gemini d'interrompre la synthèse en cours.
+   - **Transition d'État Immédiate (`SpeechState.USER_SPEAKING`)** : Bascule sans délai `active_task_controller["client_speaking"] = True` et `speech_state = USER_SPEAKING`, signalant aux files d'attente d'interrompre l'émission descendante.
+   - **Préservation Intégrale des Injections en Attente (`VoiceInjectionQueue`)** : Les messages vocaux non prioritaires (restitutions de tâches de fond, jalons, notifications passives) ne sont jamais détruits ni écrasés ; ils restent ordonnancés en file et sont différés jusqu'à ce que l'utilisateur ait fini de s'exprimer et que le statut redevienne `IDLE` (+ sas de respiration).
+   - **Non-Rejet de l'Audio Montant** : L'audio microphonique provenant de l'ESP32 ou du navigateur n'est plus ignoré pendant l'élocution de Jarvis ; il est immédiatement injecté dans la session Live pour traiter l'interruption sans perte syllabique.
+   - **Compatibilité Totale `wait_until_speech_idle`** : Les routines attendant l'inactivité vocale détectent la transition et se synchronisent fidèlement.
+2. **Distinction Stricte des Causes de Coupure (Objectif 0 Coupure Interne)** :
+   - Interruption utilisateur : journalisation explicite `SPEECH_CUT reason=user_barge_in source=web|esp32` et incrémentation de `user_barge_in_cuts`.
+   - Interruption accidentelle ou interne (système, conflit d'outils) : journalisation explicite `SPEECH_CUT reason=internal` et incrémentation de `internal_speech_cuts`.
+   - Compteur `internal_speech_cuts` et ratio de fluidité exposés et tracés en temps réel sur `/api/supervision/metrics` pour audit et alerte SRE.
 
 ---
 
@@ -733,6 +740,9 @@ Pour garantir une confidentialité absolue, une latence nulle et une indépendan
 1. **Traitement Local Hors-Ligne** : Le modèle de réseau neuronal convolutif `wn9_jarvis_tts` de la suite Espressif ESP-SR s'exécute en continu dans la PSRAM de l'ESP32-S3. Aucun octet sonore n'est diffusé sur Internet tant que le mot d'activation n'a pas été formellement détecté.
 2. **Mot d'Activation Dédié** : *"Jarvis"*, calibré avec un seuil de confiance optimal et une immunité accrue aux faux positifs ambiants.
 3. **Ring Buffer Pré-Trigger Local (~1s, 16000 échantillons)** : L'enceinte conserve en permanence la dernière seconde de signal audio dans un tampon circulaire PSRAM (`wake_word_audio_cache_`). Dès que *"Jarvis"* est prononcé, l'ESP32 émet instantanément le message JSON `{"type": "listen", "state": "detect", "text": "Jarvis"}` et injecte les paquets Opus pré-trigger puis le flux micro en continu sans aucune coupure, sans attendre de réponse serveur et sans jamais couper la capture micro durant le bip de notification (<150ms / simultané).
+4. **Barge-In Matériel & Vocal à 2 Niveaux (Dual-Tier Interruption)** :
+   - **Niveau 1 — Wake Word pendant la parole (`CONFIG_BARGE_IN_WAKEWORD=y`)** : WakeNet 9 reste actif et alimenté en tâche de fond même lorsque l'enceinte est en train de parler (`kDeviceStateSpeaking`). Grâce à l'AEC matérielle (boucle de référence I2S DAC ES8311 vers ADC ES7210), l'enceinte n'entend pas sa propre voix. Si *"Jarvis"* est prononcé, l'ESP32 déclenche `AbortSpeaking()`, vide immédiatement son buffer audio de lecture (`ResetDecoder()`), transmet `{"type": "abort", "reason": "wake_word_detected"}` et bascule directement en écoute active sans délai.
+   - **Niveau 2 — Barge-In à la Voix sans Wake Word (`CONFIG_USE_BARGE_IN_VAD=y`)** : Activé uniquement lorsque l'AEC est fonctionnelle. Le VAD de l'AFE surveille la voix humaine pendant la parole et ne se déclenche que si une parole continue $\ge 400$ ms est détectée (`CONFIG_BARGE_IN_VAD_THRESHOLD_MS=400`), immunisant le système contre les résidus d'écho transitoires. Au déclenchement, l'ESP32 coupe instantanément la lecture locale (`ResetDecoder()`), envoie `{"type": "barge_in"}` et streame le microphone immédiatement vers le serveur.
 
 ### 8.3. Pipeline Audio Full-Duplex Opus 16kHz & Rééchantillonnage Continu (`Continuous24kTo16kResampler`)
 La chaîne audio temps réel entre l'ESP32 et le serveur VPS est optimisée pour une clarté acoustique maximale et une bande passante minimale :

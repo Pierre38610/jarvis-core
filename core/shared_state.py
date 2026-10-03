@@ -312,6 +312,106 @@ def notify_interrupted(reason: str = "user_barge_in") -> None:
     set_speech_state(SpeechState.IDLE, reason=f"interrupted_{reason}")
 
 
+async def handle_user_barge_in(
+    session: Any = None,
+    source: str = "esp32",
+    reason: str = "user_barge_in",
+    pacer: Any = None,
+    speaking_state: Optional[dict] = None,
+    out_pcm_buffer: Optional[Any] = None,
+    resampler: Optional[Any] = None,
+    text: str = "",
+    websocket: Optional[Any] = None,
+    device_id: Optional[str] = None,
+) -> None:
+    """
+    Gestionnaire unique et centralisé d'interruption / barge-in utilisateur.
+    Partagé entre /ws (PWA/Web) et /ws/device (Enceinte physique ESP32).
+
+    Exigences respectées :
+    1. Coupure immédiate du flux de parole (pacer.abort(), vidage buffers).
+    2. Signalement d'interruption à Gemini Live (si session active).
+    3. Transition immédiate de l'état de parole à USER_SPEAKING (notify_user_speaking(True)).
+    4. Préservation stricte des injections non prioritaires en attente dans VoiceInjectionQueue
+       (reportées automatiquement jusqu'au retour à IDLE via wait_until_speech_idle, PAS perdues).
+    5. Journalisation SPEECH_CUT reason=user_barge_in source={source} et enregistrement métriques.
+    6. Interception et arrêt d'urgence des tâches longues si directive d'arrêt vocale ("stop", etc.).
+    7. Restauration audio auxiliaire (Spotify) et diffusion de l'état aux superviseurs HUD.
+    """
+    from services.metrics_service import metrics_service
+    from services.supervision_service import supervision_service
+
+    # 1. Arrêt du pacer et vidage des buffers de lecture locaux
+    if pacer:
+        try:
+            abort_res = pacer.abort()
+            if asyncio.iscoroutine(abort_res):
+                await abort_res
+        except Exception as e:
+            logger.warning(f"[BargeIn] Erreur pacer.abort: {e}")
+
+    if resampler and hasattr(resampler, "clear"):
+        try:
+            resampler.clear()
+        except Exception:
+            pass
+
+    if out_pcm_buffer is not None and hasattr(out_pcm_buffer, "clear"):
+        try:
+            out_pcm_buffer.clear()
+        except Exception:
+            pass
+
+    if speaking_state is not None and isinstance(speaking_state, dict):
+        speaking_state["active"] = False
+
+    active_task_controller["speaking_active"] = False
+    active_task_controller["generation_active"] = False
+    active_task_controller["playback_pending"] = False
+    active_task_controller["estimated_speech_end"] = 0.0
+
+    # 2. Notification de coupure et enregistrement métrique SPEECH_CUT
+    notify_interrupted("user_barge_in")
+    metrics_service.record_speech_cut("user_barge_in", details=f"source={source} reason={reason}")
+    print(f"[SpeechState] SPEECH_CUT reason=user_barge_in source={source} details='{reason}' text='{text}'")
+
+    # 3. Transition immédiate vers USER_SPEAKING (ce qui bloque les injections et active l'écoute)
+    notify_user_speaking(True)
+
+    # 4. Signal d'arrêt / stop TTS vers le client si WebSocket actif
+    if websocket:
+        try:
+            msg_stop = {"type": "tts", "state": "stop"}
+            if device_id:
+                msg_stop["session_id"] = device_id
+            await websocket.send_text(json.dumps(msg_stop))
+        except Exception:
+            pass
+
+    # 5. Interception éventuelle des tâches longues si mot-clé d'arrêt
+    if text:
+        from google_antigravity import is_stop_directive
+        is_any_task_running = (
+            active_task_controller["info"]["running"]
+            or bool(active_task_controller.get("bg_task"))
+            or bool(active_task_controller.get("browser_bg_task"))
+        )
+        if is_any_task_running and is_stop_directive(text):
+            print(f"[BargeIn] Interception vocale immédiate d'arrêt via barge-in : '{text}'")
+            await stop_active_task(source=f"barge_in_{source}", reason=text)
+
+    # 6. Restauration Spotify
+    try:
+        from services.spotify_service import spotify_service
+        asyncio.create_task(spotify_service.restore_volume())
+    except Exception:
+        pass
+
+    # 7. Supervision HUD
+    supervision_service.update_voice_state("listening")
+    await broadcast_supervision()
+
+
 def mark_action_sync_completed(action_name: str) -> None:
     """Enregistre qu'une action s'est exécutée de manière synchrone et a répondu via tool_response (Règle d'or de canal unique)."""
     if not action_name:

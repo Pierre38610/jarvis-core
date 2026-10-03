@@ -33,6 +33,7 @@ from core.shared_state import (
     notify_generation_chunk, notify_turn_complete, notify_playback_finished,
     notify_tool_started, notify_tool_completed, notify_user_speaking,
     notify_interrupted, wait_until_speech_finished, wait_until_speech_idle, safe_send_live_client_content,
+    handle_user_barge_in,
 )
 from core.tools.declarations import get_tools_list
 from core.tools.dispatcher import dispatch_tool
@@ -495,19 +496,15 @@ async def voice_channel(websocket: WebSocket):
                                             print(f"[Paid Rejection Injection] {e}")
 
                             elif p_type == "user_interrupt":
-                                speaking_state["active"] = False
-                                notify_interrupted("user_barge_in")
-                                metrics_service.record_speech_cut("user_barge_in", details="WebSocket user_interrupt event")
                                 inter_txt = payload.get("text", "").strip()
-                                print(f"[Voice Channel] SPEECH_CUT reason=user_barge_in : '{inter_txt}'")
-                                is_any_task_running = (
-                                    active_task_controller["info"]["running"]
-                                    or bool(active_task_controller.get("bg_task"))
-                                    or bool(active_task_controller.get("browser_bg_task"))
+                                await handle_user_barge_in(
+                                    session=session,
+                                    source="pwa_voice",
+                                    reason="WebSocket user_interrupt event",
+                                    speaking_state=speaking_state,
+                                    text=inter_txt,
+                                    websocket=websocket,
                                 )
-                                if is_any_task_running and inter_txt and is_stop_directive(inter_txt):
-                                    print(f"[Voice Channel] Interception vocale immédiate d'arrêt via barge-in : '{inter_txt}'")
-                                    await stop_active_task(source="barge_in_voice", reason=inter_txt)
 
                                 supervision_service.update_voice_state("listening", model=active_live_model, is_paid=is_paid_live)
                                 await broadcast_supervision()

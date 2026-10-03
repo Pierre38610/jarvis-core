@@ -358,6 +358,10 @@ class VoiceInjectionQueue:
             "is_delivering": self._is_delivering
         }
 
+    def qsize(self) -> int:
+        """Retourne le nombre d'éléments en attente dans la file."""
+        return self._queue.qsize() if self._queue else 0
+
     def clear(self) -> None:
         """Vide la file d'attente (par exemple lors d'un arrêt d'urgence)."""
         if self._queue:
