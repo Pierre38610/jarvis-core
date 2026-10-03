@@ -24,6 +24,14 @@ class RoutingDecision:
     is_override: bool = False
     task_type: str = "medium"
 
+    @property
+    def tier(self) -> int:
+        if self.task_type in ("simple", "light"):
+            return 1
+        elif self.task_type in ("complex", "deep_research", "critical"):
+            return 3
+        return 2
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "model": self.model,
@@ -33,14 +41,17 @@ class RoutingDecision:
             "provider": self.provider,
             "context_window": self.context_window,
             "is_override": self.is_override,
-            "task_type": self.task_type
+            "task_type": self.task_type,
+            "tier": self.tier,
         }
 
 
 # Missions par type de complexité
 TASK_TYPE_MAPPING = {
-    # Simple (Tier 1)
+    # Simple (Tier 1 / L1)
     "simple": "simple",
+    "search_web": "simple",
+    "web_search": "simple",
     "doc_sync": "simple",
     "book_curation": "simple",
     "email_simple": "simple",
@@ -50,8 +61,10 @@ TASK_TYPE_MAPPING = {
     "diagnostic": "simple",
     "quick_answer": "simple",
 
-    # Medium (Tier 2)
+    # Medium (Tier 2 / L2)
     "medium": "medium",
+    "browser_task": "medium",
+    "run_browser_task": "medium",
     "transport_optimizer": "medium",
     "spreadsheet_modeler": "medium",
     "email_analysis": "medium",
@@ -62,8 +75,10 @@ TASK_TYPE_MAPPING = {
     "slides_schema": "medium",
     "presentation": "medium",
 
-    # Complex (Tier 3)
+    # Complex (Tier 3 / L3)
     "complex": "complex",
+    "launch_deep_research": "complex",
+    "lancer_mission_deep_research": "complex",
     "deep_research": "complex",
     "system_healing": "complex",
     "code_refactoring": "complex",
@@ -136,15 +151,15 @@ def select_model(
     # A. Intensité de réflexion
     if intensite_reflexion:
         ir = intensite_reflexion.lower().strip()
-        if any(k in ir for k in ["rapide", "low", "tier1", "economique"]):
+        if any(k in ir for k in ["rapide", "low", "tier1", "economique", "l1"]):
             m_info = model_registry.get_model("gemini-3.7-flash") or model_registry.get_model("gemini-3.8-flash")
             m_name = m_info.name if m_info else "gemini-3.7-flash"
             return _build_decision(m_name, "low", f"Override explicite intensité: {intensite_reflexion}", is_override=True, task_type="simple")
-        elif any(k in ir for k in ["tactique", "medium", "tier2"]):
+        elif any(k in ir for k in ["tactique", "medium", "tier2", "l2"]):
             m_info = model_registry.get_model("gemini-3.7-flash") or model_registry.get_model("gemini-3.8-flash")
             m_name = m_info.name if m_info else "gemini-3.7-flash"
             return _build_decision(m_name, "medium", f"Override explicite intensité: {intensite_reflexion}", is_override=True, task_type="medium")
-        elif any(k in ir for k in ["approfondie", "high", "tier3", "pro"]):
+        elif any(k in ir for k in ["approfondie", "high", "tier3", "pro", "l3"]):
             m_info = model_registry.get_model("gemini-3.1-pro") or model_registry.get_model("gemini-3.1-pro-preview")
             m_name = m_info.name if m_info else "gemini-3.1-pro"
             return _build_decision(m_name, "high", f"Override explicite intensité: {intensite_reflexion}", is_override=True, task_type="complex")
@@ -167,17 +182,18 @@ def select_model(
             m_name = m_info.name if m_info else "gemini-3.7-flash"
             return _build_decision(m_name, eff, f"Override utilisateur Flash: {user_preference}", is_override=True, task_type="medium")
 
-    # C. Signaux vocaux dans query
-    if query:
-        q_lower = query.lower()
+    # C. Signaux vocaux dans query ou task (si task est une chaîne)
+    text_to_check = query or (task if isinstance(task, str) else "")
+    if text_to_check:
+        q_lower = text_to_check.lower()
         if any(sig in q_lower for sig in ["avec claude", "utilise claude", "mode claude", "sonnet"]):
             m_info = model_registry.get_model("claude-3-7-sonnet")
             m_name = m_info.name if m_info else "claude-3-7-sonnet"
             return _build_decision(m_name, None, "Override vocal: demande explicite de Claude", is_override=True, task_type="code")
-        if any(sig in q_lower for sig in ["passe rapide", "mode rapide", "sans réfléchir", "juste un résumé", "check rapide"]):
-            return _build_decision("gemini-3.7-flash", "low", "Override vocal: consigne de rapidité", is_override=True, task_type="simple")
-        if any(sig in q_lower for sig in ["analyse approfondie", "réflexion maximale", "mode pro", "haute ingénierie", "délibération complète"]):
-            return _build_decision("gemini-3.1-pro", "high", "Override vocal: consigne de réflexion approfondie", is_override=True, task_type="complex")
+        if any(sig in q_lower for sig in ["fais vite", "passe rapide", "mode rapide", "en rapide", "sans réfléchir", "juste un résumé", "check rapide", "en 2 secondes"]):
+            return _build_decision("gemini-3.7-flash", "low", "Override vocal: consigne de rapidité L1 ('fais vite')", is_override=True, task_type="simple")
+        if any(sig in q_lower for sig in ["analyse approfondie", "analyse en profondeur", "recherche approfondie", "réflexion maximale", "prends tout ton temps", "sources exhaustives", "rapport complet", "mode pro", "haute ingénierie", "délibération complète"]):
+            return _build_decision("gemini-3.1-pro", "high", "Override vocal: consigne de réflexion approfondie L3 ('analyse en profondeur')", is_override=True, task_type="complex")
 
     # ─── 2. Routage par type de tâche & complexité ───
     task_type = _extract_task_type(task)

@@ -15,12 +15,25 @@ from services.model_routing.prompt_builder import (
     STANDARD_JSON_SCHEMA
 )
 
+from services.search_router import (
+    SearchRoutingDecision,
+    route_search_intent,
+    acquire_search_lock,
+    release_search_lock,
+    is_search_in_progress,
+)
+
 __all__ = [
     "ModelInfo",
     "ModelRegistry",
     "model_registry",
     "RoutingDecision",
     "select_model",
+    "SearchRoutingDecision",
+    "route_search_intent",
+    "acquire_search_lock",
+    "release_search_lock",
+    "is_search_in_progress",
     "AntigravityQuotaExhaustedError",
     "ModelCooldownManager",
     "cooldown_manager",

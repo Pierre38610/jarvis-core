@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.49.0 — Fiabilisation de bout en bout d'Antigravity CLI (P1) : préflight universel avec cache invalidable et destruction anti-zombie, validation stricte de commande sans flag --thinking, gestion robuste des timeouts et interruptions, séparation stdout/stderr, détection différentielle des quotas 429 vs erreurs d'exécution, priorisation agentique Flash low pour le raisonnement minimal Tier 1, et garantie absolue de non-divulgation des clés/secrets dans les logs et résultats.*
+> *Dernière révision majeure : Version 5.50.0 — Routeur de recherche déterministe & Détection du niveau cognitif vocal L1 par défaut (P2) : Arbitrage déterministe entre search_web (L1 factuel/court 15s, coût 0.00 $), browser_task (L2 navigation/panier 120s) et launch_deep_research (L3 multi-sources 600s), politique vocale avec défaut L1 systématique en cas d'ambiguïté et priorité absolue aux surcharges explicites (« fais vite » → L1 ; « analyse en profondeur » → L3 ; « analyse tactique » → L2), exécution économique L1 sans modèle Pro ni Deep Research non sollicité, verrous d'idempotence anti-double lancement pour les intentions de recherche et propagation dynamique du niveau cognitif dans l'instruction système Live et la télémétrie.*
 
 ---
 
@@ -616,7 +616,12 @@ La stratégie d'exécution et de repli de J.A.R.V.I.S. respecte une hiérarchie 
 6. **Prompts (`services/model_routing/prompt_builder.py`)** : formatage XML (Claude) / Markdown (Gemini), injection des templates `prompts/templates/` et parseur JSON tolérant.
 7. **Exécution Agentique (`services/agentic_runner.py`)** : `run_agentic()` construit la commande `agy` (`_build_command`), exige une sortie JSON stricte (`_extract_json_payload` + `_validate_json_schema`), détecte l'épuisement de quota (`_is_quota_error`) puis bascule sur `_execute_gemini_paid_fallback()` en s'appuyant sur `key_gate`.
 8. **Priorisation Tier 1 Minimal** : Dans `core/tools/dispatcher.py`, toute tâche agentique classée Tier 1 ou de complexité minimale utilise prioritairement Antigravity Flash low (`MODEL_FLASH`, `effort="low"`), tandis que les outils purement déterministes restent des appels directs.
-9. **Politique Vocale (`services/live_mode_policy.py`)** : `decide()` arbitre en direct le mode `thinking` vs `standard` du Live (hystérésis via `get_policy()`, détection du besoin agentique par `_detect_agentic_need()`) et journalise chaque décision dans `tier_routing_log` via `log_tier_routing_decision()`.
+9. **Politique Vocale & Détection L1/L2/L3 (`services/live_mode_policy.py`)** : `detect_vocal_cognitive_level()` résout de façon déterministe le palier cognitif de chaque tour de parole avec **L1 systématique en cas d'ambiguïté**. Les surcharges utilisateur explicites sont prioritaires (« fais vite », « passe rapide » → L1 ; « analyse tactique » → L2 ; « analyse en profondeur », « prends tout ton temps » → L3). `decide()` injecte `cognitive_level`, `cognitive_level_name` et `recommended_tools` directement dans l'instruction système Live et journalise chaque arbitrage dans PostgreSQL `tier_routing_log`.
+10. **Routeur de Recherche Déterministe (`services/search_router.py`)** : `route_search_intent(query)` arbitre strictement entre :
+    - `search_web` (L1, Tier 1, effort `low`, timeout 15s, coût 0.00 $) pour requêtes courtes/factuelles et cas ambigus ;
+    - `browser_task` (L2, Tier 2, effort `medium`, timeout 120s) pour navigation structurée, paniers, formulaires et réservations ;
+    - `launch_deep_research` (L3, Tier 3, effort `high`, timeout 600s) pour études de fond multi-sources et cartographies exhaustives.
+11. **Idempotence & Prévention Anti-Double Lancement** : Verrous en mémoire (`acquire_search_lock(query)`, `release_search_lock(query)`) avec normalisation Unicode et dé-ponctuation. Si une recherche identique est déjà en cours dans le pipeline, le dispatcheur intercepte l'appel concurrent et renvoie un `ToolResult.done` dédoublonné sans exécution redondante ni surconsommation réseau.
 
 ---
 

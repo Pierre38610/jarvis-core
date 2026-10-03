@@ -178,6 +178,14 @@ async def _build_system_instruction() -> str:
         f"- Conserve le tutoiement, le ton franc, complice et pragmatique sans servilité."
     )
 
+    cognitive_tier_instruction = (
+        f"\n\nPALIERS COGNITIFS (L1 / L2 / L3) ET SÉLECTION D'OUTILS :\n"
+        f"- L1 (Économie & Vitesse - Palier par Défaut) : Pour questions factuelles, météo, cours, faits récents, diagnostics légers et actions locales simples. Outil de recherche privilégié : 'search_web'. Si une tâche autonome minimale est requise, exécuter 'run_agentic_task' (modèle flash, effort low). Zéro modèle Pro, zéro navigateur Deep Research lourd pour L1.\n"
+        f"- L2 (Raisonnement Tactique & Navigation Web) : Pour navigation web, réservations (billets train, réservation), remplissage de panier, comparaison multi-critères et planification. Outils privilégiés : 'browser_task', 'transport_optimizer', 'spreadsheet_modeler', 'draft_email_response'.\n"
+        f"- L3 (Délibération Système 2 & Recherche Approfondie) : Pour études de fond exhaustives, rapports de marché multi-sources, cartographies complètes et auto-guérison système critique. Outils privilégiés : 'launch_deep_research', 'system_self_healing', 'ask_deep_reasoning'.\n"
+        f"- Règle anti-doublon : Ne lance jamais deux outils de recherche pour une même intention."
+    )
+
     current_dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     plan_st = get_active_plan_status_str()
     sub_st = get_active_subagents_status_str()
@@ -196,12 +204,12 @@ async def _build_system_instruction() -> str:
             )
         except Exception:
             base_prompt = str(template)
-        return f"{base_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}"
+        return f"{base_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}\n{cognitive_tier_instruction}"
 
     static = getattr(config, "JARVIS_SYSTEM_INSTRUCTION", "")
     full_prompt = f"{memory_context}\n\n{static}" if memory_context else static
     full_prompt = inject_turn_status_into_prompt(full_prompt)
-    return f"{full_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}"
+    return f"{full_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}\n{cognitive_tier_instruction}"
 
 
 
@@ -646,6 +654,12 @@ async def voice_channel(websocket: WebSocket):
                                     session_id="voice",
                                     speech_state=_speech_st,
                                 )
+
+                                # Propagation du palier cognitif L1/L2/L3 et observabilité
+                                active_task_controller["current_cognitive_level"] = decision.get("cognitive_level", 1)
+                                active_task_controller["current_level_name"] = decision.get("cognitive_level_name", "L1")
+                                active_task_controller["current_level_reason"] = decision.get("cognitive_level_reason", "")
+                                active_task_controller["current_tier_hint"] = decision.get("cognitive_level", 1)
 
                                 # 5. Journalisation systématique dans tier_routing_log
                                 asyncio.create_task(log_tier_routing_decision(user_speech_buffer, decision))

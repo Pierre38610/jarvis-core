@@ -52,6 +52,12 @@ from services.briefing_service import briefing_service
 from services.transport_service import transport_service
 from services.deep_research_service import deep_research_service
 from services.workspace_service import workspace_service
+from services.search_router import (
+    acquire_search_lock,
+    release_search_lock,
+    is_search_in_progress,
+    route_search_intent,
+)
 
 from core.shared_state import (
     active_task_controller,
@@ -103,9 +109,10 @@ def _infer_tool_tier_and_cost(
     cost = 0.0
 
     # 1. Tier cognitif
-    if name in ("generate_book_summary", "curation_livre_synthese", "list_workspace_files", "read_workspace_file", "search_workspace_files"):
+    if name in ("search_web", "web_search", "generate_book_summary", "curation_livre_synthese", "list_workspace_files", "read_workspace_file", "search_workspace_files", "get_system_status", "get_status"):
         tier = 1
     elif name in (
+        "browser_task", "run_browser_task",
         "draft_email_response", "triage_et_brouillon_email",
         "rechercher_train", "search_train_routes",
         "generate_spreadsheet", "generer_fichier_tableur"
@@ -119,9 +126,9 @@ def _infer_tool_tier_and_cost(
     elif name in ("ask_deep_reasoning", "deep_reasoning"):
         m_lower = str(args.get("model") or "").lower()
         ir_lower = str(args.get("intensite_reflexion") or "").lower()
-        if any(k in ir_lower for k in ["rapide", "tier1", "tier 1", "flash-low"]) or any(k in m_lower for k in ["flash-low", "low", "tier1"]):
+        if any(k in ir_lower for k in ["rapide", "tier1", "tier 1", "flash-low", "l1"]) or any(k in m_lower for k in ["flash-low", "low", "tier1"]):
             tier = 1
-        elif any(k in ir_lower for k in ["approfondie", "tier3", "tier 3", "pro-high", "fond", "ingenierie"]) or any(k in m_lower for k in ["pro-high", "tier3", "gemini-3.1-pro"]):
+        elif any(k in ir_lower for k in ["approfondie", "tier3", "tier 3", "pro-high", "fond", "ingenierie", "l3"]) or any(k in m_lower for k in ["pro-high", "tier3", "gemini-3.1-pro"]):
             tier = 3
         else:
             tier = 2
@@ -131,6 +138,9 @@ def _infer_tool_tier_and_cost(
             tier = res["cognitive_tier"]
         elif "tier" in res and isinstance(res["tier"], int):
             tier = res["tier"]
+
+    if tier is None:
+        tier = active_task_controller.get("current_cognitive_level", 1)
 
     # 2. Coût estimé
     if name in ("run_browser_task", "browser_task"):
@@ -147,7 +157,9 @@ def _infer_tool_tier_and_cost(
     elif name in ("launch_deep_research", "deep_research", "lancer_mission_deep_research"):
         cost = 0.05
     elif name in ("run_agentic_task", "run_agent_task"):
-        cost = 0.03
+        cost = 0.001 if tier == 1 else 0.03
+    elif name in ("search_web", "web_search"):
+        cost = 0.00
     elif is_paid_live:
         cost = 0.005
 
@@ -660,199 +672,222 @@ async def _execute_dispatch_tool(
         envoyer_email = bool(args.get("envoyer_email", False))
         destinataire_email = args.get("destinataire_email")
 
-        # 1. Tentative préalable via Browser Agent avec recipe="gemini_deep_research"
+        if not acquire_search_lock(consigne):
+            return ToolResult.done(
+                user_message=f"Une mission de recherche approfondie sur « {consigne} » est déjà en cours d'exécution.",
+                evidence="idempotent_dedup",
+                verified=True,
+                data={"status": "in_progress", "query": consigne}
+            )
+
         try:
-            bt_id = f"bt_dr_{int(time.time() * 1000)}"
-            dr_task = BrowserTask(
-                task_id=bt_id,
-                goal=consigne,
-                recipe="gemini_deep_research",
-            )
-            browser_res: ToolResult = await run_browser_agent_task(task=dr_task)
-            if browser_res and browser_res.is_success and dr_task.status != "failed":
-                if envoyer_email and browser_res.user_message:
-                    try:
-                        dest = destinataire_email or "pierrecassagnettes@gmail.com"
-                        await send_email_async(
-                            subject=f"[Deep Research] Synthèse : {consigne[:60]}",
-                            body=browser_res.user_message,
-                            to_email=dest,
-                        )
-                    except Exception as mail_err:
-                        logger.warning(f"[Deep Research Mail Error] {mail_err}")
-                return browser_res
-            else:
-                logger.info(f"[DeepResearch] Browser task gemini_deep_research non réussi ({dr_task.status if dr_task else 'unknown'}), repli vers le moteur Map-Reduce.")
-        except Exception as b_err:
-            logger.warning(f"[DeepResearch] Erreur browser task gemini_deep_research ({b_err}), repli vers le moteur Map-Reduce.")
-
-        # 2. Repli existant Map-Reduce (Phase 1: Prospecteur, Phase 2: Analyste, Phase 3: Synthèse)
-        cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
-        if not cli_ok:
-            return ToolResult.failed(
-                user_message="Antigravity CLI n'est pas disponible sur le serveur VPS.",
-                error_hint=cli_err or "cli_not_ready",
-                verified=False,
-            )
-
-        t_total_0 = time.perf_counter()
-        session_id = getattr(session, "id", None) if session else None
-        allow_paid = bool(active_task_controller.get("paid_consent_given", False))
-
-        # ── Phase 1 : Prospecteur (flash/medium) ──
-        p_agent_id = f"agy_prospector_{int(time.time()*1000)}"
-        t_p0 = time.perf_counter()
-        await spawn_subagent(
-            agent_id=p_agent_id,
-            name="Prospecteur",
-            role="Recherche & Faits",
-            activity="browsing",
-            task=f"Prospection : {consigne[:50]} (flash/medium)",
-            model=MODEL_FLASH,
-        )
-        try:
-            await update_subagent(p_agent_id, activity="browsing", task="Collecte exhaustive des sources & données...")
-            out_p: AgentOutput = await run_agentic(
-                role="prospector",
-                prompt=f"Collecte et prospection exhaustive de données et sources sur : {consigne}",
-                model=MODEL_FLASH,
-                effort="medium",
-                timeout=300,
-                session_id=session_id,
-                task_id=p_agent_id,
-                allow_paid_fallback=allow_paid,
-            )
-            dur_p = time.perf_counter() - t_p0
-            await complete_subagent(p_agent_id, summary=f"{out_p.conclusion[:70]} (flash/medium, durée: {dur_p:.1f}s)")
-            if out_p.status != "success":
-                return ToolResult.failed(
-                    user_message=out_p.conclusion or "Échec de la phase de prospection.",
-                    error_hint=out_p.error or "prospector_phase_failed",
-                    verified=False,
-                )
-        except Exception as e:
-            dur_p = time.perf_counter() - t_p0
-            await complete_subagent(p_agent_id, summary=f"Erreur: {str(e)[:70]} (durée: {dur_p:.1f}s)")
-            return ToolResult.failed(user_message=f"Erreur phase Prospecteur : {str(e)}", error_hint=str(e), verified=False)
-
-        # ── Phase 2 : Analyste (pro/high) ──
-        a_agent_id = f"agy_analyst_{int(time.time()*1000)}"
-        t_a0 = time.perf_counter()
-        await spawn_subagent(
-            agent_id=a_agent_id,
-            name="Analyste",
-            role="Critique & Logique",
-            activity="thinking",
-            task="Analyse critique & logique (pro/high)",
-            model=MODEL_PRO,
-        )
-        try:
-            await update_subagent(a_agent_id, activity="thinking", task="Analyse critique, détection de biais et triangulation...")
-            out_a: AgentOutput = await run_agentic(
-                role="critic",
-                prompt=(
-                    f"Analyse critique et triangulation pour la consigne : {consigne}\n"
-                    f"Données brutes recueillies par le prospecteur :\n{out_p.conclusion}\n"
-                    f"Sources : {json.dumps(out_p.sources, ensure_ascii=False)}"
-                ),
-                model=MODEL_PRO,
-                effort="high",
-                timeout=300,
-                session_id=session_id,
-                task_id=a_agent_id,
-                allow_paid_fallback=allow_paid,
-            )
-            dur_a = time.perf_counter() - t_a0
-            await complete_subagent(a_agent_id, summary=f"{out_a.conclusion[:70]} (pro/high, durée: {dur_a:.1f}s)")
-            if out_a.status != "success":
-                return ToolResult.failed(
-                    user_message=out_a.conclusion or "Échec de la phase d'analyse critique.",
-                    error_hint=out_a.error or "analyst_phase_failed",
-                    verified=False,
-                )
-        except Exception as e:
-            dur_a = time.perf_counter() - t_a0
-            await complete_subagent(a_agent_id, summary=f"Erreur: {str(e)[:70]} (durée: {dur_a:.1f}s)")
-            return ToolResult.failed(user_message=f"Erreur phase Analyste : {str(e)}", error_hint=str(e), verified=False)
-
-        # ── Phase 3 : Synthèse (pro/medium) ──
-        s_agent_id = f"agy_synthesis_{int(time.time()*1000)}"
-        t_s0 = time.perf_counter()
-        await spawn_subagent(
-            agent_id=s_agent_id,
-            name="Synthèse",
-            role="Rédaction & Artefact",
-            activity="coding",
-            task="Synthèse finale & livrable (pro/medium)",
-            model=MODEL_PRO,
-        )
-        try:
-            await update_subagent(s_agent_id, activity="coding", task="Rédaction du rapport de synthèse final...")
-            out_s: AgentOutput = await run_agentic(
-                role="synthesis",
-                prompt=(
-                    f"Consigne initiale : {consigne}\n"
-                    f"Données vérifiées de l'analyste :\n{out_a.conclusion}\n"
-                    f"Questions ouvertes restantes : {json.dumps(out_a.open_questions, ensure_ascii=False)}\n"
-                    f"Rédige une synthèse exécutive structurée et percutante."
-                ),
-                model=MODEL_PRO,
-                effort="medium",
-                timeout=300,
-                session_id=session_id,
-                task_id=s_agent_id,
-                allow_paid_fallback=allow_paid,
-            )
-            dur_s = time.perf_counter() - t_s0
-            await complete_subagent(s_agent_id, summary=f"{out_s.conclusion[:70]} (pro/medium, durée: {dur_s:.1f}s)")
-            if out_s.status != "success":
-                return ToolResult.failed(
-                    user_message=out_s.conclusion or "Échec de la phase de synthèse.",
-                    error_hint=out_s.error or "synthesis_phase_failed",
-                    verified=False,
-                )
-        except Exception as e:
-            dur_s = time.perf_counter() - t_s0
-            await complete_subagent(s_agent_id, summary=f"Erreur: {str(e)[:70]} (durée: {dur_s:.1f}s)")
-            return ToolResult.failed(user_message=f"Erreur phase Synthèse : {str(e)}", error_hint=str(e), verified=False)
-
-        total_duration = time.perf_counter() - t_total_0
-        all_sources = list(out_p.sources) + [s for s in out_a.sources if s not in out_p.sources]
-
-        if envoyer_email:
+            # 1. Tentative préalable via Browser Agent avec recipe="gemini_deep_research"
             try:
-                dest = destinataire_email or "pierrecassagnettes@gmail.com"
-                await send_email_async(
-                    subject=f"[Deep Research] Synthèse : {consigne[:60]}",
-                    body=out_s.conclusion,
-                    to_email=dest,
+                bt_id = f"bt_dr_{int(time.time() * 1000)}"
+                dr_task = BrowserTask(
+                    task_id=bt_id,
+                    goal=consigne,
+                    recipe="gemini_deep_research",
                 )
-            except Exception as mail_err:
-                print(f"[Deep Research Mail Error] {mail_err}")
+                browser_res: ToolResult = await run_browser_agent_task(task=dr_task)
+                if browser_res and browser_res.is_success and dr_task.status != "failed":
+                    if envoyer_email and browser_res.user_message:
+                        try:
+                            dest = destinataire_email or "pierrecassagnettes@gmail.com"
+                            await send_email_async(
+                                subject=f"[Deep Research] Synthèse : {consigne[:60]}",
+                                body=browser_res.user_message,
+                                to_email=dest,
+                            )
+                        except Exception as mail_err:
+                            logger.warning(f"[Deep Research Mail Error] {mail_err}")
+                    return browser_res
+                else:
+                    logger.info(f"[DeepResearch] Browser task gemini_deep_research non réussi ({dr_task.status if dr_task else 'unknown'}), repli vers le moteur Map-Reduce.")
+            except Exception as b_err:
+                logger.warning(f"[DeepResearch] Erreur browser task gemini_deep_research ({b_err}), repli vers le moteur Map-Reduce.")
 
-        return ToolResult.done(
-            user_message=out_s.conclusion,
-            evidence=f"3 phases (flash/medium -> pro/high -> pro/medium), Durée totale: {total_duration:.1f}s, Confiance: {out_s.confidence}",
-            verified=True,
-            data={
-                "conclusion": out_s.conclusion,
-                "confidence": out_s.confidence,
-                "sources": all_sources,
-                "artifacts": out_s.artifacts,
-                "open_questions": out_s.open_questions,
-                "phases": {
-                    "prospector": {"model": MODEL_FLASH, "effort": "medium", "duration_s": round(dur_p, 2)},
-                    "analyst": {"model": MODEL_PRO, "effort": "high", "duration_s": round(dur_a, 2)},
-                    "synthesis": {"model": MODEL_PRO, "effort": "medium", "duration_s": round(dur_s, 2)},
+            # 2. Repli existant Map-Reduce (Phase 1: Prospecteur, Phase 2: Analyste, Phase 3: Synthèse)
+            cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
+            if not cli_ok:
+                return ToolResult.failed(
+                    user_message="Antigravity CLI n'est pas disponible sur le serveur VPS.",
+                    error_hint=cli_err or "cli_not_ready",
+                    verified=False,
+                )
+
+            t_total_0 = time.perf_counter()
+            session_id = getattr(session, "id", None) if session else None
+            allow_paid = bool(active_task_controller.get("paid_consent_given", False))
+
+            # ── Phase 1 : Prospecteur (flash/medium) ──
+            p_agent_id = f"agy_prospector_{int(time.time()*1000)}"
+            t_p0 = time.perf_counter()
+            await spawn_subagent(
+                agent_id=p_agent_id,
+                name="Prospecteur",
+                role="Recherche & Faits",
+                activity="browsing",
+                task=f"Prospection : {consigne[:50]} (flash/medium)",
+                model=MODEL_FLASH,
+            )
+            try:
+                await update_subagent(p_agent_id, activity="browsing", task="Collecte exhaustive des sources & données...")
+                out_p: AgentOutput = await run_agentic(
+                    role="prospector",
+                    prompt=f"Collecte et prospection exhaustive de données et sources sur : {consigne}",
+                    model=MODEL_FLASH,
+                    effort="medium",
+                    timeout=300,
+                    session_id=session_id,
+                    task_id=p_agent_id,
+                    allow_paid_fallback=allow_paid,
+                )
+                dur_p = time.perf_counter() - t_p0
+                await complete_subagent(p_agent_id, summary=f"{out_p.conclusion[:70]} (flash/medium, durée: {dur_p:.1f}s)")
+                if out_p.status != "success":
+                    return ToolResult.failed(
+                        user_message=out_p.conclusion or "Échec de la phase de prospection.",
+                        error_hint=out_p.error or "prospector_phase_failed",
+                        verified=False,
+                    )
+            except Exception as e:
+                dur_p = time.perf_counter() - t_p0
+                await complete_subagent(p_agent_id, summary=f"Erreur: {str(e)[:70]} (durée: {dur_p:.1f}s)")
+                return ToolResult.failed(user_message=f"Erreur phase Prospecteur : {str(e)}", error_hint=str(e), verified=False)
+
+            # ── Phase 2 : Analyste (pro/high) ──
+            a_agent_id = f"agy_analyst_{int(time.time()*1000)}"
+            t_a0 = time.perf_counter()
+            await spawn_subagent(
+                agent_id=a_agent_id,
+                name="Analyste",
+                role="Critique & Logique",
+                activity="thinking",
+                task="Analyse critique & logique (pro/high)",
+                model=MODEL_PRO,
+            )
+            try:
+                await update_subagent(a_agent_id, activity="thinking", task="Analyse critique, détection de biais et triangulation...")
+                out_a: AgentOutput = await run_agentic(
+                    role="critic",
+                    prompt=(
+                        f"Analyse critique et triangulation pour la consigne : {consigne}\n"
+                        f"Données brutes recueillies par le prospecteur :\n{out_p.conclusion}\n"
+                        f"Sources : {json.dumps(out_p.sources, ensure_ascii=False)}"
+                    ),
+                    model=MODEL_PRO,
+                    effort="high",
+                    timeout=300,
+                    session_id=session_id,
+                    task_id=a_agent_id,
+                    allow_paid_fallback=allow_paid,
+                )
+                dur_a = time.perf_counter() - t_a0
+                await complete_subagent(a_agent_id, summary=f"{out_a.conclusion[:70]} (pro/high, durée: {dur_a:.1f}s)")
+                if out_a.status != "success":
+                    return ToolResult.failed(
+                        user_message=out_a.conclusion or "Échec de la phase d'analyse critique.",
+                        error_hint=out_a.error or "analyst_phase_failed",
+                        verified=False,
+                    )
+            except Exception as e:
+                dur_a = time.perf_counter() - t_a0
+                await complete_subagent(a_agent_id, summary=f"Erreur: {str(e)[:70]} (durée: {dur_a:.1f}s)")
+                return ToolResult.failed(user_message=f"Erreur phase Analyste : {str(e)}", error_hint=str(e), verified=False)
+
+            # ── Phase 3 : Synthèse (pro/medium) ──
+            s_agent_id = f"agy_synthesis_{int(time.time()*1000)}"
+            t_s0 = time.perf_counter()
+            await spawn_subagent(
+                agent_id=s_agent_id,
+                name="Synthèse",
+                role="Rédaction & Artefact",
+                activity="coding",
+                task="Synthèse finale & livrable (pro/medium)",
+                model=MODEL_PRO,
+            )
+            try:
+                await update_subagent(s_agent_id, activity="coding", task="Rédaction du rapport de synthèse final...")
+                out_s: AgentOutput = await run_agentic(
+                    role="synthesis",
+                    prompt=(
+                        f"Consigne initiale : {consigne}\n"
+                        f"Données vérifiées de l'analyste :\n{out_a.conclusion}\n"
+                        f"Questions ouvertes restantes : {json.dumps(out_a.open_questions, ensure_ascii=False)}\n"
+                        f"Rédige une synthèse exécutive structurée et percutante."
+                    ),
+                    model=MODEL_PRO,
+                    effort="medium",
+                    timeout=300,
+                    session_id=session_id,
+                    task_id=s_agent_id,
+                    allow_paid_fallback=allow_paid,
+                )
+                dur_s = time.perf_counter() - t_s0
+                await complete_subagent(s_agent_id, summary=f"{out_s.conclusion[:70]} (pro/medium, durée: {dur_s:.1f}s)")
+                if out_s.status != "success":
+                    return ToolResult.failed(
+                        user_message=out_s.conclusion or "Échec de la phase de synthèse.",
+                        error_hint=out_s.error or "synthesis_phase_failed",
+                        verified=False,
+                    )
+            except Exception as e:
+                dur_s = time.perf_counter() - t_s0
+                await complete_subagent(s_agent_id, summary=f"Erreur: {str(e)[:70]} (durée: {dur_s:.1f}s)")
+                return ToolResult.failed(user_message=f"Erreur phase Synthèse : {str(e)}", error_hint=str(e), verified=False)
+
+            total_duration = time.perf_counter() - t_total_0
+            all_sources = list(out_p.sources) + [s for s in out_a.sources if s not in out_p.sources]
+
+            if envoyer_email:
+                try:
+                    dest = destinataire_email or "pierrecassagnettes@gmail.com"
+                    await send_email_async(
+                        subject=f"[Deep Research] Synthèse : {consigne[:60]}",
+                        body=out_s.conclusion,
+                        to_email=dest,
+                    )
+                except Exception as mail_err:
+                    print(f"[Deep Research Mail Error] {mail_err}")
+
+            return ToolResult.done(
+                user_message=out_s.conclusion,
+                evidence=f"3 phases (flash/medium -> pro/high -> pro/medium), Durée totale: {total_duration:.1f}s, Confiance: {out_s.confidence}",
+                verified=True,
+                data={
+                    "conclusion": out_s.conclusion,
+                    "confidence": out_s.confidence,
+                    "sources": all_sources,
+                    "artifacts": out_s.artifacts,
+                    "open_questions": out_s.open_questions,
+                    "phases": {
+                        "prospector": {"model": MODEL_FLASH, "effort": "medium", "duration_s": round(dur_p, 2)},
+                        "analyst": {"model": MODEL_PRO, "effort": "high", "duration_s": round(dur_a, 2)},
+                        "synthesis": {"model": MODEL_PRO, "effort": "medium", "duration_s": round(dur_s, 2)},
+                    },
+                    "total_duration_s": round(total_duration, 2),
                 },
-                "total_duration_s": round(total_duration, 2),
-            },
-        )
+            )
+        finally:
+            release_search_lock(consigne)
 
 
     # ─── search_web ────────────────────────────────────────────────────────────
     elif name in ("search_web", "web_search"):
         query = args.get("query", "").strip()
+        if not acquire_search_lock(query):
+            return {
+                "status": "done",
+                "verified": True,
+                "evidence": "idempotent_dedup",
+                "user_message": f"Une recherche identique sur « {query} » est déjà en cours d'exécution.",
+                "query": query,
+                "best_url": "https://www.google.com",
+                "results": [],
+                "instruction_to_jarvis": "Une recherche similaire est déjà en cours de traitement, informe brièvement Pierre."
+            }
+
         supervision_service.start_action("search_web", "Recherche Internet", "search_web", query, "Playwright / DuckDuckGo", api_type="free", api_label="Clé Gratuite", cost_est="0.00 $")
         await broadcast_supervision()
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Recherche sur Internet : {query}", "voice": False}))
@@ -899,6 +934,8 @@ async def _execute_dispatch_tool(
                 "error_hint": str(e),
                 "instruction_to_jarvis": f"La recherche sur '{query}' a rencontré un souci ({e}). Informe brièvement Pierre avec ta voix Aoede."
             }
+        finally:
+            release_search_lock(query)
 
     # ─── run_browser_task ──────────────────────────────────────────────────────
     elif name == "run_browser_task":
@@ -3338,6 +3375,11 @@ async def _execute_dispatch_tool(
     # ─── Outil inconnu ─────────────────────────────────────────────────────────
     else:
         return {"status": "error", "message": f"Outil inconnu : {name}"}
+
+
+# Aliases pratiques pour les tests et modules tiers
+dispatch_tool_call = dispatch_tool
+execute_tool = dispatch_tool
 
 
 

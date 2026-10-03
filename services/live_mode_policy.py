@@ -58,6 +58,214 @@ def _count_plan_steps(plan_active: Any) -> int:
     return 0
 
 
+def detect_vocal_cognitive_level(
+    transcript: str = "",
+    plan_active: Any = 0,
+    recent_failures: int = 0,
+    tier_hint: int = 1,
+    user_preference: Optional[str] = None,
+    intensite_reflexion: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Détecte explicitement le niveau cognitif L1 / L2 / L3 à partir de l'intention vocale.
+    
+    Règles :
+    1. L1 par défaut en cas d'ambiguïté (économique & rapide, Flash low ou outil direct).
+    2. Overrides utilisateur explicites prioritaires ("fais vite" -> L1 ; "analyse en profondeur" -> L3 ; "tactique" -> L2).
+    3. Mots "rapide/simple", action locale courte ou question factuelle -> L1.
+    4. Comparaison multi-critères, planification >= 3 étapes, 2 échecs d'outils, navigation structurée -> L2.
+    5. "Recherche approfondie / rapport / sources exhaustives / étude de fond / auto-guérison" -> L3.
+    """
+    norm = _normalize_text(transcript)
+    ir = _normalize_text(intensite_reflexion or "")
+    up = _normalize_text(user_preference or "")
+    plan_steps = _count_plan_steps(plan_active)
+
+    # ─── 1. OVERRIDES UTILISATEUR EXPLICITES (PRIORITÉ ABSOLUE) ───
+    if ir:
+        if any(k in ir for k in ["rapide", "tier1", "tier 1", "flash-low", "economique", "l1", "vite"]):
+            return {
+                "level": 1,
+                "level_name": "L1",
+                "reason": f"Override explicite intensité L1 rapide ({intensite_reflexion})",
+                "is_override": True,
+                "model_tier": "flash-low",
+                "timeout_seconds": 120,
+                "recommended_tools": ["search_web", "run_agentic_task", "get_system_status", "list_workspace_files"],
+            }
+        elif any(k in ir for k in ["tactique", "tier2", "tier 2", "flash-high", "l2", "intermediaire"]):
+            return {
+                "level": 2,
+                "level_name": "L2",
+                "reason": f"Override explicite intensité L2 tactique ({intensite_reflexion})",
+                "is_override": True,
+                "model_tier": "flash-high",
+                "timeout_seconds": 300,
+                "recommended_tools": ["browser_task", "transport_optimizer", "spreadsheet_modeler", "draft_email_response"],
+            }
+        elif any(k in ir for k in ["approfondie", "tier3", "tier 3", "pro-high", "l3", "fond", "pro", "exhaustif"]):
+            return {
+                "level": 3,
+                "level_name": "L3",
+                "reason": f"Override explicite intensité L3 approfondie ({intensite_reflexion})",
+                "is_override": True,
+                "model_tier": "pro-high",
+                "timeout_seconds": 600,
+                "recommended_tools": ["launch_deep_research", "system_self_healing", "ask_deep_reasoning"],
+            }
+
+    if up:
+        if any(k in up for k in ["l1", "tier1", "tier 1", "rapide", "flash-low", "simple", "vite"]):
+            return {
+                "level": 1,
+                "level_name": "L1",
+                "reason": f"Override préférence utilisateur L1 ({user_preference})",
+                "is_override": True,
+                "model_tier": "flash-low",
+                "timeout_seconds": 120,
+                "recommended_tools": ["search_web", "run_agentic_task", "get_system_status", "list_workspace_files"],
+            }
+        elif any(k in up for k in ["l2", "tier2", "tier 2", "tactique", "browser", "navigation"]):
+            return {
+                "level": 2,
+                "level_name": "L2",
+                "reason": f"Override préférence utilisateur L2 ({user_preference})",
+                "is_override": True,
+                "model_tier": "flash-high",
+                "timeout_seconds": 300,
+                "recommended_tools": ["browser_task", "transport_optimizer", "spreadsheet_modeler", "draft_email_response"],
+            }
+        elif any(k in up for k in ["l3", "tier3", "tier 3", "deep", "deep_research", "pro", "approfondie"]):
+            return {
+                "level": 3,
+                "level_name": "L3",
+                "reason": f"Override préférence utilisateur L3 ({user_preference})",
+                "is_override": True,
+                "model_tier": "pro-high",
+                "timeout_seconds": 600,
+                "recommended_tools": ["launch_deep_research", "system_self_healing", "ask_deep_reasoning"],
+            }
+
+    if norm:
+        # Override explicite L1 vocal : "fais vite", "passe rapide", "sois bref"
+        if any(sig in norm for sig in [
+            "fais vite", "passe rapide", "mode rapide", "en rapide", "reponse rapide",
+            "sans reflechir", "juste un resume", "check rapide", "en vitesse", "sois bref",
+            "en 2 secondes", "en deux secondes", "ultra rapide", "court et simple"
+        ]):
+            return {
+                "level": 1,
+                "level_name": "L1",
+                "reason": "Override vocal explicite: consigne de rapidité L1 ('fais vite' / 'passe rapide')",
+                "is_override": True,
+                "model_tier": "flash-low",
+                "timeout_seconds": 120,
+                "recommended_tools": ["search_web", "run_agentic_task", "get_system_status", "list_workspace_files"],
+            }
+
+        # Override explicite L3 vocal : "analyse en profondeur", "prends tout ton temps"
+        if any(sig in norm for sig in [
+            "analyse en profondeur", "recherche approfondie", "analyse approfondie",
+            "etude approfondie", "prends tout ton temps", "reflexion maximale",
+            "analyse de fond", "etude de fond", "rapport complet", "sources exhaustives",
+            "mode pro", "deep research", "cartographie complete", "panorama complet"
+        ]):
+            return {
+                "level": 3,
+                "level_name": "L3",
+                "reason": "Override vocal explicite: consigne de réflexion approfondie L3 ('analyse en profondeur')",
+                "is_override": True,
+                "model_tier": "pro-high",
+                "timeout_seconds": 600,
+                "recommended_tools": ["launch_deep_research", "system_self_healing", "ask_deep_reasoning"],
+            }
+
+        # Override explicite L2 vocal : "analyse tactique"
+        if any(sig in norm for sig in ["analyse tactique", "passe tactique", "tactique", "intermediaire"]):
+            return {
+                "level": 2,
+                "level_name": "L2",
+                "reason": "Override vocal explicite: consigne tactique L2",
+                "is_override": True,
+                "model_tier": "flash-high",
+                "timeout_seconds": 300,
+                "recommended_tools": ["browser_task", "transport_optimizer", "spreadsheet_modeler", "draft_email_response"],
+            }
+
+    # ─── 2. DÉTECTION SÉMANTIQUE PAR INTENTION ───
+
+    # Signaux L3 : Recherche multi-sources longue, étude de fond, auto-guérison critique
+    if norm and any(sig in norm for sig in [
+        "deep research", "recherche approfondie", "rapport complet", "cartographie",
+        "etude de marche", "panorama complet", "veille sectorielle", "sources exhaustives",
+        "benchmark exhaustif", "system healing", "auto-reparation", "repare le systeme critique",
+        "refactoring lourd", "code refactoring", "architecture systeme"
+    ]):
+        return {
+            "level": 3,
+            "level_name": "L3",
+            "reason": "Intention détectée: délibération Système 2 / recherche approfondie L3",
+            "is_override": False,
+            "model_tier": "pro-high",
+            "timeout_seconds": 600,
+            "recommended_tools": ["launch_deep_research", "system_self_healing", "ask_deep_reasoning"],
+        }
+
+    # Signaux L2 : Planification, échecs répétés, navigation structurée, transport, tableur, e-mails
+    if (
+        plan_steps >= 3
+        or recent_failures >= 2
+        or tier_hint >= 2
+        or (norm and any(sig in norm for sig in [
+            "navigue", "va sur le site", "va sur", "ouvre le site", "panier", "reserve",
+            "reservation", "billet", "sncf", "trainline", "booking", "amazon", "fnac",
+            "formulaire", "tableur", "excel", "spreadsheet", "brouillon email", "redige un mail",
+            "optimise le trajet", "compare", "comparaison"
+        ]))
+    ):
+        r_reason = "Plan actif complexe (>=3 étapes)" if plan_steps >= 3 else (
+            f"Échecs consécutifs d'outils ({recent_failures})" if recent_failures >= 2 else (
+                "Intention tactique / comparaison multi-critères L2"
+            )
+        )
+        return {
+            "level": 2,
+            "level_name": "L2",
+            "reason": r_reason,
+            "is_override": False,
+            "model_tier": "flash-high",
+            "timeout_seconds": 300,
+            "recommended_tools": ["browser_task", "transport_optimizer", "spreadsheet_modeler", "draft_email_response"],
+        }
+
+    # Signaux L1 : Question factuelle directe, action locale courte, météo, cours, diagnostic simple
+    if norm and any(sig in norm for sig in [
+        "meteo", "temperature", "cours", "bourse", "score", "date", "definition",
+        "qui est", "c'est quoi", "qu'est-ce que", "horaire", "prix", "fait recent",
+        "actualite", "allume", "lance", "ouvre", "musique", "spotify", "stremio",
+        "doc sync", "documentation", "check rapide", "etat du pc"
+    ]):
+        return {
+            "level": 1,
+            "level_name": "L1",
+            "reason": "Intention détectée: fait direct / action locale simple L1",
+            "is_override": False,
+            "model_tier": "flash-low",
+            "timeout_seconds": 120,
+            "recommended_tools": ["search_web", "run_agentic_task", "get_system_status", "control_spotify"],
+        }
+
+    # ─── 3. DÉFAUT ÉCONOMIQUE EN CAS D'AMBIGUÏTÉ -> L1 ───
+    return {
+        "level": 1,
+        "level_name": "L1",
+        "reason": "Défaut économique L1 en cas d'ambiguïté (rapidité & économie)",
+        "is_override": False,
+        "model_tier": "flash-low",
+        "timeout_seconds": 120,
+        "recommended_tools": ["search_web", "run_agentic_task", "get_system_status", "list_workspace_files"],
+    }
+
+
 def _detect_agentic_need(
     transcript: str,
     force_agentic: Optional[bool] = None,
@@ -138,6 +346,8 @@ class LiveModePolicy:
         force_agentic: Optional[bool] = None,
         task_kind: Optional[str] = None,
         speech_state: Any = None,
+        user_preference: Optional[str] = None,
+        intensite_reflexion: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Décide du mode vocal et de l'activation agentique selon les règles ordonnées et l'hystérésis.
 
@@ -151,10 +361,25 @@ class LiveModePolicy:
             "announcement_phrase": str,
             "switch_deferred": bool,
             "target_mode": str,
+            "cognitive_level": 1 | 2 | 3,
+            "cognitive_level_name": "L1" | "L2" | "L3",
+            "cognitive_level_reason": str,
+            "recommended_tools": list[str],
+            "model_tier": str,
         }
         """
         norm = _normalize_text(transcript)
         plan_steps = _count_plan_steps(plan_active)
+
+        # ─── 0. DÉTECTION DU NIVEAU COGNITIF VOCAL (L1 par défaut) ───
+        cog_level_info = detect_vocal_cognitive_level(
+            transcript=transcript,
+            plan_active=plan_active,
+            recent_failures=recent_failures,
+            tier_hint=tier_hint,
+            user_preference=user_preference,
+            intensite_reflexion=intensite_reflexion,
+        )
 
         # ─── 1. DÉCISION DU MODE VOCAL CIBLE (TARGET_MODE) ───
         target_mode: str
@@ -284,6 +509,11 @@ class LiveModePolicy:
             "switch_source": switch_source,
             "announcement_phrase": announcement_phrase,
             "switch_deferred": switch_deferred,
+            "cognitive_level": cog_level_info["level"],
+            "cognitive_level_name": cog_level_info["level_name"],
+            "cognitive_level_reason": cog_level_info["reason"],
+            "recommended_tools": cog_level_info["recommended_tools"],
+            "model_tier": cog_level_info["model_tier"],
         }
 
 
@@ -310,6 +540,8 @@ def decide(
     task_kind: Optional[str] = None,
     session_id: Optional[str] = None,
     speech_state: Any = None,
+    user_preference: Optional[str] = None,
+    intensite_reflexion: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Point d'entrée modulaire pour l'évaluation de la politique Live."""
     policy = get_policy(session_id)
@@ -321,6 +553,8 @@ def decide(
         force_agentic=force_agentic,
         task_kind=task_kind,
         speech_state=speech_state,
+        user_preference=user_preference,
+        intensite_reflexion=intensite_reflexion,
     )
 
 
@@ -334,7 +568,7 @@ async def log_tier_routing_decision(
     """Journalise chaque décision dans PostgreSQL tier_routing_log sans bloquer."""
     try:
         from services.memory import memory_service
-        chosen_tier = 2 if decision.get("voice_mode") == VOICE_MODE_THINKING else 1
+        chosen_tier = decision.get("cognitive_level", 2 if decision.get("voice_mode") == VOICE_MODE_THINKING else 1)
         meta = {
             "voice_mode": decision.get("voice_mode"),
             "target_mode": decision.get("target_mode"),
@@ -342,11 +576,14 @@ async def log_tier_routing_decision(
             "task_kind": decision.get("task_kind"),
             "switch_source": decision.get("switch_source"),
             "switch_deferred": decision.get("switch_deferred"),
+            "cognitive_level": decision.get("cognitive_level_name", f"L{chosen_tier}"),
+            "cognitive_level_reason": decision.get("cognitive_level_reason", ""),
+            "model_tier": decision.get("model_tier", "flash-low"),
         }
         return await memory_service.log_tier_routing(
             query_text=query_text or "live_turn",
             chosen_tier=chosen_tier,
-            reason=decision.get("reason", "live_policy_decision"),
+            reason=decision.get("cognitive_level_reason") or decision.get("reason", "live_policy_decision"),
             final_tier=chosen_tier,
             latency_ms=latency_ms,
             override_manuel=override_manuel,
