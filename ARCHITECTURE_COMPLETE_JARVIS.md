@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.37.8 — Gestion de la fenêtre de follow-up vocal (`FOLLOWUP_WINDOW_S = 6s`) et timeout d'inactivité automatique (`SESSION_TIMEOUT_IDLE = 60s`) pour l'enceinte ESP32-S3 (`routers/device_voice.py`), émission du message de clôture JSON `{"type": "listen", "state": "stop", "session_id": "..."}` sur expiration ou seuil d'énergie RMS audio / transcription Gemini, remise à False robuste de `listening_active`, multi-sessions WebSocket concurrentes (PC + smartphone simultanés), isolation stricte du routage audio bidirectionnel, régulateur `DeviceAudioPacer`, rééchantillonneur continu 24k->16k et wake word hors-ligne `wn9_jarvis_tts`.*
+> *Dernière révision majeure : Version 5.37.9 — Buffer circulaire de pré-écoute PCM (~1,5s, 25 trames de 60ms) côté serveur (`routers/device_voice.py`) évitant toute perte de consigne parlée immédiatement après le mot d'activation ("Jarvis" sans pause), vidage FIFO immédiat à la réception de `listen:detect`/`start_listening` vers Gemini Live, logs horodatés haute précision (`time.monotonic()`), gestion de la fenêtre de follow-up vocal (`FOLLOWUP_WINDOW_S = 6s`) et timeout d'inactivité automatique (`SESSION_TIMEOUT_IDLE = 60s`) pour l'enceinte ESP32-S3.*
 
 ---
 
@@ -724,7 +724,8 @@ La chaîne audio temps réel entre l'ESP32 et le serveur VPS est optimisée pour
   3. Compression en trames Opus 60ms par l'encodeur matériel/logiciel ESP32.
   4. Transmission WSS binaire sur `/ws/device`.
   5. Décodage Opus côté VPS via `opuslib.Decoder(16000, 1)` vers du PCM 16kHz linéaire.
-  6. Injection directe dans la session Gemini Live Audio (`session.send_realtime_input`).
+  6. **Tampon Circulaire de Pré-Écoute (`collections.deque(maxlen=25)`)** : Hors période d'écoute (`listening_active = False`), les trames audio décodées ne sont pas jetées mais conservées en continu dans une file circulaire FIFO de 25 trames (~1,5 seconde). À la réception de l'événement de détection (`listen:detect`, `listen:start` ou `start_listening`), l'intégralité de ce buffer est immédiatement transmise dans l'ordre chronologique à `session.send_realtime_input` avant de traiter les trames suivantes, éliminant toute perte de début de phrase si l'utilisateur enchaîne sans pause (« Jarvis, quelle heure est-il ? »).
+  7. Injection continue dans la session Gemini Live Audio (`session.send_realtime_input`) avec horodatage de diagnostic haute précision (`time.monotonic()`).
 - **Sens Descendant (Gemini Live -> VPS -> Haut-Parleur ESP32)** :
   1. Gemini Live Audio produit des blocs de PCM 24kHz 16-bit mono de tailles variables.
   2. **Rééchantillonneur Continu de Phase (`Continuous24kTo16kResampler`)** :
@@ -757,7 +758,7 @@ L'implémentation respecte le standard d'échange bidirectionnel temps réel pou
             │◄── 4. JSON hello {transport: "websocket", audio_params} │
             │                                                         │
             │    [Veille Locale WakeNet 9 "Jarvis"]                   │
-            │─── 5. JSON listen {state: "detect", text: "Jarvis"} ───►│ (Init Session Gemini Live, listening_active=True)
+            │─── 5. JSON listen {state: "detect", text: "Jarvis"} ───►│ (Init Session Gemini Live, listening_active=True, Flush pre_listen_buffer FIFO)
             │─── 6. Binaire : 33 trames Opus pré-trigger (2.0s) ─────►│ (Decode Opus -> Send PCM)
             │─── 7. Binaire : Streaming continu Opus 16kHz ──────────►│
             │─── 8. JSON listen {state: "stop"} ─────────────────────►│
@@ -1298,7 +1299,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre profonde (`#070B14`, `#0B0F19`), cyan électrique Stark (`#38bdf8`, `#0284c7`), accents ambre et violet néon.
 - **Typographie** : Polices modernes géométriques sans-serif d'inspiration high-tech.
 - **Responsive PWA** : Conçue pour une expérience native sur smartphone (iOS Safari / Android Chrome) et desktop avec support PWA (`manifest.json`, installation sur écran d'accueil).
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.37.7 MULTI-SESSION WS & DIRECT AUDIO ROUTING`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.37.9 DEVICE PRE-LISTEN BUFFER & ZERO LOSS`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
@@ -1502,4 +1503,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.37.8.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.37.9.*

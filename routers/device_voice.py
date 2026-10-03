@@ -16,6 +16,7 @@ Canal unique     : si une session /ws (PWA) parle déjà, le device attend.
 
 import asyncio
 import base64
+import collections
 import json
 import math
 import struct
@@ -447,6 +448,9 @@ async def device_voice_channel(websocket: WebSocket):
     heartbeat_task: Optional[asyncio.Task] = None
     out_pcm_16k_buffer = bytearray()
     FRAME_BYTES_16K = 1920  # 60ms à 16kHz 16-bit mono = 960 échantillons = 1920 octets
+    pre_listen_buffer = collections.deque(maxlen=25)  # ~1.5s de buffer PCM (25 trames x 60ms)
+    awaiting_first_frame_after_detect = False
+    awaiting_first_transcription = False
 
     def _cancel_followup():
         nonlocal followup_task
@@ -459,6 +463,7 @@ async def device_voice_channel(websocket: WebSocket):
         _cancel_followup()
         if listening_active:
             listening_active = False
+            pre_listen_buffer.clear()
             await broadcast_supervision()
             try:
                 await websocket.send_text(json.dumps({
@@ -514,7 +519,7 @@ async def device_voice_channel(websocket: WebSocket):
 
         # ── Tâche : Device → Gemini Live (audio entrant + messages JSON) ────────
         async def device_to_gemini():
-            nonlocal listening_active, mac_address, listening_started_at, voice_detected_in_followup
+            nonlocal listening_active, mac_address, listening_started_at, voice_detected_in_followup, awaiting_first_frame_after_detect, awaiting_first_transcription
             try:
                 while True:
                     msg = await websocket.receive()
@@ -526,12 +531,6 @@ async def device_voice_channel(websocket: WebSocket):
                         raw = msg["bytes"]
                         if len(raw) > MAX_AUDIO_FRAME_BYTES:
                             print(f"[DeviceVoice] ⚠️ Trame trop grande ({len(raw)} B), ignorée")
-                            continue
-
-                        if not listening_active:
-                            continue  # On n'est pas en mode écoute, ignorer l'audio
-
-                        if not session:
                             continue
 
                         # Décodage Opus vers PCM 16kHz linéaire
@@ -546,6 +545,17 @@ async def device_voice_channel(websocket: WebSocket):
                                     pcm_data = opus_decoder.decode(raw, 320)
                                 except Exception:
                                     pcm_data = raw
+
+                        if not listening_active:
+                            pre_listen_buffer.append(pcm_data)
+                            continue
+
+                        if not session:
+                            continue
+
+                        if awaiting_first_frame_after_detect:
+                            print(f"[DeviceVoice][DEBUG][{time.monotonic():.3f}] 1re trame audio reçue/traitée après detect")
+                            awaiting_first_frame_after_detect = False
 
                         # Détection d'énergie vocale (RMS)
                         if _calculate_audio_rms(pcm_data) > RMS_VOICE_THRESHOLD:
@@ -591,6 +601,9 @@ async def device_voice_channel(websocket: WebSocket):
                             elif msg_type == "listen":
                                 state = payload_msg.get("state", "")
                                 if state in ("detect", "start"):
+                                    print(f"[DeviceVoice][DEBUG][{time.monotonic():.3f}] Réception detect (listen:{state})")
+                                    awaiting_first_frame_after_detect = True
+                                    awaiting_first_transcription = True
                                     # Si Jarvis était en train de parler, interruption immédiate
                                     if speaking_state["active"]:
                                         pacer.abort()
@@ -604,15 +617,29 @@ async def device_voice_channel(websocket: WebSocket):
                                     voice_detected_in_followup = True
                                     notify_user_speaking()
                                     await broadcast_supervision()
+                                    # Envoi immédiat du contenu du deque à Gemini dans l'ordre puis vidage
+                                    if session and pre_listen_buffer:
+                                        while pre_listen_buffer:
+                                            chunk_pcm = pre_listen_buffer.popleft()
+                                            try:
+                                                await session.send_realtime_input(
+                                                    audio=types.Blob(data=chunk_pcm, mime_type=f"audio/pcm;rate={DEVICE_AUDIO_RATE_IN}")
+                                                )
+                                            except Exception as e:
+                                                print(f"[DeviceVoice] Erreur flush deque Gemini : {e}")
                                     print(f"[DeviceVoice] 🎙️ Écoute active (state={state})")
                                 elif state == "stop":
                                     _cancel_followup()
                                     listening_active = False
+                                    pre_listen_buffer.clear()
                                     await broadcast_supervision()
                                     print(f"[DeviceVoice] 🔇 Fin écoute utilisateur")
 
                             # ─ start_listening : wake word détecté ───────────────────
                             elif msg_type == "start_listening":
+                                print(f"[DeviceVoice][DEBUG][{time.monotonic():.3f}] Réception detect (start_listening)")
+                                awaiting_first_frame_after_detect = True
+                                awaiting_first_transcription = True
                                 if speaking_state["active"]:
                                     pacer.abort()
                                     resampler.clear()
@@ -625,12 +652,22 @@ async def device_voice_channel(websocket: WebSocket):
                                 voice_detected_in_followup = True
                                 notify_user_speaking()
                                 await broadcast_supervision()
+                                if session and pre_listen_buffer:
+                                    while pre_listen_buffer:
+                                        chunk_pcm = pre_listen_buffer.popleft()
+                                        try:
+                                            await session.send_realtime_input(
+                                                audio=types.Blob(data=chunk_pcm, mime_type=f"audio/pcm;rate={DEVICE_AUDIO_RATE_IN}")
+                                            )
+                                        except Exception as e:
+                                            print(f"[DeviceVoice] Erreur flush deque Gemini : {e}")
                                 print(f"[DeviceVoice] 🎙️ Wake word détecté — écoute active")
 
                             # ─ stop_listening : fin du tour utilisateur ───────────────
                             elif msg_type == "stop_listening":
                                 _cancel_followup()
                                 listening_active = False
+                                pre_listen_buffer.clear()
                                 await broadcast_supervision()
                                 print(f"[DeviceVoice] 🔇 Fin écoute utilisateur")
 
@@ -714,7 +751,7 @@ async def device_voice_channel(websocket: WebSocket):
 
         # ── Tâche : Gemini Live → Device (audio + transcriptions + outils) ────
         async def gemini_to_device():
-            nonlocal listening_active, out_pcm_16k_buffer, listening_started_at, voice_detected_in_followup, followup_task
+            nonlocal listening_active, out_pcm_16k_buffer, listening_started_at, voice_detected_in_followup, followup_task, awaiting_first_transcription
             try:
                 while True:
                     async for chunk in session.receive():
@@ -737,6 +774,9 @@ async def device_voice_channel(websocket: WebSocket):
                             user_txt = None
                             if getattr(sc, "input_transcription", None) and sc.input_transcription.text:
                                 user_txt = sc.input_transcription.text
+                                if awaiting_first_transcription:
+                                    print(f"[DeviceVoice][DEBUG][{time.monotonic():.3f}] 1re input_transcription Gemini : {user_txt}")
+                                    awaiting_first_transcription = False
                                 voice_detected_in_followup = True
                                 _cancel_followup()
                             if user_txt:
