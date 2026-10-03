@@ -81,6 +81,7 @@ def _calculate_audio_rms(pcm_bytes: bytes) -> float:
 
 # ─── Registre global des sessions device actives ─────────────────────────────
 _DEVICE_SESSIONS: Dict[str, dict] = {}
+_device_sessions_lock = asyncio.Lock()
 
 
 def get_active_device_sessions() -> dict:
@@ -346,7 +347,7 @@ class DeviceAudioPacer:
         if self.running and not self.queue.empty():
             await self.queue.join()
 
-    def abort(self):
+    async def abort(self):
         """Interrompt immédiatement la diffusion en cours (ex: interruption / barge-in)."""
         self.running = False
         while not self.queue.empty():
@@ -357,6 +358,10 @@ class DeviceAudioPacer:
                 break
         if self.task and not self.task.done():
             self.task.cancel()
+            try:
+                await self.task
+            except asyncio.CancelledError:
+                pass
 
 
 # ─── WebSocket endpoint principal ─────────────────────────────────────────────
@@ -385,19 +390,21 @@ async def device_voice_channel(websocket: WebSocket):
     device_name = payload.get("device_name", "ESP32 Speaker")
 
     # ── Unicité : une seule session device à la fois par device_id ─────────────
-    existing = _DEVICE_SESSIONS.get(device_id)
-    if existing:
-        try:
-            await existing["websocket"].close(code=1000, reason="Nouvelle connexion du même device")
-        except Exception:
-            pass
-
-    _DEVICE_SESSIONS[device_id] = {
+    session_data = {
         "websocket": websocket,
         "connected_at": time.time(),
         "device_name": device_name,
         "mac": payload.get("mac", ""),
     }
+
+    async with _device_sessions_lock:
+        existing = _DEVICE_SESSIONS.get(device_id)
+        if existing:
+            try:
+                await existing["websocket"].close(code=1000, reason="Nouvelle connexion du même device")
+            except Exception:
+                pass
+        _DEVICE_SESSIONS[device_id] = session_data
 
     await _register_device_presence(device_id, device_name, payload.get("mac", ""))
     print(f"[DeviceVoice] Enregistrement device {device_id} dans supervision")
@@ -556,7 +563,10 @@ async def device_voice_channel(websocket: WebSocket):
                                 mac_address = payload_msg.get("mac", "")
                                 fw_version = payload_msg.get("firmware_version", "unknown")
                                 sample_rate = payload_msg.get("sample_rate", DEVICE_AUDIO_RATE_IN)
-                                _DEVICE_SESSIONS[device_id]["mac"] = mac_address
+                                session_data["mac"] = mac_address
+                                async with _device_sessions_lock:
+                                    if _DEVICE_SESSIONS.get(device_id) is session_data:
+                                        _DEVICE_SESSIONS[device_id]["mac"] = mac_address
                                 await _register_device_presence(device_id, device_name, mac_address)
                                 print(f"[DeviceVoice] Hello reçu — fw={fw_version}, mac={mac_address}, rate={sample_rate}Hz")
                                 # Réponse standard XiaoZhi WebSocket
@@ -581,7 +591,7 @@ async def device_voice_channel(websocket: WebSocket):
                                     awaiting_first_transcription = True
                                     # Si Jarvis était en train de parler, interruption immédiate
                                     if speaking_state["active"]:
-                                        pacer.abort()
+                                        await pacer.abort()
                                         resampler.clear()
                                         out_pcm_16k_buffer.clear()
                                         speaking_state["active"] = False
@@ -616,7 +626,7 @@ async def device_voice_channel(websocket: WebSocket):
                                 awaiting_first_frame_after_detect = True
                                 awaiting_first_transcription = True
                                 if speaking_state["active"]:
-                                    pacer.abort()
+                                    await pacer.abort()
                                     resampler.clear()
                                     out_pcm_16k_buffer.clear()
                                     speaking_state["active"] = False
@@ -648,7 +658,7 @@ async def device_voice_channel(websocket: WebSocket):
 
                             # ─ abort : interruption XiaoZhi (barge-in / wake word) ───────
                             elif msg_type == "abort":
-                                pacer.abort()
+                                await pacer.abort()
                                 resampler.clear()
                                 out_pcm_16k_buffer.clear()
                                 speaking_state["active"] = False
@@ -674,7 +684,7 @@ async def device_voice_channel(websocket: WebSocket):
 
                             # ─ barge_in : interruption pendant lecture ────────
                             elif msg_type == "barge_in":
-                                pacer.abort()
+                                await pacer.abort()
                                 resampler.clear()
                                 out_pcm_16k_buffer.clear()
                                 speaking_state["active"] = False
@@ -940,6 +950,8 @@ async def device_voice_channel(websocket: WebSocket):
         d2g_task = asyncio.create_task(device_to_gemini(), name=f"d2g_{device_id}")
         g2d_task = asyncio.create_task(gemini_to_device(), name=f"g2d_{device_id}")
 
+        sister_tasks = set()
+
         async def _cancel_sister(t1, t2):
             try:
                 await t1
@@ -949,8 +961,13 @@ async def device_voice_channel(websocket: WebSocket):
                 if not t2.done():
                     t2.cancel()
 
-        asyncio.create_task(_cancel_sister(d2g_task, g2d_task))
-        asyncio.create_task(_cancel_sister(g2d_task, d2g_task))
+        st1 = asyncio.create_task(_cancel_sister(d2g_task, g2d_task))
+        sister_tasks.add(st1)
+        st1.add_done_callback(sister_tasks.discard)
+
+        st2 = asyncio.create_task(_cancel_sister(g2d_task, d2g_task))
+        sister_tasks.add(st2)
+        st2.add_done_callback(sister_tasks.discard)
 
         try:
             await asyncio.gather(d2g_task, g2d_task)
@@ -985,7 +1002,7 @@ async def device_voice_channel(websocket: WebSocket):
         _cancel_followup()
         if idle_watchdog_task and not idle_watchdog_task.done():
             idle_watchdog_task.cancel()
-        pacer.abort()
+        await pacer.abort()
         if heartbeat_task and not heartbeat_task.done():
             heartbeat_task.cancel()
 
@@ -1000,12 +1017,12 @@ async def device_voice_channel(websocket: WebSocket):
             except Exception:
                 pass
 
-        # Supprimer la session du registre device
+        # Supprimer la session du registre device si c'est toujours la nôtre
         active_task_controller.get("device_sessions", {}).pop(device_id, None)
-        _DEVICE_SESSIONS.pop(device_id, None)
-
-        # Nettoyer la présence Redis
-        await _unregister_device_presence(device_id)
+        async with _device_sessions_lock:
+            if _DEVICE_SESSIONS.get(device_id) is session_data:
+                _DEVICE_SESSIONS.pop(device_id, None)
+                await _unregister_device_presence(device_id)
 
         print(f"[DeviceVoice] 🔌 Enceinte déconnectée : {device_name} ({device_id})")
 

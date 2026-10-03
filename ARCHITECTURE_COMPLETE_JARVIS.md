@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.37.10 — Optimisation Firmware ESP32-S3 : WebSocket permanente avec Ping keepalive (20s) et reconnexion backoff exponentiel (1→30s), streaming audio et envoi de {"type":"listen","state":"detect"} immédiat dès détection WakeNet "Jarvis" sans attente de réponse serveur ni interruption de la capture micro pendant le bip (<150ms / simultané), flush du ring buffer pré-détection (~1s) et gestion de {"type":"listen","state":"stop"} pour retour en veille.*
+> *Dernière révision majeure : Version 5.38.1 — Robustesse WebSocket ESP32 : Verrou asyncio.Lock sur le registre global des sessions (_DEVICE_SESSIONS) avec vérification d'identité à la déconnexion (anti-race condition), await pacer.abort() avec gestion propre de CancelledError, rétention de référence active sur les tâches de terminaison croisée (_cancel_sister via set + add_done_callback(discard)).*
 
 ---
 
@@ -755,7 +755,7 @@ La chaîne audio temps réel entre l'ESP32 et le serveur VPS est optimisée pour
   - **Burst Initial Sans Latence (`BURST_LIMIT = 3`)** : Les 3 premières trames (180 ms d'audio) partent immédiatement avec un délai de 5 ms pour remplir le buffer de lecture de l'ESP32 et démarrer l'élocution instantanément sans délai perceptible.
   - Les trames suivantes sont envoyées au rythme naturel de la parole (55 ms), maintenant le buffer de l'ESP32 entre 2 et 4 trames (stable, sans sous-charge ni saturation).
   - En fin de parole de Gemini, `await pacer.wait_drained()` s'assure que toutes les trames en file sont transmises avant d'émettre le message de clôture `{"type": "tts", "state": "stop"}`.
-  - En cas d'interruption ou de barge-in utilisateur, `pacer.abort()` purge instantanément la file et annule la tâche de régulation pour couper le son sans latence résiduelle.
+  - En cas d'interruption ou de barge-in utilisateur, `await pacer.abort()` purge instantanément la file, annule la tâche de régulation et attend (`await`) sa terminaison avec capture propre de `asyncio.CancelledError` pour couper le son sans latence résiduelle ni avertissement d'exception non gérée.
 
 ### 8.5. Protocole WebSocket `/ws/device` & Contrat Événementiel XiaoZhi
 L'implémentation respecte le standard d'échange bidirectionnel temps réel pour terminaux audio connectés :
