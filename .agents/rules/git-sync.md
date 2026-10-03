@@ -11,4 +11,4 @@ trigger: always_on
   2. Le déploiement instantané des fichiers modifiés sur le VPS Oracle Cloud (`158.178.206.213`).
   3. Le redémarrage transparent et sans coupure du service `jarvis` sur le serveur pour appliquer la nouvelle version en temps réel.
 - Veiller à ne jamais commiter ni téléverser de fichiers sensibles (.env, bases de données, clés d'accès, clés SSH privées).
--Met bien à jour la version de l'agent visible sur l'app ( en haut de la page ) à chaque mise à jour du code 
+-Met bien à jour la version de l'agent visible sur l'app ( en haut de la page ) à chaque mise à jour du code

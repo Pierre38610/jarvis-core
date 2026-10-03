@@ -696,6 +696,191 @@ async def send_telemetry_loop(ws):
         pass
 
 
+async def handle_local_action(action: str, params: Dict[str, Any]) -> Any:
+    """Traite et route une action demandée par le Cloud vers les sous-systèmes locaux."""
+    if action == "launch_app":
+        app_name = params.get("app_name", "")
+        return execute_local_app(app_name)
+    elif action == "open_browser":
+        url = params.get("url", "")
+        load_ext = params.get("load_extensions", True)
+        return execute_open_browser(url, load_extensions=load_ext)
+    elif action == "launch_media":
+        return execute_media_action(params)
+    elif action == "spotify_launch":
+        return execute_spotify_launch(params)
+    elif action == "prepare_train_checkout":
+        urls = params.get("urls") or ([params.get("url")] if params.get("url") else [])
+        operateur = params.get("operateur", "sncf")
+        custom_desc = params.get("description", "")
+        open_res = execute_open_browsers(urls, load_extensions=True)
+        n_trains = len(urls)
+        label_trains = custom_desc if custom_desc else (f"{n_trains} billets de train ({operateur.upper()})" if n_trains > 1 else f"Trajet {operateur.upper()}")
+        return {
+            "status": open_res.get("status", "success"),
+            "operateur": operateur,
+            "urls": urls,
+            "message": f"{label_trains} ouvert(s) dans votre navigateur. Vos trajets sont préremplis avec les options disponibles, il ne vous reste plus qu'à choisir vos places/couchettes et payer."
+        }
+    elif action == "prepare_web_cart_or_checkout":
+        try:
+            from services.browser_service import prepare_web_cart_or_checkout
+            return await prepare_web_cart_or_checkout(
+                product_or_service=params.get("product_or_service", ""),
+                merchant_url=params.get("merchant_url", ""),
+                autofill_details=params.get("autofill_details"),
+                open_when_ready=params.get("open_when_ready", True),
+                execution_target="local_gui",
+                _is_local_relay=True
+            )
+        except Exception as e:
+            return {"status": "error", "message": f"Erreur prepare_web_cart_or_checkout local : {e}"}
+    elif action == "interact_web_page":
+        try:
+            from services.browser_service import interact_web_page
+            return await interact_web_page(
+                url=params.get("url", ""),
+                action=params.get("action", "read"),
+                selector=params.get("selector", ""),
+                text_to_fill=params.get("text_to_fill", ""),
+                actions_list=params.get("actions_list"),
+                wait_seconds=params.get("wait_seconds", 2.0),
+                execution_target="local_gui"
+            )
+        except Exception as e:
+            return {"status": "error", "message": f"Erreur interact_web_page local : {e}"}
+    elif action == "execute_cdp_browser_action":
+        return await run_on_local_chrome(
+            url=params.get("url", ""),
+            steps=params.get("actions") or [],
+            instruction=params.get("instruction", ""),
+            task_id=params.get("task_id", "")
+        )
+    elif action == "get_status":
+        return get_local_metrics()
+    elif action == "fetch_file":
+        return execute_fetch_file(params)
+    elif action == "list_workspace_dir":
+        try:
+            from services.workspace_service import workspace_service
+            return await workspace_service.list_directory(
+                relative_path=params.get("relative_path", ""),
+                depth=params.get("depth", 1),
+                pattern=params.get("pattern")
+            )
+        except Exception as e:
+            return {"status": "error", "message": f"Erreur list_workspace_dir local : {e}"}
+    elif action == "read_workspace_file":
+        try:
+            from services.workspace_service import workspace_service
+            return await workspace_service.read_file(
+                file_path=params.get("file_path", ""),
+                max_lines=params.get("max_lines", 200),
+                offset_line=params.get("offset_line", 1)
+            )
+        except Exception as e:
+            return {"status": "error", "message": f"Erreur read_workspace_file local : {e}"}
+    elif action == "search_workspace_files":
+        try:
+            from services.workspace_service import workspace_service
+            return await workspace_service.search_files(
+                query=params.get("query", ""),
+                subpath=params.get("subpath", ""),
+                extension=params.get("extension"),
+                max_results=params.get("max_results", 30)
+            )
+        except Exception as e:
+            return {"status": "error", "message": f"Erreur search_workspace_files local : {e}"}
+    elif action == "gemini_deep_research":
+        try:
+            from services.gemini_web_automator import gemini_deep_research_engine
+            topic = params.get("topic", "")
+            return await gemini_deep_research_engine.launch(
+                topic=topic,
+                live_session=None,
+            )
+        except Exception as e:
+            return {"status": "error", "message": f"Erreur gemini_deep_research local : {e}"}
+    elif action == "browser_open_task":
+        try:
+            from local_browser_actions import browser_bridge
+            task_id = params.get("task_id", "")
+            start_url = params.get("start_url", "")
+            return await browser_bridge.browser_open_task(task_id, start_url)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+    elif action == "browser_snapshot":
+        try:
+            from local_browser_actions import browser_bridge
+            task_id = params.get("task_id", "")
+            return await browser_bridge.browser_snapshot(task_id)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+    elif action == "browser_act":
+        try:
+            from local_browser_actions import browser_bridge
+            task_id = params.get("task_id", "")
+            actions = params.get("actions", [])
+            return await browser_bridge.browser_act(task_id, actions)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+    elif action == "browser_screenshot":
+        try:
+            from local_browser_actions import browser_bridge
+            task_id = params.get("task_id", "")
+            return await browser_bridge.browser_screenshot(task_id)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+    elif action == "browser_focus":
+        try:
+            from local_browser_actions import browser_bridge
+            task_id = params.get("task_id", "")
+            return await browser_bridge.browser_focus(task_id)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+    elif action == "browser_close_task":
+        try:
+            from local_browser_actions import browser_bridge
+            task_id = params.get("task_id", "")
+            return await browser_bridge.browser_close_task(task_id)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+    elif action == "search_web":
+        try:
+            from services.browser_service import search_web
+            return await search_web(
+                query=params.get("query", ""),
+                max_results=params.get("max_results", 5),
+                execution_target="vps_headless",
+                engine=params.get("engine", "ddg")
+            )
+        except Exception as e:
+            return {"status": "error", "message": f"Erreur search_web local : {e}"}
+    elif action == "browse_page":
+        try:
+            from services.browser_service import browse_page
+            return await browse_page(
+                url=params.get("url", ""),
+                wait_seconds=params.get("wait_seconds", 3.0),
+                execution_target="vps_headless"
+            )
+        except Exception as e:
+            return {"status": "error", "message": f"Erreur browse_page local : {e}"}
+    elif action == "run_browser_task":
+        try:
+            from services.browser_service import run_browser_task
+            return await run_browser_task(
+                goal=params.get("goal", ""),
+                url=params.get("url", ""),
+                max_steps=params.get("max_steps", 15),
+                execution_target="vps_headless"
+            )
+        except Exception as e:
+            return {"status": "error", "message": f"Erreur run_browser_task local : {e}"}
+    else:
+        return {"status": "error", "message": f"Action inconnue : {action}"}
+
+
 async def agent_loop():
     """Boucle principale de maintien de la connexion WebSocket avec Jarvis VPS."""
     uri = f"wss://{HOSTNAME}/ws/local-agent?token={PASSWORD}"
@@ -752,158 +937,7 @@ async def agent_loop():
 
                         print(f"\n[ORDRE REÇU DU CLOUD] Action: '{action}' | Params: {params}", flush=True)
 
-                        result = {}
-                        if action == "launch_app":
-                            app_name = params.get("app_name", "")
-                            result = execute_local_app(app_name)
-                        elif action == "open_browser":
-                            url = params.get("url", "")
-                            load_ext = params.get("load_extensions", True)
-                            result = execute_open_browser(url, load_extensions=load_ext)
-                        elif action == "launch_media":
-                            result = execute_media_action(params)
-                        elif action == "spotify_launch":
-                            result = execute_spotify_launch(params)
-                        elif action == "prepare_train_checkout":
-                            urls = params.get("urls") or ([params.get("url")] if params.get("url") else [])
-                            operateur = params.get("operateur", "sncf")
-                            custom_desc = params.get("description", "")
-                            open_res = execute_open_browsers(urls, load_extensions=True)
-                            n_trains = len(urls)
-                            label_trains = custom_desc if custom_desc else (f"{n_trains} billets de train ({operateur.upper()})" if n_trains > 1 else f"Trajet {operateur.upper()}")
-                            result = {
-                                "status": open_res.get("status", "success"),
-                                "operateur": operateur,
-                                "urls": urls,
-                                "message": f"{label_trains} ouvert(s) dans votre navigateur. Vos trajets sont préremplis avec les options disponibles, il ne vous reste plus qu'à choisir vos places/couchettes et payer."
-                            }
-                        elif action == "prepare_web_cart_or_checkout":
-                            try:
-                                from services.browser_service import prepare_web_cart_or_checkout
-                                result = await prepare_web_cart_or_checkout(
-                                    product_or_service=params.get("product_or_service", ""),
-                                    merchant_url=params.get("merchant_url", ""),
-                                    autofill_details=params.get("autofill_details"),
-                                    open_when_ready=params.get("open_when_ready", True),
-                                    execution_target="local_gui",
-                                    _is_local_relay=True
-                                )
-                            except Exception as e:
-                                result = {"status": "error", "message": f"Erreur prepare_web_cart_or_checkout local : {e}"}
-                        elif action == "interact_web_page":
-                            try:
-                                from services.browser_service import interact_web_page
-                                result = await interact_web_page(
-                                    url=params.get("url", ""),
-                                    action=params.get("action", "read"),
-                                    selector=params.get("selector", ""),
-                                    text_to_fill=params.get("text_to_fill", ""),
-                                    actions_list=params.get("actions_list"),
-                                    wait_seconds=params.get("wait_seconds", 2.0),
-                                    execution_target="local_gui"
-                                )
-                            except Exception as e:
-                                result = {"status": "error", "message": f"Erreur interact_web_page local : {e}"}
-                        elif action == "execute_cdp_browser_action":
-                            result = await run_on_local_chrome(
-                                url=params.get("url", ""),
-                                steps=params.get("actions") or [],
-                                instruction=params.get("instruction", ""),
-                                task_id=params.get("task_id", "")
-                            )
-                        elif action == "get_status":
-                            result = get_local_metrics()
-                        elif action == "fetch_file":
-                            result = execute_fetch_file(params)
-                        elif action == "list_workspace_dir":
-                            try:
-                                from services.workspace_service import workspace_service
-                                result = await workspace_service.list_directory(
-                                    relative_path=params.get("relative_path", ""),
-                                    depth=params.get("depth", 1),
-                                    pattern=params.get("pattern")
-                                )
-                            except Exception as e:
-                                result = {"status": "error", "message": f"Erreur list_workspace_dir local : {e}"}
-                        elif action == "read_workspace_file":
-                            try:
-                                from services.workspace_service import workspace_service
-                                result = await workspace_service.read_file(
-                                    file_path=params.get("file_path", ""),
-                                    max_lines=params.get("max_lines", 200),
-                                    offset_line=params.get("offset_line", 1)
-                                )
-                            except Exception as e:
-                                result = {"status": "error", "message": f"Erreur read_workspace_file local : {e}"}
-                        elif action == "search_workspace_files":
-                            try:
-                                from services.workspace_service import workspace_service
-                                result = await workspace_service.search_files(
-                                    query=params.get("query", ""),
-                                    subpath=params.get("subpath", ""),
-                                    extension=params.get("extension"),
-                                    max_results=params.get("max_results", 30)
-                                )
-                            except Exception as e:
-                                result = {"status": "error", "message": f"Erreur search_workspace_files local : {e}"}
-                        elif action == "gemini_deep_research":
-                            # Lance une recherche Deep Research via Gemini Web sur le navigateur local
-                            try:
-                                from services.gemini_web_automator import gemini_deep_research_engine
-                                topic = params.get("topic", "")
-                                result = await gemini_deep_research_engine.launch(
-                                    topic=topic,
-                                    live_session=None,
-                                )
-                            except Exception as e:
-                                result = {"status": "error", "message": f"Erreur gemini_deep_research local : {e}"}
-                        elif action == "browser_open_task":
-                            try:
-                                from local_browser_actions import browser_bridge
-                                task_id = params.get("task_id", "")
-                                start_url = params.get("start_url", "")
-                                result = await browser_bridge.browser_open_task(task_id, start_url)
-                            except Exception as e:
-                                result = {"ok": False, "error": str(e)}
-                        elif action == "browser_snapshot":
-                            try:
-                                from local_browser_actions import browser_bridge
-                                task_id = params.get("task_id", "")
-                                result = await browser_bridge.browser_snapshot(task_id)
-                            except Exception as e:
-                                result = {"ok": False, "error": str(e)}
-                        elif action == "browser_act":
-                            try:
-                                from local_browser_actions import browser_bridge
-                                task_id = params.get("task_id", "")
-                                actions = params.get("actions", [])
-                                result = await browser_bridge.browser_act(task_id, actions)
-                            except Exception as e:
-                                result = {"ok": False, "error": str(e)}
-                        elif action == "browser_screenshot":
-                            try:
-                                from local_browser_actions import browser_bridge
-                                task_id = params.get("task_id", "")
-                                result = await browser_bridge.browser_screenshot(task_id)
-                            except Exception as e:
-                                result = {"ok": False, "error": str(e)}
-                        elif action == "browser_focus":
-                            try:
-                                from local_browser_actions import browser_bridge
-                                task_id = params.get("task_id", "")
-                                result = await browser_bridge.browser_focus(task_id)
-                            except Exception as e:
-                                result = {"ok": False, "error": str(e)}
-                        elif action == "browser_close_task":
-                            try:
-                                from local_browser_actions import browser_bridge
-                                task_id = params.get("task_id", "")
-                                result = await browser_bridge.browser_close_task(task_id)
-                            except Exception as e:
-                                result = {"ok": False, "error": str(e)}
-                        else:
-                            result = {"status": "error", "message": f"Action inconnue : {action}"}
-
+                        result = await handle_local_action(action, params)
 
                         res_summary = result.get('message', result.get('status', result.get('ok'))) if isinstance(result, dict) else f"{len(result)} action(s)"
                         print(f"  -> Résultat : {res_summary}", flush=True)
@@ -928,15 +962,35 @@ async def agent_loop():
         await asyncio.sleep(5)
 
 
+
 if __name__ == "__main__":
-    # Verrouillage d'instance unique (Windows msvcrt) pour éviter les doublons WS/Deezer
     _lock_handle = None
+    lock_path = os.path.join(BASE_DIR, ".agent_instance.lock")
+    pid_path = os.path.join(BASE_DIR, ".agent_instance.pid")
+
+    if "--restart" in sys.argv or "-r" in sys.argv:
+        # Tente d'arrêter proprement l'instance précédente via son PID si enregistré
+        try:
+            if os.path.exists(pid_path):
+                with open(pid_path, "r", encoding="utf-8") as pf:
+                    old_pid = int(pf.read().strip())
+                if old_pid != os.getpid():
+                    import signal
+                    os.kill(old_pid, signal.SIGTERM)
+                    time.sleep(0.5)
+        except Exception:
+            pass
+
+    # Verrouillage d'instance unique (Windows msvcrt) pour éviter les doublons WS/Deezer
     if sys.platform == "win32":
         try:
             import msvcrt
-            lock_path = os.path.join(BASE_DIR, ".agent_instance.lock")
             _lock_handle = open(lock_path, "w")
             msvcrt.locking(_lock_handle.fileno(), msvcrt.LK_NBLCK, 1)
+            _lock_handle.write(str(os.getpid()))
+            _lock_handle.flush()
+            with open(pid_path, "w", encoding="utf-8") as pf:
+                pf.write(str(os.getpid()))
         except (IOError, OSError):
             now_str = time.strftime("%Y-%m-%d %H:%M:%S")
             print(f"[{now_str}] [!] Une instance de jarvis_local_agent.py est déjà active sur ce PC. Arrêt de la nouvelle instance.", flush=True)
@@ -950,3 +1004,10 @@ if __name__ == "__main__":
         now_str = time.strftime("%Y-%m-%d %H:%M:%S")
         print(f"[{now_str}] [CRITICAL] Arrêt anormal de l'agent local : {e}", flush=True)
         traceback.print_exc()
+    finally:
+        try:
+            if os.path.exists(pid_path):
+                os.remove(pid_path)
+        except Exception:
+            pass
+

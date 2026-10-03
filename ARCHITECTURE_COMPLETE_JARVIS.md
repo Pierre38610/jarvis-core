@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.39.0 — Optimisation Moteur Spotify : Réponses vocales ultra-concises ('Ok'), lecture fiable des titres likés/favoris sans filtrage restrictif de marché, élimination des boucles de retry sur les sauts de piste et alignement strict du contrat ToolResult (done/verified=True).*
+> *Dernière révision majeure : Version 5.40.0 — Correction et modularisation du dispatcher RPC de l'Agent Local (handle_local_action dans jarvis_local_agent.py), fiabilisation du cycle de vie des processus (PID tracking, --restart, stop_agent.bat) et support exhaustif des 23 actions locales (browser_open_task, snapshot, act, screenshot, focus, close, search_web, browse_page, run_browser_task).*
 
 ---
 
@@ -164,7 +164,7 @@ jarvis-core/
 ├── fallback_handler.py                  # Shim racine du gestionnaire de repli résilient quota (execute_with_fallback)
 ├── prompt_builder.py                    # Shim racine du constructeur de prompts adaptés et parseur JSON tolérant
 ├── AGENTS.md                            # Charte générale et règles obligatoires pour tout agent autonome Antigravity CLI
-├── jarvis_local_agent.py                # Agent client WebSocket s'exécutant sur le PC Windows 11 (20 actions physiques, Chrome CDP, Spotify Desktop, Stremio)
+├── jarvis_local_agent.py                # Agent client WebSocket s'exécutant sur le PC Windows 11 (23 actions physiques, Chrome CDP, Spotify Desktop, Stremio)
 ├── local_browser_actions.py             # Pont CDP Playwright côté PC (port 9222), balisage DOM data-jarvis-id, exécution d'actions et screenshots
 ├── tunnel_launcher.py                   # Gestionnaire du tunnel Cloudflare Zero Trust, fallback Quick Tunnel et LAN Wi-Fi
 ├── sync_deploy.py                       # Pipeline automatisé : Git commit/push + archive in-memory tar.gz + SFTP + relance systemd VPS
@@ -271,7 +271,7 @@ jarvis-core/
 ├── docs/                                # BROWSER_AGENT_SPEC.md, N8N_GUIDE.md, n8n_workflows/*.json (documents_suite, time_and_briefing, train_monitoring)
 ├── static/                              # HUD PWA Stark Industries (index.html, app.js, style.css, manifest.json, SVG/PNG, latest_screenshot.jpg, tunnel_url.json)
 ├── data/                                # site_memory/<domain>.json (parcours web réussis), gemini_ui_map.json, migration_reports/
-└── tests/                               # 34 modules pytest racine + tests/unit/ (12) + tests/e2e/ (1), conftest.py, run_all_tests.py (génère `tests/RAPPORT_TESTS_JARVIS.txt`, dernière campagne le 27/09/2026 — 19 modules/services vérifiés), dossiers scratch : tests/scratch_healing/, tests/_test_scratch/)
+└── tests/                               # 34 modules pytest racine + tests/unit/ (16) + tests/e2e/ (1), conftest.py, run_all_tests.py (génère `tests/RAPPORT_TESTS_JARVIS.txt`, 442 tests vérifiés), dossiers scratch : tests/scratch_healing/, tests/_test_scratch/)
 ```
 
 ---
@@ -671,7 +671,7 @@ Le VPS distant n'a pas accès à l'écran, au Chrome réel, ni aux périphériqu
 - Connexion sortante vers `wss://jarvis.signalcraftapps.com/ws/local-agent?token=...`.
 - Reconnexion automatique avec backoff exponentiel. Messages RPC structurés (`{"req_id": "...", "action": "...", "params": {...}}`).
 
-### 7.3. Catalogue des 20 Actions Locales Supportées (Schémas & Paramètres)
+### 7.3. Catalogue des 23 Actions Locales Supportées (Schémas & Paramètres)
 
 | Action RPC | Description Opérationnelle | Paramètres Entrants | Structure Retournée |
 | :--- | :--- | :--- | :--- |
@@ -695,6 +695,9 @@ Le VPS distant n'a pas accès à l'écran, au Chrome réel, ni aux périphériqu
 | `search_workspace_files` | Recherche textuelle (grep) au sein des projets sous `_anti_gravity`. | `query: str`, `subpath: str`, `extension: str`, `max_results: int` | `{"status": "success", "matches": list, "matches_count": int}` |
 | `execute_cdp_browser_action` | Exécute une séquence d'actions CDP sur une URL dans le Chrome local (pont Playwright). | `url: str`, `actions: list[dict]`, `instruction: str`, `task_id: str` | `{"status": "success", "url": str, "title": str, "performed_actions": list, "screenshot_path": str, "result_summary": str}` |
 | `gemini_deep_research` | Lance le Moteur A Deep Research via l'interface Gemini Web dans le Chrome local. | `topic: str` | `{"status": str, "message": str}` |
+| `search_web` | Recherche web locale avec moteurs headless/DuckDuckGo. | `query: str`, `max_results: int` | `{"status": "success", "results": list}` |
+| `browse_page` | Extraction et lecture textuelle d'une URL web locale. | `url: str`, `wait_seconds: float` | `{"status": "success", "content": str}` |
+| `run_browser_task` | Exécution d'une tâche de navigation web autonome sur le PC. | `goal: str`, `url: str`, `max_steps: int` | `{"status": "success", "result": str}` |
 
 
 ### 7.4. Journalisation Auto-Flush & Interception Globale des Crashs
@@ -1316,7 +1319,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre profonde (`#070B14`, `#0B0F19`), cyan électrique Stark (`#38bdf8`, `#0284c7`), accents ambre et violet néon.
 - **Typographie** : Polices modernes géométriques sans-serif d'inspiration high-tech.
 - **Responsive PWA** : Conçue pour une expérience native sur smartphone (iOS Safari / Android Chrome) et desktop avec support PWA (`manifest.json`, installation sur écran d'accueil).
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.39.0 SPOTIFY ENGINE CONCISE & LIKED TRACKS REPAIR`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.40.0 BROWSER AGENT RPC & LOCAL AGENT DISPATCHER REPAIR`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
@@ -1520,4 +1523,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.37.10.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.40.0.*
