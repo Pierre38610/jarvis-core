@@ -17,6 +17,7 @@ Canal unique     : si une session /ws (PWA) parle déjà, le device attend.
 import asyncio
 import base64
 import collections
+import functools
 import json
 import math
 import struct
@@ -27,6 +28,8 @@ import jwt
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse
 from google.genai import types
+
+print = functools.partial(print, flush=True)
 
 import config
 from services.auth_service import auth_service
