@@ -6,6 +6,8 @@ import os
 os.environ["NO_PROXY"] = "127.0.0.1,localhost,::1,0.0.0.0"
 os.environ["no_proxy"] = "127.0.0.1,localhost,::1,0.0.0.0"
 import asyncio
+import logging
+import re
 import shutil
 import time
 from dataclasses import dataclass
@@ -14,6 +16,21 @@ from typing import Any, Optional, Literal, Tuple
 from services.console_monitor import console_monitor
 import config
 from config import GEMINI_API_KEY_FREE, GEMINI_API_KEY_PAID
+
+logger = logging.getLogger("jarvis.google_antigravity")
+
+
+def _sanitize_secrets(text: str) -> str:
+    """Supprime les clés API et tokens potentiels des messages d'erreur et logs."""
+    if not text:
+        return ""
+    for key_name in ("GEMINI_API_KEY_FREE", "GEMINI_API_KEY_PAID", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+        val = getattr(config, key_name, None)
+        if val and isinstance(val, str) and len(val) > 6:
+            text = text.replace(val, "[REDACTED_SECRET]")
+    text = re.sub(r"AIza[0-9A-Za-z\-_]{30,}", "[REDACTED_GEMINI_KEY]", text)
+    text = re.sub(r"sk-[0-9A-Za-z\-_]{20,}", "[REDACTED_API_KEY]", text)
+    return text
 
 
 class AntigravityQuotaExhaustedError(Exception):
@@ -372,6 +389,13 @@ def find_antigravity_binary() -> Optional[str]:
 
 _CLI_READY_CACHE: tuple[float, bool, str, Optional[str]] = (0.0, False, "", None)
 
+
+def invalidate_cli_ready_cache() -> None:
+    """Invalide immédiatement le cache de disponibilité du binaire Antigravity CLI."""
+    global _CLI_READY_CACHE
+    _CLI_READY_CACHE = (0.0, False, "", None)
+
+
 async def verify_antigravity_cli_ready(force_refresh: bool = False) -> tuple[bool, str, Optional[str]]:
     """Vérifie de manière concrète si le binaire Antigravity CLI (agy) est présent, exécutable
     et capable de répondre à une commande basique (--version).
@@ -397,23 +421,30 @@ async def verify_antigravity_cli_ready(force_refresh: bool = False) -> tuple[boo
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
+            msg = f"Timeout lors de l'exécution de '{binary} --version' (> 3s)."
+            _CLI_READY_CACHE = (now, False, msg, binary)
+            return False, msg, binary
+
         if proc.returncode == 0:
             version_str = stdout.decode('utf-8', errors='replace').strip() or "OK"
             msg = f"Antigravity CLI opérationnel ({binary}, version: {version_str})"
             _CLI_READY_CACHE = (now, True, msg, binary)
             return True, msg, binary
         else:
-            err_str = stderr.decode('utf-8', errors='replace').strip() or f"Code sortie {proc.returncode}"
-            msg = f"Antigravity CLI a renvoyé une erreur lors du test de version : {err_str}"
+            err_str = _sanitize_secrets(stderr.decode('utf-8', errors='replace').strip()) or f"Code sortie {proc.returncode}"
+            msg = f"Antigravity CLI a renvoyé une erreur lors du test de version : {err_str[:200]}"
             _CLI_READY_CACHE = (now, False, msg, binary)
             return False, msg, binary
-    except asyncio.TimeoutError:
-        msg = f"Timeout lors de l'exécution de '{binary} --version' (> 3s)."
-        _CLI_READY_CACHE = (now, False, msg, binary)
-        return False, msg, binary
     except Exception as e:
-        msg = f"Exception lors du pré-test de '{binary}' : {str(e)}"
+        msg = f"Exception lors du pré-test de '{binary}' : {_sanitize_secrets(str(e))[:200]}"
         _CLI_READY_CACHE = (now, False, msg, binary)
         return False, msg, binary
 
@@ -423,6 +454,10 @@ def resolve_cli_model_args(model_name: Any = None, thinking_level: str | None = 
     RÈGLE ABSOLUE : agy supporte uniquement --model et optionnellement --effort (low|medium|high|max).
     Le drapeau --thinking est INEXISTANT dans agy et cause une erreur fatale code 2.
     """
+    for arg_val in (model_name, thinking_level, effort):
+        if arg_val and "--thinking" in str(arg_val):
+            raise ValueError("L'utilisation du flag '--thinking' est strictement interdite.")
+
     effective_effort = effort or thinking_level
 
     if isinstance(model_name, CognitiveConfig):
@@ -431,45 +466,57 @@ def resolve_cli_model_args(model_name: Any = None, thinking_level: str | None = 
         effective_effort = effective_effort or cfg.thinking_level
 
     if not model_name:
-        return ["--model", "gemini-3.7-flash-high", "--effort", "high"]
+        result = ["--model", "gemini-3.7-flash-high", "--effort", "high"]
+    else:
+        m = str(model_name).lower().strip()
 
-    m = str(model_name).lower().strip()
+        # Modèles Claude : pas d'argument --effort
+        if "claude" in m or "sonnet" in m:
+            result = ["--model", str(model_name)]
+        # Gemini 3.1 Pro models
+        elif "3.1" in m or "pro" in m:
+            th = effective_effort or ("low" if "low" in m else "high")
+            eff = "low" if th == "low" else "high"
+            base_name = str(model_name) if ("-" in str(model_name) and not str(model_name).endswith("-pro")) else f"gemini-3.1-pro-{eff}"
+            result = ["--model", base_name, "--effort", eff]
+        # Gemini 3.7 Flash models
+        elif "3.7" in m:
+            th = effective_effort or ("low" if "low" in m else "medium" if ("med" in m or "medium" in m) else "high")
+            eff = "low" if th == "low" else "medium" if th == "medium" else "high"
+            base_name = str(model_name) if ("-" in str(model_name) and not str(model_name).endswith("-flash")) else f"gemini-3.7-flash-{eff}"
+            result = ["--model", base_name, "--effort", eff]
+        # Gemini 3.8 Flash models
+        elif "3.8" in m or "flash" in m:
+            th = effective_effort or ("low" if "low" in m else "medium" if ("med" in m or "medium" in m) else "high")
+            eff = "low" if th == "low" else "medium" if th == "medium" else "high"
+            base_name = str(model_name) if ("-" in str(model_name) and not str(model_name).endswith("-flash")) else f"gemini-3.8-flash-{eff}"
+            result = ["--model", base_name, "--effort", eff]
+        # Fallback générique
+        else:
+            th = effective_effort or ("low" if "low" in m else "high")
+            eff = "low" if th == "low" else "high"
+            result = ["--model", str(model_name), "--effort", eff]
 
-    # Modèles Claude : pas d'argument --effort
-    if "claude" in m or "sonnet" in m:
-        return ["--model", str(model_name)]
+    for arg in result:
+        if "--thinking" in arg:
+            raise ValueError("L'utilisation du flag '--thinking' est strictement interdite.")
 
-    # Gemini 3.1 Pro models
-    if "3.1" in m or "pro" in m:
-        th = effective_effort or ("low" if "low" in m else "high")
-        eff = "low" if th == "low" else "high"
-        base_name = str(model_name) if ("-" in str(model_name) and not str(model_name).endswith("-pro")) else f"gemini-3.1-pro-{eff}"
-        return ["--model", base_name, "--effort", eff]
-
-    # Gemini 3.7 Flash models
-    if "3.7" in m:
-        th = effective_effort or ("low" if "low" in m else "medium" if ("med" in m or "medium" in m) else "high")
-        eff = "low" if th == "low" else "medium" if th == "medium" else "high"
-        base_name = str(model_name) if ("-" in str(model_name) and not str(model_name).endswith("-flash")) else f"gemini-3.7-flash-{eff}"
-        return ["--model", base_name, "--effort", eff]
-
-    # Gemini 3.8 Flash models
-    if "3.8" in m or "flash" in m:
-        th = effective_effort or ("low" if "low" in m else "medium" if ("med" in m or "medium" in m) else "high")
-        eff = "low" if th == "low" else "medium" if th == "medium" else "high"
-        base_name = str(model_name) if ("-" in str(model_name) and not str(model_name).endswith("-flash")) else f"gemini-3.8-flash-{eff}"
-        return ["--model", base_name, "--effort", eff]
-
-    # Fallback générique
-    th = effective_effort or ("low" if "low" in m else "high")
-    eff = "low" if th == "low" else "high"
-    return ["--model", str(model_name), "--effort", eff]
+    return result
 
 
 class AntigravityAgent:
     """Agent Antigravity CLI exécutant les tâches via le binaire agy/antigravity-cli sur le VPS."""
 
-    def __init__(self, workspace: str = "./my-project", model: str | None = None, api_key: str | None = None, thinking_level: str | None = None, effort: str | None = None, **kwargs):
+    def __init__(
+        self,
+        workspace: str = "./my-project",
+        model: str | None = None,
+        api_key: str | None = None,
+        thinking_level: str | None = None,
+        effort: str | None = None,
+        timeout_seconds: int = 300,
+        **kwargs
+    ):
         self.workspace = os.path.abspath(workspace)
         os.makedirs(self.workspace, exist_ok=True)
         # Règle d'impossibilité physique : si la clé payante n'est pas cochée/autorisée dans l'application,
@@ -483,6 +530,7 @@ class AntigravityAgent:
         self.requested_model = model
         self.effort = effort or thinking_level or ("low" if model and "low" in str(model).lower() else "medium" if model and ("med" in str(model).lower() or "medium" in str(model).lower()) else "high" if model and "high" in str(model).lower() else None)
         self.thinking_level = self.effort
+        self.timeout_seconds = int(timeout_seconds) if timeout_seconds else 300
         self.target_model, self.model_label = resolve_antigravity_model(model, api_key=self.api_key)
 
     def cancel(self):
@@ -492,11 +540,12 @@ class AntigravityAgent:
             try:
                 self.cli_process.terminate()
             except Exception:
-                try:
-                    self.cli_process.kill()
-                except Exception:
-                    pass
-        print(f"[Antigravity CLI] Ordre de cancellation transmis à l'agent ({self.model_label}).")
+                pass
+            try:
+                self.cli_process.kill()
+            except Exception:
+                pass
+        logger.info(f"[Antigravity CLI] Ordre d'interruption transmis à l'agent ({self.model_label}).")
 
     async def run_task(self, instruction: str) -> TaskResult:
         return await self.run_cli_task_stream(instruction)
@@ -505,23 +554,33 @@ class AntigravityAgent:
         self,
         instruction: str,
         on_progress: Any = None,
-        directive_queue: asyncio.Queue | None = None
+        directive_queue: asyncio.Queue | None = None,
+        timeout: Optional[float] = None
     ) -> TaskResult:
         """Délègue directement à Antigravity CLI."""
-        return await self.run_cli_task_stream(instruction, on_progress=on_progress, directive_queue=directive_queue)
+        return await self.run_cli_task_stream(instruction, on_progress=on_progress, directive_queue=directive_queue, timeout=timeout)
 
     async def run_cli_task_stream(
         self,
         instruction: str,
         on_progress: Any = None,
-        directive_queue: asyncio.Queue | None = None
+        directive_queue: asyncio.Queue | None = None,
+        timeout: Optional[float] = None
     ) -> TaskResult:
         """Exécute la tâche en appelant directement le binaire antigravity-cli sur le système via subprocess."""
         if self.is_cancelled:
-            return TaskResult(summary="Développement arrêté à la demande de l'utilisateur.", status="cancelled", model_label=self.model_label)
+            return TaskResult(
+                summary="Développement arrêté à la demande de l'utilisateur.",
+                status="cancelled",
+                model_label=self.model_label,
+                error_type="cancelled"
+            )
+
+        t0 = time.perf_counter()
+        effective_timeout = float(timeout or self.timeout_seconds or 300)
 
         try:
-            print(f"[Antigravity CLI] Lancement de antigravity-cli pour {self.model_label} : {instruction[:60]}...")
+            logger.info(f"[Antigravity CLI] Démarrage agent ({self.model_label}) - timeout: {effective_timeout:.0f}s")
             if on_progress:
                 await on_progress({"step": "start", "text": f"Lancement de la réflexion approfondie via Antigravity CLI avec {self.model_label}."})
 
@@ -529,11 +588,11 @@ class AntigravityAgent:
             if self.api_key:
                 env["GEMINI_API_KEY"] = self.api_key
                 env["GOOGLE_API_KEY"] = self.api_key
-            if self.thinking_level:
-                env["ANTIGRAVITY_THINKING"] = self.thinking_level
-                env["GEMINI_THINKING_LEVEL"] = self.thinking_level
+            if self.effort:
+                env["ANTIGRAVITY_THINKING"] = self.effort
+                env["GEMINI_THINKING_LEVEL"] = self.effort
             if self.requested_model:
-                env["ANTIGRAVITY_MODEL"] = self.requested_model
+                env["ANTIGRAVITY_MODEL"] = str(self.requested_model)
 
             # Enrichir PATH pour garantir l'accès à ~/.local/bin et /usr/local/bin
             current_path = env.get("PATH", "")
@@ -543,10 +602,11 @@ class AntigravityAgent:
                     current_path = f"{ep}:{current_path}"
             env["PATH"] = current_path
 
-            binary = find_antigravity_binary()
-            if not binary:
-                msg = "Antigravity CLI n'est pas disponible sur le serveur (binaire 'agy' introuvable)."
-                print(f"[Antigravity CLI] {msg}")
+            # Préflight vérifié
+            cli_ready, cli_msg, binary = await verify_antigravity_cli_ready()
+            if not cli_ready or not binary:
+                msg = cli_msg or "Antigravity CLI n'est pas disponible sur le serveur (binaire 'agy' introuvable)."
+                logger.warning(f"[Antigravity CLI] Préflight échoué: {msg}")
                 return TaskResult(
                     summary=msg,
                     status="error",
@@ -554,13 +614,18 @@ class AntigravityAgent:
                     error_type="binary_not_found"
                 )
 
+            model_args = resolve_cli_model_args(self.requested_model, self.effort)
+            for a in model_args:
+                if "--thinking" in a:
+                    raise ValueError("L'utilisation du flag '--thinking' est strictement interdite.")
+
             cmd = [
                 binary,
                 "-p", instruction,
                 "--dangerously-skip-permissions",
                 "--output-format", "text"
             ]
-            cmd.extend(resolve_cli_model_args(self.requested_model, self.thinking_level))
+            cmd.extend(model_args)
 
             try:
                 self.cli_process = await asyncio.create_subprocess_exec(
@@ -571,17 +636,17 @@ class AntigravityAgent:
                     cwd=self.workspace
                 )
             except FileNotFoundError:
-                print(f"[Antigravity CLI] Fichier binaire introuvable à l'exécution.")
+                logger.error(f"[Antigravity CLI] Fichier binaire introuvable à l'exécution.")
                 return TaskResult(
                     summary="Binaire Antigravity CLI introuvable à l'exécution.",
                     status="error",
                     model_label=self.model_label,
                     error_type="binary_not_found"
                 )
-            
-            stdout_output = []
-            stderr_output = []
-            
+
+            stdout_output: list[str] = []
+            stderr_output: list[str] = []
+
             async def read_stream(stream, is_stderr=False):
                 while True:
                     line = await stream.readline()
@@ -591,56 +656,100 @@ class AntigravityAgent:
                     if line_str:
                         if is_stderr:
                             stderr_output.append(line_str)
-                            # Détection de quota 429
-                            if any(k in line_str.lower() for k in ["429", "quota", "resource_exhausted", "quotaexceeded"]):
+                            # Détection immédiate de quota 429
+                            if any(k in line_str.lower() for k in ["429", "quota", "resource_exhausted", "quotaexceeded", "rate limit"]):
                                 if self.cli_process:
                                     try:
                                         self.cli_process.terminate()
                                     except Exception:
                                         pass
-                                raise AntigravityQuotaExhaustedError("Quota 5h épuisé sur Antigravity CLI.")
+                                    try:
+                                        self.cli_process.kill()
+                                    except Exception:
+                                        pass
+                                raise AntigravityQuotaExhaustedError(f"Quota saturé sur Antigravity CLI ({self.model_label}).")
                         else:
                             stdout_output.append(line_str)
                             if on_progress:
                                 await on_progress({"step": "thought", "text": line_str[:120]})
-                                
-            await asyncio.gather(
-                read_stream(self.cli_process.stdout, False),
-                read_stream(self.cli_process.stderr, True)
-            )
-            
-            await self.cli_process.wait()
-            
+
+            async def _execute_streams():
+                await asyncio.gather(
+                    read_stream(self.cli_process.stdout, False),
+                    read_stream(self.cli_process.stderr, True)
+                )
+                await self.cli_process.wait()
+
+            try:
+                await asyncio.wait_for(_execute_streams(), timeout=effective_timeout)
+            except asyncio.TimeoutError:
+                if self.cli_process:
+                    try:
+                        self.cli_process.kill()
+                        await self.cli_process.wait()
+                    except Exception:
+                        pass
+                duration = time.perf_counter() - t0
+                err_msg = f"Timeout d'exécution ({effective_timeout:.0f}s) dépassé pour Antigravity CLI ({self.model_label})."
+                logger.warning(f"[Antigravity CLI] {err_msg} (durée: {duration:.1f}s)")
+                return TaskResult(
+                    summary=err_msg,
+                    status="timeout",
+                    model_label=self.model_label,
+                    error_type="timeout"
+                )
+
             if self.is_cancelled:
                 raise asyncio.CancelledError("Arrêt demandé par l'utilisateur.")
-                
+
+            duration = time.perf_counter() - t0
+
             if self.cli_process.returncode != 0:
-                err_text = "\n".join(stderr_output)
-                if "429" in err_text or "quota" in err_text.lower():
-                    raise AntigravityQuotaExhaustedError("Quota 5h épuisé sur Antigravity CLI.")
-                raise RuntimeError(f"Erreur Antigravity CLI (code {self.cli_process.returncode}): {err_text}")
-                
-            summary = "\n".join(stdout_output)
+                err_text = _sanitize_secrets("\n".join(stderr_output).strip())
+                if any(k in err_text.lower() for k in ["429", "quota", "resource_exhausted", "quotaexceeded", "rate limit"]):
+                    raise AntigravityQuotaExhaustedError(f"Quota saturé sur Antigravity CLI ({self.model_label}).")
+                logger.error(f"[Antigravity CLI] Échec code {self.cli_process.returncode} en {duration:.1f}s : {err_text[:200]}")
+                raise RuntimeError(f"Erreur Antigravity CLI (code {self.cli_process.returncode}): {err_text[:300]}")
+
+            summary = "\n".join(stdout_output).strip()
             if not summary:
-                summary = "Tâche Antigravity CLI terminée."
-                
+                summary = "Tâche Antigravity CLI terminée avec succès."
+
+            logger.info(f"[Antigravity CLI] Succès ({self.model_label}) en {duration:.1f}s")
             if on_progress:
                 await on_progress({"step": "complete", "text": "Le raisonnement est achevé avec succès."})
-                
+
             return TaskResult(summary=summary, status="completed", model_label=self.model_label)
-            
+
         except AntigravityQuotaExhaustedError:
             raise
         except asyncio.CancelledError:
-            print(f"[Antigravity CLI] Tâche annulée avec succès ({self.model_label}).")
-            return TaskResult(summary="Développement interrompu à la demande de l'utilisateur.", status="cancelled", model_label=self.model_label)
+            if self.cli_process:
+                try:
+                    self.cli_process.kill()
+                    await self.cli_process.wait()
+                except Exception:
+                    pass
+            logger.info(f"[Antigravity CLI] Tâche annulée avec succès ({self.model_label}).")
+            return TaskResult(
+                summary="Développement interrompu à la demande de l'utilisateur.",
+                status="cancelled",
+                model_label=self.model_label,
+                error_type="cancelled"
+            )
         except Exception as e:
             if isinstance(e, AntigravityQuotaExhaustedError):
                 raise
-            err_msg = str(e)
-            print(f"[Antigravity CLI] Exception d'exécution ({self.model_label}): {err_msg}")
-            console_monitor.record_error(source=f"Antigravity CLI ({self.model_label})", message=err_msg, level="ERROR")
-            if any(k in err_msg.lower() for k in ["429", "quota", "resource_exhausted"]):
-                raise AntigravityQuotaExhaustedError("Quota 5h épuisé sur Antigravity CLI.")
-            
-            return TaskResult(summary=f"Erreur d'exécution Antigravity CLI ({self.model_label}): {err_msg}", status="error", model_label=self.model_label, error_type="error")
+            err_msg = _sanitize_secrets(str(e))
+            logger.error(f"[Antigravity CLI] Exception d'exécution ({self.model_label}): {err_msg[:200]}")
+            console_monitor.record_error(source=f"Antigravity CLI ({self.model_label})", message=err_msg[:300], level="ERROR")
+            if any(k in err_msg.lower() for k in ["429", "quota", "resource_exhausted", "quotaexceeded", "rate limit"]):
+                raise AntigravityQuotaExhaustedError(f"Quota saturé sur Antigravity CLI ({self.model_label}).")
+
+            return TaskResult(
+                summary=f"Erreur d'exécution Antigravity CLI ({self.model_label}): {err_msg[:300]}",
+                status="error",
+                model_label=self.model_label,
+                error_type="execution_error"
+            )
+

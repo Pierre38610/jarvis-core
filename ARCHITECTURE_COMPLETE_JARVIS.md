@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.48.0 — Consolidation de la hiérarchie de repli (Agents CLI VPS en priorité 1, Clé API Gratuite en priorité 2 avec résilience multi-modèles anti-404, Clé Payante sous consentement strict en priorité 3 avec alerte vocale immédiate), correction du champ estimated_duration dans CognitiveConfig et sérialisation JSON dans tier_routing_log.*
+> *Dernière révision majeure : Version 5.49.0 — Fiabilisation de bout en bout d'Antigravity CLI (P1) : préflight universel avec cache invalidable et destruction anti-zombie, validation stricte de commande sans flag --thinking, gestion robuste des timeouts et interruptions, séparation stdout/stderr, détection différentielle des quotas 429 vs erreurs d'exécution, priorisation agentique Flash low pour le raisonnement minimal Tier 1, et garantie absolue de non-divulgation des clés/secrets dans les logs et résultats.*
 
 ---
 
@@ -160,7 +160,7 @@ jarvis-core/
 ├── App_backup_monolith.py               # Sauvegarde de l'ancien monolithe App.py (dette technique, non importé par le runtime)
 ├── config.py                            # Constantes, répertoires, clés FREE/PAID, encoche paid_key_authorized, MODEL_ROUTING_ENABLED
 ├── auth.py                              # Wrapper d'authentification légère et compatibilité
-├── google_antigravity.py                # Implémentation racine du wrapper Antigravity CLI VPS (AntigravityAgent, resolve_cognitive_tier(_sync), verify_antigravity_cli_ready, resolve_cli_model_args, find_antigravity_binary)
+├── google_antigravity.py                # Implémentation racine du wrapper Antigravity CLI VPS (AntigravityAgent, resolve_cognitive_tier(_sync), verify_antigravity_cli_ready, invalidate_cli_ready_cache, resolve_cli_model_args, find_antigravity_binary, _sanitize_secrets)
 ├── model_registry.py                    # Shim racine du registre de découverte et catalogue des modèles (Gemini / Claude)
 ├── model_router.py                      # Shim racine du routeur intelligent de modèles (select_model)
 ├── fallback_handler.py                  # Shim racine du gestionnaire de repli résilient quota (execute_with_fallback)
@@ -606,10 +606,17 @@ La stratégie d'exécution et de repli de J.A.R.V.I.S. respecte une hiérarchie 
 1. **Activation (`MODEL_ROUTING_ENABLED`)** : `config.py` lit la variable d'environnement (défaut `true`). Si désactivée, le pipeline retombe sur la sélection statique historique (`MODEL_FLASH` / `MODEL_PRO`).
 2. **Registre (`services/model_routing/model_registry.py`)** : découverte dynamique (`agy models list --json`) avec cache TTL 1 h et cascade de repli CLI → `config/models.json` → catalogue par défaut en dur.
 3. **Routeur (`services/model_routing/model_router.py`)** : `select_model()` arbitre modèle et niveau d'effort selon le type de tâche, la complexité et le contexte. Les alias de modèle/effort sont normalisés par `services/antigravity_models.py` (`validate_model_and_effort`, `choose_model_and_effort`, `MODEL_FLASH`, `MODEL_PRO`) et côté dispatcher par `_resolve_agy_model()` / `_resolve_agy_effort()`.
-4. **Repli (`services/model_routing/fallback_handler.py`)** : `execute_with_fallback()` enchaîne Claude (CLI) → Gemini CLI → `api_free_gemini` → `api_paid_gemini`, détecte les 429/quota, gère les cooldowns (300 s) et n'appelle la clé payante que si `config.is_paid_key_authorized()` est vrai (`config.get_effective_paid_key()`).
-5. **Prompts (`services/model_routing/prompt_builder.py`)** : formatage XML (Claude) / Markdown (Gemini), injection des templates `prompts/templates/` et parseur JSON tolérant.
-6. **Exécution Agentique (`services/agentic_runner.py`)** : `run_agentic()` construit la commande `agy` (`_build_command`), exige une sortie JSON stricte (`_extract_json_payload` + `_validate_json_schema`), détecte l'épuisement de quota (`_is_quota_error`) puis bascule sur `_execute_gemini_paid_fallback()` en s'appuyant sur `key_gate`.
-7. **Politique Vocale (`services/live_mode_policy.py`)** : `decide()` arbitre en direct le mode `thinking` vs `standard` du Live (hystérésis via `get_policy()`, détection du besoin agentique par `_detect_agentic_need()`) et journalise chaque décision dans `tier_routing_log` via `log_tier_routing_decision()`.
+4. **Cycle de Vie & Fiabilisation CLI (`google_antigravity.py`)** :
+   - *Préflight partagé* (`verify_antigravity_cli_ready`) : vérifie `--version` sous timeout borné (3s), avec cache invalidable (`invalidate_cli_ready_cache`, `force_refresh=True`) et destruction immédiate du processus en cas de timeout pour éliminer tout zombie.
+   - *Binarisation stricte des arguments* (`resolve_cli_model_args`) : `agy -p <instruction> --dangerously-skip-permissions --output-format text` avec `--model` et `--effort`. Le flag `--thinking` est rigoureusement interdit et déclenche une exception `ValueError` immédiate s'il est détecté.
+   - *Gestion des timeouts et interruptions* : timeout explicite configurable (défaut 300s), destruction immédiate du sous-processus via `terminate()` / `kill()` sans tâche zombie, et retour standardisé `TaskResult` (`status="timeout"` ou `"cancelled"`).
+   - *Détection différentielle des quotas* : séparation stricte de stdout et stderr, détection immédiate des codes 429 et mots-clés de quota pour déclencher `AntigravityQuotaExhaustedError` et rétrograder sur Flash low sans confondre les erreurs de syntaxe logicielles.
+   - *Confidentialité des secrets* (`_sanitize_secrets`) : toutes les clés d'API (Gemini, Anthropic, OpenAI, Stripe) et secrets d'environnement sont systématiquement purgés des flux d'erreurs, logs et résultats.
+5. **Repli (`services/model_routing/fallback_handler.py`)** : `execute_with_fallback()` enchaîne Claude (CLI) → Gemini CLI → `api_free_gemini` → `api_paid_gemini`, détecte les 429/quota, gère les cooldowns (300 s) et n'appelle la clé payante que si `config.is_paid_key_authorized()` est vrai (`config.get_effective_paid_key()`).
+6. **Prompts (`services/model_routing/prompt_builder.py`)** : formatage XML (Claude) / Markdown (Gemini), injection des templates `prompts/templates/` et parseur JSON tolérant.
+7. **Exécution Agentique (`services/agentic_runner.py`)** : `run_agentic()` construit la commande `agy` (`_build_command`), exige une sortie JSON stricte (`_extract_json_payload` + `_validate_json_schema`), détecte l'épuisement de quota (`_is_quota_error`) puis bascule sur `_execute_gemini_paid_fallback()` en s'appuyant sur `key_gate`.
+8. **Priorisation Tier 1 Minimal** : Dans `core/tools/dispatcher.py`, toute tâche agentique classée Tier 1 ou de complexité minimale utilise prioritairement Antigravity Flash low (`MODEL_FLASH`, `effort="low"`), tandis que les outils purement déterministes restent des appels directs.
+9. **Politique Vocale (`services/live_mode_policy.py`)** : `decide()` arbitre en direct le mode `thinking` vs `standard` du Live (hystérésis via `get_policy()`, détection du besoin agentique par `_detect_agentic_need()`) et journalise chaque décision dans `tier_routing_log` via `log_tier_routing_decision()`.
 
 ---
 

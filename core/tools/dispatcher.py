@@ -154,7 +154,9 @@ def _infer_tool_tier_and_cost(
     return tier, cost
 
 
-def _resolve_agy_model(model_override: Optional[str], default: str = MODEL_PRO) -> str:
+def _resolve_agy_model(model_override: Optional[str], default: str = MODEL_PRO, tier: Optional[int] = None) -> str:
+    if tier == 1 and not model_override:
+        return MODEL_FLASH
     if not model_override:
         return default
     m = str(model_override).lower().strip()
@@ -165,12 +167,18 @@ def _resolve_agy_model(model_override: Optional[str], default: str = MODEL_PRO) 
     return default
 
 
-def _resolve_agy_effort(effort_override: Optional[str], default: str = "high") -> str:
+def _resolve_agy_effort(effort_override: Optional[str], default: str = "high", tier: Optional[int] = None) -> str:
+    if tier == 1 and not effort_override:
+        return "low"
     if not effort_override:
         return default
     e = str(effort_override).lower().strip()
-    if e in ("low", "medium", "high"):
-        return e
+    if e in ("low", "rapide", "min", "tier1", "tier 1", "economique"):
+        return "low"
+    if e in ("medium", "tactique", "med", "tier2", "tier 2"):
+        return "medium"
+    if e in ("high", "approfondie", "max", "tier3", "tier 3", "fond"):
+        return "high"
     return default
 
 
@@ -465,6 +473,13 @@ async def _execute_dispatch_tool(
         model_override = args.get("model_override") or args.get("model")
         effort_override = args.get("effort_override") or args.get("effort")
         timeout = int(args.get("timeout", 300))
+        tier_arg = args.get("tier")
+        tier = int(tier_arg) if tier_arg is not None else None
+        if tier is None:
+            if effort_override in ("low", "rapide", "min", "tier1", "tier 1") or (model_override and "flash" in str(model_override).lower()):
+                tier = 1
+            else:
+                tier = 2
 
         cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
         if not cli_ok:
@@ -474,8 +489,10 @@ async def _execute_dispatch_tool(
                 verified=False,
             )
 
-        model = _resolve_agy_model(model_override, default=MODEL_PRO)
-        effort = _resolve_agy_effort(effort_override, default="high")
+        default_model = MODEL_FLASH if tier == 1 else MODEL_PRO
+        default_effort = "low" if tier == 1 else "high"
+        model = _resolve_agy_model(model_override, default=default_model, tier=tier)
+        effort = _resolve_agy_effort(effort_override, default=default_effort, tier=tier)
 
         full_prompt = f"Objectif : {objectif}"
         if contexte:
@@ -552,6 +569,13 @@ async def _execute_dispatch_tool(
         question = args.get("question") or args.get("query") or ""
         model_override = args.get("model_override") or args.get("model")
         effort_override = args.get("effort_override") or args.get("intensite_reflexion")
+        tier_arg = args.get("tier")
+        tier = int(tier_arg) if tier_arg is not None else None
+        if tier is None:
+            if effort_override in ("rapide", "low", "min", "tier1", "tier 1") or (model_override and "flash" in str(model_override).lower()):
+                tier = 1
+            else:
+                tier = 2
 
         cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
         if not cli_ok:
@@ -561,15 +585,10 @@ async def _execute_dispatch_tool(
                 verified=False,
             )
 
-        model = _resolve_agy_model(model_override, default=MODEL_PRO)
-        if effort_override == "rapide":
-            effort = "low"
-        elif effort_override == "tactique":
-            effort = "medium"
-        elif effort_override == "approfondie":
-            effort = "high"
-        else:
-            effort = _resolve_agy_effort(effort_override, default="high")
+        default_model = MODEL_FLASH if tier == 1 else MODEL_PRO
+        default_effort = "low" if tier == 1 else "high"
+        model = _resolve_agy_model(model_override, default=default_model, tier=tier)
+        effort = _resolve_agy_effort(effort_override, default=default_effort, tier=tier)
 
         agent_id = f"agy_reasoning_{int(time.time()*1000)}"
         t0 = time.perf_counter()
