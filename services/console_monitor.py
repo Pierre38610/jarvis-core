@@ -83,6 +83,24 @@ class ConsoleMonitor:
         logging.getLogger().addHandler(handler)
         self._installed = True
 
+    def log_exception(self, exc: Any, context: str = "", source: Optional[str] = None):
+        """Enregistre une exception avec son traceback complet."""
+        if isinstance(exc, str):
+            if isinstance(context, Exception):
+                src = exc
+                ex = context
+                details = "".join(traceback.format_exception(type(ex), ex, ex.__traceback__))
+                self.record_error(source=src, message=str(ex), level="ERROR", details=details)
+                return
+            src = source or "server"
+            self.record_error(source=src, message=exc, level="ERROR", details=str(context))
+            return
+
+        src = source or context or "server"
+        msg = f"{context}: {exc}" if context and context != src else str(exc)
+        details = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)) if isinstance(exc, Exception) else str(exc)
+        self.record_error(source=src, message=msg, level="ERROR", details=details)
+
     def record_error(self, source: str, message: str, level: str = "ERROR", details: str = ""):
         """Enregistre manuellement une erreur ou une anomalie détectée."""
         # Filtre sur les faux positifs et fermetures normales (ex: WebSocket code 1000 None)
