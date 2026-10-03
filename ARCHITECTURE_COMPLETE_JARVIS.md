@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.37.9 — Buffer circulaire de pré-écoute PCM (~1,5s, 25 trames de 60ms) côté serveur (`routers/device_voice.py`) évitant toute perte de consigne parlée immédiatement après le mot d'activation ("Jarvis" sans pause), vidage FIFO immédiat à la réception de `listen:detect`/`start_listening` vers Gemini Live, logs horodatés haute précision (`time.monotonic()`), gestion de la fenêtre de follow-up vocal (`FOLLOWUP_WINDOW_S = 6s`) et timeout d'inactivité automatique (`SESSION_TIMEOUT_IDLE = 60s`) pour l'enceinte ESP32-S3.*
+> *Dernière révision majeure : Version 5.37.10 — Optimisation Firmware ESP32-S3 : WebSocket permanente avec Ping keepalive (20s) et reconnexion backoff exponentiel (1→30s), streaming audio et envoi de {"type":"listen","state":"detect"} immédiat dès détection WakeNet "Jarvis" sans attente de réponse serveur ni interruption de la capture micro pendant le bip (<150ms / simultané), flush du ring buffer pré-détection (~1s) et gestion de {"type":"listen","state":"stop"} pour retour en veille.*
 
 ---
 
@@ -713,7 +713,7 @@ L'enceinte physique dédiée J.A.R.V.I.S. est construite autour de la carte de d
 Pour garantir une confidentialité absolue, une latence nulle et une indépendance réseau au repos :
 1. **Traitement Local Hors-Ligne** : Le modèle de réseau neuronal convolutif `wn9_jarvis_tts` de la suite Espressif ESP-SR s'exécute en continu dans la PSRAM de l'ESP32-S3. Aucun octet sonore n'est diffusé sur Internet tant que le mot d'activation n'a pas été formellement détecté.
 2. **Mot d'Activation Dédié** : *"Jarvis"*, calibré avec un seuil de confiance optimal et une immunité accrue aux faux positifs ambiants.
-3. **Ring Buffer Pré-Trigger (33 Paquets Opus / ~2 Secondes)** : L'enceinte conserve en permanence les 2 dernières secondes de signal audio dans un tampon circulaire local. Dès que *"Jarvis"* est prononcé, l'ESP32 s'éveille en moins de 150 ms, transmet un événement JSON `{"type": "listen", "state": "detect", "text": "Jarvis"}` et injecte instantanément les 33 paquets Opus précédant et accompagnant le wake word. Ce mécanisme élimine toute coupure de la première consigne (« Jarvis, quel temps fait-il ? » est capté dans son intégralité sans nécessiter de pause).
+3. **Ring Buffer Pré-Trigger Local (~1s, 16000 échantillons)** : L'enceinte conserve en permanence la dernière seconde de signal audio dans un tampon circulaire PSRAM (`wake_word_audio_cache_`). Dès que *"Jarvis"* est prononcé, l'ESP32 émet instantanément le message JSON `{"type": "listen", "state": "detect", "text": "Jarvis"}` et injecte les paquets Opus pré-trigger puis le flux micro en continu sans aucune coupure, sans attendre de réponse serveur et sans jamais couper la capture micro durant le bip de notification (<150ms / simultané).
 
 ### 8.3. Pipeline Audio Full-Duplex Opus 16kHz & Rééchantillonnage Continu (`Continuous24kTo16kResampler`)
 La chaîne audio temps réel entre l'ESP32 et le serveur VPS est optimisée pour une clarté acoustique maximale et une bande passante minimale :
@@ -722,9 +722,9 @@ La chaîne audio temps réel entre l'ESP32 et le serveur VPS est optimisée pour
   1. Capture 24kHz / 16kHz par les microphones MEMS et frontal ES7210.
   2. Traitement d'annulation d'écho et débruitage par l'AFE ESP-SR.
   3. Compression en trames Opus 60ms par l'encodeur matériel/logiciel ESP32.
-  4. Transmission WSS binaire sur `/ws/device`.
+  4. Transmission WSS binaire sur `/ws/device` via une connexion WebSocket maintenue ouverte en permanence (Ping 20s, reconnexion avec backoff exponentiel 1→30s).
   5. Décodage Opus côté VPS via `opuslib.Decoder(16000, 1)` vers du PCM 16kHz linéaire.
-  6. **Tampon Circulaire de Pré-Écoute (`collections.deque(maxlen=25)`)** : Hors période d'écoute (`listening_active = False`), les trames audio décodées ne sont pas jetées mais conservées en continu dans une file circulaire FIFO de 25 trames (~1,5 seconde). À la réception de l'événement de détection (`listen:detect`, `listen:start` ou `start_listening`), l'intégralité de ce buffer est immédiatement transmise dans l'ordre chronologique à `session.send_realtime_input` avant de traiter les trames suivantes, éliminant toute perte de début de phrase si l'utilisateur enchaîne sans pause (« Jarvis, quelle heure est-il ? »).
+  6. **Double Tampon Circulaire de Pré-Écoute (Firmware ~1s + VPS ~1,5s)** : Hors période d'écoute (`listening_active = False`), les trames audio sont conservées en continu côté ESP32 et côté VPS. À la réception de l'événement de détection (`listen:detect`, `listen:start` ou `start_listening`), l'intégralité de ce buffer est immédiatement transmise dans l'ordre chronologique à `session.send_realtime_input` avant de traiter les trames suivantes, éliminant toute perte de début de phrase si l'utilisateur enchaîne sans pause (« Jarvis, quelle heure est-il ? »).
   7. Injection continue dans la session Gemini Live Audio (`session.send_realtime_input`) avec horodatage de diagnostic haute précision (`time.monotonic()`).
 - **Sens Descendant (Gemini Live -> VPS -> Haut-Parleur ESP32)** :
   1. Gemini Live Audio produit des blocs de PCM 24kHz 16-bit mono de tailles variables.
@@ -751,33 +751,37 @@ L'implémentation respecte le standard d'échange bidirectionnel temps réel pou
 ```
     ESP32-S3 Audio Board                             Serveur VPS (routers/device_voice.py)
             │                                                         │
-            │─── 1. HTTP Upgrade GET /ws/device (Bearer JWT) ────────►│
+            │─── 1. HTTP Upgrade GET /ws/device (Bearer JWT) ────────►│ (Connexion WebSocket Permanente)
             │◄── 2. HTTP 101 Switching Protocols ─────────────────────│
             │                                                         │
             │─── 3. JSON hello {mac, firmware_version, sample_rate} ─►│
             │◄── 4. JSON hello {transport: "websocket", audio_params} │
             │                                                         │
-            │    [Veille Locale WakeNet 9 "Jarvis"]                   │
-            │─── 5. JSON listen {state: "detect", text: "Jarvis"} ───►│ (Init Session Gemini Live, listening_active=True, Flush pre_listen_buffer FIFO)
-            │─── 6. Binaire : 33 trames Opus pré-trigger (2.0s) ─────►│ (Decode Opus -> Send PCM)
-            │─── 7. Binaire : Streaming continu Opus 16kHz ──────────►│
-            │─── 8. JSON listen {state: "stop"} ─────────────────────►│
+            │    [Keepalive Permanent : Ping toutes les 20s]          │
+            │─── 5. WebSocket Ping ──────────────────────────────────►│
+            │◄── 6. WebSocket Pong ───────────────────────────────────│
             │                                                         │
-            │◄── 9. JSON tts {state: "start"} & llm {emotion: speak} ─│ (listening_active=False)
-            │◄── 10. Binaire : Trames Opus 60ms cadencées à 55ms ─────│ (ContinuousResampler + Pacer)
-            │◄── 11. JSON tts {state: "stop"} & llm {emotion: idle} ──│
+            │    [Veille Locale WakeNet 9 "Jarvis"]                   │
+            │─── 7. JSON listen {state: "detect", text: "Jarvis"} ───►│ (Init Session Gemini Live, listening_active=True)
+            │─── 8. Binaire : Trames Opus pré-trigger (~1s local) ───►│ (Decode Opus -> Send PCM)
+            │─── 9. Binaire : Streaming continu Opus 16kHz immédiat ─►│ (Micro jamais coupé pendant bip)
+            │                                                         │
+            │◄── 10. JSON tts {state: "start"} & llm {emotion: speak} │ (listening_active=False)
+            │◄── 11. Binaire : Trames Opus 60ms cadencées à 55ms ────│ (ContinuousResampler + Pacer)
+            │◄── 12. JSON tts {state: "stop"} & llm {emotion: idle} ─│
             │                                                         │
             │    [Fenêtre de Follow-up : 6 secondes (FOLLOWUP_WINDOW_S = 6)]
             │    (listening_active=True temporaire, écoute ouverte)
             │                                                         │
             │─── Cas A : Silence / aucun audio vocal reçu (RMS <= 500)│
-            │◄── 12. JSON listen {state: "stop", session_id: "..."} ──│ (listening_active=False -> retour en veille)
+            │◄── 13. JSON listen {state: "stop", session_id: "..."} ──│ (listening_active=False -> retour en veille WakeNet)
             │                                                         │
             │─── Cas B : Parole utilisateur enchaînée (RMS > 500 / STT)
             │    (Annulation du timer 6s, listening_active maintenu, nouveau tour Gemini Live)
             │                                                         │
 ```
 
+- **WebSocket Permanente & Keepalive** : Connexion établie dès l'initialisation du réseau et maintenue active en continu. Tâche de Ping toutes les 20 secondes, et reconnexion automatique avec backoff exponentiel (1 s $\to$ 30 s) en cas de déconnexion.
 - **Handshake HTTP 101 Garanti** : Le serveur accepte obligatoirement `await websocket.accept()` avant de vérifier le jeton JWT, prévenant les fermetures TCP abruptes avant négociation.
 - **Gestion du Follow-up Vocal (6s) & Timeout d'Inactivité (60s)** :
   - **Fenêtre d'enchaînement direct (`FOLLOWUP_WINDOW_S = 6`)** : Après chaque fin de réponse (`sc.turn_complete`, après émission de `tts:stop` et `llm:idle`), le serveur maintient l'écoute active pendant 6 secondes. Si aucune activité vocale n'est détectée (absence de `input_transcription` textuel ou énergie RMS du signal PCM décodé $\le 500$), le serveur coupe l'écoute (`listening_active = False`) et envoie à l'ESP32 l'ordre formel de retour en veille :
@@ -788,6 +792,7 @@ L'implémentation respecte le standard d'échange bidirectionnel temps réel pou
       "session_id": "<device_id>"
     }
     ```
+    L'ESP32 bascule instantanément en `kDeviceStateIdle`, arrêtant l'envoi de trames audio, réarmant la détection locale WakeNet 9 et positionnant la LED en veille.
   - **Filet de sécurité d'inactivité session (`SESSION_TIMEOUT_IDLE = 60`)** : Si `listening_active` reste actif pendant plus de 60 secondes sans qu'aucun tour complet n'aboutisse, une tâche de surveillance de fond (`_idle_watchdog_loop`) déclenche automatiquement le même retour en veille avec envoi de `{"type": "listen", "state": "stop", ...}`.
   - **Annulation et réactivation propre** : Tout nouvel événement de réveil `listen:detect` ou `start_listening` annule instantanément le timer de follow-up, tout comme les ordres d'interruption `listen:stop`, `stop_listening` ou `abort` qui remettent immédiatement `listening_active = False`.
 - **Messages JSON Pris en Charge** :
@@ -1299,7 +1304,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre profonde (`#070B14`, `#0B0F19`), cyan électrique Stark (`#38bdf8`, `#0284c7`), accents ambre et violet néon.
 - **Typographie** : Polices modernes géométriques sans-serif d'inspiration high-tech.
 - **Responsive PWA** : Conçue pour une expérience native sur smartphone (iOS Safari / Android Chrome) et desktop avec support PWA (`manifest.json`, installation sur écran d'accueil).
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.37.9 DEVICE PRE-LISTEN BUFFER & ZERO LOSS`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.37.10 ESP32 ZERO-LATENCY WAKE & PERSISTENT WS`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
@@ -1503,4 +1508,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.37.9.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.37.10.*
