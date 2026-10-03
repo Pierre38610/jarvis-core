@@ -17,6 +17,22 @@ cd /d "%PROJECT_DIR%"
 echo [1/3] Verification de l'environnement ESP-IDF...
 where idf.py >nul 2>nul
 if %ERRORLEVEL% NEQ 0 (
+    if exist "C:\Espressif\frameworks\esp-idf-v5.5.5\export.bat" (
+        echo [INFO] Activation automatique de ESP-IDF v5.5.5...
+        call "C:\Espressif\frameworks\esp-idf-v5.5.5\export.bat"
+    ) else if exist "C:\Espressif\frameworks\esp-idf-v5.3.1\export.bat" (
+        echo [INFO] Activation automatique de ESP-IDF v5.3.1...
+        call "C:\Espressif\frameworks\esp-idf-v5.3.1\export.bat"
+    ) else if exist "C:\Espressif\frameworks\esp-idf-v5.3\export.bat" (
+        echo [INFO] Activation automatique de ESP-IDF v5.3...
+        call "C:\Espressif\frameworks\esp-idf-v5.3\export.bat"
+    ) else if exist "C:\Espressif\frameworks\esp-idf\export.bat" (
+        echo [INFO] Activation automatique de ESP-IDF...
+        call "C:\Espressif\frameworks\esp-idf\export.bat"
+    )
+)
+where idf.py >nul 2>nul
+if %ERRORLEVEL% NEQ 0 (
     echo [ERREUR] idf.py est introuvable dans le PATH.
     echo Veuillez lancer ce script depuis le terminal 'ESP-IDF 5.x PowerShell' ou 'ESP-IDF 5.x Command Prompt'.
     echo Telechargement ESP-IDF : https://dl.espressif.com/dl/esp-idf/
