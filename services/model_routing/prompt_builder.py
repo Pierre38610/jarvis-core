@@ -84,6 +84,7 @@ def build_prompt(
 
     if provider == "claude":
         # Structure optimisée pour Claude avec balises XML
+        claude_instructions = template_content or "1. Analyse le besoin.\n2. Exécute les actions requises.\n3. Valide le travail effectué."
         xml_prompt = f"""<system_role>
 Tu es l'{agent_role}. Tu travailles sous l'environnement Antigravity CLI pour Pierre Cassagnettes.
 </system_role>
@@ -104,7 +105,7 @@ Tu es l'{agent_role}. Tu travailles sous l'environnement Antigravity CLI pour Pi
 </constraints>
 
 <instructions>
-{template_content or "1. Analyse le besoin.\\n2. Exécute les actions requises.\\n3. Valide le travail effectué."}
+{claude_instructions}
 </instructions>
 
 <output_format>
@@ -119,6 +120,11 @@ IMPORTANT : Ta réponse finale doit IMPÉRATIVEMENT inclure un objet JSON valide
     else:
         # Structure optimisée pour Gemini (concise, directive et hiérarchisée)
         effort_line = f"NIVEAU DE RÉFLEXION : {effort.upper()}" if effort else ""
+        gemini_instructions = template_content or (
+            "- Analyse les données et exécute les opérations nécessaires de manière autonome.\n"
+            "- Valide chaque étape pour garantir la fiabilité.\n"
+            "- Respecte les contraintes de sécurité (zéro accès aux clés secrètes / .env)."
+        )
         gemini_prompt = f"""# MISSION AUTONOME J.A.R.V.I.S.
 RÔLE : {agent_role}
 {effort_line}
@@ -130,7 +136,7 @@ RÔLE : {agent_role}
 {ctx_str}
 
 ## 3. DIRECTIVES & INSTRUCTIONS
-{template_content or "- Analyse les données et exécute les opérations nécessaires de manière autonome.\n- Valide chaque étape pour garantir la fiabilité.\n- Respecte les contraintes de sécurité (zéro accès aux clés secrètes / .env)."}
+{gemini_instructions}
 
 ## 4. FORMAT DU RAPPORT FINAL OBLIGATOIRE
 À la fin de ton intervention, fournis impérativement un objet JSON valide avec cette structure exacte :

@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.53.0 — Suite Complète de Tests Contractuels E2E & Verrouillage de Non-Régression L1-L3 (P5) : Validation exhaustive de bout en bout des 15 scénarios contractuels (L1 factuel zéro-agent direct, L1 agentic minimal Antigravity Flash low, L2 multi-agents parallèles avec synthèse/contradiction, L3 Gemini Web Deep Research CDP avec confirmation déterministe de plan, résilience CDP browser offline sans gel audio, gestion CLI indisponible, quota paid key consent gate & consommation unique, timeouts e2e sans processus zombies, annulation propre d'action, blocage de téléchargement sans consentement utilisateur, rejet de fichiers vides/corrompus par le vérificateur, protection invariant zéro fuite de clés dans logs/ToolResults, verrou d'idempotence des recherches concurrentes et smoke test d'intégration).*
+> *Dernière révision majeure : Version 5.54.0 — Compatibilité Python 3.11 VPS & Déploiement Cloud Opérationnel : Résolution de la compatibilité syntaxique f-string multiline Python 3.11 sur Oracle Linux VPS, élimination des artefacts BOM, validation intégrale des 518 tests unitaires et 21 tests e2e, et rétablissement du service de production jarvis sous Cloudflare.*
 
 
 ---
@@ -1592,4 +1592,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.53.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.54.0.*

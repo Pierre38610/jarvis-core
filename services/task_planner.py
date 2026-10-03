@@ -1,4 +1,4 @@
-﻿"""services/task_planner.py
+"""services/task_planner.py
 Planificateur de consignes multi-etapes pour J.A.R.V.I.S.
 
 Principe :

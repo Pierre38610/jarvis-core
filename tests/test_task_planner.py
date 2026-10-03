@@ -1,4 +1,4 @@
-﻿"""tests/test_task_planner.py
+"""tests/test_task_planner.py
 Tests unitaires du planificateur multi-etapes de J.A.R.V.I.S.
 100% hors-ligne (zero appel API). Conforme a la regle no-paid-api-in-tests.
 """
