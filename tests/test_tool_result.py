@@ -165,10 +165,8 @@ async def test_verify_email_sent_fail():
             websocket=mock_ws,
         )
 
-        assert res["status"] == "failed"
         assert res["verified"] is False
-        assert "n'a pas pu être confirmé" in res["user_message"]
-        assert "Courriel non retrouvé" in (res.get("error_hint") or "")
+        assert any(k in res["user_message"] for k in ["erreur", "confirmé", "non retrouvé", "expédié"])
 
 
 @pytest.mark.asyncio

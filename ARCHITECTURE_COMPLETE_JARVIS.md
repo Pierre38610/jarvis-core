@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.47.0 — Correction format ToolResult `search_web` (status=done + verified=True) et consolidation du dispatcher RPC `browser_open_task` sur le PC local Windows.*
+> *Dernière révision majeure : Version 5.48.0 — Consolidation de la hiérarchie de repli (Agents CLI VPS en priorité 1, Clé API Gratuite en priorité 2 avec résilience multi-modèles anti-404, Clé Payante sous consentement strict en priorité 3 avec alerte vocale immédiate), correction du champ estimated_duration dans CognitiveConfig et sérialisation JSON dans tier_routing_log.*
 
 ---
 
@@ -586,17 +586,27 @@ Garantit une maîtrise absolue et vivante du dossier professionnel de Pierre :
 3. **Priorité 3 — Classifieur LLM Léger Tier 1 (`classify_query_tier_with_llm`)** : Appel `gemini-3.8-flash` rapide (timeout 3.5s, `response_mime_type="application/json"`) retournant `{"tier": 1|2|3, "reason": "..."}`. Repli sécurisé sur Tier 2 en cas de timeout.
 4. **Télémétrie Asynchrone** : Chaque décision est consignée dans la table PostgreSQL `tier_routing_log` (`query_text`, `chosen_tier`, `reason`, `final_tier`, `latency_ms`, `override_manuel`).
 
-### 5.5. Protocole de Résilience Quota-Aware & Dégradation Gracieuse (429)
-En cas d'exception `AntigravityQuotaExhaustedError` ou HTTP 429 sur `gemini-3.1-pro` :
-- Bascule automatique transparente sur Tier 2 (`gemini-3.8-flash-high`).
-- Garantie d'inviolabilité : le modèle de repli utilise strictement la clé gratuite sauf si l'encoche payante est cochée.
-- Notification proactive Aoede et inscription de l'incident dans `SupervisionService` et `tier_routing_log` (`final_tier = 2`).
+### 5.5. Protocole de Résilience Quota-Aware & Cascade Multi-Tiers Ordonnée
+La stratégie d'exécution et de repli de J.A.R.V.I.S. respecte une hiérarchie stricte en 3 niveaux :
+1. **Niveau 1 (Priorité Absolue) — Agents Antigravity CLI sur le VPS** :
+   - Exécution autonome via le binaire `agy` sur le serveur Cloud sans consommer de quota d'API directe.
+   - Si `gemini-3.1-pro` rencontre un quota 5h (`AntigravityQuotaExhaustedError`), rétrogradation automatique sur `gemini-3.8-flash-high` en conservant la clé gratuite.
+2. **Niveau 2 (Repli API Gratuite)** :
+   - Si le binaire CLI est indisponible ou en erreur critique d'exécution :
+   - **Notification vocale immédiate** à Pierre via le canal Live / `VoiceInjectionQueue` : *"Pierre, les agents CLI du VPS sont indisponibles. Je bascule sur l'API Gemini pour finaliser la tâche."*
+   - Exécution via le SDK Google GenAI sur la clé gratuite (`GEMINI_API_KEY_FREE`) avec résilience multi-modèles (`gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-flash` / pro `gemini-2.5-pro`, `gemini-1.5-pro`) anti-404.
+3. **Niveau 3 (Repli API Payante sous Consentement Strict)** :
+   - Si la clé gratuite atteint son quota (429 / RESOURCE_EXHAUSTED) ET que l'encoche payante est cochée (`is_paid_key_authorized()`) :
+   - **Alerte vocale explicite** à Pierre et exécution via `GEMINI_API_KEY_PAID`.
+   - Si la clé payante n'est pas autorisée, arrêt de la chaîne et demande d'accord.
+4. **Télémétrie & Traçabilité** :
+   - Inscription systématique de l'incident et du palier final dans PostgreSQL `tier_routing_log` (`final_tier`, `fallback_occurred=True`, métadonnées JSON).
 
 ### 5.6. Routage Intelligent Antigravity CLI, Résilience Quota & Politique Vocale
 1. **Activation (`MODEL_ROUTING_ENABLED`)** : `config.py` lit la variable d'environnement (défaut `true`). Si désactivée, le pipeline retombe sur la sélection statique historique (`MODEL_FLASH` / `MODEL_PRO`).
 2. **Registre (`services/model_routing/model_registry.py`)** : découverte dynamique (`agy models list --json`) avec cache TTL 1 h et cascade de repli CLI → `config/models.json` → catalogue par défaut en dur.
 3. **Routeur (`services/model_routing/model_router.py`)** : `select_model()` arbitre modèle et niveau d'effort selon le type de tâche, la complexité et le contexte. Les alias de modèle/effort sont normalisés par `services/antigravity_models.py` (`validate_model_and_effort`, `choose_model_and_effort`, `MODEL_FLASH`, `MODEL_PRO`) et côté dispatcher par `_resolve_agy_model()` / `_resolve_agy_effort()`.
-4. **Repli (`services/model_routing/fallback_handler.py`)** : `execute_with_fallback()` enchaîne Claude → Gemini CLI → `api_paid_gemini`, détecte les 429/quota, gère les cooldowns (300 s) et n'appelle la clé payante que si `config.is_paid_key_authorized()` est vrai (`config.get_effective_paid_key()`).
+4. **Repli (`services/model_routing/fallback_handler.py`)** : `execute_with_fallback()` enchaîne Claude (CLI) → Gemini CLI → `api_free_gemini` → `api_paid_gemini`, détecte les 429/quota, gère les cooldowns (300 s) et n'appelle la clé payante que si `config.is_paid_key_authorized()` est vrai (`config.get_effective_paid_key()`).
 5. **Prompts (`services/model_routing/prompt_builder.py`)** : formatage XML (Claude) / Markdown (Gemini), injection des templates `prompts/templates/` et parseur JSON tolérant.
 6. **Exécution Agentique (`services/agentic_runner.py`)** : `run_agentic()` construit la commande `agy` (`_build_command`), exige une sortie JSON stricte (`_extract_json_payload` + `_validate_json_schema`), détecte l'épuisement de quota (`_is_quota_error`) puis bascule sur `_execute_gemini_paid_fallback()` en s'appuyant sur `key_gate`.
 7. **Politique Vocale (`services/live_mode_policy.py`)** : `decide()` arbitre en direct le mode `thinking` vs `standard` du Live (hystérésis via `get_policy()`, détection du besoin agentique par `_detect_agentic_need()`) et journalise chaque décision dans `tier_routing_log` via `log_tier_routing_decision()`.

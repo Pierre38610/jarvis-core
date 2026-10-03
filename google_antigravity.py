@@ -33,6 +33,7 @@ class CognitiveConfig:
     description: str = ""
     reason: str = ""
     is_override: bool = False
+    estimated_duration: float = 0.0
 
     def __post_init__(self):
         if not self.cli_model_arg:
@@ -45,6 +46,8 @@ class CognitiveConfig:
                 self.tier = 1
             elif any(k in self.model for k in ["pro", "opus", "sonnet"]):
                 self.tier = 3
+        if not self.estimated_duration and self.timeout_seconds:
+            self.estimated_duration = float(self.timeout_seconds)
 
     def with_details(self, reason: str = "", is_override: bool = False) -> "CognitiveConfig":
         return CognitiveConfig(
@@ -56,7 +59,8 @@ class CognitiveConfig:
             voice_pitch=self.voice_pitch,
             description=self.description,
             reason=reason,
-            is_override=is_override
+            is_override=is_override,
+            estimated_duration=self.estimated_duration
         )
 
 

@@ -13,6 +13,7 @@ Fallback : si Qdrant ou PostgreSQL est indisponible, retombe en mode dégradé
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from datetime import datetime, timezone

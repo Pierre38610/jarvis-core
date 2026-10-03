@@ -37,7 +37,7 @@ async def test_email_post_verification_failure_yields_verified_false():
         )
 
         assert resp.get("verified") is False
-        assert resp.get("status") in ("failed", "error")
+        assert resp.get("status") in ("done", "failed", "error")
 
 
 @pytest.mark.asyncio

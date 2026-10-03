@@ -395,7 +395,8 @@ class AgenticDispatcher:
                     await broadcast_supervision()
 
                     threshold = getattr(config, "VOCAL_MILESTONE_THRESHOLD_SECONDS", 90.0)
-                    if notify_voice and cog_cfg.estimated_duration >= threshold:
+                    estimated_dur = getattr(cog_cfg, "estimated_duration", float(getattr(cog_cfg, "timeout_seconds", 0.0)))
+                    if notify_voice and estimated_dur >= threshold:
                         now = time.time()
                         if (now - last_milestone_time >= threshold) and not milestone_emitted:
                             last_milestone_time = now
@@ -472,21 +473,74 @@ class AgenticDispatcher:
                 raw_output = task_result.summary or ""
 
                 # Fallback API directe Gemini si environnement dev sans agy ou erreur d'exécution CLI
+                # Cascade stricte : 1. Agents CLI VPS -> 2. Clé API Gratuite -> 3. Clé API Payante (si autorisée)
                 if task_result.status == "error" or "Antigravity CLI n'est pas disponible" in raw_output or "introuvable" in raw_output.lower():
-                    logger.info(f"[AgenticDispatcher] Binaire agy indisponible ou erreur d'exécution. Repli sur l'API Gemini pour {mission_type}...")
+                    logger.info(f"[AgenticDispatcher] Agents CLI VPS indisponibles ou en échec. Repli ordonné sur l'API Gemini pour {mission_type}...")
                     from core.shared_state import client_paid, client_free
-                    client_target = client_paid if (client_paid and config.is_paid_key_authorized()) else (client_free or client_paid)
-                    if client_target:
+
+                    live_sess = active_task_controller.get("live_session")
+                    if notify_voice and live_sess:
                         try:
-                            resp = await asyncio.to_thread(
-                                client_target.models.generate_content,
-                                model="gemini-2.5-flash",
-                                contents=prompt
+                            await safe_send_live_client_content(
+                                live_sess,
+                                (
+                                    f"[ALERTE REPLI API GEMINI]\n"
+                                    f"Pierre, les agents CLI du VPS sont indisponibles. Je bascule sur l'API Gemini pour finaliser {label.lower()}.\n\n"
+                                    f"Consigne stricte pour Aoede : Indique d'une courte phrase naturelle que tu bascules sur l'API Gemini suite à l'indisponibilité des agents CLI."
+                                ),
+                                action_key=f"api_fallback_{mission_id}",
+                                wait_if_speaking=False,
+                                drainage_delay=1.0,
+                                priority=InjectionPriority.PROGRESS_MILESTONE
                             )
-                            raw_output = resp.text or ""
-                            supervision_service.update_action_progress(mission_id, "fallback_gemini", "Repli automatique sur Gemini API")
-                        except Exception as fb_err:
-                            logger.warning(f"[AgenticDispatcher] Erreur fallback Gemini: {fb_err}")
+                        except Exception:
+                            pass
+
+                    # Chaîne de clients ordonnée : Clé Gratuite d'abord, puis Clé Payante
+                    client_candidates = []
+                    if client_free:
+                        client_candidates.append((client_free, "Clé Gratuite"))
+                    if client_paid and config.is_paid_key_authorized():
+                        client_candidates.append((client_paid, "Clé Payante"))
+
+                    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]
+                    if any(k in effective_model.lower() for k in ["3.1", "pro", "opus", "sonnet"]):
+                        models_to_try = ["gemini-2.5-pro", "gemini-1.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"]
+
+                    api_success = False
+                    for cli_inst, key_label in client_candidates:
+                        if key_label == "Clé Payante" and not api_success and notify_voice and live_sess:
+                            try:
+                                await safe_send_live_client_content(
+                                    live_sess,
+                                    "[ALERTE CLÉ PAYANTE] La clé gratuite a atteint sa limite, passage sur la clé payante autorisée.",
+                                    priority=InjectionPriority.PROGRESS_MILESTONE
+                                )
+                            except Exception:
+                                pass
+
+                        for m_name in models_to_try:
+                            try:
+                                resp = await asyncio.to_thread(
+                                    cli_inst.models.generate_content,
+                                    model=m_name,
+                                    contents=prompt
+                                )
+                                if resp and resp.text:
+                                    raw_output = resp.text
+                                    api_success = True
+                                    fallback_occurred = True
+                                    supervision_service.update_action_progress(
+                                        mission_id,
+                                        "fallback_gemini",
+                                        f"Repli API Gemini ({m_name} via {key_label})"
+                                    )
+                                    break
+                            except Exception as fb_err:
+                                logger.warning(f"[AgenticDispatcher] Erreur fallback Gemini ({m_name} via {key_label}): {fb_err}")
+                                continue
+                        if api_success:
+                            break
 
                 # ─── Traitement spécifique par domaine ────────────────────────
                 download_target_link = None

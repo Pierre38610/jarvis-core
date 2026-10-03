@@ -169,15 +169,15 @@ async def test_dispatch_tool_records_timeout_status():
     mock_ws = AsyncMock()
 
     with patch("core.tools.dispatcher._execute_dispatch_tool", side_effect=asyncio.TimeoutError("Timeout test")):
-        with pytest.raises(asyncio.TimeoutError):
-            await dispatch_tool(
-                name="timeout_tool_test",
-                args={},
-                websocket=mock_ws,
-                session=MagicMock(),
-                is_paid_live=False,
-                live_display_label="Gemini Flash"
-            )
+        res = await dispatch_tool(
+            name="timeout_tool_test",
+            args={},
+            websocket=mock_ws,
+            session=MagicMock(),
+            is_paid_live=False,
+            live_display_label="Gemini Flash"
+        )
+        assert res.get("status") in ("failed", "timeout")
 
     last_record = metrics_service._memory_buffer[-1]
     assert last_record["tool_name"] == "timeout_tool_test"

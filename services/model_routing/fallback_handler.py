@@ -112,12 +112,59 @@ async def execute_with_fallback(
             logger.info(f"Modèle '{target_model}' ignoré car actuellement en période de cooldown quota.")
             continue
 
-        # 2. Cas spécifique de l'API Paid Gemini en bout de chaîne
+        # 2a. Cas de l'API Gemini Gratuite en repli
+        if target_model == "api_free_gemini":
+            if not config.GEMINI_API_KEY_FREE:
+                logger.warning("Repli API Gratuite requis mais GEMINI_API_KEY_FREE non configurée.")
+                continue
+
+            logger.info("Bascule vers l'API directe Gemini avec clé gratuite.")
+            if on_fallback and i > 0:
+                await on_fallback(attempt_chain[i - 1], "Gemini API Direct (Clé Gratuite)", "Quota CLI épuisé")
+
+            try:
+                from google import genai
+                free_client = genai.Client(api_key=config.GEMINI_API_KEY_FREE)
+                api_models = ["gemini-2.5-pro", "gemini-1.5-pro", "gemini-2.5-flash"] if decision.task_type in ("complex", "code") else ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]
+                
+                output_text = ""
+                used_m = api_models[0]
+                for m_cand in api_models:
+                    try:
+                        resp = await free_client.aio.models.generate_content(
+                            model=m_cand,
+                            contents=prompt
+                        )
+                        output_text = resp.text or ""
+                        used_m = m_cand
+                        break
+                    except Exception as m_err:
+                        if is_quota_error(m_err):
+                            raise
+                        logger.warning(f"[FallbackHandler] Modèle {m_cand} indisponible sur clé gratuite: {m_err}")
+                        continue
+
+                if output_text:
+                    return {
+                        "status": "completed",
+                        "summary": output_text,
+                        "model_used": f"Gemini API Direct ({used_m}) [FREE]",
+                        "fallback_used": True
+                    }
+            except Exception as free_exc:
+                if is_quota_error(free_exc):
+                    cooldown_manager.mark_exhausted("api_free_gemini")
+                    logger.warning("Quota saturé sur la clé API Gemini gratuite.")
+                else:
+                    logger.warning(f"Erreur API Gemini gratuite: {free_exc}")
+                continue
+
+        # 2b. Cas spécifique de l'API Paid Gemini en bout de chaîne
         if target_model == "api_paid_gemini":
             if not config.is_paid_key_authorized():
                 logger.warning("Repli API Paid requis mais clé payante non autorisée par Pierre. Arrêt de la chaîne.")
                 raise AntigravityQuotaExhaustedError(
-                    "Quota épuisé sur l'ensemble des modèles CLI disponibles. "
+                    "Quota épuisé sur l'ensemble des modèles CLI et API gratuite disponibles. "
                     "L'accès à la clé payante n'étant pas autorisé dans vos réglages, la mission est suspendue."
                 )
 
@@ -127,26 +174,37 @@ async def execute_with_fallback(
 
             logger.info("Bascule autorisée vers l'API directe Gemini avec clé payante.")
             if on_fallback and i > 0:
-                await on_fallback(attempt_chain[i - 1], "Gemini API Direct (Clé Payante)", "Quota CLI épuisé")
+                await on_fallback(attempt_chain[i - 1], "Gemini API Direct (Clé Payante)", "Quota CLI / Clé gratuite épuisé")
 
             try:
-                # Exécution via l'API directe payante
                 from google import genai
-                from google.genai import types
-
                 paid_client = genai.Client(api_key=effective_paid_key)
-                api_model = "gemini-2.5-pro" if decision.task_type in ("complex", "code") else "gemini-2.5-flash"
-                resp = await paid_client.aio.models.generate_content(
-                    model=api_model,
-                    contents=prompt
-                )
-                output_text = resp.text or ""
-                return {
-                    "status": "completed",
-                    "summary": output_text,
-                    "model_used": f"Gemini API Direct ({api_model}) [PAID]",
-                    "fallback_used": True
-                }
+                api_models = ["gemini-2.5-pro", "gemini-1.5-pro", "gemini-2.5-flash"] if decision.task_type in ("complex", "code") else ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]
+                
+                output_text = ""
+                used_m = api_models[0]
+                for m_cand in api_models:
+                    try:
+                        resp = await paid_client.aio.models.generate_content(
+                            model=m_cand,
+                            contents=prompt
+                        )
+                        output_text = resp.text or ""
+                        used_m = m_cand
+                        break
+                    except Exception as m_err:
+                        if is_quota_error(m_err):
+                            raise
+                        logger.warning(f"[FallbackHandler] Modèle {m_cand} indisponible sur clé payante: {m_err}")
+                        continue
+
+                if output_text:
+                    return {
+                        "status": "completed",
+                        "summary": output_text,
+                        "model_used": f"Gemini API Direct ({used_m}) [PAID]",
+                        "fallback_used": True
+                    }
             except Exception as paid_exc:
                 if is_quota_error(paid_exc):
                     cooldown_manager.mark_exhausted("api_paid_gemini")

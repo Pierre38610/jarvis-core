@@ -63,28 +63,28 @@
       "task_type": "simple",
       "model": "gemini-3.7-flash",
       "effort": "low",
-      "fallback_chain": ["gemini-3.8-flash", "api_paid_gemini"],
+      "fallback_chain": ["gemini-3.8-flash", "api_free_gemini", "api_paid_gemini"],
       "description": "Tâches simples, vérifications d'état, synchronisation de documentation, diagnostics légers"
     },
     {
       "task_type": "medium",
       "model": "gemini-3.7-flash",
       "effort": "medium",
-      "fallback_chain": ["gemini-3.8-flash", "gemini-3.1-pro", "api_paid_gemini"],
+      "fallback_chain": ["gemini-3.8-flash", "gemini-3.1-pro", "api_free_gemini", "api_paid_gemini"],
       "description": "Tâches intermédiaires, transport, tableurs, rédaction et analyse d'e-mails"
     },
     {
       "task_type": "complex",
       "model": "gemini-3.1-pro",
       "effort": "high",
-      "fallback_chain": ["gemini-3.7-flash", "gemini-3.8-flash", "api_paid_gemini"],
+      "fallback_chain": ["gemini-3.7-flash", "gemini-3.8-flash", "api_free_gemini", "api_paid_gemini"],
       "description": "Recherche approfondie, refactoring lourd, auto-réparation système, ingénierie complexe"
     },
     {
       "task_type": "code",
       "model": "claude-3-7-sonnet",
       "effort": null,
-      "fallback_chain": ["gemini-3.1-pro", "gemini-3.7-flash", "api_paid_gemini"],
+      "fallback_chain": ["gemini-3.1-pro", "gemini-3.7-flash", "api_free_gemini", "api_paid_gemini"],
       "description": "Génération de code intensif, raisonnement long ou demande explicite de Claude"
     }
   ]

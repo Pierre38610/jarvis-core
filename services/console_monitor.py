@@ -67,6 +67,10 @@ class ConsoleMonitor:
                     "task exception was never retrieved",
                     "exception was never retrieved",
                     "task was destroyed but it is pending",
+                    # Bruits SDK Gemini inoffensifs
+                    "automatic function calling",
+                    "automatic_function_calling",
+                    "afc",
                 ]
                 if any(p in msg_lower for p in normal_close_patterns):
                     return

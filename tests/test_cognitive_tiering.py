@@ -441,3 +441,81 @@ async def test_fallback_does_not_consume_paid_key_silently():
                     assert mock_log.call_args.kwargs["fallback_occurred"] is True
                     assert mock_log.call_args.kwargs["chosen_tier"] == 3
                     assert mock_log.call_args.kwargs["final_tier"] == 2
+
+
+@pytest.mark.asyncio
+async def test_cognitive_config_estimated_duration_attribute():
+    """Vérifie que CognitiveConfig possède estimated_duration initialisé et propagé."""
+    cfg = CognitiveConfig(model="gemini-3.8-flash", thinking_level="low", timeout_seconds=120)
+    assert hasattr(cfg, "estimated_duration")
+    assert cfg.estimated_duration == 120.0
+
+    cfg_details = cfg.with_details(reason="Test reason", is_override=True)
+    assert hasattr(cfg_details, "estimated_duration")
+    assert cfg_details.estimated_duration == 120.0
+    assert cfg_details.reason == "Test reason"
+
+
+@pytest.mark.asyncio
+async def test_memory_log_tier_routing_json_serialization():
+    """Vérifie que memory.py log_tier_routing sérialise correctement le JSON sans NameError 'json'."""
+    import json
+    from unittest.mock import MagicMock
+    from services.memory import vector_memory, log_tier_routing
+    
+    mock_conn = AsyncMock()
+    
+    class MockAcquire:
+        async def __aenter__(self):
+            return mock_conn
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    mock_pool = MagicMock()
+    mock_pool.acquire.return_value = MockAcquire()
+
+    with patch.object(vector_memory, "_pg_pool", mock_pool):
+        res = await log_tier_routing(
+            query_text="Créer une présentation slides",
+            chosen_tier=2,
+            reason="Test tier",
+            final_tier=2,
+            latency_ms=150.0,
+            metadata={"source": "deep_research", "slides_count": 5}
+        )
+        assert res is True
+        assert mock_conn.execute.call_count == 1
+        # Vérifie que le 8e argument est bien du JSON sérialisé
+        call_args = mock_conn.execute.call_args.args
+        meta_arg = call_args[8]
+        assert '"slides_count": 5' in meta_arg
+
+
+@pytest.mark.asyncio
+async def test_slides_outline_tries_cli_before_api():
+    """Vérifie que generate_presentation_outline tente d'abord Antigravity CLI sur VPS avant l'API."""
+    import json
+    from services.slides_service import slides_service
+
+    fake_outline = {
+        "title": "Titre Test",
+        "theme": "stark",
+        "slides": [{"layout": "hero_title", "title": "Slide 1", "bullets": ["Point A"]}]
+    }
+
+    with patch("google_antigravity.verify_antigravity_cli_ready", new_callable=AsyncMock, return_value=(True, "OK", "/usr/bin/agy")):
+        with patch("google_antigravity.AntigravityAgent.run_cli_task_stream", new_callable=AsyncMock) as mock_cli:
+            mock_cli.return_value = TaskResult(
+                summary=f"```json\n{json.dumps(fake_outline)}\n```",
+                status="completed"
+            )
+            with patch.dict("os.environ", {}, clear=True):
+                outline = await slides_service.generate_presentation_outline(
+                    sujet="Test IA",
+                    consignes="Consignes test",
+                    nb_slides=1
+                )
+                assert mock_cli.call_count == 1
+                assert outline["title"] == "Titre Test"
+                assert len(outline["slides"]) == 1
+

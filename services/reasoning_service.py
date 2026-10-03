@@ -394,14 +394,67 @@ class AutonomousReasoningEngine:
             return {"status": "cancelled", "summary": "Investigation interrompue par l'utilisateur.", "artifact_path": None}
 
         if task_result.status == "error":
-            _log_tier_telemetry("error")
-            return {
-                "status": "error",
-                "summary": task_result.summary,
-                "full_output": task_result.summary,
-                "artifact_path": None,
-                "model_used": task_result.model_label
-            }
+            logger.info("[Reasoning Engine] Repli ordonné sur l'API Gemini suite à l'indisponibilité ou erreur des agents CLI...")
+            try:
+                from core.shared_state import active_task_controller, safe_send_live_client_content
+                from services.voice_injection_queue import InjectionPriority
+                live_sess = active_task_controller.get("live_session")
+                if live_sess:
+                    await safe_send_live_client_content(
+                        live_sess,
+                        (
+                            "[ALERTE REPLI API GEMINI]\n"
+                            "Pierre, les agents CLI du VPS sont indisponibles. Je bascule sur l'API Gemini pour finaliser la réflexion approfondie.\n\n"
+                            "Consigne stricte pour Aoede : Indique d'une courte phrase naturelle que tu bascules sur l'API Gemini suite à l'indisponibilité des agents CLI."
+                        ),
+                        action_key="reasoning_api_fallback",
+                        wait_if_speaking=False,
+                        drainage_delay=1.0,
+                        priority=InjectionPriority.PROGRESS_MILESTONE
+                    )
+            except Exception:
+                pass
+
+            client_candidates = []
+            if config.GEMINI_API_KEY_FREE:
+                client_candidates.append((genai.Client(api_key=config.GEMINI_API_KEY_FREE), "Clé Gratuite"))
+            if config.is_paid_key_authorized() and config.GEMINI_API_KEY_PAID:
+                client_candidates.append((genai.Client(api_key=config.GEMINI_API_KEY_PAID), "Clé Payante"))
+
+            models_to_try = ["gemini-2.5-pro", "gemini-1.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"]
+            api_resp_text = ""
+            for eff_cli, k_label in client_candidates:
+                for m_cand in models_to_try:
+                    try:
+                        cfg_gen = types.GenerateContentConfig(temperature=0.3)
+                        r = await eff_cli.aio.models.generate_content(
+                            model=m_cand,
+                            contents=prompt,
+                            config=cfg_gen
+                        )
+                        if r and r.text:
+                            api_resp_text = r.text
+                            task_result = TaskResult(
+                                summary=api_resp_text,
+                                status="completed",
+                                model_label=f"Gemini API Direct ({m_cand} via {k_label})"
+                            )
+                            fallback_occurred = True
+                            break
+                    except Exception:
+                        continue
+                if api_resp_text:
+                    break
+
+            if task_result.status == "error":
+                _log_tier_telemetry("error")
+                return {
+                    "status": "error",
+                    "summary": task_result.summary,
+                    "full_output": task_result.summary,
+                    "artifact_path": None,
+                    "model_used": task_result.model_label
+                }
 
         raw_output = task_result.summary or ""
 

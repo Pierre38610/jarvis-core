@@ -471,86 +471,154 @@ class SlidesService:
         is_test_env = "PYTEST_CURRENT_TEST" in os.environ or os.environ.get("MOCK_LLM_DRAFT") == "1"
 
         if not is_test_env:
-            # Appel LLM de rédaction (Tier 2 gemini-3.8-flash ou Tier 3 gemini-3.1-pro)
+            _metrics_rule = (
+                "3. REGLE METRIQUES : Le sujet permet les chiffres, tu peux inclure 1 slide key_metrics.\n"
+                if has_metrics_relevance else
+                "3. REGLE METRIQUES : INTERDICTION STRICTE d'inserer un layout key_metrics ou d'inventer des chiffres arbitraires.\n"
+            )
+
+            system_instruction = (
+                "Tu es l'architecte de presentations Google Slides de J.A.R.V.I.S.\n"
+                "Tu concois un deck structure, esthetique, informatif et percutant.\n\n"
+                "REGLES IMPERATIVES DE CONCEPTION :\n"
+                f"1. NOMBRE DE SLIDES : Produis EXACTEMENT {target_count} diapositives dans la liste 'slides'.\n"
+                "2. VARIETE DES LAYOUTS : Alterne dynamiquement entre les layouts :\n"
+                "   - hero_title, bullets_simple, cards_grid, split_compare, timeline_steps,\n"
+                "   - image_plus_text, table_data, section_divider, quote_highlight,\n"
+                "   - conclusion_call_to_action.\n"
+                "   - key_metrics : UNIQUEMENT SI LE SUJET COMPORTE DES CHIFFRES VERIFIES.\n"
+                + _metrics_rule
+                + "4. CONTENU CONCRET SANS PLACEHOLDER : phrases riches, precises, informatives.\n"
+                + f"5. LANGUE : {langue}.\n"
+                + f"6. THEME ET TON : Ton {ton or 'corporate'} (theme '{theme_key}').\n"
+                + "7. FORMAT DE SORTIE : Renvoie UNIQUEMENT un JSON valide conforme au schema."
+            )
+
+            user_prompt = (
+                f"SUJET DE LA PRÉSENTATION : {clean_sujet}\n"
+                f"CONSIGNES BRUTES DE L'UTILISATEUR : {clean_consignes}\n"
+                f"NOMBRE DE DIAPOSITIVES ATTENDU : {target_count}\n"
+                f"PUBLIC CIBLE : {public or 'Professionnel et exécutif'}\n"
+                f"TON : {ton or 'corporate'}\n"
+            )
+            if research_context:
+                user_prompt += f"\nDONNÉES ISSUES DES RECHERCHES PRÉALABLES :\n{research_context[:3000]}\n"
+
+            full_llm_prompt = f"{system_instruction}\n\n{user_prompt}"
+
+            def _clean_and_parse_json(raw_text: str) -> Optional[Dict[str, Any]]:
+                if not raw_text:
+                    return None
+                cleaned = raw_text.strip()
+                if cleaned.startswith("```json"):
+                    cleaned = cleaned[7:]
+                elif cleaned.startswith("```"):
+                    cleaned = cleaned[3:]
+                if cleaned.endswith("```"):
+                    cleaned = cleaned[:-3]
+                cleaned = cleaned.strip()
+                try:
+                    parsed = json.loads(cleaned)
+                    if isinstance(parsed, dict) and parsed.get("slides"):
+                        if not parsed.get("theme"):
+                            parsed["theme"] = theme_key
+                        return parsed
+                except Exception:
+                    pass
+                # Regex search for JSON block
+                m = re.search(r"(\{[\s\S]*\"slides\"[\s\S]*\})", cleaned)
+                if m:
+                    try:
+                        parsed = json.loads(m.group(1))
+                        if isinstance(parsed, dict) and parsed.get("slides"):
+                            if not parsed.get("theme"):
+                                parsed["theme"] = theme_key
+                            return parsed
+                    except Exception:
+                        pass
+                return None
+
+            # ─── TIER 1 : Tentative prioritaire sur les Agents CLI du VPS ───
+            cli_success = False
+            try:
+                import config
+                from google_antigravity import AntigravityAgent, verify_antigravity_cli_ready
+                cli_ready, _, _ = await verify_antigravity_cli_ready()
+                if cli_ready and not client_override:
+                    cli_model = "gemini-3.1-pro-high" if (recherche_approfondie or target_count > 12) else "gemini-3.8-flash-high"
+                    effective_key = config.get_effective_paid_key() if config.is_paid_key_authorized() else config.GEMINI_API_KEY_FREE
+                    agent = AntigravityAgent(workspace=config.WORKSPACE_DIR, model=cli_model, api_key=effective_key)
+                    cli_res = await agent.run_cli_task_stream(full_llm_prompt)
+                    if cli_res.status == "completed" and cli_res.summary:
+                        data = _clean_and_parse_json(cli_res.summary)
+                        if data and data.get("slides"):
+                            logger.info(f"[SlidesService] Outline généré avec succès via Antigravity CLI ({cli_model}).")
+                            return data
+            except Exception as cli_err:
+                logger.info(f"[SlidesService] Échec Antigravity CLI pour l'outline : {cli_err}")
+
+            # ─── TIER 2 & 3 : Repli ordonné sur l'API Gemini (Gratuite puis Payante) ───
             try:
                 import config
                 from google import genai
                 from google.genai import types
 
-                eff_client = client_override
-                if not eff_client:
-                    from services.key_gate import get_key
-                    eff_key = get_key("slides_service")
-                    if eff_key:
-                        eff_client = genai.Client(api_key=eff_key)
+                # Notification vocale obligatoire informant Pierre du passage sur l'API
+                try:
+                    from core.shared_state import active_task_controller, safe_send_live_client_content
+                    from services.voice_injection_queue import InjectionPriority
+                    live_sess = active_task_controller.get("live_session")
+                    if live_sess:
+                        await safe_send_live_client_content(
+                            live_sess,
+                            (
+                                "[ALERTE REPLI API GEMINI]\n"
+                                "Pierre, les agents CLI du VPS sont indisponibles. Je bascule sur l'API Gemini pour concevoir la présentation Google Slides.\n\n"
+                                "Consigne stricte pour Aoede : Indique d'une courte phrase naturelle que tu bascules sur l'API Gemini suite à l'indisponibilité des agents CLI."
+                            ),
+                            action_key="slides_api_fallback",
+                            wait_if_speaking=False,
+                            drainage_delay=1.0,
+                            priority=InjectionPriority.PROGRESS_MILESTONE
+                        )
+                except Exception:
+                    pass
 
-                if eff_client:
-                    # Choix du modèle selon le palier cognitif
-                    if recherche_approfondie or target_count > 12:
-                        models_candidates = ["gemini-3.1-pro", "gemini-2.5-pro", "gemini-3.8-flash"]
-                    else:
-                        models_candidates = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-flash-latest"]
+                # Préparation des clients : Clé Gratuite d'abord, puis Clé Payante
+                clients_to_try = []
+                if client_override:
+                    clients_to_try.append((client_override, "Client Forcé"))
+                else:
+                    if config.GEMINI_API_KEY_FREE:
+                        clients_to_try.append((genai.Client(api_key=config.GEMINI_API_KEY_FREE), "Clé Gratuite"))
+                    if config.is_paid_key_authorized() and config.GEMINI_API_KEY_PAID:
+                        clients_to_try.append((genai.Client(api_key=config.GEMINI_API_KEY_PAID), "Clé Payante"))
 
-                    _metrics_rule = (
-                        "3. REGLE METRIQUES : Le sujet permet les chiffres, tu peux inclure 1 slide key_metrics.\n"
-                        if has_metrics_relevance else
-                        "3. REGLE METRIQUES : INTERDICTION STRICTE d'inserer un layout key_metrics ou d'inventer des chiffres arbitraires.\n"
-                    )
+                if recherche_approfondie or target_count > 12:
+                    models_candidates = ["gemini-2.5-pro", "gemini-1.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"]
+                else:
+                    models_candidates = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]
 
-                    system_instruction = (
-                        "Tu es l'architecte de presentations Google Slides de J.A.R.V.I.S.\n"
-                        "Tu concois un deck structure, esthetique, informatif et percutant.\n\n"
-                        "REGLES IMPERATIVES DE CONCEPTION :\n"
-                        f"1. NOMBRE DE SLIDES : Produis EXACTEMENT {target_count} diapositives dans la liste 'slides'.\n"
-                        "2. VARIETE DES LAYOUTS : Alterne dynamiquement entre les layouts :\n"
-                        "   - hero_title, bullets_simple, cards_grid, split_compare, timeline_steps,\n"
-                        "   - image_plus_text, table_data, section_divider, quote_highlight,\n"
-                        "   - conclusion_call_to_action.\n"
-                        "   - key_metrics : UNIQUEMENT SI LE SUJET COMPORTE DES CHIFFRES VERIFIES.\n"
-                        + _metrics_rule
-                        + "4. CONTENU CONCRET SANS PLACEHOLDER : phrases riches, precises, informatives.\n"
-                        + f"5. LANGUE : {langue}.\n"
-                        + f"6. THEME ET TON : Ton {ton or 'corporate'} (theme '{theme_key}').\n"
-                        + "7. FORMAT DE SORTIE : Renvoie UNIQUEMENT un JSON valide conforme au schema."
-                    )
+                config_gen = types.GenerateContentConfig(
+                    temperature=0.2,
+                    response_mime_type="application/json"
+                )
 
-                    user_prompt = (
-                        f"SUJET DE LA PRÉSENTATION : {clean_sujet}\n"
-                        f"CONSIGNES BRUTES DE L'UTILISATEUR : {clean_consignes}\n"
-                        f"NOMBRE DE DIAPOSITIVES ATTENDU : {target_count}\n"
-                        f"PUBLIC CIBLE : {public or 'Professionnel et exécutif'}\n"
-                        f"TON : {ton or 'corporate'}\n"
-                    )
-                    if research_context:
-                        user_prompt += f"\nDONNÉES ISSUES DES RECHERCHES PRÉALABLES :\n{research_context[:3000]}\n"
-
-                    config_gen = types.GenerateContentConfig(
-                        temperature=0.2,
-                        response_mime_type="application/json"
-                    )
-
+                for eff_client, key_name in clients_to_try:
                     for m in models_candidates:
                         try:
                             resp = await eff_client.aio.models.generate_content(
                                 model=m,
-                                contents=f"{system_instruction}\n\n{user_prompt}",
+                                contents=full_llm_prompt,
                                 config=config_gen
                             )
                             raw = (resp.text or "").strip()
-                            if raw.startswith("```json"):
-                                raw = raw[7:]
-                            if raw.startswith("```"):
-                                raw = raw[3:]
-                            if raw.endswith("```"):
-                                raw = raw[:-3]
-                            data = json.loads(raw.strip())
-                            if isinstance(data, dict) and data.get("slides"):
-                                # Assure le respect du thème
-                                if not data.get("theme"):
-                                    data["theme"] = theme_key
+                            data = _clean_and_parse_json(raw)
+                            if data and data.get("slides"):
+                                logger.info(f"[SlidesService] Outline généré avec succès via API Gemini ({m} via {key_name}).")
                                 return data
                         except Exception as gen_err:
-                            logger.warning(f"[SlidesService] Échec appel LLM {m}: {gen_err}")
+                            logger.warning(f"[SlidesService] Échec appel LLM {m} ({key_name}): {gen_err}")
                             continue
             except Exception as e:
                 logger.warning(f"[SlidesService] Exception générale LLM outline: {e}")
