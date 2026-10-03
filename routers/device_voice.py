@@ -91,11 +91,16 @@ async def _push_to_device(device_id: str, message: bytes | str) -> bool:
         return False
 
 
-async def push_speak_to_device(device_id: str, text_instruction: str) -> bool:
-    """Demande à Jarvis de prendre l'initiative de parler vers un device spécifique.
+async def push_speak_to_device(device_id: str = "", text_instruction: str = "") -> bool:
+    """Demande à Jarvis de prendre l'initiative de parler vers un device spécifique (ou le device préféré).
     Injecte le contenu dans la session Gemini Live active si disponible.
     """
-    sess = _DEVICE_SESSIONS.get(device_id)
+    target_id = device_id or active_task_controller.get("preferred_device_id")
+    if not target_id and _DEVICE_SESSIONS:
+        target_id = next(iter(_DEVICE_SESSIONS.keys()))
+    if not target_id:
+        return False
+    sess = _DEVICE_SESSIONS.get(target_id)
     if not sess:
         return False
     try:
@@ -206,7 +211,7 @@ async def _unregister_device_presence(device_id: str):
 
 def _is_pwa_session_active() -> bool:
     """Retourne True si une session PWA (/ws) est actuellement connectée et parle."""
-    ws = active_task_controller.get("websocket")
+    ws = active_task_controller.get("websocket") or bool(active_task_controller.get("ws_sessions"))
     if not ws:
         return False
     speech = get_speech_state()
@@ -601,16 +606,16 @@ async def device_voice_channel(websocket: WebSocket):
                                 }))
                                 await _update_device_heartbeat(device_id)
 
-                            # ─ switch_output : basculer voix vers ce device ───
+                            # ─ switch_output : définir device cible pour annonces spontanées ───
                             elif msg_type == "request_voice_switch":
                                 active_task_controller["preferred_output"] = "device"
                                 active_task_controller["preferred_device_id"] = device_id
                                 await websocket.send_text(json.dumps({
                                     "type": "voice_switch_ack",
                                     "output": "device",
-                                    "message": "Jarvis parlera maintenant via l'enceinte"
+                                    "message": "Annonces spontanées configurées sur l'enceinte"
                                 }))
-                                print(f"[DeviceVoice] 🔀 Sortie vocale basculée vers l'enceinte {device_id}")
+                                print(f"[DeviceVoice] 🔀 Annonces spontanées configurées vers l'enceinte {device_id}")
 
                         except json.JSONDecodeError:
                             pass

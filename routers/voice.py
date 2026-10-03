@@ -9,6 +9,7 @@ import asyncio
 import base64
 import json
 import time
+import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketDisconnected
@@ -244,30 +245,10 @@ async def voice_channel(websocket: WebSocket):
         await websocket.close(code=1008, reason="Terminal non autorisé")
         return
 
-    # S'assurer qu'une seule instance WebSocket et session Live existe à la fois côté serveur
-    prev_ws = active_task_controller.get("websocket")
-    prev_session_ctx = active_task_controller.get("live_session_ctx")
-    prev_session = active_task_controller.get("live_session")
-
-    if prev_ws and prev_ws != websocket:
-        try:
-            print("[Voice Channel] Fermeture de la précédente connexion WebSocket orpheline...")
-            await prev_ws.close(code=1000, reason="Nouvelle connexion active")
-        except Exception:
-            pass
-    if prev_session_ctx:
-        try:
-            print("[Voice Channel] Fermeture de la session Live Google précédente...")
-            await prev_session_ctx.__aexit__(None, None, None)
-        except Exception:
-            pass
-    elif prev_session:
-        try:
-            await prev_session.close()
-        except Exception:
-            pass
-
+    conn_id = f"ws_{uuid.uuid4().hex[:8]}"
     await websocket.accept()
+    ws_sessions = active_task_controller.setdefault("ws_sessions", {})
+    ws_sessions[conn_id] = websocket
     active_task_controller["websocket"] = websocket
     try:
         await websocket.send_text(json.dumps({
@@ -1277,13 +1258,17 @@ async def voice_channel(websocket: WebSocket):
             _task_planner_mod.clear_active_plan()
         except Exception:
             pass
+        ws_sessions = active_task_controller.get("ws_sessions", {})
+        ws_sessions.pop(conn_id, None)
         if active_task_controller.get("websocket") == websocket:
-            active_task_controller["websocket"] = None
+            remaining = list(ws_sessions.values())
+            active_task_controller["websocket"] = remaining[-1] if remaining else None
         if active_task_controller.get("live_session") == session:
             active_task_controller["live_session"] = None
         if active_task_controller.get("live_session_ctx") == session_ctx:
             active_task_controller["live_session_ctx"] = None
-        supervision_service.update_voice_state("offline")
+        if not ws_sessions:
+            supervision_service.update_voice_state("offline")
         await broadcast_supervision()
         try:
             await websocket.close()

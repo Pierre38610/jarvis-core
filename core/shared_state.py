@@ -74,6 +74,9 @@ active_task_controller: dict = {
     "info": {"running": False, "task": "", "model": ""},
     "directives": [],
     "websocket": None,
+    "ws_sessions": {},           # Dict des sessions /ws actives {conn_id: websocket}
+    "preferred_output": "auto",  # Destination des annonces spontanées ('auto', 'device', 'web')
+    "preferred_device_id": None, # ID du device cible pour annonces spontanées
     "live_session": None,        # Référence à la session Gemini Live active
     "live_session_ctx": None,    # Context manager de la session Live
     "bg_task": None,             # asyncio.Task du développement en arrière-plan
@@ -341,53 +344,54 @@ async def safe_send_live_client_content(
 
 
 
-async def broadcast_supervision():
-    """Diffuse la vue d'ensemble en temps réel via WebSocket au client connecté."""
-    ws = active_task_controller.get("websocket")
-    if ws:
+async def _broadcast_to_all_ws(payload: dict):
+    """Diffuse un message JSON à toutes les sessions /ws connectées."""
+    sessions = list(active_task_controller.get("ws_sessions", {}).values())
+    single_ws = active_task_controller.get("websocket")
+    if single_ws and single_ws not in sessions:
+        sessions.append(single_ws)
+    if not sessions:
+        return
+    text = json.dumps(payload)
+    for ws in sessions:
         try:
-            await ws.send_text(json.dumps({
-                "type": "supervision_update",
-                "overview": supervision_service.get_full_overview()
-            }))
+            await ws.send_text(text)
         except Exception:
             pass
+
+
+async def broadcast_supervision():
+    """Diffuse la vue d'ensemble en temps réel via WebSocket aux clients connectés."""
+    await _broadcast_to_all_ws({
+        "type": "supervision_update",
+        "overview": supervision_service.get_full_overview()
+    })
 
 
 async def broadcast_jarvis_state(
     state: str, msg: str, task: str = "", detail: str = "",
     engine: str = "", model: str = "", api_type: str = "free", api_label: str = "Service Local"
 ):
-    """Diffuse un changement d'état visuel et d'animation de JARVIS au client connecté."""
-    ws = active_task_controller.get("websocket")
-    if ws:
-        try:
-            await ws.send_text(json.dumps({
-                "type": "status",
-                "state": state,
-                "msg": msg,
-                "task": task or msg,
-                "detail": detail or task or msg,
-                "engine": engine or "Local",
-                "model": model or "JARVIS Engine",
-                "api_type": api_type,
-                "api_label": api_label
-            }))
-        except Exception:
-            pass
+    """Diffuse un changement d'état visuel et d'animation de JARVIS aux clients connectés."""
+    await _broadcast_to_all_ws({
+        "type": "status",
+        "state": state,
+        "msg": msg,
+        "task": task or msg,
+        "detail": detail or task or msg,
+        "engine": engine or "Local",
+        "model": model or "JARVIS Engine",
+        "api_type": api_type,
+        "api_label": api_label
+    })
 
 
 async def broadcast_subagents():
     """Diffuse la liste complète et actualisée des sous-agents actifs."""
-    ws = active_task_controller.get("websocket")
-    if ws:
-        try:
-            await ws.send_text(json.dumps({
-                "type": "subagents_update",
-                "agents": supervision_service.get_active_subagents()
-            }))
-        except Exception:
-            pass
+    await _broadcast_to_all_ws({
+        "type": "subagents_update",
+        "agents": supervision_service.get_active_subagents()
+    })
 
 
 async def spawn_subagent(
@@ -400,15 +404,10 @@ async def spawn_subagent(
 ):
     """Spawne un sous-agent Antigravity CLI et notifie le frontend."""
     agent = supervision_service.spawn_subagent(agent_id, name, role, activity, task, model)
-    ws = active_task_controller.get("websocket")
-    if ws:
-        try:
-            await ws.send_text(json.dumps({
-                "type": "subagent_spawn",
-                "agent": agent
-            }))
-        except Exception:
-            pass
+    await _broadcast_to_all_ws({
+        "type": "subagent_spawn",
+        "agent": agent
+    })
     await broadcast_supervision()
     return agent
 
@@ -422,18 +421,13 @@ async def update_subagent(
     """Met à jour un sous-agent et diffuse la transition d'activité."""
     agent = supervision_service.update_subagent(agent_id, activity, task, progress)
     if agent:
-        ws = active_task_controller.get("websocket")
-        if ws:
-            try:
-                await ws.send_text(json.dumps({
-                    "type": "subagent_update",
-                    "id": agent_id,
-                    "activity": agent.get("activity"),
-                    "task": agent.get("task"),
-                    "progress": agent.get("progress")
-                }))
-            except Exception:
-                pass
+        await _broadcast_to_all_ws({
+            "type": "subagent_update",
+            "id": agent_id,
+            "activity": agent.get("activity"),
+            "task": agent.get("task"),
+            "progress": agent.get("progress")
+        })
         await broadcast_supervision()
     return agent
 
@@ -441,16 +435,11 @@ async def update_subagent(
 async def complete_subagent(agent_id: str, summary: str = ""):
     """Marque un sous-agent comme terminé et déclenche son animation de disparition."""
     agent = supervision_service.complete_subagent(agent_id, summary)
-    ws = active_task_controller.get("websocket")
-    if ws:
-        try:
-            await ws.send_text(json.dumps({
-                "type": "subagent_done",
-                "id": agent_id,
-                "summary": summary
-            }))
-        except Exception:
-            pass
+    await _broadcast_to_all_ws({
+        "type": "subagent_done",
+        "id": agent_id,
+        "summary": summary
+    })
     await broadcast_supervision()
     return agent
 
@@ -464,16 +453,11 @@ async def clear_all_subagents():
 
 async def broadcast_paid_key_status(authorized: bool):
     """Notifie le frontend du changement d'état de la clé payante."""
-    ws = active_task_controller.get("websocket")
-    if ws:
-        try:
-            await ws.send_text(json.dumps({
-                "type": "paid_key_authorized_update",
-                "authorized": authorized,
-                "has_paid_key": config.HAS_PAID_API_KEY
-            }))
-        except Exception:
-            pass
+    await _broadcast_to_all_ws({
+        "type": "paid_key_authorized_update",
+        "authorized": authorized,
+        "has_paid_key": config.HAS_PAID_API_KEY
+    })
 
 
 async def stop_active_task(source: str = "user", reason: str = "Arrêt demandé par l'utilisateur") -> dict:
@@ -526,25 +510,20 @@ async def stop_active_task(source: str = "user", reason: str = "Arrêt demandé 
         supervision_service.complete_action(act, status="cancelled", summary=reason)
     await broadcast_supervision()
 
-    # 6. Notification immédiate au client Web
-    ws = active_task_controller.get("websocket")
-    if ws:
-        try:
-            await ws.send_text(json.dumps({
-                "type": "task_cancelled",
-                "message": "Action immédiatement arrêtée.",
-                "reason": reason
-            }))
-            await ws.send_text(json.dumps({
-                "type": "status",
-                "state": "idle",
-                "msg": "En veille active",
-                "detail": "Action interrompue",
-                "engine": "Google API Live",
-                "model": config.GEMINI_LIVE_MODEL
-            }))
-        except Exception:
-            pass
+    # 6. Notification immédiate aux clients Web connectés
+    await _broadcast_to_all_ws({
+        "type": "task_cancelled",
+        "message": "Action immédiatement arrêtée.",
+        "reason": reason
+    })
+    await _broadcast_to_all_ws({
+        "type": "status",
+        "state": "idle",
+        "msg": "En veille active",
+        "detail": "Action interrompue",
+        "engine": "Google API Live",
+        "model": config.GEMINI_LIVE_MODEL
+    })
 
     print(f"[Task Controller] Stop exécuté (source: {source}, was_running: {was_running}, tasks: {cancelled_tasks})")
     return {"status": "ok", "stopped": was_running, "cancelled_tasks": cancelled_tasks}
