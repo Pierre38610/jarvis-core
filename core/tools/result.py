@@ -43,6 +43,7 @@ LEGACY_STATUS_MAPPING: Dict[str, str] = {
     "broadcasted": "done",
     "cleared": "done",
     "playing": "done",
+    "played": "done",
     # Tâches asynchrones en cours -> "started"
     "launched_in_background": "started",
     "lance_en_arriere_plan": "started",
@@ -322,6 +323,11 @@ def normalize_result(tool_name: str, res: Any) -> ToolResult:
         elif any(k in raw_status for k in ("err", "fail", "echou", "invalide")):
             target_status = "failed"
         else:
+            logger.warning(
+                "[ToolResult] Statut inconnu '%s' pour l'outil '%s' normalisé en 'done' (verified=False).",
+                raw_status,
+                tool_name,
+            )
             target_status = "done"
 
     # Extraction des preuves matérielles existantes

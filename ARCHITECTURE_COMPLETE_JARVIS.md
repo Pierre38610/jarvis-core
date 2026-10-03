@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.40.0 — Correction et modularisation du dispatcher RPC de l'Agent Local (handle_local_action dans jarvis_local_agent.py), fiabilisation du cycle de vie des processus (PID tracking, --restart, stop_agent.bat) et support exhaustif des 23 actions locales (browser_open_task, snapshot, act, screenshot, focus, close, search_web, browse_page, run_browser_task).*
+> *Dernière révision majeure : Version 5.41.0 — Résilience anti-faux-échecs de vérification (principe « l'échec de la vérification n'est jamais un échec de l'action »), polling Spotify /me/player, vérification IMAP best-effort pour send_email, normalisation stricte des statuts legacy et journalisation structurée unifiée TOOL_RESULT.*
 
 ---
 
@@ -1123,13 +1123,16 @@ Afin de rendre structurellement impossible que Jarvis annonce oralement un succ�
 
 2. **Couche d'Enveloppe & Migration Progressive (`normalize_result`)** :
    - Dans `core/tools/dispatcher.py`, tout résultat d'outil passe obligatoirement par `normalize_result()`.
-   - Les anciens statuts disparates (`sent`, `generated`, `opened_locally`, `cart_ready`, `lance_en_arriere_plan`, etc.) sont traduits vers les 5 statuts canoniques via `LEGACY_STATUS_MAPPING`.
+   - Les anciens statuts disparates (`sent`, `ok`, `success`, `played`, `generated`, `opened_locally`, `cart_ready`, `lance_en_arriere_plan`, etc.) sont traduits vers les 5 statuts canoniques via `LEGACY_STATUS_MAPPING`.
    - Un avertissement explicite (`logger.warning("[ToolResult] Format legacy détecté...")`) est consigné pour chaque outil renvoyant un format historique non migré.
+   - Si un statut non reconnu est reçu, `normalize_result()` le convertit de manière sécurisée en `done` avec `verified=False` (sans jamais produire un faux `failed`) et consigne un log warning.
    - Si un outil legacy renvoie un statut converti en `done` sans avoir positionné `verified=True`, le compteur `claimed_success_without_verification` est automatiquement incrémenté dans `metrics_service`.
 
-3. **Moteur de Vérification Post-Exécution (`core/tools/verifier.py`)** :
-   Chaque outil produisant un effet externe fait l'objet d'une contre-vérification matérielle avant validation du résultat. Si la vérification échoue, le statut bascule irrévocablement en `failed` même si l'appel d'API initial a renvoyé un code 200 :
-   - `send_email` : Relecture effective du courriel dans le dossier IMAP `Sent` ou confirmation du `message_id` cryptographique retourné par le serveur de messagerie.
+3. **Moteur de Vérification Post-Exécution Résilient (`core/tools/verifier.py` & services)** :
+   **Principe fondamental : L'échec d'une vérification n'est JAMAIS un échec de l'action.**
+   Chaque outil produisant un effet externe fait l'objet d'une contre-vérification matérielle ou d'une validation d'acceptation par l'API :
+   - `control_spotify` : Tout code HTTP 2xx (200, 201, 202, 204 y compris corps vide) vaut acceptation de l'action (`status="done"`). La vérification d'état via GET `/me/player` s'effectue en polling court (4 essais espacés de 0.4s, ~1.5s max) pour absorber la latence de synchronisation Spotify Connect (comparaison de piste pour `next`/`previous`, vérification `is_playing` pour `play`/`pause`). En cas de vérification non concluante ou d'exception réseau pendant le poll, l'action reste `done` avec `verified=False` et `evidence="api_2xx_accepted"`. Le statut `failed` n'est émis qu'en cas de 4xx/5xx avéré sur l'appel initial (après 1 retry avec rafraîchissement token sur 401 et respect de `Retry-After` sur 429) avec un `error_hint` intelligible (ex. "aucun appareil Spotify actif" sur 404).
+   - `send_email` : Un envoi SMTP accepté (`server.send_message()` sans exception et sans destinataires refusés) garantit le succès de l'action avec récupération du `Message-ID`. La vérification IMAP dans le dossier `Sent` est non-bloquante et best-effort (délai maximal ≤ 3 s). Tout timeout ou erreur IMAP conserve le statut `done` avec `verified=False` et `evidence="smtp_accepted message_id=..."`. Le statut `failed` n'intervient que si le serveur SMTP a levé une exception ou refusé l'ensemble des destinataires.
    - `generate_presentation` : Appel de l'API Google Slides (`presentations.get`) sur l'ID généré pour compter les diapositives réellement présentes (`slide_count >= min_slides`).
    - `generate_spreadsheet` : Contrôle de l'existence physique du fichier `.xlsx` sur le disque et comptage effectif des lignes (`rows > 0`).
    - `download_file` / `search_and_download_ebook` : Vérification `os.path.exists()` et validation que la taille du fichier est strictement supérieure à 0 octet.
@@ -1137,13 +1140,14 @@ Afin de rendre structurellement impossible que Jarvis annonce oralement un succ�
    - `manage_calendar_event` : Relecture de l'événement créé ou modifié dans le calendrier.
    - `save_memory` : Relecture immédiate de la mémoire mémorisée par ID dans la base locale SQLite.
    - `open_user_browser` : Attente d'un accusé de réception explicite de `jarvis_local_agent.py` sur le poste physique (pas uniquement émission WebSocket).
+   - **Journalisation structurée unifiée** : Chaque action exécutée émet un log canonique : `TOOL_RESULT name=... http=... status=... verified=... evidence=...`.
 
 4. **Protocole d'Élocution Vocale Gemini Live (`config.py`)** :
-   Le prompt système interdit formellement de masquer un échec ou d'extrapoler sur une tâche non vérifiée. L'élocution est gouvernée par le statut strict du `ToolResult` :
-   - `done` + `verified=True` : Jarvis annonce l'accomplissement avec certitude et cite l'evidence matérielle.
-   - `done` + `verified=False` : Jarvis précise avec prudence que l'opération a été transmise mais que la confirmation matérielle n'est pas encore établie.
-   - `started` : Jarvis indique exclusivement que le traitement a été lancé en arrière-plan et attend l'injection du résultat final.
-   - `failed` : Jarvis énonce clairement l'échec, indique la cause probable (`error_hint`) et propose immédiatement une alternative sans minimiser.
+   Le prompt système interdit formellement d'inventer des échecs lorsque l'action a été acceptée et exécutée. L'élocution vocale Aoede suit les règles strictes suivantes :
+   - `done` + `verified=True` : Jarvis annonce l'accomplissement avec certitude et naturel ("C'est fait", "Morceau suivant lancé", "E-mail envoyé").
+   - `done` + `verified=False` : Jarvis annonce également le succès naturellement ("C'est fait", "Message envoyé", "Action effectuée") sans prétendre à un échec technique sous prétexte que le retour de contrôle différé n'a pas encore répondu.
+   - `started` : Jarvis confirme immédiatement la prise en charge en arrière-plan ("Je m'en occupe", "C'est lancé") sans attendre.
+   - `failed` : **Seul** le statut `status="failed"` autorise Jarvis à annoncer un échec à Pierre, en formulant clairement la cause (`error_hint`) et en suggérant une alternative.
    - `needs_user` : Jarvis pose la question ou demande la validation requise et attend la réponse de l'utilisateur.
 
 ### 9.17. Orchestration Agentique, Planificateur Multi-Étapes, Consentement Payant & Espace de Travail

@@ -708,15 +708,22 @@ def send_email(
             server.starttls()
             server.ehlo()
         server.login(SMTP_USER, SMTP_PASSWORD)
-        server.send_message(msg)
+        refused = server.send_message(msg)
         server.quit()
 
         msg_id_str = str(msg["Message-ID"])
+        if refused and isinstance(refused, dict):
+            if recipient in refused:
+                raise smtplib.SMTPRecipientsRefused(refused)
+            status_sent = "partial"
+        else:
+            status_sent = "sent"
+
         meta_info = {
             "id": email_id,
             "message_id": msg_id_str,
             "timestamp": timestamp,
-            "status": "sent",
+            "status": status_sent,
             "recipient": recipient,
             "subject": subject,
             "attachments": att_basenames,
@@ -727,7 +734,7 @@ def send_email(
 
         print(f"[Email Service] E-mail envoyé avec succès à {recipient} (Message-ID: {msg_id_str}) !")
         return {
-            "status": "sent",
+            "status": status_sent,
             "email_id": email_id,
             "message_id": msg_id_str,
             "recipient": recipient,
@@ -794,17 +801,30 @@ async def verify_email_in_sent_box(
     recipient: Optional[str] = None,
     subject: Optional[str] = None,
 ) -> Tuple[bool, str, Optional[str]]:
-    """Vérifie l'envoi effectif du courriel (relecture IMAP dans les éléments envoyés ou validation Message-ID)."""
+    """Vérifie l'envoi effectif du courriel (relecture IMAP dans les éléments envoyés en best-effort ≤3s).
+    L'échec de la vérification ne constitue JAMAIS un échec de l'action d'envoi.
+    Returns:
+        (verified, evidence, error_hint)
+    """
+    default_evidence = f"smtp_accepted message_id={message_id or email_id}"
+
     # 1. Vérification d'un flag d'échec simulé (pour tests de non-régression)
     if os.environ.get("JARVIS_SIMULATE_EMAIL_VERIFY_FAIL") == "1":
-        return False, "", "Échec simulé : courriel non trouvé dans les éléments envoyés après émission."
+        return False, default_evidence, "Échec simulé : courriel non trouvé dans les éléments envoyés après émission."
 
-    # 2. Relecture IMAP si identifiants configurés
-    if IMAP_USER and IMAP_PASSWORD:
+    # 2. Relecture IMAP best-effort (timeout court ≤ 3.0s)
+    imap_user = SMTP_USER or DEFAULT_RECIPIENT_EMAIL
+    imap_password = (SMTP_PASSWORD or "").replace(" ", "").strip()
+
+    def _sync_imap_check() -> bool:
+        if not imap_user or not imap_password:
+            return False
         try:
-            import imaplib
-            mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
-            mail.login(IMAP_USER, IMAP_PASSWORD)
+            if IMAP_SSL:
+                mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT, timeout=3.0)
+            else:
+                mail = imaplib.IMAP4(IMAP_HOST, IMAP_PORT, timeout=3.0)
+            mail.login(imap_user, imap_password)
             sent_boxes = ['"[Gmail]/Sent Mail"', '"[Gmail]/Messages envoy&AOk-s"', 'Sent', 'INBOX.Sent']
             found = False
             for box in sent_boxes:
@@ -813,33 +833,42 @@ async def verify_email_in_sent_box(
                     if st == "OK":
                         search_q = f'(HEADER Message-ID "{message_id}")' if message_id else f'(TO "{recipient}")'
                         st_s, data = mail.search(None, search_q)
-                        if st_s == "OK" and data and data[0]:
+                        if st_s == "OK" and data and data[0] and data[0].strip():
                             found = True
                             break
                 except Exception:
                     continue
-            mail.logout()
-            if found:
-                return True, f"Message-ID: {message_id} confirmé dans le dossier Envoyés", None
-            return False, "", f"Courriel non retrouvé dans le dossier Envoyés (Message-ID: {message_id})"
-        except Exception as imap_err:
-            logger.warning(f"[EmailService] Relecture IMAP échouée: {imap_err}")
-            return False, "", f"Échec de relecture IMAP dans les éléments envoyés ({imap_err})"
-
-    # 3. Mode hors-ligne / fallback outbox : vérifie l'archive locale et le message_id
-    if email_id:
-        archive_meta_path = os.path.join(EMAIL_OUTBOX_DIR, f"{email_id}.json")
-        if os.path.exists(archive_meta_path):
             try:
-                with open(archive_meta_path, "r", encoding="utf-8") as f:
-                    meta = json.load(f)
-                if meta.get("status") == "sent":
-                    ev_mid = message_id or meta.get("message_id") or email_id
-                    return True, f"Message-ID: {ev_mid} archivé et validé", None
+                mail.logout()
             except Exception:
                 pass
+            return found
+        except Exception as e:
+            logger.debug(f"[EmailService] Relecture IMAP exception (best-effort): {e}")
+            return False
 
-    return False, "", "Envoi non confirmé par relecture de la boîte d'envoi."
+    if imap_user and imap_password:
+        try:
+            found = await asyncio.wait_for(asyncio.to_thread(_sync_imap_check), timeout=3.0)
+            if found:
+                return True, f"Message-ID: {message_id} confirmé dans le dossier Envoyés", None
+        except Exception as exc:
+            logger.debug(f"[EmailService] Exception / timeout IMAP relecture: {exc}")
+
+    # 3. Mode hors-ligne / fallback outbox : vérifie l'archive locale et le message_id
+    if email_id and os.path.exists(EMAIL_OUTBOX_DIR):
+        for fname in os.listdir(EMAIL_OUTBOX_DIR):
+            if email_id in fname and fname.endswith("_meta.json"):
+                try:
+                    with open(os.path.join(EMAIL_OUTBOX_DIR, fname), "r", encoding="utf-8") as f:
+                        meta = json.load(f)
+                    if meta.get("status") in ("sent", "archived_in_outbox"):
+                        ev_mid = message_id or meta.get("message_id") or email_id
+                        return True, f"Message-ID: {ev_mid} archivé et validé", None
+                except Exception:
+                    pass
+
+    return False, default_evidence, None
 
 
 def list_outbox_emails() -> List[Dict[str, Any]]:

@@ -215,6 +215,16 @@ async def dispatch_tool(
         else:
             status = "success"
 
+        http_code = res.get("http_code") or res.get("status_code") or (200 if tool_result.status in ("done", "started") else 500)
+        logger.info(
+            "TOOL_RESULT name=%s http=%s status=%s verified=%s evidence=%s",
+            name,
+            http_code,
+            tool_result.status,
+            tool_result.verified,
+            tool_result.evidence,
+        )
+
         return res
     except PaidKeyConsentRequired as exc:
         status = "needs_user"
@@ -251,10 +261,30 @@ async def dispatch_tool(
             },
         )
         res = tool_result.to_dict()
+        logger.info(
+            "TOOL_RESULT name=%s http=402 status=%s verified=%s evidence=%s",
+            name,
+            tool_result.status,
+            tool_result.verified,
+            tool_result.evidence,
+        )
         return res
     except asyncio.TimeoutError:
         status = "timeout"
-        raise
+        tool_result = ToolResult.failed(
+            user_message=f"L'opération '{name}' a pris trop de temps.",
+            error_hint="timeout",
+            evidence="timeout",
+        )
+        res = tool_result.to_dict()
+        logger.warning(
+            "TOOL_RESULT name=%s http=408 status=%s verified=%s evidence=%s",
+            name,
+            tool_result.status,
+            tool_result.verified,
+            tool_result.evidence,
+        )
+        return res
     except Exception as exc:
         is_qual, detail = is_qualified_free_key_failure(exc)
         if is_qual:
@@ -285,6 +315,13 @@ async def dispatch_tool(
                 },
             )
             res = tool_result.to_dict()
+            logger.info(
+                "TOOL_RESULT name=%s http=429 status=%s verified=%s evidence=%s",
+                name,
+                tool_result.status,
+                tool_result.verified,
+                tool_result.evidence,
+            )
             return res
 
         status = "failure"
@@ -293,6 +330,13 @@ async def dispatch_tool(
             error_hint=str(exc)
         )
         res = tool_result.to_dict()
+        logger.info(
+            "TOOL_RESULT name=%s http=500 status=%s verified=%s evidence=%s",
+            name,
+            tool_result.status,
+            tool_result.verified,
+            tool_result.evidence,
+        )
         return res
     finally:
         latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
@@ -1237,7 +1281,7 @@ async def _execute_dispatch_tool(
         # Actions rapides (<300 ms) : exécution bloquante
         # Recherche + lecture (>300 ms) : asyncio.create_task pour ne pas bloquer la voix
         _FAST_ACTIONS = {
-            "pause", "resume", "next", "previous", "volume", "shuffle",
+            "play", "pause", "resume", "next", "previous", "volume", "shuffle",
             "repeat", "seek", "like", "unlike", "now_playing",
             "list_devices", "get_queue", "set_default_device",
         }
@@ -1282,8 +1326,9 @@ async def _execute_dispatch_tool(
         status = res.get("status", "done")
         msg = res.get("message", "Ok")
         needs_user = res.get("needs_user", False)
-        verified = res.get("verified", True)
+        verified = bool(res.get("verified", True))
         evidence = res.get("evidence") or f"Spotify {action_label}"
+        error_hint = res.get("error_hint")
 
         if needs_user:
             instr = (
@@ -1293,7 +1338,8 @@ async def _execute_dispatch_tool(
         elif status == "not_found":
             instr = f"{msg} Informe Pierre brièvement."
         elif status == "failed":
-            instr = f"Erreur Spotify : {msg} Informe Pierre brièvement."
+            hint = f" ({error_hint})" if error_hint else ""
+            instr = f"Erreur Spotify : {msg}{hint} Informe Pierre brièvement."
         elif action in ("now_playing", "get_queue", "list_devices", "search", "top", "recent"):
             instr = f"{msg} Réponds brièvement à Pierre."
         else:
@@ -1303,6 +1349,7 @@ async def _execute_dispatch_tool(
             "status": status,
             "verified": verified,
             "evidence": evidence,
+            "error_hint": error_hint,
             "result": res,
             "user_message": "Ok" if action not in ("now_playing", "get_queue", "list_devices", "search", "top", "recent") else msg,
             "instruction_to_jarvis": instr,
@@ -1429,12 +1476,21 @@ async def _execute_dispatch_tool(
             subject=subject,
         )
 
-        if not verified or st not in ("sent", "saved", "archived_in_outbox"):
-            supervision_service.complete_action("send_email", status="error", summary=f"Échec vérification e-mail pour {to_email}")
+        if st not in ("sent", "saved", "archived_in_outbox"):
+            supervision_service.complete_action("send_email", status="error", summary=f"Échec expédition e-mail pour {to_email}")
             await broadcast_supervision()
             return ToolResult.failed(
-                user_message=f"L'envoi du courriel '{subject}' n'a pas pu être confirmé.",
-                error_hint=error_hint or res.get("error") or "Courriel non retrouvé dans les éléments envoyés après émission",
+                user_message=f"L'envoi du courriel '{subject}' a rencontré une erreur.",
+                error_hint=res.get("error") or res.get("message") or "Erreur SMTP lors de l'envoi",
+                data={"result": res, "email_id": email_id, "recipient": to_email}
+            )
+        elif st == "partial":
+            supervision_service.complete_action("send_email", status="completed", summary=f"E-mail partiellement envoyé pour {to_email}")
+            await broadcast_supervision()
+            return ToolResult.partial(
+                user_message=f"Le courriel '{subject}' n'a été transmis qu'à une partie des destinataires.",
+                evidence=evidence or f"smtp_accepted message_id={message_id or email_id}",
+                error_hint=res.get("error"),
                 data={"result": res, "email_id": email_id, "recipient": to_email}
             )
 
@@ -1458,8 +1514,8 @@ async def _execute_dispatch_tool(
         att_suffix = f" avec la pièce jointe {att_names}" if att_count > 0 else ""
         return ToolResult.done(
             user_message=f"Le courriel '{subject}' a été expédié avec succès à {to_email}{att_suffix}.",
-            evidence=evidence,
-            verified=True,
+            evidence=evidence or f"smtp_accepted message_id={message_id or email_id}",
+            verified=verified,
             data={"result": res, "email_id": email_id, "message_id": message_id, "recipient": to_email}
         )
 

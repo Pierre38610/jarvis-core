@@ -514,12 +514,17 @@ class SpotifyService:
             await asyncio.sleep(ra)
             return await self._get(path, token=token, params=params, _retry=_retry)
         if r.status_code == 404:
+            body = r.json() if r.content else {}
+            err_msg = str(body.get("error", {}).get("message", ""))
+            err_reason = str(body.get("error", {}).get("reason", ""))
+            if "NO_ACTIVE_DEVICE" in err_reason or "No active device" in err_msg or "no active device" in err_msg.lower():
+                raise ValueError("aucun appareil Spotify actif")
             raise ValueError("not_found")
         if r.status_code == 403:
             body = r.json() if r.content else {}
             raise ValueError(f"forbidden:{body.get('error', {}).get('reason', '')}")
-        if r.status_code == 204:
-            return {}
+        if r.status_code in (200, 201, 202, 204):
+            return r.json() if r.content else {}
         r.raise_for_status()
         return r.json() if r.content else {}
 
@@ -527,8 +532,9 @@ class SpotifyService:
     _api_get = _get
 
     async def _put(self, path: str, body: Optional[Dict] = None,
-                   params: Optional[Dict] = None, _retry: bool = True) -> Dict[str, Any]:
-        token = await self._get_token()
+                   params: Optional[Dict] = None, token: Optional[str] = None, _retry: bool = True) -> Dict[str, Any]:
+        if token is None:
+            token = await self._get_token()
         url = f"{SPOTIFY_API}{path}"
         async with httpx.AsyncClient(timeout=10.0) as c:
             r = await c.put(
@@ -541,12 +547,17 @@ class SpotifyService:
                 await cache_service.delete(REDIS_TOKEN_KEY)
             except Exception:
                 pass
-            return await self._put(path, body=body, params=params, _retry=False)
+            return await self._put(path, body=body, params=params, token=await self._refresh(), _retry=False)
         if r.status_code == 429:
             ra = int(r.headers.get("Retry-After", "2"))
             await asyncio.sleep(ra)
-            return await self._put(path, body=body, params=params, _retry=_retry)
+            return await self._put(path, body=body, params=params, token=token, _retry=_retry)
         if r.status_code == 404:
+            body_j = r.json() if r.content else {}
+            err_msg = str(body_j.get("error", {}).get("message", ""))
+            err_reason = str(body_j.get("error", {}).get("reason", ""))
+            if "NO_ACTIVE_DEVICE" in err_reason or "No active device" in err_msg or "no active device" in err_msg.lower():
+                raise ValueError("aucun appareil Spotify actif")
             raise ValueError("not_found")
         if r.status_code == 403:
             body_j = r.json() if r.content else {}
@@ -557,8 +568,9 @@ class SpotifyService:
         return {}
 
     async def _post(self, path: str, body: Optional[Any] = None,
-                    params: Optional[Dict] = None, _retry: bool = True) -> Dict[str, Any]:
-        token = await self._get_token()
+                    params: Optional[Dict] = None, token: Optional[str] = None, _retry: bool = True) -> Dict[str, Any]:
+        if token is None:
+            token = await self._get_token()
         url = f"{SPOTIFY_API}{path}"
         async with httpx.AsyncClient(timeout=10.0) as c:
             r = await c.post(
@@ -571,19 +583,27 @@ class SpotifyService:
                 await cache_service.delete(REDIS_TOKEN_KEY)
             except Exception:
                 pass
-            return await self._post(path, body=body, params=params, _retry=False)
+            return await self._post(path, body=body, params=params, token=await self._refresh(), _retry=False)
         if r.status_code == 429:
             ra = int(r.headers.get("Retry-After", "2"))
             await asyncio.sleep(ra)
-            return await self._post(path, body=body, params=params, _retry=_retry)
+            return await self._post(path, body=body, params=params, token=token, _retry=_retry)
+        if r.status_code == 404:
+            body_j = r.json() if r.content else {}
+            err_msg = str(body_j.get("error", {}).get("message", ""))
+            err_reason = str(body_j.get("error", {}).get("reason", ""))
+            if "NO_ACTIVE_DEVICE" in err_reason or "No active device" in err_msg or "no active device" in err_msg.lower():
+                raise ValueError("aucun appareil Spotify actif")
+            raise ValueError("not_found")
         if r.status_code in (200, 201, 202, 204):
             return r.json() if r.content else {}
         r.raise_for_status()
         return {}
 
     async def _delete(self, path: str, body: Optional[Any] = None,
-                      _retry: bool = True) -> Dict[str, Any]:
-        token = await self._get_token()
+                      token: Optional[str] = None, _retry: bool = True) -> Dict[str, Any]:
+        if token is None:
+            token = await self._get_token()
         url = f"{SPOTIFY_API}{path}"
         async with httpx.AsyncClient(timeout=10.0) as c:
             r = await c.request(
@@ -596,11 +616,18 @@ class SpotifyService:
                 await cache_service.delete(REDIS_TOKEN_KEY)
             except Exception:
                 pass
-            return await self._delete(path, body=body, _retry=False)
+            return await self._delete(path, body=body, token=await self._refresh(), _retry=False)
         if r.status_code == 429:
             ra = int(r.headers.get("Retry-After", "2"))
             await asyncio.sleep(ra)
-            return await self._delete(path, body=body, _retry=_retry)
+            return await self._delete(path, body=body, token=token, _retry=_retry)
+        if r.status_code == 404:
+            body_j = r.json() if r.content else {}
+            err_msg = str(body_j.get("error", {}).get("message", ""))
+            err_reason = str(body_j.get("error", {}).get("reason", ""))
+            if "NO_ACTIVE_DEVICE" in err_reason or "No active device" in err_msg or "no active device" in err_msg.lower():
+                raise ValueError("aucun appareil Spotify actif")
+            raise ValueError("not_found")
         if r.status_code in (200, 201, 202, 204):
             return r.json() if r.content else {}
         r.raise_for_status()
@@ -863,22 +890,41 @@ class SpotifyService:
 
     # ── Verification post-action ──────────────────────────────────────────────
 
-    async def _verify(self, device_id: Optional[str] = None,
-                      is_playing: bool = True) -> bool:
-        try:
-            await asyncio.sleep(0.8)
-            state = await self._get("/me/player")
-            if not state:
-                return False
-            if is_playing and not state.get("is_playing", False):
-                return False
-            if device_id:
-                cur = (state.get("device") or {}).get("id", "")
-                if cur != device_id:
-                    return False
-            return True
-        except Exception:
-            return False
+    async def _verify(
+        self,
+        device_id: Optional[str] = None,
+        is_playing: Optional[bool] = True,
+        before_uri: Optional[str] = None,
+        max_attempts: int = 4,
+        interval: float = 0.4,
+    ) -> bool:
+        """Vérification post-action résiliente par polling (4 essais x 0.4s = ~1.5s max).
+        L'échec ou l'exception de relecture ne lève JAMAIS d'erreur et renvoie simplement False.
+        """
+        for _ in range(max_attempts):
+            await asyncio.sleep(interval)
+            try:
+                state = await self._get("/me/player")
+                if not state:
+                    continue
+                # Si on vérifie un changement de piste (next / previous)
+                if before_uri is not None:
+                    curr_uri = (state.get("item") or {}).get("uri") or state.get("spotify_uri") or ""
+                    if curr_uri and curr_uri != before_uri:
+                        return True
+                # Si on vérifie l'état de lecture (play / pause)
+                if is_playing is not None:
+                    current_playing = bool(state.get("is_playing", False))
+                    if current_playing == is_playing:
+                        if device_id:
+                            cur_dev = (state.get("device") or {}).get("id", "")
+                            if cur_dev and cur_dev != device_id:
+                                continue
+                        return True
+            except Exception as e:
+                logger.debug(f"[Spotify] Exception polling vérification: {e}")
+                break
+        return False
 
     # ── Etat courant ──────────────────────────────────────────────────────────
 
@@ -1158,7 +1204,7 @@ class SpotifyService:
         await asyncio.sleep(0.3)
         await self.play(device_id=device_id, uris=uris)
         await self._save_device(device_id)
-        verified = await self._verify(device_id)
+        verified = await self._verify(device_id=device_id, is_playing=True)
 
         devs = await self.get_devices()
         dev_name = next((d["name"] for d in devs if d["id"] == device_id), "l appareil")
@@ -1168,7 +1214,7 @@ class SpotifyService:
             "verified": verified,
             "track_label": "tes titres likes",
             "device_name": dev_name,
-            "evidence": f"Lecture des titres likes sur {dev_name}",
+            "evidence": f"Lecture des titres likes sur {dev_name}" if verified else "api_2xx_accepted",
             "message": "Ok",
         }
 
@@ -1230,7 +1276,7 @@ class SpotifyService:
         await asyncio.sleep(0.5)
         await self.play(device_id=device_id, context_uri=context_uri, uris=uris)
         await self._save_device(device_id)
-        verified = await self._verify(device_id)
+        verified = await self._verify(device_id=device_id, is_playing=True)
 
         devs = await self.get_devices()
         dev_name = next((d["name"] for d in devs if d["id"] == device_id), "l appareil")
@@ -1240,7 +1286,7 @@ class SpotifyService:
             "verified": verified,
             "track_label": label,
             "device_name": dev_name,
-            "evidence": f"Lecture de {label} sur {dev_name}",
+            "evidence": f"Lecture de {label} sur {dev_name}" if verified else "api_2xx_accepted",
             "message": "Ok",
         }
 
@@ -1467,42 +1513,70 @@ class SpotifyService:
                 if msg:
                     return {"status": "needs_user", "needs_user": True, "message": msg}
                 await self.play(device_id=dev_id)
-                verified = await self._verify(dev_id)
-                return {"status": "done", "verified": verified, "evidence": "Lecture reprise", "message": "Ok"}
+                verified = await self._verify(device_id=dev_id, is_playing=True)
+                evidence = "Lecture reprise" if verified else "api_2xx_accepted"
+                return {"status": "done", "verified": verified, "evidence": evidence, "message": "Ok"}
 
             elif action == "pause":
                 dev_id, msg = await self._pick_device(device)
                 if msg:
                     return {"status": "needs_user", "needs_user": True, "message": msg}
                 await self.pause(device_id=dev_id)
-                verified = await self._verify(dev_id, is_playing=False)
-                return {"status": "done", "verified": verified, "evidence": "Lecture mise en pause", "message": "Ok"}
+                verified = await self._verify(device_id=dev_id, is_playing=False)
+                evidence = "Lecture mise en pause" if verified else "api_2xx_accepted"
+                return {"status": "done", "verified": verified, "evidence": evidence, "message": "Ok"}
 
             elif action == "next":
                 dev_id, msg = await self._pick_device(device)
                 if msg:
                     return {"status": "needs_user", "needs_user": True, "message": msg}
+                before_uri = None
+                try:
+                    np_before = await self.now_playing()
+                    before_uri = np_before.get("spotify_uri")
+                except Exception:
+                    pass
                 await self.next_track(device_id=dev_id)
-                await asyncio.sleep(0.5)
-                np = await self.now_playing()
-                track_name = np.get('track_name', '')
-                evidence = f"Titre suivant: {track_name}" if track_name else "Piste suivante passée"
-                return {"status": "done", "verified": True, "evidence": evidence, "message": "Ok", "track_name": track_name}
+                verified = await self._verify(device_id=dev_id, is_playing=None, before_uri=before_uri)
+                track_name = ""
+                if verified:
+                    try:
+                        np_after = await self.now_playing()
+                        track_name = np_after.get("track_name", "")
+                    except Exception:
+                        pass
+                    evidence = f"Titre suivant: {track_name}" if track_name else "Piste suivante passée"
+                else:
+                    evidence = "api_2xx_accepted"
+                return {"status": "done", "verified": verified, "evidence": evidence, "message": "Ok", "track_name": track_name}
 
             elif action == "previous":
                 dev_id, msg = await self._pick_device(device)
                 if msg:
                     return {"status": "needs_user", "needs_user": True, "message": msg}
+                before_uri = None
+                try:
+                    np_before = await self.now_playing()
+                    before_uri = np_before.get("spotify_uri")
+                except Exception:
+                    pass
                 await self.previous_track(device_id=dev_id)
-                await asyncio.sleep(0.5)
-                np = await self.now_playing()
-                track_name = np.get('track_name', '')
-                evidence = f"Titre précédent: {track_name}" if track_name else "Piste précédente"
-                return {"status": "done", "verified": True, "evidence": evidence, "message": "Ok", "track_name": track_name}
+                verified = await self._verify(device_id=dev_id, is_playing=None, before_uri=before_uri)
+                track_name = ""
+                if verified:
+                    try:
+                        np_after = await self.now_playing()
+                        track_name = np_after.get("track_name", "")
+                    except Exception:
+                        pass
+                    evidence = f"Titre précédent: {track_name}" if track_name else "Piste précédente"
+                else:
+                    evidence = "api_2xx_accepted"
+                return {"status": "done", "verified": verified, "evidence": evidence, "message": "Ok", "track_name": track_name}
 
             elif action == "seek":
                 if position_ms is None:
-                    return {"status": "failed", "message": "position_ms manquant."}
+                    return {"status": "failed", "verified": False, "error_hint": "position_ms manquant", "message": "position_ms manquant."}
                 dev_id, msg = await self._pick_device(device)
                 if msg:
                     return {"status": "needs_user", "needs_user": True, "message": msg}
@@ -1520,7 +1594,7 @@ class SpotifyService:
                     cur_vol = (cur_dev or {}).get("volume_percent", 50)
                     target = max(0, min(100, cur_vol + volume_delta))
                 else:
-                    return {"status": "failed", "message": "volume ou volume_delta manquant."}
+                    return {"status": "failed", "verified": False, "error_hint": "volume ou volume_delta manquant", "message": "volume ou volume_delta manquant."}
                 await self.set_volume(target, device_id=dev_id)
                 return {"status": "done", "verified": True, "evidence": f"Volume réglé à {target}%", "message": "Ok"}
 
@@ -1542,7 +1616,7 @@ class SpotifyService:
 
             elif action == "queue_add":
                 if not query:
-                    return {"status": "failed", "message": "Titre à ajouter manquant."}
+                    return {"status": "failed", "verified": False, "error_hint": "titre manquant", "message": "Titre à ajouter manquant."}
                 track = await self.find_best_track(query)
                 if not track:
                     return {"status": "not_found", "message": f"'{query}' introuvable."}
@@ -1566,23 +1640,23 @@ class SpotifyService:
 
             elif action == "transfer":
                 if not device:
-                    return {"status": "failed", "message": "Appareil cible manquant."}
+                    return {"status": "failed", "verified": False, "error_hint": "appareil cible manquant", "message": "Appareil cible manquant."}
                 resolved = await self.resolve_device(device)
                 if not resolved:
                     if self._is_pc_hint(device):
                         pc_id = await self._launch_pc_spotify()
                         if pc_id:
                             await self.transfer_playback(pc_id, play=True)
-                            verified = await self._verify(pc_id)
+                            verified = await self._verify(device_id=pc_id, is_playing=True)
                             return {"status": "done", "verified": verified,
-                                    "evidence": "Lecture transférée sur PC", "message": "Ok"}
+                                    "evidence": "Lecture transférée sur PC" if verified else "api_2xx_accepted", "message": "Ok"}
                     return {"status": "needs_user", "needs_user": True,
                             "message": f"Appareil '{device}' introuvable. Ouvre Spotify dessus."}
                 await self.transfer_playback(resolved["id"], play=True)
                 await self._save_device(resolved["id"])
-                verified = await self._verify(resolved["id"])
+                verified = await self._verify(device_id=resolved["id"], is_playing=True)
                 return {"status": "done", "verified": verified,
-                        "evidence": f"Lecture transférée sur {resolved['name']}", "message": "Ok"}
+                        "evidence": f"Lecture transférée sur {resolved['name']}" if verified else "api_2xx_accepted", "message": "Ok"}
 
             elif action == "like":
                 return await self.like_current_track()
@@ -1592,12 +1666,12 @@ class SpotifyService:
 
             elif action == "add_to_playlist":
                 if not playlist_name:
-                    return {"status": "failed", "message": "Nom de playlist manquant."}
+                    return {"status": "failed", "verified": False, "error_hint": "nom de playlist manquant", "message": "Nom de playlist manquant."}
                 return await self.add_current_to_playlist(playlist_name)
 
             elif action == "create_playlist":
                 if not (query or playlist_name):
-                    return {"status": "failed", "message": "Nom de playlist manquant."}
+                    return {"status": "failed", "verified": False, "error_hint": "nom de playlist manquant", "message": "Nom de playlist manquant."}
                 name = query or playlist_name or ""
                 result = await self.create_playlist(
                     name, description="Playlist créée par J.A.R.V.I.S."
@@ -1624,7 +1698,7 @@ class SpotifyService:
 
             elif action == "follow_artist":
                 if not query:
-                    return {"status": "failed", "message": "Nom d'artiste manquant."}
+                    return {"status": "failed", "verified": False, "error_hint": "nom d'artiste manquant", "message": "Nom d'artiste manquant."}
                 data = await self.search(query, "artist", 1)
                 items = (data.get("artists") or {}).get("items", [])
                 if not items:
@@ -1633,7 +1707,7 @@ class SpotifyService:
 
             elif action == "save_album":
                 if not query:
-                    return {"status": "failed", "message": "Nom d'album manquant."}
+                    return {"status": "failed", "verified": False, "error_hint": "nom d'album manquant", "message": "Nom d'album manquant."}
                 data = await self.search(query, "album", 1)
                 items = (data.get("albums") or {}).get("items", [])
                 if not items:
@@ -1641,21 +1715,23 @@ class SpotifyService:
                 return await self.save_album(items[0]["id"])
 
             else:
-                return {"status": "failed", "message": f"Action inconnue : {action}"}
+                return {"status": "failed", "verified": False, "error_hint": f"Action inconnue : {action}", "message": f"Action inconnue : {action}"}
 
         except ValueError as exc:
             err = str(exc)
             if "no_tokens" in err:
                 return _needs_user_no_tokens()
             if "forbidden:PREMIUM_REQUIRED" in err:
-                return {"status": "failed", "message": "Cette action requiert Spotify Premium."}
+                return {"status": "failed", "verified": False, "error_hint": "Cette action requiert Spotify Premium.", "message": "Cette action requiert Spotify Premium."}
+            if "aucun appareil" in err or "NO_ACTIVE_DEVICE" in err or "no active device" in err.lower():
+                return {"status": "failed", "verified": False, "error_hint": "aucun appareil Spotify actif", "message": "Aucun appareil Spotify actif trouvé."}
             logger.error(f"[Spotify] control({action}) ValueError : {err}")
             console_monitor.log_exception(exc, context=f"SpotifyService.control({action})")
-            return {"status": "failed", "message": f"Erreur Spotify : {err}"}
+            return {"status": "failed", "verified": False, "error_hint": err, "message": f"Erreur Spotify : {err}"}
         except Exception as exc:
             logger.error(f"[Spotify] control({action}) Exception : {exc}")
             console_monitor.log_exception(exc, context=f"SpotifyService.control({action})")
-            return {"status": "failed", "message": f"Erreur inattendue : {exc}"}
+            return {"status": "failed", "verified": False, "error_hint": str(exc), "message": f"Erreur inattendue : {exc}"}
 
 
 # Singleton
