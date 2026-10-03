@@ -4,6 +4,7 @@ Vérifie la génération, validation cryptographique, expiration, révocation
 et migration transparente des tokens JWT sans aucun appel réseau.
 """
 
+import os
 import time
 import json
 import pytest
@@ -227,3 +228,77 @@ class TestAuthFacade:
         """auth.is_device_authorized_async."""
         assert await auth.is_device_authorized_async(test_jwt_token) is True
         assert await auth.is_device_authorized_async("bad_token") is False
+
+
+class TestConfigAndDbRevocation:
+    """Révocation par configuration et table SQLite."""
+
+    def test_revocation_via_config_set(self, clean_auth_service):
+        token = clean_auth_service.generate_token(device_id="esp32_revoked_by_config")
+        assert clean_auth_service.verify_token_sync(token) is not None
+
+        with patch.object(config, "REVOKED_DEVICE_IDS", {"esp32_revoked_by_config"}):
+            assert clean_auth_service.verify_token_sync(token) is None
+            assert clean_auth_service.is_token_revoked_sync("any_jti", "esp32_revoked_by_config") is True
+
+    def test_revocation_via_sqlite_db(self, clean_auth_service):
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_file = f.name
+
+        try:
+            token = clean_auth_service.generate_token(device_id="esp32_db_banned")
+            assert clean_auth_service.verify_token_sync(token) is not None
+
+            with patch.object(config, "DB_PATH", db_file):
+                # Enregistrer la révocation dans la DB
+                clean_auth_service.revoke_device_in_db("esp32_db_banned", reason="Device compromis")
+                assert clean_auth_service.verify_token_sync(token) is None
+                assert clean_auth_service.is_token_revoked_sync("any_jti", "esp32_db_banned") is True
+        finally:
+            if os.path.exists(db_file):
+                try:
+                    os.remove(db_file)
+                except Exception:
+                    pass
+
+
+class TestDeviceVoiceWSAuth:
+    """Authentification stricte de l'enceinte connectée /ws/device."""
+
+    @pytest.mark.asyncio
+    async def test_rejects_without_token(self):
+        from routers.device_voice import _authenticate_device_ws
+        from unittest.mock import MagicMock
+        ws = MagicMock()
+        ws.headers = {"device-id": "74:3a:f4:c6:8e:9b"}
+        ws.query_params = {}
+        res = await _authenticate_device_ws(ws)
+        assert res is None
+
+    @pytest.mark.asyncio
+    async def test_accepts_bearer_token(self):
+        from routers.device_voice import _authenticate_device_ws
+        from services.auth_service import auth_service
+        from unittest.mock import MagicMock
+        token = auth_service.generate_token(device_id="esp32_speaker_test", role="device", expiry_days=365)
+        ws = MagicMock()
+        ws.headers = {"authorization": f"Bearer {token}"}
+        ws.query_params = {}
+        res = await _authenticate_device_ws(ws)
+        assert res is not None
+        assert res.get("device_id") == "esp32_speaker_test"
+
+    @pytest.mark.asyncio
+    async def test_accepts_query_param_token_compat(self):
+        from routers.device_voice import _authenticate_device_ws
+        from services.auth_service import auth_service
+        from unittest.mock import MagicMock
+        token = auth_service.generate_token(device_id="esp32_compat", role="device", expiry_days=365)
+        ws = MagicMock()
+        ws.headers = {}
+        ws.query_params = {"token": token}
+        res = await _authenticate_device_ws(ws)
+        assert res is not None
+        assert res.get("device_id") == "esp32_compat"
+

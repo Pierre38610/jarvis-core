@@ -240,10 +240,20 @@ async def voice_channel(websocket: WebSocket):
     """Canal WebSocket audio full-duplex Gemini Live principal de J.A.R.V.I.S."""
 
     # Validation du terminal avant acceptation
-    token = websocket.query_params.get("token") or websocket.cookies.get("jarvis_device_token")
+    auth_header = websocket.headers.get("authorization", "")
+    token = None
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip()
+    if not token:
+        token = websocket.query_params.get("token") or websocket.cookies.get("jarvis_device_token")
+
+    masked_token = f"{token[:4]}...{token[-4:]}" if token and len(token) > 8 else ("***" if token else "None")
     if not auth.is_device_authorized(token):
+        print(f"[VoiceWS] ❌ Connexion /ws rejetée (token: {masked_token})")
         await websocket.close(code=1008, reason="Terminal non autorisé")
         return
+
+    print(f"[VoiceWS] 🔌 Connexion /ws autorisée (token: {masked_token})")
 
     conn_id = f"ws_{uuid.uuid4().hex[:8]}"
     await websocket.accept()

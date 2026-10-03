@@ -214,8 +214,68 @@ class AuthService:
         cache_service._memory_fallback[key] = ({"revoked_at": int(time.time()), "device_id": device_id}, None)
         return True
 
+    def _is_device_revoked_config_or_db(self, device_id: Optional[str]) -> bool:
+        """Vérifie si le device_id est révoqué dans config.REVOKED_DEVICE_IDS ou dans la base SQLite."""
+        if not device_id:
+            return False
+        # 1. Vérification dans la configuration (REVOKED_DEVICE_IDS)
+        revoked_config = getattr(config, "REVOKED_DEVICE_IDS", set())
+        if device_id in revoked_config:
+            return True
+        # 2. Vérification dans la base de données SQLite locale (table revoked_devices)
+        db_path = getattr(config, "DB_PATH", "")
+        if db_path and os.path.exists(db_path):
+            try:
+                import sqlite3
+                with sqlite3.connect(db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "CREATE TABLE IF NOT EXISTS revoked_devices ("
+                        "device_id TEXT PRIMARY KEY, "
+                        "revoked_at TEXT NOT NULL, "
+                        "reason TEXT DEFAULT ''"
+                        ")"
+                    )
+                    cursor.execute("SELECT 1 FROM revoked_devices WHERE device_id = ?", (device_id,))
+                    if cursor.fetchone():
+                        return True
+            except Exception:
+                pass
+        return False
+
+    def revoke_device_in_db(self, device_id: str, reason: str = "") -> bool:
+        """Enregistre un device_id révoqué dans la base SQLite locale et le cache mémoire."""
+        self._revoked_tokens_memory.add(device_id)
+        db_path = getattr(config, "DB_PATH", "")
+        if db_path:
+            try:
+                import sqlite3
+                with sqlite3.connect(db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "CREATE TABLE IF NOT EXISTS revoked_devices ("
+                        "device_id TEXT PRIMARY KEY, "
+                        "revoked_at TEXT NOT NULL, "
+                        "reason TEXT DEFAULT ''"
+                        ")"
+                    )
+                    now_str = datetime.now(timezone.utc).isoformat()
+                    cursor.execute(
+                        "INSERT OR REPLACE INTO revoked_devices (device_id, revoked_at, reason) VALUES (?, ?, ?)",
+                        (device_id, now_str, reason)
+                    )
+                    conn.commit()
+                    return True
+            except Exception as e:
+                print(f"[AuthService] Erreur révocation SQLite device {device_id}: {e}")
+        return False
+
     async def is_token_revoked(self, token_id: str, device_id: Optional[str] = None) -> bool:
-        """Vérifie si le token ou le device est dans la blacklist Redis ou mémoire."""
+        """Vérifie si le token ou le device est dans la blacklist Redis, mémoire, config ou BDD."""
+        # 0. Vérification config / SQLite
+        if self._is_device_revoked_config_or_db(device_id):
+            return True
+
         # 1. Vérification instantanée dans le set local mémoire
         if token_id in self._revoked_tokens_memory:
             return True
@@ -241,7 +301,9 @@ class AuthService:
         return False
 
     def is_token_revoked_sync(self, token_id: str, device_id: Optional[str] = None) -> bool:
-        """Vérification synchrone de révocation via le set mémoire et le fallback cache."""
+        """Vérification synchrone de révocation via config, BDD SQLite, set mémoire et cache."""
+        if self._is_device_revoked_config_or_db(device_id):
+            return True
         if token_id in self._revoked_tokens_memory:
             return True
         if device_id and device_id in self._revoked_tokens_memory:

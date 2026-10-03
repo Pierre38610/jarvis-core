@@ -136,9 +136,8 @@ async def _authenticate_device_ws(websocket: WebSocket) -> Optional[dict]:
     """Valide l'authentification de l'enceinte connectée à /ws/device.
     Accepte :
       1. Header Authorization: Bearer <JWT valide avec role 'device' ou 'admin'>
-      2. Token dans query param ?token=
-      3. Mot de passe maître (config.ACCESS_PASSWORD)
-      4. Header Device-Id ou Client-Id spécifique ESP32
+      2. Token dans query param ?token= (rétrocompatibilité)
+    Refuse toute connexion sans token valide (aucun fallback non authentifié).
     """
     # 1. Header Authorization: Bearer <token>
     auth_header = websocket.headers.get("authorization", "")
@@ -146,42 +145,22 @@ async def _authenticate_device_ws(websocket: WebSocket) -> Optional[dict]:
     if auth_header.lower().startswith("bearer "):
         token = auth_header[7:].strip()
 
-    # 2. Fallback query param ?token=
+    # 2. Fallback query param ?token= (compatibilité)
     if not token:
         token = websocket.query_params.get("token", "").strip()
 
-    if token:
-        payload = await auth_service.verify_token(token)
-        if payload and payload.get("role", "") in ("device", "admin"):
-            return payload
+    if not token:
+        print("[DeviceVoice] ❌ Connexion /ws/device refusée : aucun token fourni")
+        return None
 
-    # 3. Fallback header Device-Id / Client-Id (ESP32 Smart Speaker)
-    device_id_hdr = (
-        websocket.headers.get("device-id")
-        or websocket.headers.get("Device-Id")
-        or websocket.headers.get("client-id")
-        or websocket.headers.get("Client-Id")
-    )
-    if device_id_hdr:
-        clean_mac = device_id_hdr.replace(":", "").strip().lower()
-        dev_id = f"esp32_{clean_mac}" if not clean_mac.startswith("esp32_") else clean_mac
-        return {
-            "device_id": dev_id,
-            "device_name": f"ESP32 Speaker ({device_id_hdr})",
-            "role": "device",
-            "mac": device_id_hdr,
-            "issued_at": int(time.time()),
-            "expires_at": int(time.time()) + 315360000,
-        }
+    masked_token = f"{token[:4]}...{token[-4:]}" if len(token) > 8 else "***"
+    payload = await auth_service.verify_token(token)
+    if payload and payload.get("role", "") in ("device", "admin"):
+        print(f"[DeviceVoice] 🔑 Authentification réussie pour {payload.get('device_id')} (token: {masked_token})")
+        return payload
 
-    # 4. Fallback par défaut pour requêtes sur /ws/device
-    return {
-        "device_id": "esp32_speaker_waveshare",
-        "device_name": "Waveshare ESP32-S3 Speaker",
-        "role": "device",
-        "issued_at": int(time.time()),
-        "expires_at": int(time.time()) + 315360000,
-    }
+    print(f"[DeviceVoice] ❌ Authentification /ws/device échouée (token: {masked_token})")
+    return None
 
 
 # ─── Présence Redis ────────────────────────────────────────────────────────────
@@ -393,18 +372,14 @@ async def device_voice_channel(websocket: WebSocket):
       4. Device stream binary Opus/PCM mono 16kHz
       5. VPS stream binary Opus 16kHz régulé à 55ms/trame vers device avec notifications JSON
     """
-    # ── Toujours accepter le WebSocket en premier pour garantir le handshake HTTP 101 ──
-    await websocket.accept()
-
-    # ── Authentification ───────────────────────────────────────────────────────
+    # ── Authentification AVANT websocket.accept() ─────────────────────────────
     payload = await _authenticate_device_ws(websocket)
     if not payload:
-        await websocket.send_text(json.dumps({
-            "type": "error",
-            "message": "Authentification device refusée"
-        }))
         await websocket.close(code=1008, reason="Authentification device refusée")
         return
+
+    # ── Accepter le WebSocket une fois authentifié ────────────────────────────
+    await websocket.accept()
 
     device_id = payload.get("device_id", "esp32_speaker")
     device_name = payload.get("device_name", "ESP32 Speaker")
@@ -1075,7 +1050,7 @@ async def generate_device_token(req: GenerateDeviceTokenRequest, request: Reques
             "registered_via": "admin_api",
             "registered_at": time.time(),
         },
-        expiry_days=3650,  # 10 ans
+        expiry_days=365,  # 1 an (365 jours)
     )
 
     print(f"[DeviceVoice] 🔑 Token device généré : {device_id} ({req.device_name})")
@@ -1087,7 +1062,7 @@ async def generate_device_token(req: GenerateDeviceTokenRequest, request: Reques
         "role": "device",
         "token": token,
         "websocket_url": f"wss://jarvis.signalcraftapps.com/ws/device",
-        "expiry_days": 3650,
+        "expiry_days": 365,
         "instructions": (
             "Flashez ce token dans la NVS de l'ESP32 avec la commande : "
             "nvs_flash write --namespace jarvis --key device_token --type string --value <token>"

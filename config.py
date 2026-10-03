@@ -38,6 +38,7 @@ except Exception:
 ACCESS_PASSWORD = os.environ.get("JARVIS_PASSWORD", "Bonjourmotdepassedu52..")
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "").strip()
 JWT_EXPIRATION_DAYS = int(os.environ.get("JWT_EXPIRATION_DAYS", "90"))
+REVOKED_DEVICE_IDS = set(filter(None, [x.strip() for x in os.environ.get("REVOKED_DEVICE_IDS", "").split(",")]))
 
 # Configuration Tunnel Cloudflare Permanent (signalcraftapps.com)
 CLOUDFLARE_TUNNEL_TOKEN = os.environ.get("CLOUDFLARE_TUNNEL_TOKEN", "").strip()

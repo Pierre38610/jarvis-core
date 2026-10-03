@@ -511,28 +511,40 @@ Garantit une maîtrise absolue et vivante du dossier professionnel de Pierre :
 │ • Tokens JWT signés HMAC-SHA256 avec claims standard (jti, iat, exp, device_id, role)  │
 │ • Génération automatique d'une clé secrète JWT_SECRET_KEY forte (64 octets urlsafe)    │
 │ • Pairage QR Code zero-touch instantané avec ticket à usage unique (TTL 300 s)         │
-│ • Révocation immédiate et blacklistage de tokens/appareils via Redis                   │
+│ • Authentification stricte WebSocket (/ws & /ws/device) AVANT websocket.accept()       │
+│ • Support de l'en-tête standard 'Authorization: Bearer <token>' & masquage logs        │
+│ • Tokens terminaux physiques ESP32-S3 valides 365 jours (1 an) au lieu de 10 ans       │
+│ • Révocation multi-couche : config.REVOKED_DEVICE_IDS, SQLite et blacklist Redis/RAM   │
 │ • Migration transparente des anciens tokens en clair sans rupture de session           │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.2. Tokens JWT Signés (HMAC-SHA256) & Gestion des Clés Secrètes
+### 4.2. Tokens JWT Signés (HMAC-SHA256) & Durées de Validité
 - **Algorithme** : HMAC-SHA256 (`HS256`).
-- **Payload type** : `{"device_id": "dev_...", "device_name": "...", "role": "admin", "iat": ..., "exp": ..., "jti": "jwt_tok_..."}`.
-- **Durée** : 90 jours (`JWT_EXPIRATION_DAYS`). Auto-génération de `JWT_SECRET_KEY` (64 octets urlsafe) si absente du `.env`.
+- **Payload standard** : `{"device_id": "dev_...", "device_name": "...", "role": "admin"|"device", "iat": ..., "exp": ..., "jti": "jwt_tok_..."}`.
+- **Durée de vie des tokens** :
+  - **Sessions interactives / HUD** : 90 jours (`JWT_EXPIRATION_DAYS`).
+  - **Terminaux matériels embarqués ESP32-S3** : **365 jours (1 an)** générés via `/api/device/generate-token`.
+- **Secret Key** : Auto-génération de `JWT_SECRET_KEY` (64 octets urlsafe) persistée dans `.env` si absente.
 
-### 4.3. Registre des Terminaux & Empreintes Matérielles (`authorized_devices.json`)
-Consigne pour chaque équipement : `device_id`, `device_name`, `ip_address`, `user_agent`, `registered_at`, `last_seen`, `status` (`approved` ou `revoked`).
+### 4.3. Authentification Stricte des Canaux WebSocket (`/ws` et `/ws/device`)
+1. **Validation Avant Handshake (`websocket.accept()`)** : L'authentification est systématiquement opérée **avant** d'accepter le WebSocket. Si le jeton est manquant, corrompu, expiré ou révoqué, la connexion est immédiatement close (`code=1008`) sans transition vers le protocole WebSocket.
+2. **Priorité des En-têtes & Compatibilité** :
+   - **En-tête standard (Recommandé Firmware ESP32)** : `Authorization: Bearer <token>`.
+   - **En-tête de compatibilité / URL** : Query param `?token=<token>` et cookies de session.
+   - **Suppression des Fallbacks Non Authentifiés** : L'accès par simple header `Device-Id` ou terminal par défaut sans jeton valide est strictement interdit.
+3. **Masquage dans les Logs** : Tout jeton transitant par URL ou en-tête est tronqué et masqué dans les journaux (`token[:4]...token[-4:]` ou `***`).
 
-### 4.4. Protocole de Pairage QR Code Zero-Touch à Usage Unique
+### 4.4. Système de Révocation Multi-Niveaux
+- **Configuration statique / variable d'environnement** : `config.REVOKED_DEVICE_IDS` (`set` de `device_id` révoqués).
+- **Base de données persistante SQLite (`config.DB_PATH`)** : Table `revoked_devices (device_id PRIMARY KEY, revoked_at, reason)` inspectée à chaque vérification de jeton.
+- **Cache distribué Redis & RAM fallback** : Clés `jarvis:revoked_tokens:{jti}` et `jarvis:revoked_tokens:{device_id}` assurant une invalidation instantanée sur cluster.
+
+### 4.5. Protocole de Pairage QR Code Zero-Touch à Usage Unique
 1. Client connecté déclenche `GET /api/auth-qr`.
 2. Serveur génère un ticket aléatoire unique (`qr_ticket_{secrets.token_hex(16)}`), stocké dans Redis avec un TTL strict de **300 secondes (5 minutes)**.
 3. Smartphone scanne le QR code (`POST /api/auth-qr` avec le ticket).
 4. Serveur valide le ticket, le **supprime immédiatement de Redis** (anti-rejeu), enregistre l'appareil et émet le JWT.
-
-### 4.5. Révocation Instantanée & Blacklist Redis
-- Route `POST /api/auth/revoke`. Inscription immédiate dans `jarvis:revoked_tokens:{jti}` et `jarvis:revoked_devices:{device_id}`.
-- Tout appel ultérieur renvoie HTTP 401. Set en RAM de secours en cas de panne Redis.
 
 ### 4.6. Migration Rétrocompatible Transparente des Anciens Jetons
 À la réception d'un ancien token hexadécimal, `AuthService` valide l'ancien token, émet un nouveau JWT, met à jour le cookie et purge l'ancien token de la base.
