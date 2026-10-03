@@ -46,7 +46,7 @@ class MobileBridgeService:
     async def _trigger(self, identifier: str, params: Optional[Dict[str, Any]] = None, base_url_override: Optional[str] = None) -> BridgeResult:
         """Déclenche un webhook MacroDroid avec gestion d'un retry unique sur timeout/erreur réseau."""
         device_id = getattr(config, "MACRODROID_DEVICE_ID", "").strip()
-        base_url = (base_url_override or getattr(config, "MACRODROID_BASE_URL", "https://trigger.macrodroid.com")).strip().rstrip("/")
+        base_url = (base_url_override or getattr(config, "MACRODROID_BASE_URL", "https://ask.macrodroid.com")).strip().rstrip("/")
 
         if not device_id:
             logger.warning("[MobileBridge] Déclenchement impossible : pont mobile non configuré (MACRODROID_DEVICE_ID vide)")
@@ -60,7 +60,7 @@ class MobileBridgeService:
 
         for attempt in range(2):
             try:
-                response = await client.get(url, params=params, timeout=5.0)
+                response = await client.get(url, params=params, timeout=6.0)
                 if 200 <= response.status_code < 300:
                     logger.info("[MobileBridge] Webhook action=%s exécuté avec succès (HTTP %d)", identifier, response.status_code)
                     return BridgeResult(ok=True, status=response.status_code, reason="ok")
@@ -70,9 +70,6 @@ class MobileBridgeService:
             except (httpx.TimeoutException, httpx.NetworkError, httpx.RequestError) as exc:
                 err_type = "timeout" if isinstance(exc, httpx.TimeoutException) else "network_error"
                 if attempt == 0:
-                    if "ask.macrodroid.com" in base_url and not base_url_override:
-                        logger.warning("[MobileBridge] Timeout sur ask.macrodroid.com, bascule vers trigger.macrodroid.com...")
-                        return await self._trigger(identifier, params=params, base_url_override="https://trigger.macrodroid.com")
                     logger.warning("[MobileBridge] Webhook action=%s échec tentative 1 (%s), nouvel essai...", identifier, err_type)
                     continue
                 logger.error("[MobileBridge] Webhook action=%s échec définitif (%s)", identifier, err_type)
@@ -85,9 +82,9 @@ class MobileBridgeService:
 
     async def wake_spotify_on_phone(self) -> BridgeResult:
         """Envoie le signal MacroDroid pour réveiller et ouvrir Spotify sur le smartphone."""
-        res = await self._trigger("jarvis_spotify")
+        res = await self._trigger("Jarvis_spotify")
         if not res.ok:
-            alt_res = await self._trigger("Jarvis_spotify")
+            alt_res = await self._trigger("jarvis_spotify")
             if alt_res.ok:
                 return alt_res
         return res
@@ -97,9 +94,9 @@ class MobileBridgeService:
         if mode not in ALLOWED_MODES:
             mode = "driving"
         params = {"dest": destination, "mode": mode}
-        res = await self._trigger("jarvis_maps", params)
+        res = await self._trigger("Jarvis maps", params)
         if not res.ok:
-            for alt in ("Jarvis maps", "Jarvis_maps"):
+            for alt in ("Jarvis_maps", "jarvis_maps"):
                 alt_res = await self._trigger(alt, params)
                 if alt_res.ok:
                     return alt_res

@@ -21,7 +21,7 @@ from services.spotify_service import spotify_service
 def setup_mobile_config(monkeypatch):
     """Configure un device ID de test par défaut."""
     monkeypatch.setattr(config, "MACRODROID_DEVICE_ID", "test_device_uuid_12345")
-    monkeypatch.setattr(config, "MACRODROID_BASE_URL", "https://trigger.macrodroid.com")
+    monkeypatch.setattr(config, "MACRODROID_BASE_URL", "https://ask.macrodroid.com")
 
 
 # ─── 1. Succès 200 ────────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ async def test_mobile_bridge_trigger_success_200(monkeypatch):
 
     monkeypatch.setattr(mobile_bridge_service, "_get_client", lambda: mock_client)
 
-    res = await mobile_bridge_service._trigger("jarvis_spotify")
+    res = await mobile_bridge_service._trigger("Jarvis_spotify")
     assert res.ok is True
     assert res.status == 200
     assert res.reason == "ok"
@@ -53,7 +53,7 @@ async def test_mobile_bridge_timeout_then_retry_ok(monkeypatch):
 
     monkeypatch.setattr(mobile_bridge_service, "_get_client", lambda: mock_client)
 
-    res = await mobile_bridge_service._trigger("jarvis_spotify")
+    res = await mobile_bridge_service._trigger("Jarvis_spotify")
     assert res.ok is True
     assert res.status == 200
     assert res.reason == "ok"
@@ -71,7 +71,7 @@ async def test_mobile_bridge_404_failed_no_retry(monkeypatch):
 
     monkeypatch.setattr(mobile_bridge_service, "_get_client", lambda: mock_client)
 
-    res = await mobile_bridge_service._trigger("jarvis_spotify")
+    res = await mobile_bridge_service._trigger("Jarvis_spotify")
     assert res.ok is False
     assert res.status == 404
     assert res.reason == "HTTP 404"
@@ -86,7 +86,7 @@ async def test_mobile_bridge_empty_device_id_no_network(monkeypatch):
     mock_client = AsyncMock()
     monkeypatch.setattr(mobile_bridge_service, "_get_client", lambda: mock_client)
 
-    res = await mobile_bridge_service._trigger("jarvis_spotify")
+    res = await mobile_bridge_service._trigger("Jarvis_spotify")
     assert res.ok is False
     assert res.status is None
     assert res.reason == "pont mobile non configuré"
@@ -108,7 +108,7 @@ async def test_mobile_bridge_launch_maps_params_and_mode(monkeypatch):
     assert res.ok is True
     mock_client.get.assert_called_once()
     called_url, called_kwargs = mock_client.get.call_args
-    assert called_url[0] == "https://trigger.macrodroid.com/test_device_uuid_12345/jarvis_maps"
+    assert called_url[0] == "https://ask.macrodroid.com/test_device_uuid_12345/Jarvis maps"
     assert called_kwargs.get("params") == {"dest": "Gare de Malmö", "mode": "walking"}
 
 
