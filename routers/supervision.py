@@ -1,12 +1,17 @@
 """routers/supervision.py
 Endpoints de supervision temps réel, gestion des tâches et directives.
 """
+import asyncio
+from datetime import datetime
+import os
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 import auth
-from google_antigravity import is_stop_directive
+import config
+from google_antigravity import is_stop_directive, _sanitize_secrets
 from services.supervision_service import supervision_service
 from core.shared_state import (
     active_task_controller,
@@ -151,3 +156,80 @@ async def get_supervision_turns(request: Request):
     from services.turn_audit import get_turn_audits
     turns = get_turn_audits(since=since, limit=limit)
     return JSONResponse(content={"turns": turns, "count": len(turns), "total": len(turns)})
+
+
+@router.get("/api/supervision/logs")
+async def get_supervision_logs(request: Request):
+    """Retourne les logs du service Jarvis / système avec filtres et assainissement strict des secrets."""
+    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    if not auth.is_device_authorized(token):
+        return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
+
+    lines_param = request.query_params.get("lines", "150")
+    try:
+        lines = max(10, min(1000, int(lines_param)))
+    except ValueError:
+        lines = 150
+
+    filter_type = request.query_params.get("filter", "all").lower().strip()
+    unit = request.query_params.get("unit", "jarvis").strip()
+
+    raw_lines = []
+    try:
+        if os.name != "nt":
+            # Sur VPS Linux, lecture directe via journalctl
+            cmd = ["journalctl", "-u", unit, "--no-pager", "-n", str(lines)]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=8.0)
+            raw_text = stdout.decode("utf-8", errors="replace")
+            raw_lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
+        else:
+            # Sur Windows / environnement local
+            log_files = [
+                os.path.join(config.BASE_DIR, "jarvis.log"),
+                os.path.join(config.BASE_DIR, "logs", "jarvis.log"),
+            ]
+            found = False
+            for lf in log_files:
+                if os.path.exists(lf):
+                    with open(lf, "r", encoding="utf-8", errors="replace") as f:
+                        all_lines = f.readlines()
+                        raw_lines = [l.strip() for l in all_lines[-lines:] if l.strip()]
+                        found = True
+                        break
+            if not found:
+                raw_lines = [f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Jarvis Core actif sur Windows."]
+    except Exception as e:
+        raw_lines = [f"[LOG_ERROR] Impossible de récupérer les logs: {str(e)}"]
+
+    sanitized_lines = []
+    for line in raw_lines:
+        clean = _sanitize_secrets(line)
+        if filter_type == "error":
+            if any(k in clean.lower() for k in ["error", "erreur", "fail", "traceback", "exception", "syntaxerror", "429"]):
+                sanitized_lines.append(clean)
+        elif filter_type == "warning":
+            if any(k in clean.lower() for k in ["warning", "warn", "attention", "repli", "timeout"]):
+                sanitized_lines.append(clean)
+        elif filter_type in ("agy", "antigravity", "l2"):
+            if any(k in clean.lower() for k in ["antigravity", "agy", "agentic", "prospector", "analyst", "synthesis", "l2"]):
+                sanitized_lines.append(clean)
+        elif filter_type in ("dr", "deep_research", "l3"):
+            if any(k in clean.lower() for k in ["deepresearch", "deep_research", "gemini_deep_research", "browser", "cdp", "l3"]):
+                sanitized_lines.append(clean)
+        else:
+            sanitized_lines.append(clean)
+
+    return JSONResponse(content={
+        "logs": sanitized_lines,
+        "count": len(sanitized_lines),
+        "total_fetched": len(raw_lines),
+        "filter": filter_type,
+        "unit": unit,
+        "timestamp": datetime.now().isoformat(),
+    })
+

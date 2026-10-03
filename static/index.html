@@ -41,9 +41,9 @@
           <img src="/static/jarvis-icon.png" alt="JARVIS Logo" class="hud-header-logo">
           <span class="system-tag"><span class="system-tag-dot"></span> STARK AI CORE</span>
         </div>
-        <span class="hud-version-tag">V 5.54.0 PRODUCTION DEPLOY &amp; PYTHON 3.11 VPS COMPATIBILITY</span>
+        <span class="hud-version-tag">V 5.55.0 L2/L3 RESEARCH ENGINE &amp; LIVE LOGS VIEWER</span>
       </div>
-      <!-- Actions d'en-tête (Kindle, Messagerie & Supervision) -->
+      <!-- Actions d'en-tête (Kindle, Logs, Messagerie & Supervision) -->
       <div class="hud-header-right">
         <button id="btnOpenKindleModal" class="hud-chat-btn" onclick="openKindleModal()" title="Amazon Send to Kindle">
           <svg class="hud-chat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -51,6 +51,13 @@
             <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
           </svg>
           <span class="hud-chat-btn-label">KINDLE</span>
+        </button>
+        <button id="btnOpenLogs" class="hud-chat-btn" onclick="openLogsModal()" title="Consulter les logs système en direct">
+          <svg class="hud-chat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="4 17 10 11 4 5"/>
+            <line x1="12" y1="19" x2="20" y2="19"/>
+          </svg>
+          <span class="hud-chat-btn-label">LOGS</span>
         </button>
         <button id="btnOpenChat" class="hud-chat-btn" onclick="openChatDrawer()" title="Messagerie & Analyse Photo">
           <svg class="hud-chat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -657,6 +664,9 @@
           </div>
         </div>
         <div class="supervision-header-actions">
+          <button id="btnSupervisionOpenLogs" class="supervision-icon-btn" onclick="openLogsModal()" title="Ouvrir le terminal des logs">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          </button>
           <button id="btnRefreshSupervision" class="supervision-icon-btn" title="Rafraîchir les données en direct">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           </button>
@@ -1101,6 +1111,61 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.8"></script>
+  <!-- Modal Logs Système en direct Stark Terminal -->
+  <div id="logsModal" class="supervision-modal-overlay" style="display: none;">
+    <div class="supervision-modal-card logs-modal-card">
+      
+      <!-- En-tête -->
+      <div class="supervision-header">
+        <div class="supervision-title-group">
+          <span class="supervision-pulse-orb" style="background: #06b6d4; box-shadow: 0 0 12px #06b6d4;"></span>
+          <div>
+            <div class="supervision-title">JOURNAL SYSTÈME // STARK TERMINAL LOGS</div>
+            <div class="supervision-subtitle">Flux d'exécution VPS journalctl, Antigravity CLI &amp; Gemini Deep Research</div>
+          </div>
+        </div>
+        <div class="supervision-header-actions">
+          <label class="logs-auto-refresh-label" title="Actualisation automatique toutes les 3s">
+            <input type="checkbox" id="logsAutoRefreshToggle" checked onchange="toggleLogsAutoRefresh(this.checked)">
+            <span class="logs-auto-refresh-text">AUTO (3s)</span>
+          </label>
+          <button id="btnRefreshLogs" class="supervision-icon-btn" onclick="fetchJarvisLogs()" title="Rafraîchir les logs">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          </button>
+          <button id="btnCopyLogs" class="supervision-icon-btn" onclick="copyJarvisLogs()" title="Copier les logs">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+          <button id="btnCloseLogsModal" class="supervision-icon-btn btn-close-modal" onclick="closeLogsModal()" title="Fermer">✕</button>
+        </div>
+      </div>
+
+      <!-- Barre de filtres rapides -->
+      <div class="logs-filter-bar">
+        <button class="logs-filter-btn active" id="btnFilterAll" onclick="setLogsFilter('all')">TOUS</button>
+        <button class="logs-filter-btn" id="btnFilterError" onclick="setLogsFilter('error')">🚨 ERREURS</button>
+        <button class="logs-filter-btn" id="btnFilterWarning" onclick="setLogsFilter('warning')">⚠️ WARNINGS</button>
+        <button class="logs-filter-btn" id="btnFilterAgy" onclick="setLogsFilter('agy')">⚡ ANTIGRAVITY (L2)</button>
+        <button class="logs-filter-btn" id="btnFilterDr" onclick="setLogsFilter('dr')">🔬 DEEP RESEARCH (L3)</button>
+        <span id="logsCountBadge" class="logs-count-badge">0 LIGNES</span>
+      </div>
+
+      <!-- Console Terminal -->
+      <div class="logs-terminal-body" id="logsTerminalBody">
+        <pre id="logsContent" class="logs-console-content">Chargement des logs système...</pre>
+      </div>
+
+      <!-- Pied -->
+      <div class="supervision-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <span id="logsLastUpdate" style="font-size: 11px; color: #64748b;">Dernière synchronisation : --:--:--</span>
+        <div style="display: flex; gap: 8px;">
+          <button class="modal-btn" style="background:#0f172a; color:#38bdf8; border: 1px solid rgba(56,189,248,0.3); padding:6px 14px; font-size:11px;" onclick="scrollToLogsBottom()">EN BAS ↓</button>
+          <button class="modal-btn" style="background:#1e293b; color:#cbd5e1; padding:6px 14px; font-size:11px;" onclick="closeLogsModal()">FERMER</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=2.9"></script>
 </body>
 </html>

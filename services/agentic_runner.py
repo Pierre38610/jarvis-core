@@ -201,8 +201,21 @@ def _build_command(role: str, prompt: str, model: str, effort: str) -> List[str]
     
     Lève ValueError si '--thinking' est présent dans les arguments.
     """
-    binary = shutil.which("agy") or "agy"
-    cmd = [binary, role, prompt, "--model", model, "--effort", effort]
+    for arg_val in (role, prompt, model, effort):
+        if arg_val and "--thinking" in str(arg_val):
+            raise ValueError("L'utilisation du flag '--thinking' est strictement interdite.")
+
+    from google_antigravity import find_antigravity_binary, resolve_cli_model_args
+    binary = find_antigravity_binary() or shutil.which("agy") or "agy"
+    model_args = resolve_cli_model_args(model, effort=effort)
+
+    cmd = [
+        binary,
+        "-p", prompt,
+        "--dangerously-skip-permissions",
+        "--output-format", "text",
+    ]
+    cmd.extend(model_args)
 
     for arg in cmd:
         if "--thinking" in arg:
@@ -234,11 +247,20 @@ async def _execute_subprocess(
         work_dir = os.path.abspath(cwd)
         os.makedirs(work_dir, exist_ok=True)
 
+    env = os.environ.copy()
+    current_path = env.get("PATH", "")
+    extra_paths = ["/home/opc/.local/bin", "/usr/local/bin", os.path.expanduser("~/.local/bin")]
+    for ep in extra_paths:
+        if ep not in current_path and os.path.exists(ep):
+            current_path = f"{ep}:{current_path}"
+    env["PATH"] = current_path
+
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=work_dir,
+        env=env,
     )
 
     try:
@@ -257,6 +279,7 @@ async def _execute_subprocess(
     stdout_str = stdout_bytes.decode("utf-8", errors="replace").strip()
     stderr_str = stderr_bytes.decode("utf-8", errors="replace").strip()
     return proc.returncode, stdout_str, stderr_str
+
 
 
 async def _execute_gemini_paid_fallback(

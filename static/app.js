@@ -4405,4 +4405,154 @@ if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
 
 setTimeout(populateAudioInputDevices, 500);
 
+/* ==========================================================================
+   MODULE TERMINAL LOGS EN DIRECT (STARK AI SYSTEM LOGS)
+   ========================================================================== */
+
+let currentLogsFilter = 'all';
+let logsPollTimer = null;
+let rawLogsCache = [];
+
+function openLogsModal() {
+  const modal = document.getElementById('logsModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  fetchJarvisLogs();
+
+  const toggle = document.getElementById('logsAutoRefreshToggle');
+  if (toggle && toggle.checked && !logsPollTimer) {
+    logsPollTimer = setInterval(fetchJarvisLogs, 3000);
+  }
+}
+
+function closeLogsModal() {
+  const modal = document.getElementById('logsModal');
+  if (!modal) return;
+  modal.style.display = 'none';
+  if (logsPollTimer) {
+    clearInterval(logsPollTimer);
+    logsPollTimer = null;
+  }
+}
+
+function toggleLogsAutoRefresh(enabled) {
+  if (logsPollTimer) {
+    clearInterval(logsPollTimer);
+    logsPollTimer = null;
+  }
+  if (enabled) {
+    logsPollTimer = setInterval(fetchJarvisLogs, 3000);
+  }
+}
+
+function setLogsFilter(filterType) {
+  currentLogsFilter = filterType;
+  document.querySelectorAll('.logs-filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-filter') === filterType || btn.id === 'btnFilter' + filterType.charAt(0).toUpperCase() + filterType.slice(1));
+  });
+  fetchJarvisLogs();
+}
+
+async function fetchJarvisLogs() {
+  const logsContent = document.getElementById('logsContent');
+  const countBadge = document.getElementById('logsCountBadge');
+  const lastUpdate = document.getElementById('logsLastUpdate');
+  const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+
+  try {
+    const url = `/api/supervision/logs?lines=250&filter=${encodeURIComponent(currentLogsFilter)}${token ? '&token=' + encodeURIComponent(token) : ''}`;
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      if (logsContent) logsContent.innerHTML = `<span class="log-line-error">[Erreur ${resp.status}] Impossible de charger les logs (accès non autorisé ou service indisponible).</span>`;
+      return;
+    }
+    const data = await resp.json();
+    rawLogsCache = data.logs || [];
+
+    if (countBadge) countBadge.innerText = `${data.count || 0} LIGNES`;
+    if (lastUpdate) {
+      const now = new Date();
+      lastUpdate.innerText = `Dernière synchronisation : ${now.toLocaleTimeString()}`;
+    }
+
+    if (!logsContent) return;
+
+    if (!data.logs || data.logs.length === 0) {
+      logsContent.innerHTML = `<span style="color: #64748b; font-style: italic;">Aucun log disponible pour le filtre « ${currentLogsFilter.toUpperCase()} ».</span>`;
+      return;
+    }
+
+    // Colorisation et rendu des lignes
+    const htmlLines = data.logs.map(line => {
+      const lower = line.toLowerCase();
+      let cssClass = 'log-line-default';
+
+      if (lower.includes('error') || lower.includes('erreur') || lower.includes('failed') || lower.includes('traceback') || lower.includes('exception') || lower.includes('syntaxerror') || lower.includes('429')) {
+        cssClass = 'log-line-error';
+      } else if (lower.includes('warning') || lower.includes('warn') || lower.includes('repli') || lower.includes('timeout')) {
+        cssClass = 'log-line-warn';
+      } else if (lower.includes('antigravity') || lower.includes('agy') || lower.includes('prospector') || lower.includes('analyst') || lower.includes('synthesis')) {
+        cssClass = 'log-line-agy';
+      } else if (lower.includes('deepresearch') || lower.includes('deep_research') || lower.includes('browser')) {
+        cssClass = 'log-line-dr';
+      } else if (lower.includes('info') || lower.includes('startup') || lower.includes('ready')) {
+        cssClass = 'log-line-info';
+      }
+
+      // Échappement HTML basique
+      const safeLine = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return `<div class="log-line ${cssClass}">${safeLine}</div>`;
+    }).join('');
+
+    logsContent.innerHTML = htmlLines;
+  } catch (err) {
+    if (logsContent) {
+      logsContent.innerHTML = `<span class="log-line-error">[Erreur réseau] ${err.message}</span>`;
+    }
+  }
+}
+
+function scrollToLogsBottom() {
+  const terminal = document.getElementById('logsTerminalBody');
+  if (terminal) {
+    terminal.scrollTop = terminal.scrollHeight;
+  }
+}
+
+function copyJarvisLogs() {
+  if (!rawLogsCache || rawLogsCache.length === 0) return;
+  const text = rawLogsCache.join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('btnCopyLogs');
+    if (btn) {
+      const oldTitle = btn.getAttribute('title');
+      btn.setAttribute('title', 'Copié !');
+      btn.style.borderColor = '#10b981';
+      setTimeout(() => {
+        btn.setAttribute('title', oldTitle || 'Copier');
+        btn.style.borderColor = '';
+      }, 1500);
+    }
+  }).catch(e => console.warn("Erreur copie logs:", e));
+}
+
+// Fermeture du modal logs avec Escape ou clic sur l'overlay
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const modal = document.getElementById('logsModal');
+    if (modal && modal.style.display !== 'none') {
+      closeLogsModal();
+    }
+  }
+});
+
+const logsModalEl = document.getElementById('logsModal');
+if (logsModalEl) {
+  logsModalEl.addEventListener('click', (e) => {
+    if (e.target === logsModalEl) {
+      closeLogsModal();
+    }
+  });
+}
+
 

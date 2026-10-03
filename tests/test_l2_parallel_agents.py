@@ -37,13 +37,40 @@ def cleanup_cooldowns_and_consents():
     cooldown_manager.clear()
 
 
+def _extract_mock_role(cmd) -> str:
+    """Extrait le rôle simulé à partir de la commande d'exécution."""
+    cmd_str = " ".join(str(x) for x in cmd).lower()
+    if "synthèse" in cmd_str or "synthese" in cmd_str or "synthesis" in cmd_str:
+        if "agent synthèse" in cmd_str or "agent synthese" in cmd_str or "rôle : synthèse" in cmd_str:
+            return "synthesis"
+    if "agent critique" in cmd_str or "critique & logique" in cmd_str:
+        return "critic"
+    if "agent prospecteur" in cmd_str:
+        return "prospector"
+    if "architecte système" in cmd_str or "architecte" in cmd_str:
+        return "architect"
+    if "rédacteur technique" in cmd_str:
+        return "writer"
+    if "chercheur multi-source" in cmd_str:
+        return "researcher"
+    if "agent décisionnel" in cmd_str:
+        return "decider"
+    if "synthesis" in cmd_str:
+        return "synthesis"
+    if "critic" in cmd_str:
+        return "critic"
+    if "prospect" in cmd_str:
+        return "prospector"
+    return str(cmd[1]) if len(cmd) > 1 else "general_agent"
+
+
 @pytest.mark.asyncio
 async def test_l2_three_agents_concurrent_execution_and_synthesis():
     """Critère 1 : 3 agents exécutés en parallèle via asyncio.gather, résultat agrégé et synthèse déterministe."""
     execution_order = []
 
     async def mock_exec(cmd, timeout, cwd=None):
-        role = cmd[1]
+        role = _extract_mock_role(cmd)
         execution_order.append(role)
         # Simulation d'une latence pour vérifier la concurrence
         await asyncio.sleep(0.05)
@@ -127,7 +154,7 @@ async def test_l2_three_agents_concurrent_execution_and_synthesis():
 async def test_l2_partial_failure_recovers_remaining_agents_and_reports_partial():
     """Critère 2 : Si un agent échoue ou timeout, les autres sont récupérés, et un résultat partiel est retourné sans faux succès."""
     async def mock_exec_with_failure(cmd, timeout, cwd=None):
-        role = cmd[1]
+        role = _extract_mock_role(cmd)
         if role == "critic":
             raise asyncio.TimeoutError("Timeout sur l'agent critique")
 
@@ -176,7 +203,7 @@ async def test_l2_cross_check_contradiction_detection_and_bounded_retry():
     call_count = {"prospector": 0, "critic": 0, "architect": 0}
 
     async def mock_exec_contradiction(cmd, timeout, cwd=None):
-        role = cmd[1]
+        role = _extract_mock_role(cmd)
         call_count[role] = call_count.get(role, 0) + 1
         iteration_current = call_count[role]
 
@@ -270,17 +297,18 @@ async def test_l2_isolated_workspaces_prevent_concurrent_file_collisions():
         async def mock_exec_workspace_check(cmd, timeout, cwd=None):
             assert cwd is not None
             workspaces_used.append(cwd)
+            role = _extract_mock_role(cmd)
             # Écriture d'un fichier local pour vérifier l'absence d'écrasement concurrent
             worker_file = os.path.join(cwd, "test_file.txt")
             with open(worker_file, "w", encoding="utf-8") as f:
-                f.write(f"Données de {cmd[1]}")
+                f.write(f"Données de {role}")
 
             payload = {
                 "facts": ["Fait local"],
                 "sources": ["source.txt"],
                 "hypotheses": [],
                 "uncertainties": [],
-                "conclusion": f"Fait par {cmd[1]}",
+                "conclusion": f"Fait par {role}",
                 "confidence": 0.9,
                 "artifacts": [worker_file]
             }

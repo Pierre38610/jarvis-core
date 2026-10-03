@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.54.0 — Compatibilité Python 3.11 VPS & Déploiement Cloud Opérationnel : Résolution de la compatibilité syntaxique f-string multiline Python 3.11 sur Oracle Linux VPS, élimination des artefacts BOM, validation intégrale des 518 tests unitaires et 21 tests e2e, et rétablissement du service de production jarvis sous Cloudflare.*
+> *Dernière révision majeure : Version 5.55.0 — L2/L3 Research Engine & Live Logs Viewer : Correction de la commande de lancement Antigravity CLI (-p, modèle/effort réconciliés, validation JSON robuste), activation et fiabilisation de la détection L2 (agents parallèles Map-Reduce) et L3 (Gemini Deep Research Web navigateur), exposition de l'API /api/supervision/logs et terminal Stark Live Logs dans le HUD web, 518 tests unitaires validés.*
 
 
 ---
@@ -1277,6 +1277,7 @@ Afin de rendre structurellement impossible que Jarvis annonce oralement un succ�
 | **POST** | `/api/supervision/patches/{id}/rollback` | Annule un patch déployé et restaure la version précédente. | Token JWT | Path param `id` | `{"status": "rolled_back"}` |
 | **POST** | `/api/supervision/patches/{id}/approve` | Approuve un patch critique en attente de validation. | Token JWT | Path param `id` | `{"status": "applied"}` |
 | **GET** | `/api/supervision/turns` | Audit des tours de dialogue (outils, transcript, fausses affirmations, durée, coupures). | Token JWT | `?since=...&limit=50` | `{"turns": [...]}` |
+| **GET** | `/api/supervision/logs` | Journalisation système temps réel (journalctl jarvis / application) avec filtres & secrets masqués. | Token JWT | `?lines=150&filter=all|error|agy|dr` | `{"logs": [...], "count": int}` |
 | **POST** | `/api/task/directive` | Injecte une consigne en direct dans la tâche active. | Token JWT | `{"directive": "..."}` | `{"status": "adapted"}` |
 | **POST** | `/api/task/stop` | Interruption physique d'urgence de la tâche active. | Token JWT | `{"reason": "..."}` | `{"status": "stopped"}` |
 | **GET** | `/api/chat/history` | Historique de la messagerie multimodale écrite. | Token JWT | Aucun | `{"messages": [...]}` |
