@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.37.6 — Intégration complète de l'enceinte intelligente matérielle ESP32-S3 Waveshare Audio Board (`routers/device_voice.py`, `/ws/device`, `/api/device/*`), régulateur de flux audio temps réel (`DeviceAudioPacer`), rééchantillonneur continu de précision (`Continuous24kTo16kResampler`), pipeline audio full-duplex Opus 16kHz, wake word hors-ligne `wn9_jarvis_tts` (ESP-SR WakeNet 9), persistance NVS Wi-Fi & jeton JWT `role=device`, présence Redis `jarvis:presence:device:<id>`, règle canal unique & initiative proactive `push_speak_to_device`.*
+> *Dernière révision majeure : Version 5.37.7 — Gestion multi-sessions WebSocket concurrentes (PC + smartphone simultanés sans déconnexion via `active_task_controller["ws_sessions"]`), isolation stricte du routage audio bidirectionnel par session WebSocket, découplage de `preferred_output` / `preferred_device_id` réservés exclusivement aux annonces spontanées (`push_speak_to_device`), intégration complète de l'enceinte intelligente matérielle ESP32-S3 Waveshare Audio Board (`routers/device_voice.py`, `/ws/device`, `/api/device/*`), régulateur de flux audio temps réel (`DeviceAudioPacer`), rééchantillonneur continu de précision (`Continuous24kTo16kResampler`), pipeline audio full-duplex Opus 16kHz, wake word hors-ligne `wn9_jarvis_tts` (ESP-SR WakeNet 9), persistance NVS Wi-Fi & jeton JWT `role=device`, présence Redis `jarvis:presence:device:<id>`.*
 
 ---
 
@@ -590,9 +590,11 @@ En cas d'exception `AntigravityQuotaExhaustedError` ou HTTP 429 sur `gemini-3.1-
 
 ## 6. LE MOTEUR VOCAL TEMPS RÉEL (GEMINI LIVE AUDIO)
 
-### 6.1. Protocole Audio Full-Duplex & Streaming PCM
+### 6.1. Protocole Audio Full-Duplex, Streaming PCM & Gestion Multi-Sessions
 - Endpoint `/ws` connecté directement à l'API Google Gemini Live.
 - Streaming PCM linéaire 16-bit, 16 kHz ou 24 kHz mono bidirectionnel permanent sans Push-to-Talk obligatoire.
+- **Routage Audio Direct & Multi-Sessions Concurrentes** : Les sessions `/ws` sont indexées par identifiant unique dans `active_task_controller["ws_sessions"]` (`conn_id`). Chaque terminal (PC, smartphone) conserve son propre flux conversationnel et reçoit la réponse audio générée exclusivement sur son propre WebSocket.
+- **Diffusion Synchronisée des Événements** : Les messages d'état, de supervision, d'animation HUD et de sous-agents (`broadcast_supervision`, `broadcast_jarvis_state`, `broadcast_subagents`, `broadcast_paid_key_status`, `stop_active_task`) sont diffusés en temps réel à l'ensemble des sessions connectées.
 - Accusé de lecture réel du client : le navigateur web ou l'application émet un message WebSocket `playback_finished` lorsque son buffer de lecture Web Audio API (`AudioBufferSourceNode`) est physiquement vide.
 
 ### 6.2. Assemblage Dynamique de l'Instruction Système & Contexte
@@ -786,10 +788,11 @@ L'implémentation respecte le standard d'échange bidirectionnel temps réel pou
 
 ### 8.7. Règle de Canal Unique, Présence Redis & Initiative Proactive (`push_speak_to_device`)
 - **Présence en Temps Réel** : Dès la connexion WebSocket, le serveur enregistre l'enceinte sous la clé Redis `jarvis:presence:device:<device_id>` avec un TTL de 90 secondes, rafraîchi toutes les 30 secondes par un heartbeat applicatif.
-- **Règle d'Or de Canal Unique & Verrou d'Élocution Partagé** : Pour éviter toute cacophonie entre les terminaux, l'enceinte ESP32-S3 respecte le verrou global `core.shared_state.speech_lock`. Si une session vocale est déjà active sur le smartphone (PWA `/ws`), l'enceinte attend la libération du canal.
-- **Initiative Proactive (`push_speak_to_device`)** :
+- **Règle d'Or de Canal Unique & Verrou d'Élocution Partagé** : Pour éviter toute cacophonie entre les terminaux, l'enceinte ESP32-S3 respecte le verrou global `core.shared_state.speech_lock`. Si une session vocale est déjà active sur le smartphone ou le PC (PWA `/ws`), l'enceinte attend la libération du canal.
+- **Routage Isolé & Isolation Conversationnelle** : Les réponses conversationnelles aux questions posées sur un terminal (PC, mobile ou enceinte) sortent strictement sur le haut-parleur du terminal émetteur.
+- **Initiative Proactive (`push_speak_to_device`) & `preferred_output`** :
   - Jarvis peut prendre la parole de manière spontanée et autonome sur l'enceinte physique pour délivrer une alerte urgente (retard de train > 5 min, notification de sécurité SRE, fin de tâche Deep Research).
-  - La fonction `push_speak_to_device(device_id, text, pcm_audio)` expédie les trames audio encodées en Opus directement sur la WebSocket active de l'enceinte, réveillant l'écran LCD et l'anneau LED en mode `speaking`.
+  - La fonction `push_speak_to_device(device_id, text)` expédie les trames audio encodées en Opus directement sur la WebSocket active de l'enceinte (ou cible `preferred_device_id`), réveillant l'écran LCD et l'anneau LED en mode `speaking`. `preferred_output` est strictement réservé à ces annonces spontanées sans altérer les réponses aux questions web.
 
 ### 8.8. Compilation, Flash & Outillage Firmware (`build_firmware.bat`, ESP-IDF 5.x)
 - **Environnement de Compilation** : Espressif ESP-IDF v5.2+ (GCC Xtensa, CMake, Ninja, composants ESP-SR, ESP-ADF audio pipeline).
@@ -1276,7 +1279,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre profonde (`#070B14`, `#0B0F19`), cyan électrique Stark (`#38bdf8`, `#0284c7`), accents ambre et violet néon.
 - **Typographie** : Polices modernes géométriques sans-serif d'inspiration high-tech.
 - **Responsive PWA** : Conçue pour une expérience native sur smartphone (iOS Safari / Android Chrome) et desktop avec support PWA (`manifest.json`, installation sur écran d'accueil).
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.37.6 ESP32 OPUS PACER & CONTINUOUS RESAMPLING`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.37.7 MULTI-SESSION WS & DIRECT AUDIO ROUTING`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
@@ -1480,4 +1483,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.37.6.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.37.7.*

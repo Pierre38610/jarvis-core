@@ -571,6 +571,7 @@ async def voice_channel(websocket: WebSocket):
         # ─── gemini_to_client : Réception des réponses Gemini → Frontend ─────────
         async def gemini_to_client():
             """Reçoit les réponses audio et texte de Gemini Live et les relaie au client."""
+            nonlocal recent_conversation_turns
             user_speech_buffer = ""
             is_speaking_state = False
             turn_start_time = time.time()
