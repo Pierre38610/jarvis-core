@@ -82,13 +82,22 @@ class MobileBridgeService:
 
     async def wake_spotify_on_phone(self) -> BridgeResult:
         """Envoie le signal MacroDroid pour réveiller et ouvrir Spotify sur le smartphone."""
-        return await self._trigger("jarvis_spotify")
+        res = await self._trigger("jarvis_spotify")
+        if not res.ok and res.status == 404:
+            res = await self._trigger("Jarvis_spotify")
+        return res
 
     async def launch_maps_navigation(self, destination: str, mode: str = "driving") -> BridgeResult:
         """Envoie le signal MacroDroid pour lancer un itinéraire Google Maps vers la destination demandée."""
         if mode not in ALLOWED_MODES:
             mode = "driving"
-        return await self._trigger("jarvis_maps", {"dest": destination, "mode": mode})
+        params = {"dest": destination, "mode": mode}
+        res = await self._trigger("jarvis_maps", params)
+        if not res.ok and res.status == 404:
+            res = await self._trigger("Jarvis maps", params)
+            if not res.ok and res.status == 404:
+                res = await self._trigger("Jarvis_maps", params)
+        return res
 
 
 mobile_bridge_service = MobileBridgeService()
