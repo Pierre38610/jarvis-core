@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.37.7 — Gestion multi-sessions WebSocket concurrentes (PC + smartphone simultanés sans déconnexion via `active_task_controller["ws_sessions"]`), isolation stricte du routage audio bidirectionnel par session WebSocket, découplage de `preferred_output` / `preferred_device_id` réservés exclusivement aux annonces spontanées (`push_speak_to_device`), intégration complète de l'enceinte intelligente matérielle ESP32-S3 Waveshare Audio Board (`routers/device_voice.py`, `/ws/device`, `/api/device/*`), régulateur de flux audio temps réel (`DeviceAudioPacer`), rééchantillonneur continu de précision (`Continuous24kTo16kResampler`), pipeline audio full-duplex Opus 16kHz, wake word hors-ligne `wn9_jarvis_tts` (ESP-SR WakeNet 9), persistance NVS Wi-Fi & jeton JWT `role=device`, présence Redis `jarvis:presence:device:<id>`.*
+> *Dernière révision majeure : Version 5.37.8 — Gestion de la fenêtre de follow-up vocal (`FOLLOWUP_WINDOW_S = 6s`) et timeout d'inactivité automatique (`SESSION_TIMEOUT_IDLE = 60s`) pour l'enceinte ESP32-S3 (`routers/device_voice.py`), émission du message de clôture JSON `{"type": "listen", "state": "stop", "session_id": "..."}` sur expiration ou seuil d'énergie RMS audio / transcription Gemini, remise à False robuste de `listening_active`, multi-sessions WebSocket concurrentes (PC + smartphone simultanés), isolation stricte du routage audio bidirectionnel, régulateur `DeviceAudioPacer`, rééchantillonneur continu 24k->16k et wake word hors-ligne `wn9_jarvis_tts`.*
 
 ---
 
@@ -757,22 +757,41 @@ L'implémentation respecte le standard d'échange bidirectionnel temps réel pou
             │◄── 4. JSON hello {transport: "websocket", audio_params} │
             │                                                         │
             │    [Veille Locale WakeNet 9 "Jarvis"]                   │
-            │─── 5. JSON listen {state: "detect", text: "Jarvis"} ───►│ (Init Session Gemini Live)
+            │─── 5. JSON listen {state: "detect", text: "Jarvis"} ───►│ (Init Session Gemini Live, listening_active=True)
             │─── 6. Binaire : 33 trames Opus pré-trigger (2.0s) ─────►│ (Decode Opus -> Send PCM)
             │─── 7. Binaire : Streaming continu Opus 16kHz ──────────►│
             │─── 8. JSON listen {state: "stop"} ─────────────────────►│
             │                                                         │
-            │◄── 9. JSON tts {state: "start"} & llm {emotion: speak} ─│
+            │◄── 9. JSON tts {state: "start"} & llm {emotion: speak} ─│ (listening_active=False)
             │◄── 10. Binaire : Trames Opus 60ms cadencées à 55ms ─────│ (ContinuousResampler + Pacer)
             │◄── 11. JSON tts {state: "stop"} & llm {emotion: idle} ──│
-            │─── 12. JSON tts {state: "finish"} ─────────────────────►│
+            │                                                         │
+            │    [Fenêtre de Follow-up : 6 secondes (FOLLOWUP_WINDOW_S = 6)]
+            │    (listening_active=True temporaire, écoute ouverte)
+            │                                                         │
+            │─── Cas A : Silence / aucun audio vocal reçu (RMS <= 500)│
+            │◄── 12. JSON listen {state: "stop", session_id: "..."} ──│ (listening_active=False -> retour en veille)
+            │                                                         │
+            │─── Cas B : Parole utilisateur enchaînée (RMS > 500 / STT)
+            │    (Annulation du timer 6s, listening_active maintenu, nouveau tour Gemini Live)
             │                                                         │
 ```
 
 - **Handshake HTTP 101 Garanti** : Le serveur accepte obligatoirement `await websocket.accept()` avant de vérifier le jeton JWT, prévenant les fermetures TCP abruptes avant négociation.
+- **Gestion du Follow-up Vocal (6s) & Timeout d'Inactivité (60s)** :
+  - **Fenêtre d'enchaînement direct (`FOLLOWUP_WINDOW_S = 6`)** : Après chaque fin de réponse (`sc.turn_complete`, après émission de `tts:stop` et `llm:idle`), le serveur maintient l'écoute active pendant 6 secondes. Si aucune activité vocale n'est détectée (absence de `input_transcription` textuel ou énergie RMS du signal PCM décodé $\le 500$), le serveur coupe l'écoute (`listening_active = False`) et envoie à l'ESP32 l'ordre formel de retour en veille :
+    ```json
+    {
+      "type": "listen",
+      "state": "stop",
+      "session_id": "<device_id>"
+    }
+    ```
+  - **Filet de sécurité d'inactivité session (`SESSION_TIMEOUT_IDLE = 60`)** : Si `listening_active` reste actif pendant plus de 60 secondes sans qu'aucun tour complet n'aboutisse, une tâche de surveillance de fond (`_idle_watchdog_loop`) déclenche automatiquement le même retour en veille avec envoi de `{"type": "listen", "state": "stop", ...}`.
+  - **Annulation et réactivation propre** : Tout nouvel événement de réveil `listen:detect` ou `start_listening` annule instantanément le timer de follow-up, tout comme les ordres d'interruption `listen:stop`, `stop_listening` ou `abort` qui remettent immédiatement `listening_active = False`.
 - **Messages JSON Pris en Charge** :
   - `hello` : Échange des caractéristiques matérielles et de transport.
-  - `listen` (`detect`, `start`, `stop`) : Notification de réveil vocal ou de fin de capture.
+  - `listen` (`detect`, `start`, `stop`) : Notification de réveil vocal, début de capture ou coupure d'écoute automatique / manuelle.
   - `tts` (`start`, `sentence_start`, `stop`, `finish`) : Découpage des phrases et synchronisation de lecture.
   - `stt` : Texte transcrit renvoyé vers l'ESP32 pour affichage sur l'écran LCD.
   - `llm` (`emotion`) : Commande d'expression faciale sur l'écran (`neutral`, `speaking`, `thinking`, `happy`, `listening`).
@@ -1483,4 +1502,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.37.7.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.37.8.*

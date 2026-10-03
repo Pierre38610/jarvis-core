@@ -17,6 +17,7 @@ Canal unique     : si une session /ws (PWA) parle déjà, le device attend.
 import asyncio
 import base64
 import json
+import math
 import struct
 import time
 from typing import Optional, Dict, Any
@@ -59,8 +60,22 @@ DEVICE_HEARTBEAT_TTL = 90       # TTL Redis présence en secondes
 DEVICE_HEARTBEAT_INTERVAL = 30  # Intervalle envoi heartbeat
 MAX_AUDIO_FRAME_BYTES = 32_768  # 32 KB max par trame audio
 SESSION_TIMEOUT_IDLE = 60       # Timeout inactivité session (secondes)
+FOLLOWUP_WINDOW_S = 6           # Fenêtre d'écoute post-réponse pour enchaînement direct (secondes)
+RMS_VOICE_THRESHOLD = 500       # Seuil d'énergie RMS pour détecter la voix utilisateur
 DEVICE_AUDIO_RATE_IN = 16_000   # PCM 16 kHz depuis l'enceinte
 DEVICE_AUDIO_RATE_OUT = 24_000  # PCM 24 kHz vers l'enceinte (natif Gemini)
+
+
+def _calculate_audio_rms(pcm_bytes: bytes) -> float:
+    """Calcule l'énergie RMS d'un buffer PCM 16-bit signé linéaire."""
+    if len(pcm_bytes) < 2:
+        return 0.0
+    count = len(pcm_bytes) // 2
+    try:
+        shorts = struct.unpack(f"<{count}h", pcm_bytes[:count * 2])
+        return math.sqrt(sum(s * s for s in shorts) / count)
+    except Exception:
+        return 0.0
 
 
 # ─── Registre global des sessions device actives ─────────────────────────────
@@ -424,10 +439,47 @@ async def device_voice_channel(websocket: WebSocket):
     session_ctx = None
     speaking_state = {"active": False}
     listening_active = False
+    listening_started_at = 0.0
+    voice_detected_in_followup = False
+    followup_task: Optional[asyncio.Task] = None
+    idle_watchdog_task: Optional[asyncio.Task] = None
     mac_address = ""
     heartbeat_task: Optional[asyncio.Task] = None
     out_pcm_16k_buffer = bytearray()
     FRAME_BYTES_16K = 1920  # 60ms à 16kHz 16-bit mono = 960 échantillons = 1920 octets
+
+    def _cancel_followup():
+        nonlocal followup_task
+        if followup_task and not followup_task.done():
+            followup_task.cancel()
+            followup_task = None
+
+    async def _stop_listening(reason: str = "timeout"):
+        nonlocal listening_active
+        _cancel_followup()
+        if listening_active:
+            listening_active = False
+            await broadcast_supervision()
+            try:
+                await websocket.send_text(json.dumps({
+                    "type": "listen",
+                    "state": "stop",
+                    "session_id": device_id
+                }))
+            except Exception:
+                pass
+            print(f"[DeviceVoice] 🔇 Fin écoute automatique ({reason}) -> stop envoyé au device")
+
+    async def _idle_watchdog_loop():
+        try:
+            while True:
+                await asyncio.sleep(2.0)
+                if listening_active and listening_started_at > 0:
+                    if time.time() - listening_started_at > SESSION_TIMEOUT_IDLE:
+                        print(f"[DeviceVoice] ⏱️ Timeout inactivité session ({SESSION_TIMEOUT_IDLE}s) -> retour en veille")
+                        await _stop_listening(reason="idle_timeout")
+        except asyncio.CancelledError:
+            pass
 
     try:
         # Sélection du client Gemini (même logique que /ws)
@@ -454,9 +506,15 @@ async def device_voice_channel(websocket: WebSocket):
             name=f"device_heartbeat_{device_id}"
         )
 
+        # Lancer le watchdog d'inactivité
+        idle_watchdog_task = asyncio.create_task(
+            _idle_watchdog_loop(),
+            name=f"device_idle_watchdog_{device_id}"
+        )
+
         # ── Tâche : Device → Gemini Live (audio entrant + messages JSON) ────────
         async def device_to_gemini():
-            nonlocal listening_active, mac_address
+            nonlocal listening_active, mac_address, listening_started_at, voice_detected_in_followup
             try:
                 while True:
                     msg = await websocket.receive()
@@ -488,6 +546,11 @@ async def device_voice_channel(websocket: WebSocket):
                                     pcm_data = opus_decoder.decode(raw, 320)
                                 except Exception:
                                     pcm_data = raw
+
+                        # Détection d'énergie vocale (RMS)
+                        if _calculate_audio_rms(pcm_data) > RMS_VOICE_THRESHOLD:
+                            voice_detected_in_followup = True
+                            _cancel_followup()
 
                         # Envoi à Gemini Live
                         try:
@@ -535,11 +598,15 @@ async def device_voice_channel(websocket: WebSocket):
                                         out_pcm_16k_buffer.clear()
                                         speaking_state["active"] = False
                                         notify_interrupted("user_barge_in")
+                                    _cancel_followup()
                                     listening_active = True
+                                    listening_started_at = time.time()
+                                    voice_detected_in_followup = True
                                     notify_user_speaking()
                                     await broadcast_supervision()
                                     print(f"[DeviceVoice] 🎙️ Écoute active (state={state})")
                                 elif state == "stop":
+                                    _cancel_followup()
                                     listening_active = False
                                     await broadcast_supervision()
                                     print(f"[DeviceVoice] 🔇 Fin écoute utilisateur")
@@ -552,13 +619,17 @@ async def device_voice_channel(websocket: WebSocket):
                                     out_pcm_16k_buffer.clear()
                                     speaking_state["active"] = False
                                     notify_interrupted("user_barge_in")
+                                _cancel_followup()
                                 listening_active = True
+                                listening_started_at = time.time()
+                                voice_detected_in_followup = True
                                 notify_user_speaking()
                                 await broadcast_supervision()
                                 print(f"[DeviceVoice] 🎙️ Wake word détecté — écoute active")
 
                             # ─ stop_listening : fin du tour utilisateur ───────────────
                             elif msg_type == "stop_listening":
+                                _cancel_followup()
                                 listening_active = False
                                 await broadcast_supervision()
                                 print(f"[DeviceVoice] 🔇 Fin écoute utilisateur")
@@ -569,6 +640,8 @@ async def device_voice_channel(websocket: WebSocket):
                                 resampler.clear()
                                 out_pcm_16k_buffer.clear()
                                 speaking_state["active"] = False
+                                _cancel_followup()
+                                listening_active = False
                                 notify_interrupted("user_barge_in")
                                 try:
                                     from services.metrics_service import metrics_service
@@ -593,8 +666,11 @@ async def device_voice_channel(websocket: WebSocket):
                                 resampler.clear()
                                 out_pcm_16k_buffer.clear()
                                 speaking_state["active"] = False
-                                notify_interrupted("user_barge_in")
+                                _cancel_followup()
                                 listening_active = True
+                                listening_started_at = time.time()
+                                voice_detected_in_followup = True
+                                notify_interrupted("user_barge_in")
                                 notify_user_speaking()
                                 print(f"[DeviceVoice] ⚡ Barge-in depuis le device")
 
@@ -638,7 +714,7 @@ async def device_voice_channel(websocket: WebSocket):
 
         # ── Tâche : Gemini Live → Device (audio + transcriptions + outils) ────
         async def gemini_to_device():
-            nonlocal listening_active, out_pcm_16k_buffer
+            nonlocal listening_active, out_pcm_16k_buffer, listening_started_at, voice_detected_in_followup, followup_task
             try:
                 while True:
                     async for chunk in session.receive():
@@ -661,6 +737,8 @@ async def device_voice_channel(websocket: WebSocket):
                             user_txt = None
                             if getattr(sc, "input_transcription", None) and sc.input_transcription.text:
                                 user_txt = sc.input_transcription.text
+                                voice_detected_in_followup = True
+                                _cancel_followup()
                             if user_txt:
                                 try:
                                     await websocket.send_text(json.dumps({
@@ -673,6 +751,7 @@ async def device_voice_channel(websocket: WebSocket):
 
                             # Tour de réponse du modèle
                             if sc.model_turn:
+                                _cancel_followup()
                                 listening_active = False
                                 for part in sc.model_turn.parts:
                                     # Transcription texte de la réponse
@@ -774,6 +853,22 @@ async def device_voice_channel(websocket: WebSocket):
                                 except Exception:
                                     pass
 
+                                # ── Fenêtre de follow-up (FOLLOWUP_WINDOW_S = 6s) ──
+                                _cancel_followup()
+                                listening_active = True
+                                listening_started_at = time.time()
+                                voice_detected_in_followup = False
+
+                                async def _followup_timer():
+                                    try:
+                                        await asyncio.sleep(FOLLOWUP_WINDOW_S)
+                                        if not voice_detected_in_followup and listening_active:
+                                            await _stop_listening(reason=f"followup_timeout_{FOLLOWUP_WINDOW_S}s")
+                                    except asyncio.CancelledError:
+                                        pass
+
+                                followup_task = asyncio.create_task(_followup_timer(), name=f"followup_{device_id}")
+
                         # ── Appels d'outils ────────────────────────────────────
                         if chunk.tool_call:
                             for call in chunk.tool_call.function_calls:
@@ -872,6 +967,9 @@ async def device_voice_channel(websocket: WebSocket):
 
     finally:
         # ── Nettoyage ─────────────────────────────────────────────────────────
+        _cancel_followup()
+        if idle_watchdog_task and not idle_watchdog_task.done():
+            idle_watchdog_task.cancel()
         pacer.abort()
         if heartbeat_task and not heartbeat_task.done():
             heartbeat_task.cancel()
