@@ -1553,6 +1553,42 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                         required=["query"]
                     )
                 ),
+
+                # ─── 45. launch_phone_navigation ──────────────────────────────────────
+                types.FunctionDeclaration(
+                    name="launch_phone_navigation",
+                    description=(
+                        "Lance un itinéraire de navigation GPS (Google Maps) sur le smartphone Samsung S24 de Pierre via webhook mobile. "
+                        "À UTILISER QUAND : Pierre demande un itinéraire, de lancer le GPS ou la navigation vers une destination sur son téléphone."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "destination": types.Schema(
+                                type="STRING",
+                                description="Adresse, lieu, ville ou destination pour la navigation GPS."
+                            ),
+                            "mode": types.Schema(
+                                type="STRING",
+                                description="Mode de transport : 'driving' (voiture, défaut), 'walking' (à pied), 'bicycling' (vélo), 'transit' (transports en commun)."
+                            ),
+                        },
+                        required=["destination"]
+                    )
+                ),
+
+                # ─── 46. wake_phone_spotify ───────────────────────────────────────────
+                types.FunctionDeclaration(
+                    name="wake_phone_spotify",
+                    description=(
+                        "Réveille et ouvre l'application Spotify sur le smartphone Samsung S24 de Pierre via webhook mobile. "
+                        "À UTILISER QUAND : Pierre demande d'ouvrir ou de réveiller Spotify sur son téléphone portable."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={},
+                    )
+                ),
             ]
         )
     ]

@@ -52,6 +52,10 @@ SPOTIFY_REDIRECT_URI = os.environ.get(
     "https://jarvis.signalcraftapps.com/api/media/spotify/callback"
 ).strip()
 
+# Pont Mobile MacroDroid (Samsung S24)
+MACRODROID_DEVICE_ID = os.environ.get("MACRODROID_DEVICE_ID", "").strip()
+MACRODROID_BASE_URL = os.environ.get("MACRODROID_BASE_URL", "https://trigger.macrodroid.com").strip()
+
 # Détection de l'exécutable Chrome sous Windows
 CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 if not os.path.exists(CHROME_PATH):

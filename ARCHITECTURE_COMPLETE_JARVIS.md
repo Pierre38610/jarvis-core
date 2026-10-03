@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.42.0 — Barge-in vocal bidirectionnel à 2 niveaux sur enceinte ESP32-S3 (Niveau 1 WakeNet actif en lecture avec AEC hardware + Niveau 2 VAD continue ≥400ms), factorisation serveur unifiée `handle_user_barge_in`, préservation des injections en attente et non-rejet de l'audio montant.*
+> *Dernière révision majeure : Version 5.43.0 — Pont Mobile MacroDroid & intégration Samsung S24 (déclenchement GPS Maps, réveil Spotify avec polling Connect et transfert direct, retry unique réseau, logs sécurisés sans secret).*
 
 ---
 
@@ -66,8 +66,8 @@
    - 8.6. Authentification Matérielle JWT, Provisioning NVS & Connexion Wi-Fi Directe
    - 8.7. Règle de Canal Unique, Présence Redis & Initiative Proactive (`push_speak_to_device`)
    - 8.8. Compilation, Flash & Outillage Firmware (`build_firmware.bat`, ESP-IDF 5.x)
-9. [Catalogue Matriciel & Fiches des 49 Outils Unifiés (Function Calling)](#9-catalogue-matriciel--fiches-des-49-outils-unifiés-function-calling)
-   - 9.1. Matrice Globale Exhaustive des 49 Outils Déclarés (Spécifications Exactes)
+9. [Catalogue Matriciel & Fiches des 51 Outils Unifiés (Function Calling)](#9-catalogue-matriciel--fiches-des-51-outils-unifiés-function-calling)
+   - 9.1. Matrice Globale Exhaustive des 51 Outils Déclarés (Spécifications Exactes)
    - 9.2. Moteur Multi-Agents Antigravity CLI sur VPS (`ask_deep_reasoning`, `guide_active_task`, `stop_current_action`)
    - 9.3. Moteur Asynchrone Deep Research : Architecture à Double Moteur (Moteur A Browser Agent Gemini Web + Moteur B Map-Reduce VPS)
    - 9.4. Moteur Délibératif Système 2 Transverse (Les 8 Missions Agentiques Spécialisées)
@@ -83,6 +83,8 @@
    - 9.14. Connaissance Architecturale Dynamique & Auto-évaluation
    - 9.15. SRE Autonome & Auto-Guérison Système (`services/system_healing_service.py`)
    - 9.16. Contrat Universel ToolResult & Moteur de Vérification d'Effet Réel (Zero Unverified Claims)
+   - 9.17. Orchestration Agentique, Planificateur Multi-Étapes, Consentement Payant & Espace de Travail
+   - 9.18. Pont Mobile MacroDroid (Samsung S24)
 10. [Matrice des Endpoints API REST & Protocoles WebSockets](#10-matrice-des-endpoints-api-rest--protocoles-websockets)
     - 10.1. Endpoints HTTP / REST FastAPI (Exhaustif)
     - 10.2. Contrat WebSocket Audio Gemini Live (`/ws`)
@@ -192,8 +194,8 @@ jarvis-core/
 ├── core/                                # Cœur applicatif transverse
 │   ├── shared_state.py                  # État global partagé, clients Gemini FREE/PAID, active_task_controller, verrou d'élocution, broadcast
 │   └── tools/
-│       ├── declarations.py              # 49 FunctionDeclarations Google GenAI (schémas, descriptions ASR, behavior BLOCKING/NON_BLOCKING)
-│       ├── dispatcher.py                # Routeur central d'exécution (49 outils + alias), boucle browser_task, métriques, consentement payant
+│       ├── declarations.py              # 51 FunctionDeclarations Google GenAI (schémas, descriptions ASR, behavior BLOCKING/NON_BLOCKING)
+│       ├── dispatcher.py                # Routeur central d'exécution (51 outils + alias), boucle browser_task, métriques, consentement payant
 │       ├── arg_validator.py             # Validation stricte des arguments (validate_tool_arguments) & rappel multi-actions
 │       ├── result.py                    # Contrat canonique ToolResult (done/failed/started/partial/needs_user) + normalize_result
 │       └── verifier.py                  # Vérifications post-exécution d'effet réel (email, slides, xlsx, download, process, agenda, mémoire, navigateur)
@@ -241,6 +243,7 @@ jarvis-core/
 │   ├── email_service.py                 # Envoi SMTP Stark HTML et réception IMAP Gmail avec résolution floue des pièces jointes
 │   ├── slides_service.py                # Générateur & modificateur de présentations Google Slides (7 layouts 16:9, conformité API v1)
 │   ├── transport_service.py             # Calcul d'itinéraires ferroviaires France/Suède, découpage multi-segments, deep links Omio
+│   ├── mobile_bridge_service.py         # Pont MacroDroid Samsung S24 (GPS maps, wake Spotify, BridgeResult, retry unique)
 │   ├── briefing_service.py              # Compilation morning briefing à 6h45, météo Open-Meteo, alertes et push Telegram
 │   ├── spotify_service.py               # Spotify Web API (OAuth PKCE, playback, devices, vérification post-action /me/player)
 │   ├── deezer_migration_service.py      # Migration Deezer -> Spotify (ISRC puis fuzzy matching, scoring de confiance, rapports)
@@ -860,11 +863,11 @@ L'implémentation respecte le standard d'échange bidirectionnel temps réel pou
 
 ---
 
-## 9. CATALOGUE MATRICIEL & FICHES DES 49 OUTILS UNIFIÉS (FUNCTION CALLING)
+## 9. CATALOGUE MATRICIEL & FICHES DES 51 OUTILS UNIFIÉS (FUNCTION CALLING)
 
-### 9.1. Matrice Globale Exhaustive des 49 Outils Déclarés
+### 9.1. Matrice Globale Exhaustive des 51 Outils Déclarés
 
-> **Source de vérité** : `core/tools/declarations.py` contient exactement **49** `types.FunctionDeclaration` (vérifiable par `Select-String -Path core\tools\declarations.py -Pattern 'name="([a-z_]+)"'`). Les alias sont résolus dans `core/tools/dispatcher.py`.
+> **Source de vérité** : `core/tools/declarations.py` contient exactement **51** `types.FunctionDeclaration` (vérifiable par `Select-String -Path core\tools\declarations.py -Pattern 'name="([a-z_]+)"'`). Les alias sont résolus dans `core/tools/dispatcher.py`.
 
 | # | Nom Officiel (`declarations.py`) | Alias Supportés (`dispatcher.py`) | Mode d'Exécution | Arguments Clés & Types | Format de Réponse (`tool_resp`) | Service Exécutant |
 | :- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -918,7 +921,9 @@ L'implémentation respecte le standard d'échange bidirectionnel temps réel pou
 | **47**| `list_workspace_files` | `lister_fichiers_workspace` | Bloquant | `relative_path: str`, `depth: int` (1 à 3, défaut 1), `pattern: str` | `ToolResult.done` (`items`, `items_count`, `truncated`, `verified=True`) | `services/workspace_service.py` |
 | **48**| `read_workspace_file` | `lire_fichier_workspace` | Bloquant | `file_path: str` (req), `max_lines: int` (défaut 200, max 500), `offset_line: int` (défaut 1) | `ToolResult.done` (`content`, `total_lines`, `lines_shown`, `verified=True`) | `services/workspace_service.py` |
 | **49**| `search_workspace_files` | `chercher_fichiers_workspace` | Bloquant | `query: str` (req), `subpath: str`, `extension: str`, `max_results: int` (défaut 30) | `ToolResult.done` (`matches`, `matches_count`, `verified=True`) | `services/workspace_service.py` |
-> **Total vérifié : 49 déclarations.** Les paires `browser_task`/`run_browser_task` et `run_agentic_task`/`run_agent_task` sont deux déclarations distinctes partageant le même exécuteur (compatibilité de nommage Gemini Live) ; les lignes 39 et 42 matérialisent ces déclarations jumelles.
+| **50**| `launch_phone_navigation` | `lancer_navigation_telephone` | Bloquant | `destination: str` (req), `mode: str` (`driving`\|`walking`\|`bicycling`\|`transit`) | `ToolResult.done` (`destination`, `mode`, `verified=False`, `evidence="macrodroid_2xx"`) | `services/mobile_bridge_service.py` |
+| **51**| `wake_phone_spotify` | `reveiller_spotify_telephone` | Bloquant | Aucun | `ToolResult.done` (`device_id`, `verified=True` si Connect détecté, `verified=False` sinon) | `services/mobile_bridge_service.py` |
+> **Total vérifié : 51 déclarations.** Les paires `browser_task`/`run_browser_task` et `run_agentic_task`/`run_agent_task` sont deux déclarations distinctes partageant le même exécuteur (compatibilité de nommage Gemini Live) ; les lignes 39 et 42 matérialisent ces déclarations jumelles.
 
 ### 9.2. Moteur Multi-Agents Antigravity CLI sur VPS & Routage Intelligent de Modèles
 - **Fichiers** : `google_antigravity.py`, `services/model_routing/` (`model_registry.py`, `model_router.py`, `fallback_handler.py`, `prompt_builder.py`), `config/models.json`, `prompts/templates/`, `AGENTS.md`.
@@ -1117,7 +1122,7 @@ Synchronisation bidirectionnelle Google/Samsung Calendar via n8n. Rappels push i
 - Déploiement Blue/Green atomique (`releases/<timestamp>` + symlink `current`), rollback instantané en 1 clic ou commande vocale. Persistance PostgreSQL + SQLite.
 
 ### 9.16. Contrat Universel ToolResult & Moteur de Vérification d'Effet Réel (Zero Unverified Claims)
-Afin de rendre structurellement impossible que Jarvis annonce oralement un succès non prouvé, le contrat canonique strict s'applique à l'intégralité des 49 outils déclarés :
+Afin de rendre structurellement impossible que Jarvis annonce oralement un succès non prouvé, le contrat canonique strict s'applique à l'intégralité des 51 outils déclarés :
 
 0. **Portail de Validation Pré-Exécution (`core/tools/arg_validator.py`)** :
    - `validate_tool_arguments(name, args)` est invoqué en toute première instruction de `_execute_dispatch_tool()` (`core/tools/dispatcher.py`, section « 0. Validation stricte des arguments et confirmation utilisateur »), **avant** toute logique métier.
@@ -1181,6 +1186,16 @@ Afin de rendre structurellement impossible que Jarvis annonce oralement un succ�
    - Aucune opération d'écriture, de modification ou de suppression n'est exposée par ces outils.
 5. **Statut de Navigation Web (`browser_task_status`)** : expose l'état d'une tâche `browser_task` (`task_id`, `status`, `steps`, `goal`, `result`) ou la liste complète du registre `BROWSER_TASKS` ; complète l'outil `get_active_task_status` (vue supervision) par une vue orientée navigateur.
 6. **Modification de Présentation (`modify_presentation`)** : applique une instruction vocale/texte à une présentation Google Slides existante (`presentation_id` ou `last`), avec contre-vérification d'effet réel via `core/tools/verifier.py`.
+
+### 9.18. Pont Mobile MacroDroid (Samsung S24)
+- **Fichiers** : `services/mobile_bridge_service.py`, `config.py` (`MACRODROID_DEVICE_ID`, `MACRODROID_BASE_URL`).
+- **Rôle & Objectifs** : Pilote le smartphone Samsung S24 de Pierre via des webhooks MacroDroid sécurisés (navigation Google Maps, réveil de l'application Spotify).
+- **Architecture & Résilience** :
+  - Client asynchrone `httpx.AsyncClient` partagé avec délai d'attente de 4,0 s.
+  - Déclencheur `_trigger(identifier, params)` avec retry unique sur timeout ou erreur réseau (`httpx.TimeoutException`, `httpx.NetworkError`).
+  - Retour typé via dataclass `BridgeResult(ok, status, reason)`.
+  - Intégration transparente dans `control_spotify` et `dispatcher.py` avec détection automatique sur Spotify Connect (polling 0,5 s max 6,0 s) sans blocage arbitraire.
+  - Confidentialité stricte : masquage systématique du `DEVICE_ID` et de l'URL complète dans tous les journaux.
 
 ---
 
@@ -1377,7 +1392,7 @@ L'avatar adapte ses filtres de lueur SVG et ses anneaux rotatifs selon l'état s
 1. **Gestion de Concurrence sur Profils Chrome Locaux** : Lorsque Chrome CDP est sollicité alors que Pierre navigue manuellement, des verrous de profil temporaires peuvent survenir si Chrome n'est pas lancé avec le flag de débogage distant adéquat.
 2. **Volumétrie des Logs en Longue Session** : Le fichier `jarvis_agent.log` sur Windows nécessite la mise en place d'une rotation automatique des journaux (`RotatingFileHandler`).
 3. **Dépendance Réseau Cloudflare** : Bien que le tunnel Zero Trust soit exceptionnellement stable, un filtrage d'entreprise sur le port 7844 impose le repli Wi-Fi local.
-4. **Dette Documentaire & Risque de Dérive** : ce référentiel a historiquement dérivé (nombre d'outils, arborescence, versions). Toute évolution doit être répercutée immédiatement (règle `.agents/rules/architecture-knowledge-and-sync.md`). Sources de vérité à interroger : `core/tools/declarations.py` (49 déclarations), `App.py` + `routers/*.py` (routes), `config/models.json` (modèles et routage), `static/index.html` (classe `hud-version-tag`).
+4. **Dette Documentaire & Risque de Dérive** : ce référentiel a historiquement dérivé (nombre d'outils, arborescence, versions). Toute évolution doit être répercutée immédiatement (règle `.agents/rules/architecture-knowledge-and-sync.md`). Sources de vérité à interroger : `core/tools/declarations.py` (51 déclarations), `App.py` + `routers/*.py` (routes), `config/models.json` (modèles et routage), `static/index.html` (classe `hud-version-tag`).
 5. **Shims Rétrocompatibles à la Racine** : `model_registry.py` (8 lignes), `model_router.py` (6 lignes), `fallback_handler.py` (15 lignes) et `prompt_builder.py` (7 lignes) ne sont que des ré-exports vers `services/model_routing/` ; ils doivent être purgés dès qu'aucun import legacy ne subsiste.
 6. **Artefacts de Sauvegarde & Scripts Jetables** : `App_backup_monolith.py` (plusieurs milliers de lignes, non importé par le runtime) et les `scripts_tmp_*.py` alourdissent le dépôt et faussent les inventaires de code ; leur archivage est recommandé.
 

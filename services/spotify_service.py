@@ -702,10 +702,12 @@ class SpotifyService:
         return any(k in _normalize(hint) for k in ["pc", "ordi", "ordinateur", "portable", "laptop", "computer"])
 
     def _is_phone_hint(self, hint: str) -> bool:
+        if not hint:
+            return False
         alias_type = self._resolve_alias(hint)
         if alias_type == "Smartphone":
             return True
-        return any(k in _normalize(hint) for k in ["telephone", "tel", "mobile", "phone", "smartphone", "portable"])
+        return any(k in _normalize(hint) for k in ["telephone", "tel", "mobile", "phone", "smartphone", "portable", "s24"])
 
     async def get_default_device(self) -> Optional[str]:
         """Récupère l'appareil par défaut configuré par l'utilisateur."""
@@ -798,10 +800,11 @@ class SpotifyService:
                     "Ouvre Spotify manuellement et redemande-moi."
                 )
             if self._is_phone_hint(hint):
-                return None, (
-                    "Ton téléphone n'est pas visible dans Spotify Connect. "
-                    "Ouvre l'application Spotify sur ton téléphone pour que je puisse lancer la musique."
-                )
+                phone_id = await self._launch_phone_spotify()
+                if phone_id:
+                    await self.transfer_playback(phone_id, play=False)
+                    return phone_id, None
+                return None, "ton téléphone n'apparaît pas sur Spotify Connect"
             return None, (
                 f"Ton {hint} n'est pas visible dans Spotify Connect. "
                 "Ouvre l'appli Spotify dessus et redemande-moi."
@@ -820,10 +823,11 @@ class SpotifyService:
                 return resolved["id"], None
             # L'appareil préféré n'est pas visible sur Connect : message vocal explicite !
             if self._is_phone_hint(pref_device):
-                return None, (
-                    "Ton téléphone n'est pas visible sur Spotify Connect. "
-                    "Ouvre l'application Spotify sur ton téléphone pour que je puisse lancer la musique."
-                )
+                phone_id = await self._launch_phone_spotify()
+                if phone_id:
+                    await self.transfer_playback(phone_id, play=False)
+                    return phone_id, None
+                return None, "ton téléphone n'apparaît pas sur Spotify Connect"
             if self._is_pc_hint(pref_device):
                 pc_id = await self._launch_pc_spotify()
                 if pc_id:
@@ -857,6 +861,29 @@ class SpotifyService:
 
         # 6. Demande
         return None, "Sur quel appareil veux-tu écouter ? (pc, téléphone, enceinte...)"
+
+    async def _launch_phone_spotify(self) -> Optional[str]:
+        """
+        Réveille Spotify sur le smartphone via mobile_bridge_service et attend via polling (0.5s, max 6s).
+        Retourne device_id si détecté, None sinon.
+        """
+        from services.mobile_bridge_service import mobile_bridge_service
+        bridge_res = await mobile_bridge_service.wake_spotify_on_phone()
+        if not bridge_res.ok:
+            logger.warning("[Spotify] Échec réveil mobile : %s", bridge_res.reason)
+        for _ in range(12):  # 12 * 0.5s = 6.0s
+            await asyncio.sleep(0.5)
+            try:
+                devs = await self.get_devices()
+                phone = next(
+                    (d for d in devs if d.get("type") == "Smartphone" or self._is_phone_hint(d.get("name", ""))),
+                    None
+                )
+                if phone:
+                    return phone["id"]
+            except Exception:
+                pass
+        return None
 
     async def _launch_pc_spotify(self, uri: Optional[str] = None) -> Optional[str]:
         """
@@ -1174,6 +1201,8 @@ class SpotifyService:
         """Lance la lecture des titres likes / favoris de l utilisateur."""
         device_id, needs_msg = await self._pick_device(device_hint)
         if needs_msg:
+            if "n'apparaît pas sur Spotify Connect" in needs_msg:
+                return {"status": "failed", "verified": False, "error_hint": needs_msg, "message": needs_msg}
             return {"status": "needs_user", "needs_user": True, "message": needs_msg}
 
         tracks = await self.get_liked_tracks(limit=50)
@@ -1226,6 +1255,8 @@ class SpotifyService:
 
         device_id, needs_msg = await self._pick_device(device_hint)
         if needs_msg:
+            if "n'apparaît pas sur Spotify Connect" in needs_msg:
+                return {"status": "failed", "verified": False, "error_hint": needs_msg, "message": needs_msg}
             return {"status": "needs_user", "needs_user": True, "message": needs_msg}
 
         context_uri: Optional[str] = None
@@ -1497,6 +1528,13 @@ class SpotifyService:
                 "message": f"Spotify non connecte. Authentifie-toi ici : {url}",
             }
 
+        def _check_msg(msg: Optional[str]) -> Optional[Dict[str, Any]]:
+            if not msg:
+                return None
+            if "n'apparaît pas sur Spotify Connect" in msg:
+                return {"status": "failed", "verified": False, "error_hint": msg, "message": msg}
+            return {"status": "needs_user", "needs_user": True, "message": msg}
+
         try:
             if action in ("play_liked", "liked", "loved", "play_likes", "play_favorites"):
                 return await self.play_liked_tracks(device_hint=device)
@@ -1510,8 +1548,9 @@ class SpotifyService:
                 if query:
                     return await self.play_query(query, search_type, device_hint=device)
                 dev_id, msg = await self._pick_device(device)
-                if msg:
-                    return {"status": "needs_user", "needs_user": True, "message": msg}
+                err = _check_msg(msg)
+                if err:
+                    return err
                 await self.play(device_id=dev_id)
                 verified = await self._verify(device_id=dev_id, is_playing=True)
                 evidence = "Lecture reprise" if verified else "api_2xx_accepted"
@@ -1519,8 +1558,9 @@ class SpotifyService:
 
             elif action == "pause":
                 dev_id, msg = await self._pick_device(device)
-                if msg:
-                    return {"status": "needs_user", "needs_user": True, "message": msg}
+                err = _check_msg(msg)
+                if err:
+                    return err
                 await self.pause(device_id=dev_id)
                 verified = await self._verify(device_id=dev_id, is_playing=False)
                 evidence = "Lecture mise en pause" if verified else "api_2xx_accepted"
@@ -1528,8 +1568,9 @@ class SpotifyService:
 
             elif action == "next":
                 dev_id, msg = await self._pick_device(device)
-                if msg:
-                    return {"status": "needs_user", "needs_user": True, "message": msg}
+                err = _check_msg(msg)
+                if err:
+                    return err
                 before_uri = None
                 try:
                     np_before = await self.now_playing()
@@ -1552,8 +1593,9 @@ class SpotifyService:
 
             elif action == "previous":
                 dev_id, msg = await self._pick_device(device)
-                if msg:
-                    return {"status": "needs_user", "needs_user": True, "message": msg}
+                err = _check_msg(msg)
+                if err:
+                    return err
                 before_uri = None
                 try:
                     np_before = await self.now_playing()
@@ -1578,15 +1620,17 @@ class SpotifyService:
                 if position_ms is None:
                     return {"status": "failed", "verified": False, "error_hint": "position_ms manquant", "message": "position_ms manquant."}
                 dev_id, msg = await self._pick_device(device)
-                if msg:
-                    return {"status": "needs_user", "needs_user": True, "message": msg}
+                err = _check_msg(msg)
+                if err:
+                    return err
                 await self.seek(position_ms, device_id=dev_id)
                 return {"status": "done", "verified": True, "evidence": f"Position: {position_ms // 1000}s", "message": "Ok"}
 
             elif action == "volume":
                 dev_id, msg = await self._pick_device(device)
-                if msg:
-                    return {"status": "needs_user", "needs_user": True, "message": msg}
+                err = _check_msg(msg)
+                if err:
+                    return err
                 if volume is not None:
                     target = volume
                 elif volume_delta is not None:
@@ -1600,16 +1644,18 @@ class SpotifyService:
 
             elif action == "shuffle":
                 dev_id, msg = await self._pick_device(device)
-                if msg:
-                    return {"status": "needs_user", "needs_user": True, "message": msg}
+                err = _check_msg(msg)
+                if err:
+                    return err
                 enabled = state.lower() in ("true", "on", "1") if state else True
                 await self.set_shuffle(enabled, device_id=dev_id)
                 return {"status": "done", "verified": True, "evidence": f"Aléatoire {'activé' if enabled else 'désactivé'}", "message": "Ok"}
 
             elif action == "repeat":
                 dev_id, msg = await self._pick_device(device)
-                if msg:
-                    return {"status": "needs_user", "needs_user": True, "message": msg}
+                err = _check_msg(msg)
+                if err:
+                    return err
                 rstate = state or "context"
                 await self.set_repeat(rstate, device_id=dev_id)
                 return {"status": "done", "verified": True, "evidence": f"Répétition: {rstate}", "message": "Ok"}
@@ -1621,8 +1667,9 @@ class SpotifyService:
                 if not track:
                     return {"status": "not_found", "message": f"'{query}' introuvable."}
                 dev_id, msg = await self._pick_device(device)
-                if msg:
-                    return {"status": "needs_user", "needs_user": True, "message": msg}
+                err = _check_msg(msg)
+                if err:
+                    return err
                 await self.queue_add(track["uri"], device_id=dev_id)
                 label = f"{track['name']} — {', '.join(a['name'] for a in track.get('artists', []))}"
                 return {"status": "done", "verified": True, "evidence": f"{label} ajouté à la file", "message": "Ok"}
@@ -1650,6 +1697,16 @@ class SpotifyService:
                             verified = await self._verify(device_id=pc_id, is_playing=True)
                             return {"status": "done", "verified": verified,
                                     "evidence": "Lecture transférée sur PC" if verified else "api_2xx_accepted", "message": "Ok"}
+                    elif self._is_phone_hint(device):
+                        phone_id = await self._launch_phone_spotify()
+                        if phone_id:
+                            await self.transfer_playback(phone_id, play=True)
+                            await self._save_device(phone_id)
+                            verified = await self._verify(device_id=phone_id, is_playing=True)
+                            return {"status": "done", "verified": verified,
+                                    "evidence": "Lecture transférée sur Smartphone" if verified else "api_2xx_accepted", "message": "Ok"}
+                        return {"status": "failed", "verified": False, "error_hint": "ton téléphone n'apparaît pas sur Spotify Connect",
+                                "message": "Ton téléphone n'apparaît pas sur Spotify Connect."}
                     return {"status": "needs_user", "needs_user": True,
                             "message": f"Appareil '{device}' introuvable. Ouvre Spotify dessus."}
                 await self.transfer_playback(resolved["id"], play=True)

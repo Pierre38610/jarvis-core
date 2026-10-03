@@ -1283,7 +1283,7 @@ async def _execute_dispatch_tool(
         _FAST_ACTIONS = {
             "play", "pause", "resume", "next", "previous", "volume", "shuffle",
             "repeat", "seek", "like", "unlike", "now_playing",
-            "list_devices", "get_queue", "set_default_device",
+            "list_devices", "get_queue", "set_default_device", "transfer",
         }
 
         if action in _FAST_ACTIONS:
@@ -3232,6 +3232,75 @@ async def _execute_dispatch_tool(
             action="search_workspace_files",
             user_message=res.get("message", "Échec de la recherche."),
             instruction_to_jarvis=f"Signale à Pierre : {res.get('message', '')}"
+        )
+
+    # ─── launch_phone_navigation (Pont mobile MacroDroid Samsung S24) ───────────
+    elif name in ("launch_phone_navigation", "lancer_navigation_telephone", "phone_navigation"):
+        destination = (args.get("destination") or "").strip()
+        if not destination:
+            return ToolResult.failed(
+                action="launch_phone_navigation",
+                error_hint="destination manquante ou vide",
+                user_message="Veuillez spécifier une destination valide pour la navigation.",
+            )
+        mode = args.get("mode") or "driving"
+        from services.mobile_bridge_service import mobile_bridge_service
+        bridge_res = await mobile_bridge_service.launch_maps_navigation(destination=destination, mode=mode)
+        if bridge_res.ok:
+            return ToolResult.done(
+                action="launch_phone_navigation",
+                verified=False,
+                evidence="macrodroid_2xx",
+                user_message=f"J'ai envoyé l'itinéraire vers {destination} sur ton téléphone.",
+                destination=destination,
+                mode=mode,
+                status_code=bridge_res.status,
+            )
+        return ToolResult.failed(
+            action="launch_phone_navigation",
+            error_hint=bridge_res.reason,
+            user_message=f"Impossible de lancer la navigation sur le téléphone ({bridge_res.reason}).",
+        )
+
+    # ─── wake_phone_spotify (Pont mobile MacroDroid Samsung S24) ────────────────
+    elif name in ("wake_phone_spotify", "reveiller_spotify_telephone", "phone_spotify"):
+        from services.mobile_bridge_service import mobile_bridge_service
+        bridge_res = await mobile_bridge_service.wake_spotify_on_phone()
+        if not bridge_res.ok:
+            return ToolResult.failed(
+                action="wake_phone_spotify",
+                error_hint=bridge_res.reason,
+                user_message=f"Impossible de réveiller Spotify sur le téléphone ({bridge_res.reason}).",
+            )
+
+        phone_device = None
+        for _ in range(12):  # 12 * 0.5s = 6.0s max
+            await asyncio.sleep(0.5)
+            try:
+                devs = await spotify_service.get_devices()
+                phone_device = next(
+                    (d for d in devs if d.get("type") == "Smartphone" or spotify_service._is_phone_hint(d.get("name", ""))),
+                    None
+                )
+                if phone_device:
+                    break
+            except Exception:
+                pass
+
+        if phone_device:
+            return ToolResult.done(
+                action="wake_phone_spotify",
+                verified=True,
+                evidence="spotify_connect_phone_detected",
+                user_message="Spotify a été réveillé et connecté sur ton téléphone.",
+                device_id=phone_device["id"],
+                device_name=phone_device.get("name", "Smartphone"),
+            )
+        return ToolResult.done(
+            action="wake_phone_spotify",
+            verified=False,
+            evidence="macrodroid_2xx",
+            user_message="Le signal de réveil a été envoyé au téléphone, mais l'appareil n'apparaît pas encore sur Spotify Connect.",
         )
 
     # ─── Outil inconnu ─────────────────────────────────────────────────────────
