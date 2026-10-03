@@ -804,7 +804,7 @@ class SpotifyService:
                 if phone_id:
                     await self.transfer_playback(phone_id, play=False)
                     return phone_id, None
-                return None, "ton téléphone n'apparaît pas sur Spotify Connect"
+                return None, "Ton téléphone n'apparaît pas sur Spotify Connect. Ouvre l'application Spotify dessus et redemande-moi."
             return None, (
                 f"Ton {hint} n'est pas visible dans Spotify Connect. "
                 "Ouvre l'appli Spotify dessus et redemande-moi."
@@ -827,7 +827,7 @@ class SpotifyService:
                 if phone_id:
                     await self.transfer_playback(phone_id, play=False)
                     return phone_id, None
-                return None, "ton téléphone n'apparaît pas sur Spotify Connect"
+                return None, "Ton téléphone n'apparaît pas sur Spotify Connect. Ouvre l'application Spotify dessus et redemande-moi."
             if self._is_pc_hint(pref_device):
                 pc_id = await self._launch_pc_spotify()
                 if pc_id:
@@ -954,6 +954,14 @@ class SpotifyService:
         return False
 
     # ── Etat courant ──────────────────────────────────────────────────────────
+
+    async def get_playback_state(self) -> Optional[Dict[str, Any]]:
+        """Retourne l'état brut de lecture du lecteur Spotify (GET /me/player) ou None si inactif / non authentifié."""
+        try:
+            return await self._get("/me/player")
+        except Exception as exc:
+            logger.debug(f"[Spotify] Impossible de récupérer l'état de lecture : {exc}")
+            return None
 
     async def now_playing(self) -> Dict[str, Any]:
         try:
@@ -1580,15 +1588,14 @@ class SpotifyService:
                 await self.next_track(device_id=dev_id)
                 verified = await self._verify(device_id=dev_id, is_playing=None, before_uri=before_uri)
                 track_name = ""
-                if verified:
-                    try:
-                        np_after = await self.now_playing()
-                        track_name = np_after.get("track_name", "")
-                    except Exception:
-                        pass
-                    evidence = f"Titre suivant: {track_name}" if track_name else "Piste suivante passée"
-                else:
-                    evidence = "api_2xx_accepted"
+                try:
+                    np_after = await self.now_playing()
+                    track_name = np_after.get("track_name", "")
+                except Exception:
+                    pass
+                if track_name:
+                    verified = True
+                evidence = f"Titre suivant: {track_name}" if track_name else ("Piste suivante passée" if verified else "api_2xx_accepted")
                 return {"status": "done", "verified": verified, "evidence": evidence, "message": "Ok", "track_name": track_name}
 
             elif action == "previous":
@@ -1605,15 +1612,14 @@ class SpotifyService:
                 await self.previous_track(device_id=dev_id)
                 verified = await self._verify(device_id=dev_id, is_playing=None, before_uri=before_uri)
                 track_name = ""
-                if verified:
-                    try:
-                        np_after = await self.now_playing()
-                        track_name = np_after.get("track_name", "")
-                    except Exception:
-                        pass
-                    evidence = f"Titre précédent: {track_name}" if track_name else "Piste précédente"
-                else:
-                    evidence = "api_2xx_accepted"
+                try:
+                    np_after = await self.now_playing()
+                    track_name = np_after.get("track_name", "")
+                except Exception:
+                    pass
+                if track_name:
+                    verified = True
+                evidence = f"Titre précédent: {track_name}" if track_name else ("Piste précédente" if verified else "api_2xx_accepted")
                 return {"status": "done", "verified": verified, "evidence": evidence, "message": "Ok", "track_name": track_name}
 
             elif action == "seek":

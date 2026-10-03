@@ -1267,16 +1267,20 @@ async def _execute_dispatch_tool(
             api_type="free", api_label="Spotify", cost_est="0.00 $"
         )
         await broadcast_supervision()
-        await websocket.send_text(json.dumps({
-            "type": "jarvis_announcement", "text": f"{action_label}...", "voice": False
-        }))
-        await websocket.send_text(json.dumps({
-            "type": "status", "state": "music",
-            "msg": f"{action_label}...",
-            "task": query or action,
-            "engine": "Spotify Connect", "model": "Spotify Web API",
-            "api_type": "free", "api_label": "Spotify"
-        }))
+        if websocket:
+            try:
+                await websocket.send_text(json.dumps({
+                    "type": "jarvis_announcement", "text": f"{action_label}...", "voice": False
+                }))
+                await websocket.send_text(json.dumps({
+                    "type": "status", "state": "music",
+                    "msg": f"{action_label}...",
+                    "task": query or action,
+                    "engine": "Spotify Connect", "model": "Spotify Web API",
+                    "api_type": "free", "api_label": "Spotify"
+                }))
+            except Exception:
+                pass
 
         # Actions rapides (<300 ms) : exécution bloquante
         # Recherche + lecture (>300 ms) : asyncio.create_task pour ne pas bloquer la voix
