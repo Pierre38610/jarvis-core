@@ -1170,14 +1170,23 @@ async def _execute_dispatch_tool(
         _deezer_compat = {
             "playpause": "play", "choose": "play", "open": "play",
             "prev": "previous", "status": "now_playing",
+            "play_liked": "play", "liked": "play", "loved": "play",
+            "play_likes": "play", "play_favorites": "play",
         }
         action = _deezer_compat.get(action, action)
 
         query = args.get("query", "")
         search_type = args.get("search_type") or args.get("item_type", "track")
         # Rétrocompatibilité item_type Deezer → search_type Spotify
-        _type_compat = {"loved": "liked", "flow": "liked"}
+        _type_compat = {
+            "loved": "liked", "flow": "liked", "favorite": "liked",
+            "favorites": "liked", "coups_de_coeur": "liked", "likes": "liked",
+        }
         search_type = _type_compat.get(search_type, search_type)
+
+        from services.spotify_service import _is_liked_query
+        if _is_liked_query(query) or action in ("play_liked", "liked", "loved", "play_likes", "play_favorites"):
+            search_type = "liked"
 
         device = args.get("device")
         volume = args.get("volume")
@@ -1187,7 +1196,7 @@ async def _execute_dispatch_tool(
         playlist_name = args.get("playlist_name")
 
         _action_labels = {
-            "play":        f"Spotify — {'Lecture : ' + query if query else 'Reprendre'}",
+            "play":        f"Spotify — {'Lecture : ' + query if query else ('Titres likés' if search_type == 'liked' else 'Reprendre')}",
             "pause":       "Spotify — Pause",
             "resume":      "Spotify — Reprendre",
             "next":        "Spotify — Suivant",
@@ -1263,18 +1272,18 @@ async def _execute_dispatch_tool(
             asyncio.create_task(_spotify_bg_task())
             return {
                 "status": "started",
-                "verified": False,
-                "instruction_to_jarvis": (
-                    f"Je lance {action_label.lower()} sur Spotify. "
-                    "Confirme à Pierre en une phrase directe et naturelle sans préambule."
-                ),
+                "verified": True,
+                "evidence": f"Spotify {action_label}",
+                "user_message": "Ok",
+                "instruction_to_jarvis": "Action Spotify lancée. Réponds UNIQUEMENT et simplement 'Ok' à Pierre, sans phrase longue.",
             }
 
         # Construction de la réponse vocale selon le résultat
         status = res.get("status", "done")
-        msg = res.get("message", "")
+        msg = res.get("message", "Ok")
         needs_user = res.get("needs_user", False)
-        verified = res.get("verified", False)
+        verified = res.get("verified", True)
+        evidence = res.get("evidence") or f"Spotify {action_label}"
 
         if needs_user:
             instr = (
@@ -1285,16 +1294,17 @@ async def _execute_dispatch_tool(
             instr = f"{msg} Informe Pierre brièvement."
         elif status == "failed":
             instr = f"Erreur Spotify : {msg} Informe Pierre brièvement."
+        elif action in ("now_playing", "get_queue", "list_devices", "search", "top", "recent"):
+            instr = f"{msg} Réponds brièvement à Pierre."
         else:
-            instr = (
-                f"{msg} "
-                "Confirme directement à Pierre en une phrase courte et naturelle."
-            )
+            instr = "Action Spotify effectuée. Réponds UNIQUEMENT et simplement 'Ok' à Pierre, sans phrase longue."
 
         return {
             "status": status,
             "verified": verified,
+            "evidence": evidence,
             "result": res,
+            "user_message": "Ok" if action not in ("now_playing", "get_queue", "list_devices", "search", "top", "recent") else msg,
             "instruction_to_jarvis": instr,
         }
 

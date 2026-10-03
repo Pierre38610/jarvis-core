@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.38.1 — Robustesse WebSocket ESP32 : Verrou asyncio.Lock sur le registre global des sessions (_DEVICE_SESSIONS) avec vérification d'identité à la déconnexion (anti-race condition), await pacer.abort() avec gestion propre de CancelledError, rétention de référence active sur les tâches de terminaison croisée (_cancel_sister via set + add_done_callback(discard)).*
+> *Dernière révision majeure : Version 5.39.0 — Optimisation Moteur Spotify : Réponses vocales ultra-concises ('Ok'), lecture fiable des titres likés/favoris sans filtrage restrictif de marché, élimination des boucles de retry sur les sauts de piste et alignement strict du contrat ToolResult (done/verified=True).*
 
 ---
 
@@ -1316,7 +1316,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre profonde (`#070B14`, `#0B0F19`), cyan électrique Stark (`#38bdf8`, `#0284c7`), accents ambre et violet néon.
 - **Typographie** : Polices modernes géométriques sans-serif d'inspiration high-tech.
 - **Responsive PWA** : Conçue pour une expérience native sur smartphone (iOS Safari / Android Chrome) et desktop avec support PWA (`manifest.json`, installation sur écran d'accueil).
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.37.10 ESP32 ZERO-LATENCY WAKE & PERSISTENT WS`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.39.0 SPOTIFY ENGINE CONCISE & LIKED TRACKS REPAIR`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.

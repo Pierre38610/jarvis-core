@@ -211,3 +211,68 @@ async def test_restore_volume_skipped_if_user_changed_volume(spotify_svc):
     spotify_svc.set_volume.assert_not_called()
     assert spotify_svc._ducking_active is False
     assert spotify_svc._volume_before_duck is None
+
+
+# ─── TESTS TITRES LIKÉS & CONCISION SPOTIFY ─────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_is_liked_query():
+    """Vérifie la détection des expressions orales désignant les titres likés."""
+    from services.spotify_service import _is_liked_query
+    assert _is_liked_query("mes titres likés") is True
+    assert _is_liked_query("titres likes") is True
+    assert _is_liked_query("mes likes") is True
+    assert _is_liked_query("mes coups de coeur") is True
+    assert _is_liked_query("mes morceaux likés") is True
+    assert _is_liked_query("liked songs") is True
+    assert _is_liked_query("joue bohemian rhapsody") is False
+    assert _is_liked_query("") is False
+
+
+@pytest.mark.asyncio
+async def test_play_liked_tracks_success(spotify_svc):
+    """Vérifie le lancement de la lecture des titres likés avec uris."""
+    spotify_svc._pick_device = AsyncMock(return_value=("phone_1", None))
+    spotify_svc.get_liked_tracks = AsyncMock(return_value=[
+        {"name": "Song 1", "artist": "Artist 1", "uri": "spotify:track:1", "id": "1"},
+        {"name": "Song 2", "artist": "Artist 2", "uri": "spotify:track:2", "id": "2"},
+    ])
+    spotify_svc.transfer_playback = AsyncMock()
+    spotify_svc.play = AsyncMock()
+    spotify_svc._save_device = AsyncMock()
+    spotify_svc._verify = AsyncMock(return_value=True)
+    spotify_svc.get_devices = AsyncMock(return_value=[{"id": "phone_1", "name": "Pixel"}])
+
+    res = await spotify_svc.play_liked_tracks()
+    assert res["status"] == "done"
+    assert res["verified"] is True
+    assert res["message"] == "Ok"
+    spotify_svc.play.assert_called_once_with(
+        device_id="phone_1", uris=["spotify:track:1", "spotify:track:2"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_control_next_concise_and_verified(spotify_svc):
+    """Vérifie que l'action next renvoie un résultat direct, concis et vérifié."""
+    spotify_svc._pick_device = AsyncMock(return_value=("phone_1", None))
+    spotify_svc.next_track = AsyncMock()
+    spotify_svc.now_playing = AsyncMock(return_value={"track_name": "New Song", "artist": "Singer"})
+
+    res = await spotify_svc.control("next")
+    assert res["status"] == "done"
+    assert res["verified"] is True
+    assert res["message"] == "Ok"
+    assert "Titre suivant" in res["evidence"]
+
+
+@pytest.mark.asyncio
+async def test_control_play_liked_query_routing(spotify_svc):
+    """Vérifie que play avec query='lance mes titres likés' est automatiquement routé vers play_liked_tracks."""
+    spotify_svc.play_liked_tracks = AsyncMock(return_value={
+        "status": "done", "verified": True, "message": "Ok", "evidence": "Liked tracks"
+    })
+    res = await spotify_svc.control("play", query="lance mes titres likés")
+    assert res["status"] == "done"
+    spotify_svc.play_liked_tracks.assert_called_once()
+

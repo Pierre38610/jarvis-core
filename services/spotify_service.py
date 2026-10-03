@@ -129,6 +129,28 @@ def _similarity(a: str, b: str) -> float:
         return len(bg_a & bg_b) / len(bg_a | bg_b)
 
 
+def _is_liked_query(query: str) -> bool:
+    """Detecte si la requete utilisateur designe ses titres likes / favoris."""
+    if not query:
+        return False
+    norm = _normalize(query)
+    liked_exact = {
+        "mes titres likes", "titres likes", "mes likes", "mes morceaux likes",
+        "mes sons likes", "mes coups de coeur", "coups de coeur", "mes favoris",
+        "favoris", "mes musiques likees", "mes chansons likees", "liked songs",
+        "liked", "likes", "liked tracks", "mes titres favoris", "titres favoris",
+        "morceaux favoris", "morceaux likes", "musiques likees", "chansons likees",
+        "titres preferes", "mes titres preferes", "musiques favorites", "chansons favorites",
+    }
+    if norm in liked_exact:
+        return True
+    return any(p in norm for p in [
+        "titres likes", "titres favoris", "morceaux likes", "morceaux favoris",
+        "musiques likees", "musiques favorites", "coups de coeur", "liked songs",
+        "liked tracks", "mes likes"
+    ])
+
+
 # ── Service principal ─────────────────────────────────────────────────────────
 
 class SpotifyService:
@@ -529,7 +551,7 @@ class SpotifyService:
         if r.status_code == 403:
             body_j = r.json() if r.content else {}
             raise ValueError(f"forbidden:{body_j.get('error', {}).get('reason', '')}")
-        if r.status_code in (200, 204):
+        if r.status_code in (200, 201, 202, 204):
             return r.json() if r.content else {}
         r.raise_for_status()
         return {}
@@ -554,7 +576,7 @@ class SpotifyService:
             ra = int(r.headers.get("Retry-After", "2"))
             await asyncio.sleep(ra)
             return await self._post(path, body=body, params=params, _retry=_retry)
-        if r.status_code in (200, 201, 204):
+        if r.status_code in (200, 201, 202, 204):
             return r.json() if r.content else {}
         r.raise_for_status()
         return {}
@@ -579,7 +601,7 @@ class SpotifyService:
             ra = int(r.headers.get("Retry-After", "2"))
             await asyncio.sleep(ra)
             return await self._delete(path, body=body, _retry=_retry)
-        if r.status_code in (200, 204):
+        if r.status_code in (200, 201, 202, 204):
             return r.json() if r.content else {}
         r.raise_for_status()
         return {}
@@ -1101,9 +1123,61 @@ class SpotifyService:
 
     # ── Lecture intelligente ──────────────────────────────────────────────────
 
+    async def play_liked_tracks(self, device_hint: Optional[str] = None,
+                                shuffle: bool = False) -> Dict[str, Any]:
+        """Lance la lecture des titres likes / favoris de l utilisateur."""
+        device_id, needs_msg = await self._pick_device(device_hint)
+        if needs_msg:
+            return {"status": "needs_user", "needs_user": True, "message": needs_msg}
+
+        tracks = await self.get_liked_tracks(limit=50)
+        if not tracks:
+            items = await self._paginate("/me/tracks", limit=50)
+            tracks = [
+                {
+                    "name": (item.get("track") or {}).get("name", ""),
+                    "artist": ", ".join(a["name"] for a in (item.get("track") or {}).get("artists", [])),
+                    "uri": (item.get("track") or {}).get("uri", ""),
+                    "id": (item.get("track") or {}).get("id", ""),
+                }
+                for item in items if item.get("track") and item["track"].get("uri")
+            ]
+
+        if not tracks:
+            return {"status": "not_found", "message": "Aucun titre like trouve dans ta bibliotheque Spotify."}
+
+        uris = [t["uri"] for t in tracks if t.get("uri")]
+        if not uris:
+            return {"status": "not_found", "message": "Aucun titre like valide trouve."}
+
+        if shuffle:
+            import random
+            random.shuffle(uris)
+
+        await self.transfer_playback(device_id, play=False)
+        await asyncio.sleep(0.3)
+        await self.play(device_id=device_id, uris=uris)
+        await self._save_device(device_id)
+        verified = await self._verify(device_id)
+
+        devs = await self.get_devices()
+        dev_name = next((d["name"] for d in devs if d["id"] == device_id), "l appareil")
+
+        return {
+            "status": "done",
+            "verified": verified,
+            "track_label": "tes titres likes",
+            "device_name": dev_name,
+            "evidence": f"Lecture des titres likes sur {dev_name}",
+            "message": "Ok",
+        }
+
     async def play_query(self, query: str, stype: str = "track",
                          device_hint: Optional[str] = None) -> Dict[str, Any]:
         """Recherche et lance la lecture du meilleur resultat."""
+        if stype in ("liked", "loved", "favorite", "favorites") or _is_liked_query(query):
+            return await self.play_liked_tracks(device_hint=device_hint)
+
         device_id, needs_msg = await self._pick_device(device_hint)
         if needs_msg:
             return {"status": "needs_user", "needs_user": True, "message": needs_msg}
@@ -1112,12 +1186,7 @@ class SpotifyService:
         uris: Optional[List[str]] = None
         label = query
 
-        if stype in ("liked", "loved"):
-            liked = await self._get("/me/tracks", params={"limit": 20, "market": "FR"})
-            uris = [item["track"]["uri"] for item in liked.get("items", [])]
-            label = "mes titres likes"
-
-        elif stype == "track":
+        if stype == "track":
             track = await self.find_best_track(query)
             if not track:
                 return {"status": "not_found", "message": f"'{query}' introuvable sur Spotify."}
@@ -1171,7 +1240,8 @@ class SpotifyService:
             "verified": verified,
             "track_label": label,
             "device_name": dev_name,
-            "message": f"C est parti — {label} sur {dev_name}.",
+            "evidence": f"Lecture de {label} sur {dev_name}",
+            "message": "Ok",
         }
 
     # ── Biblioteque ───────────────────────────────────────────────────────────
@@ -1183,8 +1253,10 @@ class SpotifyService:
             return {"status": "failed", "message": "Aucune lecture en cours."}
         track_id = uri.split(":")[-1]
         await self._put("/me/tracks", params={"ids": track_id})
+        track_name = np.get('track_name', 'Le titre')
         return {"status": "done", "verified": True,
-                "message": f"{np.get('track_name', 'Le titre')} ajoute a tes likes."}
+                "evidence": f"Titre ajouté aux likes ({track_name})",
+                "message": "Ok"}
 
     async def unlike_current_track(self) -> Dict[str, Any]:
         np = await self.now_playing()
@@ -1193,8 +1265,10 @@ class SpotifyService:
             return {"status": "failed", "message": "Aucune lecture en cours."}
         track_id = uri.split(":")[-1]
         await self._delete("/me/tracks", body={"ids": [track_id]})
+        track_name = np.get('track_name', 'Le titre')
         return {"status": "done", "verified": True,
-                "message": f"{np.get('track_name', 'Le titre')} retire de tes likes."}
+                "evidence": f"Titre retiré des likes ({track_name})",
+                "message": "Ok"}
 
     async def save_album(self, album_id: str) -> Dict[str, Any]:
         await self._put("/me/albums", params={"ids": album_id})
@@ -1378,10 +1452,15 @@ class SpotifyService:
             }
 
         try:
-            if action == "now_playing":
+            if action in ("play_liked", "liked", "loved", "play_likes", "play_favorites"):
+                return await self.play_liked_tracks(device_hint=device)
+
+            elif action == "now_playing":
                 return await self.now_playing()
 
             elif action in ("play", "resume"):
+                if search_type in ("liked", "loved", "favorite", "favorites") or _is_liked_query(query):
+                    return await self.play_liked_tracks(device_hint=device)
                 if query:
                     return await self.play_query(query, search_type, device_hint=device)
                 dev_id, msg = await self._pick_device(device)
@@ -1389,7 +1468,7 @@ class SpotifyService:
                     return {"status": "needs_user", "needs_user": True, "message": msg}
                 await self.play(device_id=dev_id)
                 verified = await self._verify(dev_id)
-                return {"status": "done", "verified": verified, "message": "Lecture reprise."}
+                return {"status": "done", "verified": verified, "evidence": "Lecture reprise", "message": "Ok"}
 
             elif action == "pause":
                 dev_id, msg = await self._pick_device(device)
@@ -1397,27 +1476,29 @@ class SpotifyService:
                     return {"status": "needs_user", "needs_user": True, "message": msg}
                 await self.pause(device_id=dev_id)
                 verified = await self._verify(dev_id, is_playing=False)
-                return {"status": "done", "verified": verified, "message": "Pause."}
+                return {"status": "done", "verified": verified, "evidence": "Lecture mise en pause", "message": "Ok"}
 
             elif action == "next":
                 dev_id, msg = await self._pick_device(device)
                 if msg:
                     return {"status": "needs_user", "needs_user": True, "message": msg}
                 await self.next_track(device_id=dev_id)
-                await asyncio.sleep(1.2)
+                await asyncio.sleep(0.5)
                 np = await self.now_playing()
-                return {"status": "done", "verified": True,
-                        "message": f"Suivant : {np.get('track_name','')} — {np.get('artist','')}."}
+                track_name = np.get('track_name', '')
+                evidence = f"Titre suivant: {track_name}" if track_name else "Piste suivante passée"
+                return {"status": "done", "verified": True, "evidence": evidence, "message": "Ok", "track_name": track_name}
 
             elif action == "previous":
                 dev_id, msg = await self._pick_device(device)
                 if msg:
                     return {"status": "needs_user", "needs_user": True, "message": msg}
                 await self.previous_track(device_id=dev_id)
-                await asyncio.sleep(1.2)
+                await asyncio.sleep(0.5)
                 np = await self.now_playing()
-                return {"status": "done", "verified": True,
-                        "message": f"Precedent : {np.get('track_name','')} — {np.get('artist','')}."}
+                track_name = np.get('track_name', '')
+                evidence = f"Titre précédent: {track_name}" if track_name else "Piste précédente"
+                return {"status": "done", "verified": True, "evidence": evidence, "message": "Ok", "track_name": track_name}
 
             elif action == "seek":
                 if position_ms is None:
@@ -1426,8 +1507,7 @@ class SpotifyService:
                 if msg:
                     return {"status": "needs_user", "needs_user": True, "message": msg}
                 await self.seek(position_ms, device_id=dev_id)
-                return {"status": "done", "verified": True,
-                        "message": f"Position : {position_ms // 1000}s."}
+                return {"status": "done", "verified": True, "evidence": f"Position: {position_ms // 1000}s", "message": "Ok"}
 
             elif action == "volume":
                 dev_id, msg = await self._pick_device(device)
@@ -1442,7 +1522,7 @@ class SpotifyService:
                 else:
                     return {"status": "failed", "message": "volume ou volume_delta manquant."}
                 await self.set_volume(target, device_id=dev_id)
-                return {"status": "done", "verified": True, "message": f"Volume a {target}%."}
+                return {"status": "done", "verified": True, "evidence": f"Volume réglé à {target}%", "message": "Ok"}
 
             elif action == "shuffle":
                 dev_id, msg = await self._pick_device(device)
@@ -1450,8 +1530,7 @@ class SpotifyService:
                     return {"status": "needs_user", "needs_user": True, "message": msg}
                 enabled = state.lower() in ("true", "on", "1") if state else True
                 await self.set_shuffle(enabled, device_id=dev_id)
-                return {"status": "done", "verified": True,
-                        "message": f"Aleatoire {'active' if enabled else 'desactive'}."}
+                return {"status": "done", "verified": True, "evidence": f"Aléatoire {'activé' if enabled else 'désactivé'}", "message": "Ok"}
 
             elif action == "repeat":
                 dev_id, msg = await self._pick_device(device)
@@ -1459,11 +1538,11 @@ class SpotifyService:
                     return {"status": "needs_user", "needs_user": True, "message": msg}
                 rstate = state or "context"
                 await self.set_repeat(rstate, device_id=dev_id)
-                return {"status": "done", "verified": True, "message": f"Repetition : {rstate}."}
+                return {"status": "done", "verified": True, "evidence": f"Répétition: {rstate}", "message": "Ok"}
 
             elif action == "queue_add":
                 if not query:
-                    return {"status": "failed", "message": "Titre a ajouter manquant."}
+                    return {"status": "failed", "message": "Titre à ajouter manquant."}
                 track = await self.find_best_track(query)
                 if not track:
                     return {"status": "not_found", "message": f"'{query}' introuvable."}
@@ -1472,7 +1551,7 @@ class SpotifyService:
                     return {"status": "needs_user", "needs_user": True, "message": msg}
                 await self.queue_add(track["uri"], device_id=dev_id)
                 label = f"{track['name']} — {', '.join(a['name'] for a in track.get('artists', []))}"
-                return {"status": "done", "verified": True, "message": f"{label} ajoute a la file."}
+                return {"status": "done", "verified": True, "evidence": f"{label} ajouté à la file", "message": "Ok"}
 
             elif action == "get_queue":
                 return await self.get_queue()
@@ -1496,14 +1575,14 @@ class SpotifyService:
                             await self.transfer_playback(pc_id, play=True)
                             verified = await self._verify(pc_id)
                             return {"status": "done", "verified": verified,
-                                    "message": "Lecture transferee sur ton PC."}
+                                    "evidence": "Lecture transférée sur PC", "message": "Ok"}
                     return {"status": "needs_user", "needs_user": True,
                             "message": f"Appareil '{device}' introuvable. Ouvre Spotify dessus."}
                 await self.transfer_playback(resolved["id"], play=True)
                 await self._save_device(resolved["id"])
                 verified = await self._verify(resolved["id"])
                 return {"status": "done", "verified": verified,
-                        "message": f"Lecture transferee sur {resolved['name']}."}
+                        "evidence": f"Lecture transférée sur {resolved['name']}", "message": "Ok"}
 
             elif action == "like":
                 return await self.like_current_track()
@@ -1521,10 +1600,10 @@ class SpotifyService:
                     return {"status": "failed", "message": "Nom de playlist manquant."}
                 name = query or playlist_name or ""
                 result = await self.create_playlist(
-                    name, description="Playlist creee par J.A.R.V.I.S."
+                    name, description="Playlist créée par J.A.R.V.I.S."
                 )
                 return {"status": "done", "verified": True,
-                        "message": f"Playlist '{result['name']}' creee.", **result}
+                        "evidence": f"Playlist '{result['name']}' créée", "message": "Ok", **result}
 
             elif action == "search":
                 results = await self.search(query, search_type, 5)
@@ -1545,7 +1624,7 @@ class SpotifyService:
 
             elif action == "follow_artist":
                 if not query:
-                    return {"status": "failed", "message": "Nom d artiste manquant."}
+                    return {"status": "failed", "message": "Nom d'artiste manquant."}
                 data = await self.search(query, "artist", 1)
                 items = (data.get("artists") or {}).get("items", [])
                 if not items:
@@ -1554,7 +1633,7 @@ class SpotifyService:
 
             elif action == "save_album":
                 if not query:
-                    return {"status": "failed", "message": "Nom d album manquant."}
+                    return {"status": "failed", "message": "Nom d'album manquant."}
                 data = await self.search(query, "album", 1)
                 items = (data.get("albums") or {}).get("items", [])
                 if not items:

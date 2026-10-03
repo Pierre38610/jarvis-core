@@ -482,9 +482,10 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                     name="control_spotify",
                     description=(
                         "Contrôle complet du lecteur Spotify Connect via la Web API Spotify officielle "
-                        "(lecture, pause, suivant, précédent, volume, aléatoire, répétition, recherche de titre/artiste/album/playlist/épisode, "
+                        "(lecture, pause, suivant, précédent, volume, aléatoire, répétition, titres likés, recherche de titre/artiste/album/playlist/épisode, "
                         "file d'attente, transfert d'appareil, like, playlists). "
                         "À UTILISER QUAND : Pierre demande d'écouter, de contrôler ou de régler de la musique ou un podcast sur Spotify. "
+                        "RÈGLE DE RÉPONSE : Pour toute action réussie (status='done' ou 'started'), réponds TOUJOURS et UNIQUEMENT 'Ok' ou 'D'accord' (ultra-court), sans phrase longue. "
                         "NE JAMAIS UTILISER QUAND : Pierre demande un film, une vidéo ou une série télévisée (utiliser 'play_video_stremio'), "
                         "ni pour lancer une application bureautique (utiliser 'launch_application'). "
                         "IMPORTANT : si Spotify n'est pas connecté (no_tokens), renvoyer le lien d'authentification /api/media/spotify/login."
@@ -496,7 +497,7 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                                 type="STRING",
                                 description=(
                                     "Action à effectuer. Valeurs : "
-                                    "'play' (lance ou relance la lecture, avec query optionnel), "
+                                    "'play' (lance ou relance la lecture, ou les titres likés avec search_type='liked' ou query='mes titres likés'), "
                                     "'pause' (met en pause), "
                                     "'resume' (reprend la lecture), "
                                     "'next' (piste suivante), "
@@ -524,11 +525,11 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                             ),
                             "query": types.Schema(
                                 type="STRING",
-                                description="Titre du morceau, nom de l'artiste, de l'album, de la playlist ou du podcast recherché"
+                                description="Titre du morceau, nom de l'artiste, de l'album, de la playlist, du podcast ou 'mes titres likés'"
                             ),
                             "search_type": types.Schema(
                                 type="STRING",
-                                description="Type de contenu : 'track' (défaut), 'artist', 'album', 'playlist', 'episode', 'liked'"
+                                description="Type de contenu : 'track' (défaut), 'artist', 'album', 'playlist', 'episode', 'liked' (pour les titres likés/favoris)"
                             ),
                             "device": types.Schema(
                                 type="STRING",
