@@ -37,7 +37,12 @@ from services.antigravity_models import (
 )
 from services.agentic_runner import (
     AgentOutput,
+    CrossCheckResult,
+    L2ExecutionResult,
+    L2WorkerMission,
+    cross_check_l2_results,
     run_agentic,
+    run_l2_parallel_agents,
 )
 
 __all__ = [
@@ -60,8 +65,14 @@ __all__ = [
     "choose_model_and_effort",
     "validate_model_and_effort",
     "AgentOutput",
+    "CrossCheckResult",
+    "L2ExecutionResult",
+    "L2WorkerMission",
+    "cross_check_l2_results",
     "run_agentic",
+    "run_l2_parallel_agents",
 ]
+
 
 
 async def is_antigravity_cli_ready_for_session() -> bool:

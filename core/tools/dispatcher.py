@@ -722,6 +722,8 @@ async def _execute_dispatch_tool(
 
             # ── Phase 1 : Prospecteur (flash/medium) ──
             p_agent_id = f"agy_prospector_{int(time.time()*1000)}"
+            p_ws = os.path.join(config.WORKSPACE_DIR, p_agent_id)
+            os.makedirs(p_ws, exist_ok=True)
             t_p0 = time.perf_counter()
             await spawn_subagent(
                 agent_id=p_agent_id,
@@ -742,6 +744,8 @@ async def _execute_dispatch_tool(
                     session_id=session_id,
                     task_id=p_agent_id,
                     allow_paid_fallback=allow_paid,
+                    workspace=p_ws,
+                    worker_id="prospector",
                 )
                 dur_p = time.perf_counter() - t_p0
                 await complete_subagent(p_agent_id, summary=f"{out_p.conclusion[:70]} (flash/medium, durée: {dur_p:.1f}s)")
@@ -758,6 +762,8 @@ async def _execute_dispatch_tool(
 
             # ── Phase 2 : Analyste (pro/high) ──
             a_agent_id = f"agy_analyst_{int(time.time()*1000)}"
+            a_ws = os.path.join(config.WORKSPACE_DIR, a_agent_id)
+            os.makedirs(a_ws, exist_ok=True)
             t_a0 = time.perf_counter()
             await spawn_subagent(
                 agent_id=a_agent_id,
@@ -782,6 +788,8 @@ async def _execute_dispatch_tool(
                     session_id=session_id,
                     task_id=a_agent_id,
                     allow_paid_fallback=allow_paid,
+                    workspace=a_ws,
+                    worker_id="analyst",
                 )
                 dur_a = time.perf_counter() - t_a0
                 await complete_subagent(a_agent_id, summary=f"{out_a.conclusion[:70]} (pro/high, durée: {dur_a:.1f}s)")
@@ -798,6 +806,8 @@ async def _execute_dispatch_tool(
 
             # ── Phase 3 : Synthèse (pro/medium) ──
             s_agent_id = f"agy_synthesis_{int(time.time()*1000)}"
+            s_ws = os.path.join(config.WORKSPACE_DIR, s_agent_id)
+            os.makedirs(s_ws, exist_ok=True)
             t_s0 = time.perf_counter()
             await spawn_subagent(
                 agent_id=s_agent_id,
@@ -823,6 +833,8 @@ async def _execute_dispatch_tool(
                     session_id=session_id,
                     task_id=s_agent_id,
                     allow_paid_fallback=allow_paid,
+                    workspace=s_ws,
+                    worker_id="synthesis",
                 )
                 dur_s = time.perf_counter() - t_s0
                 await complete_subagent(s_agent_id, summary=f"{out_s.conclusion[:70]} (pro/medium, durée: {dur_s:.1f}s)")

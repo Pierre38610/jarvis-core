@@ -1,7 +1,8 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.50.0 — Routeur de recherche déterministe & Détection du niveau cognitif vocal L1 par défaut (P2) : Arbitrage déterministe entre search_web (L1 factuel/court 15s, coût 0.00 $), browser_task (L2 navigation/panier 120s) et launch_deep_research (L3 multi-sources 600s), politique vocale avec défaut L1 systématique en cas d'ambiguïté et priorité absolue aux surcharges explicites (« fais vite » → L1 ; « analyse en profondeur » → L3 ; « analyse tactique » → L2), exécution économique L1 sans modèle Pro ni Deep Research non sollicité, verrous d'idempotence anti-double lancement pour les intentions de recherche et propagation dynamique du niveau cognitif dans l'instruction système Live et la télémétrie.*
+> *Dernière révision majeure : Version 5.51.0 — Moteur L2 Multi-Agents Parallèles & Boucle de Vérification Bornée (P3) : Orchestration parallèle d'agents CLI Flash/Pro (maximum 3 par défaut) avec asyncio.gather et wait_for, isolation stricte des workspaces et task-id contre les collisions concurrentes, phase de cross-check automatisée (détection de contradictions sémantiques, contrôle des sources et validation stricte du schéma JSON), synthèse REDUCE par agent dédié, boucle de vérification fermée avec max_iterations=2, gestion résiliente des échecs partiels sans maquillage de succès, cascade quota-aware et observabilité métadonnées sans secrets.*
+
 
 ---
 
@@ -622,8 +623,14 @@ La stratégie d'exécution et de repli de J.A.R.V.I.S. respecte une hiérarchie 
     - `browser_task` (L2, Tier 2, effort `medium`, timeout 120s) pour navigation structurée, paniers, formulaires et réservations ;
     - `launch_deep_research` (L3, Tier 3, effort `high`, timeout 600s) pour études de fond multi-sources et cartographies exhaustives.
 11. **Idempotence & Prévention Anti-Double Lancement** : Verrous en mémoire (`acquire_search_lock(query)`, `release_search_lock(query)`) avec normalisation Unicode et dé-ponctuation. Si une recherche identique est déjà en cours dans le pipeline, le dispatcheur intercepte l'appel concurrent et renvoie un `ToolResult.done` dédoublonné sans exécution redondante ni surconsommation réseau.
+12. **Moteur L2 Multi-Agents Parallèles, Cross-Check & Boucle Bornée (`services/agentic_runner.py`)** :
+    - *Exécution Parallèle Bornée* (`run_l2_parallel_agents`) : déploiement concurrent de missions spécialisées Flash/Pro (défaut 3 : prospector, critic, architect) via `asyncio.gather` et `asyncio.wait_for`.
+    - *Isolation Stricte des Workspaces* : chaque agent opère dans son sous-dossier dédié (`{task_id}_{worker_id}`), empêchant toute collision de fichiers temporaires ou écritures concurrentes.
+    - *Contre-Vérification Croisée (Cross-Check)* (`cross_check_l2_results`) : analyse automatisée des sorties, détection des contradictions sémantiques/factuelles, identification des affirmations sans source et validation du schéma JSON (`facts`, `sources`, `hypotheses`, `uncertainties`, `conclusion`).
+    - *Synthèse REDUCE & Quality Gate Borné* : agent dédié de synthèse (`role="synthesis"`), boucle de rattrapage fermée bornée à `max_iterations=2`, rapport d'anomalies structuré en cas d'échec partiel sans faux succès maquillé, et respect inviolable de la politique de quota et cooldown.
 
 ---
+
 
 ## 6. LE MOTEUR VOCAL TEMPS RÉEL (GEMINI LIVE AUDIO)
 

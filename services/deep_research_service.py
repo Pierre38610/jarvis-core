@@ -638,8 +638,10 @@ class DeepResearchService:
         entities: List[NormalizedEntity] = []
         try:
             effective_key = config.get_effective_paid_key() if config.is_paid_key_authorized() else GEMINI_API_KEY_FREE
+            worker_ws = os.path.join(WORKSPACE_DIR, f"worker_ws_{worker_id}_{int(time.time() * 1000)}")
+            os.makedirs(worker_ws, exist_ok=True)
             agent = AntigravityAgent(
-                workspace=WORKSPACE_DIR,
+                workspace=worker_ws,
                 model="gemini-3.1-pro-high",
                 api_key=effective_key
             )
