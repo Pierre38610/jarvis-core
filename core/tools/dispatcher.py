@@ -843,8 +843,9 @@ async def _execute_dispatch_tool(
             res = await search_web(query)
             best_url = "https://www.google.com"
             best_title = query
-            if res.get("results"):
-                first = res["results"][0]
+            results_list = res.get("results", [])
+            if results_list:
+                first = results_list[0]
                 best_url = first.get("url", "")
                 best_title = first.get("title", query)
             supervision_service.complete_action("search_web", status="completed", summary=f"Résultats pour {best_title}")
@@ -856,19 +857,27 @@ async def _execute_dispatch_tool(
             except Exception:
                 pass
 
+            # Format strict ToolResult : status="done", verified=True, evidence=best_url
+            evidence_str = best_url if best_url != "https://www.google.com" else (results_list[0].get("url", "") if results_list else "")
             return {
-                "status": "completed",
+                "status": "done",
+                "verified": True,
+                "evidence": evidence_str,
+                "user_message": f"Recherche terminée : {len(results_list)} résultat(s) trouvé(s) pour « {query} ».",
                 "query": query,
                 "best_url": best_url,
-                "results": res.get("results", [])[:3],
+                "results": results_list[:3],
                 "instruction_to_jarvis": "Présente directement les éléments de réponse pertinents à Pierre avec ta voix Aoede de façon concise, vivante et naturelle."
             }
         except Exception as e:
             supervision_service.complete_action("search_web", status="error", summary=str(e))
             await broadcast_supervision()
             return {
-                "status": "error",
-                "error": str(e),
+                "status": "failed",
+                "verified": False,
+                "evidence": "",
+                "user_message": f"La recherche sur « {query} » a échoué : {e}",
+                "error_hint": str(e),
                 "instruction_to_jarvis": f"La recherche sur '{query}' a rencontré un souci ({e}). Informe brièvement Pierre avec ta voix Aoede."
             }
 
