@@ -373,7 +373,10 @@ async def run_agentic(
         valid_model = MODEL_FLASH
         valid_effort = "high"
 
-    full_prompt = build_agentic_prompt(role, prompt)
+    if "RÉPONSE STRICTEMENT AU FORMAT JSON" in prompt or "Tu es l'Agent" in prompt:
+        full_prompt = prompt
+    else:
+        full_prompt = build_agentic_prompt(role, prompt)
 
     current_model = valid_model
     current_effort = valid_effort

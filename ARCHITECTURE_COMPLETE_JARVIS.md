@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.55.0 — L2/L3 Research Engine & Live Logs Viewer : Correction de la commande de lancement Antigravity CLI (-p, modèle/effort réconciliés, validation JSON robuste), activation et fiabilisation de la détection L2 (agents parallèles Map-Reduce) et L3 (Gemini Deep Research Web navigateur), exposition de l'API /api/supervision/logs et terminal Stark Live Logs dans le HUD web, 518 tests unitaires validés.*
+> *Dernière révision majeure : Version 5.56.0 — L2/L3 Research Engine & Live Logs Viewer : Correction de l'encapsulation de prompt dans l'agentic runner, validation de l'orchestration multi-agents parallèle L2 (gather, cross-check, synthèse reduce) sur VPS, fiabilisation L3 (moteur web Gemini via CDP et repli Map-Reduce).*
 
 
 ---
