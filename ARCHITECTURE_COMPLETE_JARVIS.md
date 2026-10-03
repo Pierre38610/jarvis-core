@@ -642,19 +642,23 @@ En cas d'exception `AntigravityQuotaExhaustedError` ou HTTP 429 sur `gemini-3.1-
 - Variable d'environnement (90 secondes par défaut).
 - Émission proactive de jalons vocaux pour les opérations longues afin d'éliminer l'effet "boîte noire", cadencée par la file d'injection prioritaire.
 
-### 6.7. Machine à États Explicite de la Parole (`SpeechState`) & Règle d'Or de Canal Unique
-1. **Machine à États `SpeechState`** :
-   - `IDLE` : Aucun flux audio émis ou en attente de restitution physique.
-   - `MODEL_SPEAKING` : Gemini Live génère de l'audio ou le client Web Audio restitue les trames PCM (maintien tant que `playback_finished` n'est pas reçu).
+### 6.7. Machine à États Explicite de la Parole (`SpeechState`), File d'Injection Prioritaire (`VoiceInjectionQueue`) & Anti-Auto-Interruption
+1. **Machine à États `SpeechState` & Événement `speech_idle_event`** :
+   - `IDLE` : Aucun flux audio émis ou en attente de restitution physique. Déclenche `speech_idle_event.set()`.
+   - `MODEL_SPEAKING` : Gemini Live génère de l'audio côté serveur ou le client Web / ESP32 restitue les trames sonores (maintien strict tant que `playback_finished` ou le drainage du pacer n'a pas eu lieu).
    - `USER_SPEAKING` : L'utilisateur a pris la parole (VAD ou speech recognition actif).
    - `TOOL_PENDING` : Un outil est en cours de dispatching synchrone.
-   - *Auto-expiration sécurisée* : Si un client se déconnecte abruptement sans renvoyer `playback_finished`, retour automatique à `IDLE` dès `estimated_speech_end + 3.0s`.
-2. **Règle d'Or de Canal Unique** :
-   - `mark_action_sync_completed` : Si une action s'est exécutée de manière synchrone et a répondu via `tool_response`, l'injection parallèle d'un `send_client_content` est formellement bloquée.
-   - `safe_send_live_client_content` : Tous les appels directs (`set_paid_key_authorized`, `paid_consent_response`, directives orales) transitent par la file d'injection et respectent le verrou d'élocution.
+   - *Garde-fou de sécurité (20s)* : Si un client se déconnecte sans renvoyer `playback_finished`, auto-expiration vers `IDLE` dès `now - last_audio_chunk_time > 20.0s` avec warning `PLAYBACK_FINISHED_TIMEOUT`.
+2. **File d'Injection Prioritaire FIFO (`VoiceInjectionQueue`) & Anti-Auto-Interruption** :
+   - **Canal d'entrée unique** : Toute injection non-`INTERRUPTION` passe obligatoirement par `VoiceInjectionQueue.enqueue()`.
+   - **Verrou d'élocution événementiel (`wait_until_speech_idle`)** : Attend (a) `turn_complete` du modèle, (b) fin de lecture physique côté client (`playback_finished`), (c) sas de respiration acoustique de **350 ms**, et (d) absence de parole utilisateur (`USER_SPEAKING == False`), sans boucle de polling actif (basé sur `asyncio.Event`).
+   - **Re-vérification pré-émission** : Si l'utilisateur prend la parole pendant le sas, l'envoi est repoussé et ré-attend la fin de la parole utilisateur + 350 ms.
+   - **Coalescence des résultats d'outils** : Si plusieurs tâches de fond se terminent pendant que J.A.R.V.I.S. s'exprime, leurs résultats sont automatiquement regroupés en un seul message vocal enchaîné.
+   - **Régulation Device ESP32 (`/ws/device`)** : `DeviceAudioPacer.drained` signale la transmission complète du buffer, suivi d'un délai calibré (durée restante estimée ~180 ms + 200 ms de marge = 380 ms) déclenchant `notify_playback_finished()`.
+   - **Règle d'Or de Canal Unique** : Si une action s'est exécutée de manière synchrone via `tool_response`, l'injection parallèle d'un `send_client_content` est formellement bloquée (`mark_action_sync_completed`).
 
 ### 6.8. Gestion des Interruptions (Barge-In) & Traçabilité des Coupures de Parole
-1. **Barge-in utilisateur immédiat** : Si l'utilisateur commence à parler pendant qu'Aoede s'exprime, le son est coupé instantanément côté client et relayé au backend.
+1. **Barge-in utilisateur immédiat** : Si l'utilisateur commence à parler pendant qu'Aoede s'exprime, le son est coupé instantanément côté client et relayé au backend. Seul un barge-in utilisateur ou une alerte d'urgence (priorité `INTERRUPTION`) préempte et coupe la parole en cours.
 2. **Distinction stricte des causes de coupure (Objectif 0 Coupure Interne)** :
    - Interruption utilisateur : journalisation explicite `SPEECH_CUT reason=user_barge_in`.
    - Interruption accidentelle ou interne (système, conflit d'outils) : journalisation explicite `SPEECH_CUT reason=internal`.

@@ -49,6 +49,10 @@ def is_quota_or_limit_error(exc: Exception | None) -> bool:
 from enum import Enum
 
 
+import logging
+logger = logging.getLogger("JarvisSharedState")
+
+
 class SpeechState(str, Enum):
     """Machine à états explicite de la parole dans J.A.R.V.I.S."""
     IDLE = "IDLE"                      # Au repos : aucune génération audio ni restitution en cours
@@ -90,10 +94,12 @@ active_task_controller: dict = {
     "paid_consent_modal_open": False,
     "paid_consent_event": None,  # asyncio.Event pour attendre la confirmation
     "speech_state": SpeechState.IDLE, # État machine explicite de la parole
+    "speech_idle_event": None,   # asyncio.Event déclenché quand speech_state est IDLE
     "generation_active": False,  # True tant que Gemini Live émet des chunks
     "playback_pending": False,   # True tant que le client n'a pas confirmé playback_finished
     "playback_finished_event": None, # asyncio.Event déclenché à playback_finished
     "last_playback_finished_time": 0.0, # Timestamp de réception du dernier playback_finished
+    "last_user_speaking_end_time": 0.0, # Timestamp de fin de parole utilisateur
     "pending_model_switch": None, # Modèle cible en attente que SpeechState devienne IDLE
     "speaking_active": False,    # True pendant l'émission de chunks audio par le modèle
     "estimated_speech_end": 0.0, # Timestamp estimé de fin de restitution audio dans les enceintes
@@ -104,6 +110,24 @@ active_task_controller: dict = {
     "last_turn_complete_time": 0.0,  # Horodatage du dernier turn_complete
     "sync_resolved_actions": {},     # Actions terminées en mode synchrone {action_name: timestamp}
 }
+
+
+def get_speech_idle_event() -> asyncio.Event:
+    """Retourne l'asyncio.Event signalant que la parole est IDLE."""
+    evt = active_task_controller.get("speech_idle_event")
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if evt is None or not isinstance(evt, asyncio.Event) or (loop and getattr(evt, "_loop", None) and evt._loop != loop):
+        evt = asyncio.Event()
+        if is_speech_idle():
+            evt.set()
+        else:
+            evt.clear()
+        active_task_controller["speech_idle_event"] = evt
+    return evt
 
 
 def get_speech_state() -> SpeechState:
@@ -118,12 +142,19 @@ def get_speech_state() -> SpeechState:
             state = SpeechState.IDLE
             active_task_controller["speech_state"] = state
 
-    # Garde-fou d'auto-expiration si le client n'a pas pu envoyer playback_finished
-    if state == SpeechState.MODEL_SPEAKING:
-        now = time.time()
+    now = time.time()
+    # Garde-fou d'auto-expiration de sécurité (20s) si aucun signal de fin n'est reçu
+    if state == SpeechState.MODEL_SPEAKING or active_task_controller.get("playback_pending", False):
+        last_chunk = active_task_controller.get("last_audio_chunk_time", 0.0)
+        if last_chunk > 0 and (now - last_chunk > 20.0):
+            logger.warning("[SpeechState] PLAYBACK_FINISHED_TIMEOUT: Aucun signal de fin après 20s, passage forcé à IDLE")
+            notify_playback_finished()
+            return SpeechState.IDLE
+
         est_end = active_task_controller.get("estimated_speech_end", 0.0)
         # Si la génération est terminée et que le temps estimé + 3.0s est dépassé
         if not active_task_controller.get("generation_active", False) and est_end > 0 and (now > est_end + 3.0):
+            notify_playback_finished()
             set_speech_state(SpeechState.IDLE, reason="auto_expiry_safety_timeout")
             return SpeechState.IDLE
 
@@ -131,7 +162,7 @@ def get_speech_state() -> SpeechState:
 
 
 def set_speech_state(new_state: SpeechState, reason: str = "") -> None:
-    """Met à jour l'état machine explicite de la parole."""
+    """Met à jour l'état machine explicite de la parole et synchronise l'événement speech_idle_event."""
     prev = active_task_controller.get("speech_state", SpeechState.IDLE)
     if prev != new_state:
         active_task_controller["speech_state"] = new_state
@@ -141,11 +172,49 @@ def set_speech_state(new_state: SpeechState, reason: str = "") -> None:
         elif new_state == SpeechState.IDLE:
             active_task_controller["speaking_active"] = False
             active_task_controller["client_speaking"] = False
+            active_task_controller["playback_pending"] = False
+
+    try:
+        evt = get_speech_idle_event()
+        if (
+            new_state == SpeechState.IDLE
+            and not active_task_controller.get("generation_active", False)
+            and not active_task_controller.get("playback_pending", False)
+            and not active_task_controller.get("client_speaking", False)
+            and not active_task_controller.get("awaiting_tool_response", False)
+        ):
+            evt.set()
+        else:
+            evt.clear()
+    except Exception:
+        pass
 
 
 def is_speech_idle() -> bool:
-    """Vérifie si la parole est au repos complet (IDLE) : ni génération, ni lecture client, ni outil."""
-    return get_speech_state() == SpeechState.IDLE
+    """Vérifie si la parole est au repos complet (IDLE) : ni génération, ni lecture client, ni outil, ni parole utilisateur."""
+    raw = active_task_controller.get("speech_state", SpeechState.IDLE)
+    if isinstance(raw, SpeechState):
+        state = raw
+    else:
+        try:
+            state = SpeechState(str(raw))
+        except Exception:
+            state = SpeechState.IDLE
+
+    # Vérification globale de tous les indicateurs
+    if state != SpeechState.IDLE:
+        return False
+    if active_task_controller.get("generation_active", False):
+        return False
+    if active_task_controller.get("playback_pending", False):
+        return False
+    if active_task_controller.get("speaking_active", False):
+        return False
+    if active_task_controller.get("client_speaking", False):
+        return False
+    if active_task_controller.get("awaiting_tool_response", False):
+        return False
+    return True
 
 
 def notify_generation_chunk(chunk_duration: float = 0.0) -> None:
@@ -187,7 +256,11 @@ def notify_playback_finished() -> None:
     if evt and isinstance(evt, asyncio.Event):
         evt.set()
 
-    if not active_task_controller.get("generation_active", False) and not active_task_controller.get("awaiting_tool_response", False):
+    if (
+        not active_task_controller.get("generation_active", False)
+        and not active_task_controller.get("awaiting_tool_response", False)
+        and not active_task_controller.get("client_speaking", False)
+    ):
         set_speech_state(SpeechState.IDLE, reason="playback_finished_received")
 
 
@@ -201,7 +274,12 @@ def notify_tool_completed(tool_name: str = "") -> None:
     """Notifie la fin de l'exécution d'un outil."""
     active_task_controller["awaiting_tool_response"] = False
     active_task_controller["tool_response_cooldown"] = time.time() + 0.35
-    if not active_task_controller.get("speaking_active", False) and not active_task_controller.get("playback_pending", False):
+    if (
+        not active_task_controller.get("speaking_active", False)
+        and not active_task_controller.get("playback_pending", False)
+        and not active_task_controller.get("generation_active", False)
+        and not active_task_controller.get("client_speaking", False)
+    ):
         set_speech_state(SpeechState.IDLE, reason=f"tool_end_{tool_name}")
 
 
@@ -211,8 +289,13 @@ def notify_user_speaking(started: bool = True) -> None:
     if started:
         set_speech_state(SpeechState.USER_SPEAKING, reason="user_speaking_started")
     else:
+        active_task_controller["last_user_speaking_end_time"] = time.time()
         if get_speech_state() == SpeechState.USER_SPEAKING:
-            if not active_task_controller.get("generation_active", False) and not active_task_controller.get("playback_pending", False):
+            if (
+                not active_task_controller.get("generation_active", False)
+                and not active_task_controller.get("playback_pending", False)
+                and not active_task_controller.get("awaiting_tool_response", False)
+            ):
                 set_speech_state(SpeechState.IDLE, reason="user_speaking_ended")
 
 
@@ -254,6 +337,10 @@ def is_model_speaking() -> bool:
     if state == SpeechState.TOOL_PENDING:
         return True
     now = time.time()
+    if active_task_controller.get("generation_active", False):
+        return True
+    if active_task_controller.get("playback_pending", False):
+        return True
     if active_task_controller.get("speaking_active", False):
         return True
     if now < active_task_controller.get("estimated_speech_end", 0.0) + 0.35:
@@ -267,30 +354,77 @@ def is_model_speaking() -> bool:
     return False
 
 
+async def wait_until_speech_idle(timeout: float = 20.0, sas_delay: float = 0.35) -> bool:
+    """
+    Attend que la parole soit au repos complet (IDLE) :
+    (a) turn_complete du modèle (generation_active == False)
+    (b) fin de lecture côté client (playback_pending == False)
+    (c) sas de respiration de 350 ms (sas_delay)
+    (d) utilisateur silencieux (USER_SPEAKING == False).
+    Basé sur asyncio.Event sans boucle de polling actif.
+    Garde-fou : timeout de sécurité de 20s (PLAYBACK_FINISHED_TIMEOUT).
+    """
+    start_t = time.time()
+    while time.time() - start_t < timeout:
+        # Garde-fou 20s après le dernier chunk audio
+        last_chunk = active_task_controller.get("last_audio_chunk_time", 0.0)
+        if last_chunk > 0 and (time.time() - last_chunk > 20.0) and (
+            active_task_controller.get("playback_pending", False) or get_speech_state() == SpeechState.MODEL_SPEAKING
+        ):
+            logger.warning("[SpeechState] PLAYBACK_FINISHED_TIMEOUT: Aucun signal de fin après 20s, passage forcé à IDLE")
+            notify_playback_finished()
+
+        # 1. Attente événement IDLE
+        if not is_speech_idle():
+            idle_evt = get_speech_idle_event()
+            rem = timeout - (time.time() - start_t)
+            if rem <= 0:
+                break
+            try:
+                await asyncio.wait_for(idle_evt.wait(), timeout=rem)
+            except asyncio.TimeoutError:
+                if last_chunk > 0 and (time.time() - last_chunk > 20.0):
+                    logger.warning("[SpeechState] PLAYBACK_FINISHED_TIMEOUT: Aucun signal de fin après 20s, passage forcé à IDLE")
+                    notify_playback_finished()
+                    if is_speech_idle():
+                        return True
+                return False
+
+        # 2. Sas de respiration acoustique (350 ms)
+        last_end = max(
+            active_task_controller.get("last_playback_finished_time", 0.0),
+            active_task_controller.get("last_turn_complete_time", 0.0),
+            active_task_controller.get("last_user_speaking_end_time", 0.0),
+        )
+        now = time.time()
+        elapsed = now - last_end if last_end > 0 else sas_delay
+        needed_wait = sas_delay - elapsed
+
+        if needed_wait > 0:
+            await asyncio.sleep(needed_wait)
+
+        # 3. Re-vérification après sas : si un nouvel événement a eu lieu pendant le sas
+        new_last_end = max(
+            active_task_controller.get("last_playback_finished_time", 0.0),
+            active_task_controller.get("last_turn_complete_time", 0.0),
+            active_task_controller.get("last_user_speaking_end_time", 0.0),
+        )
+        now = time.time()
+        if new_last_end > 0 and (now - new_last_end < sas_delay - 0.01):
+            continue
+
+        if is_speech_idle() and get_speech_idle_event().is_set():
+            return True
+
+    return is_speech_idle()
+
+
 async def wait_until_speech_finished(timeout: float = 15.0, buffer_drainage_delay: float = 0.35) -> None:
     """
     Attend que J.A.R.V.I.S. ait réellement fini de prononcer sa phrase en cours
     avant d'injecter une nouvelle interaction dans la session Gemini Live.
-    Évite absolument toute coupure de parole intempestive en pleine phrase (anti-barge-in prématuré).
-    Attente que SpeechState == IDLE + sas de respiration acoustique (350 ms).
     """
-    start = time.time()
-    was_speaking = False
-    while time.time() - start < timeout:
-        state = get_speech_state()
-        if state != SpeechState.IDLE or is_model_speaking():
-            was_speaking = True
-            await asyncio.sleep(0.05)
-        else:
-            break
-
-    # Sas de respiration acoustique après la fin effective de la parole
-    if was_speaking:
-        delay = max(0.35, buffer_drainage_delay)
-        await asyncio.sleep(delay)
-    else:
-        # Sas de respiration standard minimal de 350 ms
-        await asyncio.sleep(0.35)
+    await wait_until_speech_idle(timeout=timeout, sas_delay=buffer_drainage_delay)
 
 
 

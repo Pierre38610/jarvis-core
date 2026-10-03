@@ -32,7 +32,7 @@ from core.shared_state import (
     SpeechState, get_speech_state, set_speech_state, is_speech_idle,
     notify_generation_chunk, notify_turn_complete, notify_playback_finished,
     notify_tool_started, notify_tool_completed, notify_user_speaking,
-    notify_interrupted, wait_until_speech_finished, safe_send_live_client_content,
+    notify_interrupted, wait_until_speech_finished, wait_until_speech_idle, safe_send_live_client_content,
 )
 from core.tools.declarations import get_tools_list
 from core.tools.dispatcher import dispatch_tool
@@ -336,7 +336,7 @@ async def voice_channel(websocket: WebSocket):
                                 active_task_controller["speaking_active"] = False
                                 active_task_controller["estimated_speech_end"] = 0.0
                                 speaking_state["active"] = False
-                                notify_playback_finished()
+                                notify_user_speaking(False)
                                 try:
                                     from services.spotify_service import spotify_service
                                     fire_and_forget(spotify_service.restore_volume(), name="spotify_restore")
@@ -541,7 +541,7 @@ async def voice_channel(websocket: WebSocket):
                                     parts = [types.Part.from_bytes(data=image_bytes, mime_type=mime)]
                                     if caption:
                                         parts.append(types.Part.from_text(text=caption))
-                                    await wait_until_speech_finished(timeout=5.0, buffer_drainage_delay=0.35)
+                                    await wait_until_speech_idle(timeout=10.0, sas_delay=0.35)
                                     await session.send_client_content(
                                         turns=types.Content(role="user", parts=parts),
                                         turn_complete=True

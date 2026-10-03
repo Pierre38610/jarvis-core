@@ -345,17 +345,21 @@ class DeviceAudioPacer:
         self.task: Optional[asyncio.Task] = None
         self.running = False
         self.frames_sent = 0
+        self.drained = asyncio.Event()
+        self.drained.set()
 
     def start(self):
         if not self.task or self.task.done():
             self.running = True
             self.frames_sent = 0
+            self.drained.clear()
             self.task = asyncio.create_task(self._pacer_loop(), name=f"pacer_{self.device_id}")
 
     async def put_frame(self, opus_bytes: bytes):
         """Ajoute une trame audio 60ms à la file d'émission régulée."""
         if not self.running:
             self.start()
+        self.drained.clear()
         await self.queue.put(opus_bytes)
 
     async def _pacer_loop(self):
@@ -384,15 +388,20 @@ class DeviceAudioPacer:
                 else:
                     await asyncio.sleep(0.005)
 
+                if self.queue.empty():
+                    self.drained.set()
+
         except asyncio.CancelledError:
             pass
         finally:
             self.running = False
+            self.drained.set()
 
     async def wait_drained(self):
         """Attend que toutes les trames en attente soient transmises à l'ESP32."""
         if self.running and not self.queue.empty():
             await self.queue.join()
+        self.drained.set()
 
     async def abort(self):
         """Interrompt immédiatement la diffusion en cours (ex: interruption / barge-in)."""
@@ -403,6 +412,7 @@ class DeviceAudioPacer:
                 self.queue.task_done()
             except Exception:
                 break
+        self.drained.set()
         if self.task and not self.task.done():
             self.task.cancel()
             try:
@@ -911,9 +921,11 @@ async def device_voice_channel(websocket: WebSocket):
                                 # Attendre que toutes les trames soient transmises à l'ESP32 au rythme régulé
                                 await pacer.wait_drained()
 
-                                # Période de grâce (500ms) pour que l'enceinte matérielle finisse la restitution de son buffer DAC
-                                await asyncio.sleep(0.5)
+                                # Période de grâce : durée audio restante estimée dans l'enceinte (~180ms) + 200ms de marge
+                                remaining_audio_delay = 0.18 + 0.20  # ~380ms
+                                await asyncio.sleep(remaining_audio_delay)
 
+                                notify_playback_finished()
                                 notify_turn_complete()
                                 speaking_state["active"] = False
                                 await broadcast_supervision()

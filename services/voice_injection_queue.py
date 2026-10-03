@@ -143,7 +143,8 @@ class VoiceInjectionQueue:
         from core.shared_state import (
             active_task_controller,
             is_action_sync_completed,
-            wait_until_speech_finished,
+            wait_until_speech_idle,
+            is_speech_idle,
             get_speech_state,
             SpeechState,
         )
@@ -162,27 +163,29 @@ class VoiceInjectionQueue:
             self._stats["rejected_sync"] += 1
             return False
 
-        # Règle unique : aucune injection de priorité 2, 3, 4 ne part si SpeechState != IDLE
-        if item.priority in (InjectionPriority.TOOL_RESPONSE, InjectionPriority.PROGRESS_MILESTONE, InjectionPriority.PASSIVE_INFO):
-            timeout = 15.0
-            # Attente active de SpeechState == IDLE
-            await wait_until_speech_finished(timeout=timeout, buffer_drainage_delay=max(0.35, item.drainage_delay))
+        # Règle unique : toute injection non-INTERRUPTION doit attendre que SpeechState devienne IDLE
+        if item.priority != InjectionPriority.INTERRUPTION:
+            wait_start = time.time()
+            if not is_speech_idle():
+                reason = "model_speaking" if get_speech_state() == SpeechState.MODEL_SPEAKING else get_speech_state().value.lower()
+                logger.info(f"[VoiceInjectionQueue] INJECTION_DEFERRED reason={reason} text='{item.text[:40]}...'")
 
-            # Si l'utilisateur est en train de parler
-            if get_speech_state() == SpeechState.USER_SPEAKING:
-                if item.priority == InjectionPriority.PROGRESS_MILESTONE:
-                    logger.info("[VoiceInjectionQueue] Jalon de progression abandonné : utilisateur en train de parler.")
-                    self._stats["coalesced_milestones"] += 1
-                    return False
-                # Pour les réponses d'outils et infos passives, attendre que l'utilisateur finisse
-                await wait_until_speech_finished(timeout=timeout, buffer_drainage_delay=0.35)
+            if item.wait_if_speaking:
+                sas = max(0.35, item.drainage_delay)
+                while True:
+                    await wait_until_speech_idle(timeout=20.0, sas_delay=sas)
 
-            # Sas de respiration acoustique strict : 350 ms après la fin réelle du playback client
-            last_pb = active_task_controller.get("last_playback_finished_time", 0.0)
-            if last_pb > 0:
-                elapsed = time.time() - last_pb
-                if elapsed < 0.35:
-                    await asyncio.sleep(0.35 - elapsed)
+                    # Re-vérification juste avant l'envoi : si l'état n'est plus IDLE (ex: utilisateur a pris la parole), on attend à nouveau
+                    if is_speech_idle():
+                        break
+
+                    reason = "model_speaking" if get_speech_state() == SpeechState.MODEL_SPEAKING else get_speech_state().value.lower()
+                    logger.info(f"[VoiceInjectionQueue] INJECTION_DEFERRED reason={reason}")
+                    if time.time() - wait_start > 25.0:
+                        break
+
+            waited_ms = int((time.time() - wait_start) * 1000)
+            logger.info(f"[VoiceInjectionQueue] INJECTION_SENT waited_ms={waited_ms}")
         else:
             # Priorité INTERRUPTION (1) : réservée pour arrêt d'urgence ou alerte critique
             if get_speech_state() == SpeechState.MODEL_SPEAKING:
