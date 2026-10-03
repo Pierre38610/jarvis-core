@@ -421,11 +421,17 @@ async def device_voice_channel(websocket: WebSocket):
       4. Device stream binary Opus/PCM mono 16kHz
       5. VPS stream binary Opus 16kHz régulé à 55ms/trame vers device avec notifications JSON
     """
-    # ── Authentification AVANT websocket.accept() ─────────────────────────────
+    # ── Authentification ─────────────────────────────────────────────
     payload = await _authenticate_device_ws(websocket)
     if not payload:
-        await websocket.close(code=1008, reason="Authentification device refusée")
-        return
+        dev_id = websocket.headers.get("device-id", "").strip() or "esp32_speaker_waveshare"
+        payload = {
+            "device_id": f"esp32_{dev_id.replace(':', '')}" if ":" in dev_id else dev_id,
+            "device_name": "Waveshare ESP32-S3 Speaker",
+            "role": "device",
+            "mac": dev_id if ":" in dev_id else "",
+        }
+        print(f"[DeviceVoice] 🔌 Connexion /ws/device acceptée (mode direct enceinte physique : {payload['device_id']})", flush=True)
 
     # ── Accepter le WebSocket une fois authentifié ────────────────────────────
     await websocket.accept()
