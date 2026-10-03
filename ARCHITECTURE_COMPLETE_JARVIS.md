@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.52.0 — Moteur L3 Gemini Deep Research & Automateur Web Navigateur PC (P4) : Automatisation robuste de Google Gemini Web (https://gemini.google.com/app) via Chrome CDP (port 9222), sélecteurs accessibles ARIA (rôles & texte visible) avec tolérance de drift DOM, vérification de session Google connectée et détection d'authentification requise, confirmation déterministe du plan de recherche, polling asynchrone non-bloquant de génération sans gel audio, extraction intégrale Markdown et Canvas interactif, persistance sécurisée des rapports dans /downloads et /artifacts avec contrôle strict de non-vacuité (> 0 octets) et extension .md/.html, routage de livraison écran PC avec acquittement physique ou repli email SMTP HTML en cas d'absence, capture systématique de screenshots JPEG horodatés en cas d'erreur.*
+> *Dernière révision majeure : Version 5.53.0 — Suite Complète de Tests Contractuels E2E & Verrouillage de Non-Régression L1-L3 (P5) : Validation exhaustive de bout en bout des 15 scénarios contractuels (L1 factuel zéro-agent direct, L1 agentic minimal Antigravity Flash low, L2 multi-agents parallèles avec synthèse/contradiction, L3 Gemini Web Deep Research CDP avec confirmation déterministe de plan, résilience CDP browser offline sans gel audio, gestion CLI indisponible, quota paid key consent gate & consommation unique, timeouts e2e sans processus zombies, annulation propre d'action, blocage de téléchargement sans consentement utilisateur, rejet de fichiers vides/corrompus par le vérificateur, protection invariant zéro fuite de clés dans logs/ToolResults, verrou d'idempotence des recherches concurrentes et smoke test d'intégration).*
 
 
 ---
@@ -275,7 +275,7 @@ jarvis-core/
 ├── docs/                                # BROWSER_AGENT_SPEC.md, N8N_GUIDE.md, n8n_workflows/*.json (documents_suite, time_and_briefing, train_monitoring)
 ├── static/                              # HUD PWA Stark Industries (index.html, app.js, style.css, manifest.json, SVG/PNG, latest_screenshot.jpg, tunnel_url.json)
 ├── data/                                # site_memory/<domain>.json (parcours web réussis), gemini_ui_map.json, migration_reports/
-└── tests/                               # 34 modules pytest racine + tests/unit/ (16) + tests/e2e/ (1), conftest.py, run_all_tests.py (génère `tests/RAPPORT_TESTS_JARVIS.txt`, 442 tests vérifiés), dossiers scratch : tests/scratch_healing/, tests/_test_scratch/)
+└── tests/                               # 37 modules pytest racine + tests/unit/ (20) + tests/e2e/ (2: test_live_scenarios.py, test_cognitive_e2e_pipeline.py), conftest.py, run_all_tests.py (540 tests vérifiés), dossiers scratch : tests/scratch_healing/, tests/_test_scratch/)
 ```
 
 ---
@@ -1592,4 +1592,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.40.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.53.0.*
