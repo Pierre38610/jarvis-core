@@ -7,6 +7,7 @@ import os
 import json
 import asyncio
 from typing import Dict, Any, Optional
+from services.async_utils import fire_and_forget
 from google import genai
 from google.genai import types
 import config
@@ -366,10 +367,13 @@ class AutonomousReasoningEngine:
                     })
                 try:
                     from services.briefing_service import briefing_service
-                    asyncio.create_task(briefing_service.send_telegram_alert(
-                        message=f"⚠️ *Alerte Quota Antigravity*\n{fallback_msg}\n*Objectif* : {goal[:60]}",
-                        chat_id="6849746502"
-                    ))
+                    fire_and_forget(
+                        briefing_service.send_telegram_alert(
+                            message=f"⚠️ *Alerte Quota Antigravity*\n{fallback_msg}\n*Objectif* : {goal[:60]}",
+                            chat_id="6849746502"
+                        ),
+                        name="telegram_quota_alert"
+                    )
                 except Exception:
                     pass
 

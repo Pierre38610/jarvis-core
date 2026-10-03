@@ -44,6 +44,7 @@ from core.shared_state import (
     safe_send_live_client_content
 )
 from services.voice_injection_queue import InjectionPriority
+from services.async_utils import fire_and_forget
 
 logger = logging.getLogger("jarvis.agentic_dispatcher")
 
@@ -588,16 +589,19 @@ class AgenticDispatcher:
 
                 try:
                     from services.memory import log_tier_routing
-                    asyncio.create_task(log_tier_routing(
-                        query_text=goal,
-                        chosen_tier=cog_cfg.tier,
-                        reason=getattr(cog_cfg, "reason", "") or f"Mission {mission_type}",
-                        final_tier=2 if fallback_occurred else cog_cfg.tier,
-                        latency_ms=(time.time() - start_time) * 1000,
-                        override_manuel=getattr(cog_cfg, "is_override", False),
-                        fallback_occurred=fallback_occurred,
-                        metadata={"mission_type": mission_type, "mission_id": mission_id}
-                    ))
+                    fire_and_forget(
+                        log_tier_routing(
+                            query_text=goal,
+                            chosen_tier=cog_cfg.tier,
+                            reason=getattr(cog_cfg, "reason", "") or f"Mission {mission_type}",
+                            final_tier=2 if fallback_occurred else cog_cfg.tier,
+                            latency_ms=(time.time() - start_time) * 1000,
+                            override_manuel=getattr(cog_cfg, "is_override", False),
+                            fallback_occurred=fallback_occurred,
+                            metadata={"mission_type": mission_type, "mission_id": mission_id}
+                        ),
+                        name="dispatcher_log_tier_routing"
+                    )
                 except Exception as log_err:
                     logger.warning(f"[AgenticDispatcher] Note journalisation tier_routing_log : {log_err}")
 

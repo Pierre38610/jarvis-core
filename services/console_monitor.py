@@ -62,11 +62,15 @@ class ConsoleMonitor:
                     "normal closure",
                     "no close frame",
                     "(1000, none)",
-                    "1000 none"
+                    "1000 none",
+                    # Bruits asyncio inoffensifs — ne jamais déclencher le SRE pour ça
+                    "task exception was never retrieved",
+                    "exception was never retrieved",
+                    "task was destroyed but it is pending",
                 ]
                 if any(p in msg_lower for p in normal_close_patterns):
                     return
-                
+
                 source = record.name or "server"
                 level = record.levelname
                 exc_text = ""
@@ -93,7 +97,11 @@ class ConsoleMonitor:
             "(1000, none)",
             "1000 none",
             "no close frame",
-            "close frame sent"
+            "close frame sent",
+            # Bruits asyncio inoffensifs — ne jamais déclencher le SRE pour ces warnings
+            "task exception was never retrieved",
+            "exception was never retrieved",
+            "task was destroyed but it is pending",
         ]
         if any(p in all_content for p in normal_close_patterns):
             return
@@ -114,6 +122,16 @@ class ConsoleMonitor:
             return
         self._last_healing_time = now
 
+        # Garde-fou : ne jamais déclencher le SRE sur des bruits asyncio
+        all_content = f"{source} {message} {details}".lower()
+        asyncio_noise = [
+            "task exception was never retrieved",
+            "exception was never retrieved",
+            "task was destroyed but it is pending",
+        ]
+        if any(p in all_content for p in asyncio_noise):
+            return
+
         async def _launch():
             try:
                 from services.agentic_dispatcher import agentic_dispatcher
@@ -127,12 +145,21 @@ class ConsoleMonitor:
                         "recent_errors": self.get_recent_errors(limit=5)
                     }
                 )
-            except Exception as e:
+            except Exception:
+                pass  # Absorption silencieuse : éviter toute cascade de warnings asyncio
+
+        def _on_task_done(task: asyncio.Task) -> None:
+            """Callback qui absorbe l'exception pour ne jamais générer
+            un nouveau warning 'Task exception was never retrieved'."""
+            try:
+                task.result()
+            except Exception:
                 pass
 
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(_launch())
+            t = loop.create_task(_launch(), name="sre_autonomous_healing")
+            t.add_done_callback(_on_task_done)
         except RuntimeError:
             pass
 

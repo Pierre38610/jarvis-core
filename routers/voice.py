@@ -50,6 +50,7 @@ from services.key_gate import (
     has_paid_consent,
     is_qualified_free_key_failure,
 )
+from services.async_utils import fire_and_forget
 
 router = APIRouter()
 
@@ -347,7 +348,7 @@ async def voice_channel(websocket: WebSocket):
                                 notify_playback_finished()
                                 try:
                                     from services.spotify_service import spotify_service
-                                    asyncio.create_task(spotify_service.restore_volume())
+                                    fire_and_forget(spotify_service.restore_volume(), name="spotify_restore")
                                 except Exception:
                                     pass
                                 if is_speech_idle():
@@ -361,7 +362,7 @@ async def voice_channel(websocket: WebSocket):
                                 notify_playback_finished()
                                 try:
                                     from services.spotify_service import spotify_service
-                                    asyncio.create_task(spotify_service.restore_volume())
+                                    fire_and_forget(spotify_service.restore_volume(), name="spotify_restore")
                                 except Exception:
                                     pass
                                 if is_speech_idle():
@@ -612,7 +613,7 @@ async def voice_channel(websocket: WebSocket):
                                 notify_interrupted("user_barge_in")
                                 try:
                                     from services.spotify_service import spotify_service
-                                    asyncio.create_task(spotify_service.restore_volume())
+                                    fire_and_forget(spotify_service.restore_volume(), name="spotify_restore")
                                 except Exception:
                                     pass
                                 turn_cuts += 1
@@ -749,7 +750,7 @@ async def voice_channel(websocket: WebSocket):
                                             is_speaking_state = True
                                             try:
                                                 from services.spotify_service import spotify_service
-                                                asyncio.create_task(spotify_service.duck_volume())
+                                                fire_and_forget(spotify_service.duck_volume(), name="spotify_duck")
                                             except Exception:
                                                 pass
                                             supervision_service.update_voice_state("speaking", model=active_live_model, is_paid=is_paid_live)
