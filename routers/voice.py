@@ -187,12 +187,14 @@ async def _build_system_instruction() -> str:
     )
 
     dreams_and_morning_rule = (
-        f"\n\nINTERDICTION PROACTIVE SUR LES RÊVES ET GESTION DU JOURNAL NOCTURNE :\n"
-        f"- Ne pose JAMAIS de ta propre initiative de question sur la nuit, le sommeil ou les rêves de Pierre (ex: 'Qu'est-ce que ton esprit a imaginé cette nuit ?', 'As-tu bien dormi ?', etc.). Cette question est STRICTEMENT PROHIBÉE en amorce et ne doit jamais interrompre ni parasiter une commande.\n"
-        f"- Si et UNIQUEMENT SI Pierre te raconte un rêve de lui-même ou te demande explicitement de noter/enregistrer son rêve :\n"
+        f"\n\nCOMPORTEMENT INTEMPOREL ET GESTION DU JOURNAL NOCTURNE :\n"
+        f"- COMPORTEMENT STRICTEMENT INTEMPOREL (AUCUNE DIFFÉRENCE MATIN/SOIR/JOURNÉE/NUIT) : Tu ne dois JAMAIS modifier ton attitude, ton comportement ou tes répliques en fonction de l'heure ou du moment de la journée. N'adopte aucun préambule, amorce ou question matinale ('qu'est-ce qu'on fait ce matin ?', 'bon réveil', etc.).\n"
+        f"- INTERDICTION PROACTIVE SUR LES RÊVES ET LE SOMMEIL : Ne pose JAMAIS de ta propre initiative de question sur la nuit, le sommeil ou les rêves de Pierre (ex: 'Qu'est-ce que ton esprit a imaginé cette nuit ?', 'As-tu bien dormi ?', etc.). Cette question est STRICTEMENT PROHIBÉE en amorce et ne doit jamais interrompre ni parasiter une commande.\n"
+        f"- PRISE EN CHARGE DES RÊVES SUR DEMANDE EXPLICITE UNIQUEMENT :\n"
+        f"  Si et UNIQUEMENT SI Pierre te raconte un rêve de lui-même ou te demande explicitement de noter/enregistrer son rêve :\n"
         f"  1. Note le rêve fidèlement via 'save_memory' (fact=..., category='fait') ou 'save_notion_entry'.\n"
         f"  2. Si Pierre demande de lui envoyer par e-mail (ou le demande explicitement), envoie-le par mail via 'send_email' à pierrecassagnettes@gmail.com (sujet: 'Journal des rêves - [Date]').\n"
-        f"- PRIORITÉ IMMÉDIATE AUX DIRECTIVES : Dès que Pierre demande une recherche L1/L2/L3, son briefing matinal, un état système, Spotify ou toute autre tâche, exécute directement l'action demandée sans jamais bifurquer vers des questions de sommeil ou de rêves."
+        f"- PRIORITÉ IMMÉDIATE AUX DIRECTIVES : Dès que Pierre demande une recherche L1/L2/L3, un briefing, un état système, Spotify ou toute autre tâche, exécute directement l'action demandée sans jamais bifurquer vers des questions de sommeil, de rêves ou d'heure de la journée."
     )
 
     current_dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1108,22 +1110,9 @@ async def voice_channel(websocket: WebSocket):
             setup_done_event.clear()
 
             if not greeting_sent:
+                # Connexion vocale silencieuse et réactive : Jarvis reste à l'écoute sans amorce artificielle
+                # pour ne jamais bloquer l'audio entrant ni générer de salutation matinale intempestive.
                 greeting_sent = True
-                greeting_instruction = (
-                    "[INSTRUCTION SYSTÈME INVISIBLE] La session vocale vient de démarrer. "
-                    "Salue Pierre très brièvement en une courte formule naturelle, sobre et directe (ex: 'Bonjour Pierre, je t'écoute') "
-                    "SANS JAMAIS poser de question sur sa nuit, son sommeil ou ses rêves, et reste prête pour ses ordres."
-                )
-                try:
-                    await safe_send_live_client_content(
-                        session,
-                        text_content=greeting_instruction,
-                        priority=2,
-                        turn_complete=True
-                    )
-                    print("[Voice Channel] Amorce vocale (greeting) envoyée avec succès.")
-                except Exception as greet_err:
-                    print(f"[Voice Channel] Avertissement amorce vocale: {greet_err}")
             elif is_model_switch_reconnect:
                 is_model_switch_reconnect = False
                 # 2. Réinjection de contexte (build_live_context_prompt + 10 derniers tours + plan + sous-agents actifs)

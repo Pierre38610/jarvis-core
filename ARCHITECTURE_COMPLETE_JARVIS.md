@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.58.0 — Morning Dream Intrusion Fix & Email On-Demand Policy : Interdiction formelle des questions proactives intrusives sur les rêves/sommeil au réveil, enregistrement et envoi par e-mail des récits de rêves sur demande explicite uniquement, exécution directe prioritaire des ordres (L1/L2/L3, briefings, outils).*
+> *Dernière révision majeure : Version 5.59.0 — Timeless Behavior & Zero Morning Bias : Comportement strictement intemporel et uniforme sans aucune altération ni formule selon le moment de la journée (matin, après-midi, soir ou nuit), suppression de l'amorce vocale artificielle au démarrage (écoute immédiate sans blocage audio), exécution directe et prioritaire de tous les ordres (L1/L2/L3, Spotify, emails, agenda, outils).*
 
 
 ---
@@ -1390,7 +1390,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre profonde (`#070B14`, `#0B0F19`), cyan électrique Stark (`#38bdf8`, `#0284c7`), accents ambre et violet néon.
 - **Typographie** : Polices modernes géométriques sans-serif d'inspiration high-tech.
 - **Responsive PWA** : Conçue pour une expérience native sur smartphone (iOS Safari / Android Chrome) et desktop avec support PWA (`manifest.json`, installation sur écran d'accueil).
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.58.0 MORNING DREAM INTRUSION FIX & EMAIL ON-DEMAND POLICY`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.59.0 TIMELESS BEHAVIOR & ZERO MORNING BIAS`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.

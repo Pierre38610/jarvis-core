@@ -51,6 +51,8 @@ class TestVoiceFluidityPrompt:
         instruction = await _build_system_instruction()
         assert "INTERDICTION PROACTIVE SUR LES RÊVES" in instruction
         assert "Ne pose JAMAIS de ta propre initiative de question sur la nuit" in instruction
+        assert "COMPORTEMENT STRICTEMENT INTEMPOREL" in instruction
+        assert "qu'est-ce qu'on fait ce matin" in instruction
         assert "save_memory" in instruction
         assert "send_email" in instruction
 
@@ -58,6 +60,9 @@ class TestVoiceFluidityPrompt:
     async def test_unified_memory_dreams_guidelines(self):
         live_prompt = await unified_memory_manager.build_live_context_prompt()
         assert "Ne pose JAMAIS de questions proactives sur les rêves" in live_prompt
+        assert "Comportement strictement intemporel" in live_prompt
+        assert "qu'est-ce qu'on fait ce matin" in live_prompt
+
 
 
 class TestSpeechGatingAndSafety:
