@@ -1180,6 +1180,8 @@ class GeminiWebAutomator:
                 markdown_content=markdown_content or f"# Rapport Deep Research : {topic}\n\nPage Canvas : {page_url}",
             )
             result["markdown_path"] = save_info.get("filepath_md")
+            result["markdown_content"] = markdown_content
+            result["artifacts"] = [save_info.get("filepath_md")] if save_info.get("filepath_md") else []
             result["steps_completed"].append("report_persisted")
 
             # 10. Livraison

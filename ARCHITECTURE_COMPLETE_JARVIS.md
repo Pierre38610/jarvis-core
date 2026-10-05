@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.70.0 — Documentation & Persistance Session Google VPS (P5) : Procédure VNC / migration sécurisée PC→VPS (docs/VPS_GOOGLE_SESSION_SETUP.md), vérificateur de session CLI (scripts/check_gemini_session.py) & services/vps_chrome.check_gemini_session(), résilience UIMapManager DEFAULT_UI_MAP si data/gemini_ui_map.json absent ou vide, zéro secret logué.*
+> *Dernière révision majeure : Version 5.71.0 — Routage L3 Autonome VPS (P6) : Chrome Headless VPS (CDP 9222 / GeminiWebAutomator) prioritaire pour Deep Research sans dépendance au PC local ni délai bloquant, détection rapide de statut hors-ligne PC (`is_pc_connected_async`), chaîne de repli ordonnée Chrome VPS -> Agent PC local (si connecté) -> Map-Reduce Antigravity VPS, propagation L3ErrorDetails.*
 
 
 ---
@@ -1085,7 +1085,7 @@ Le système d'interaction web repose sur une architecture découplée en tâche 
 #### 9.5.2. Répertoire des Composants & Rôles des Fichiers
 - `local_browser_actions.py` : Pont CDP Playwright côté PC Windows (`BrowserBridge`), assurant la connexion sur le port 9222, le balisage dynamique du DOM (`data-jarvis-id` de 1 à 150), l'exécution ordonnée des actions et la capture d'écran JPEG viewport.
 - `services/browser_agent/__init__.py` : Point d'entrée exportant `BrowserTask`, `TASKS`, `run_browser_task`, `cancel_task`, `check_action`, `load_hint`, `save_success`.
-- `services/browser_agent/loop.py` : Orchestrateur de la boucle de navigation autonome S2 (gestion des étapes `max_steps`, du délai `max_duration`, des erreurs consécutives, de l'appel vision, du mécanisme de `handoff` et de la vérification finale).
+- `services/browser_agent/loop.py` : Orchestrateur de la boucle de navigation autonome S2 et du routage L3 Deep Research (priorité Chrome Headless VPS via `GeminiWebAutomator` / CDP 9222, repli sans délai bloquant vers agent PC local si connecté, puis bascule Map-Reduce Antigravity VPS ; gestion des étapes `max_steps`, du délai `max_duration`, des erreurs consécutives, de l'appel vision, du mécanisme de `handoff` et de la vérification finale).
 - `services/browser_agent/cli_brain.py` : Cerveau décisionnel et vérificateur s'appuyant sur Antigravity CLI (`agy`), avec invite textuelle ou multimodale (analyse de captures d'écran), validation stricte du format JSON S4 et réessai automatique en cas d'anomalie de syntaxe.
 - `services/browser_agent/guards.py` : Garde-fous de sécurité S5 vérifiant chaque action avant exécution. Bloque tout clic sur élément de paiement/commande final (`PAYMENT_PATTERN`) et interdit la saisie automatique de mots de passe ou coordonnées bancaires (`PASSWORD_PATTERN`, `SENSITIVE_FIELD_PATTERN`).
 - `services/browser_agent/site_memory.py` : Persistance atomique des parcours de navigation réussis par domaine sous `data/site_memory/<domain>.json` (S6), injectant jusqu'à 2 résumés d'étapes passées comme indices pour le cerveau.
@@ -1392,7 +1392,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre profonde (`#070B14`, `#0B0F19`), cyan électrique Stark (`#38bdf8`, `#0284c7`), accents ambre et violet néon.
 - **Typographie** : Polices modernes géométriques sans-serif d'inspiration high-tech.
 - **Responsive PWA** : Conçue pour une expérience native sur smartphone (iOS Safari / Android Chrome) et desktop avec support PWA (`manifest.json`, installation sur écran d'accueil).
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.60.0 LIVE THINKING AUTO PAID FALLBACK & CONTEXT RETENTION`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.71.0 L3 AUTONOMOUS VPS ROUTING`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
@@ -1596,4 +1596,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.70.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.71.0.*

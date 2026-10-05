@@ -115,7 +115,9 @@ async def test_browser_task_open_failure_propagates_l3_error():
     """Vérifie que l'échec d'ouverture browser_open_task remplit last_error et ToolResult."""
     task = BrowserTask(task_id="bt_test_open_fail", goal="Test mission L3", recipe="gemini_deep_research")
 
-    with patch("services.browser_agent.loop._call_rpc", new_callable=AsyncMock) as mock_rpc:
+    with patch("services.gemini_web_automator.GeminiWebAutomator.run_deep_research", new_callable=AsyncMock, return_value={"status": "error", "error": "VPS down"}), \
+         patch("services.local_agent_service.is_pc_connected_async", new_callable=AsyncMock, return_value=True), \
+         patch("services.browser_agent.loop._call_rpc", new_callable=AsyncMock) as mock_rpc:
         mock_rpc.return_value = {"ok": False, "status": "pc_offline", "error": "PC local déconnecté"}
 
         res = await run_browser_task(task)
