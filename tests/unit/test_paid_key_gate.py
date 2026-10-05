@@ -38,6 +38,18 @@ class TestConfigPaidKeyGate:
         assert config.get_effective_paid_key() == fake_api_keys["paid"]
         assert config.is_paid_key_active() is True
 
+    def test_live_thinking_model_always_authorized_on_paid_key(self, fake_api_keys):
+        """Le modèle Live Thinking est le seul autorisé en permanence sur la clé payante même si le verrou global est fermé."""
+        config.set_paid_key_authorized(False)
+        assert config.is_paid_key_authorized() is False
+        # Modèles standards et lourds non-Live Thinking restent bloqués
+        assert config.get_effective_paid_key() == ""
+        assert config.get_effective_paid_key(model="gemini-3.1-pro-high") == ""
+        assert config.get_effective_paid_key(model="gemini-2.5-pro") == ""
+        # Live Thinking a accès permanent à la clé payante sans consentement/case
+        assert config.get_effective_paid_key(model="gemini-3.8-live-extended-thinking") == fake_api_keys["paid"]
+        assert config.get_effective_paid_key(model="voice_thinking") == fake_api_keys["paid"]
+
 
 class TestAntigravityPaidKeyGate:
     """Vérifie que l'agent Antigravity refuse catégoriquement toute clé payante si le verrou est fermé."""

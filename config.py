@@ -145,10 +145,17 @@ def set_paid_key_authorized(authorized: bool) -> bool:
         print(f"[Config] Erreur persistance paid_key_authorized : {e}")
     return PAID_KEY_AUTHORIZED
 
-def get_effective_paid_key(session_id: str | None = None, task_id: str | None = None) -> str:
-    """Retourne la clé payante UNIQUEMENT si un consentement valide pour cette tâche ou l'encoche existe.
+def get_effective_paid_key(session_id: str | None = None, task_id: str | None = None, model: str | None = None) -> str:
+    """Retourne la clé payante si :
+    1. Le modèle est Live Thinking (gemini-3.8-live-extended-thinking), qui est le SEUL modèle autorisé en permanence sur la clé payante en fallback transparent.
+    2. Un consentement valide existe pour cette tâche ou session.
+    3. L'encoche d'autorisation est cochée par l'utilisateur.
     Sinon retourne une chaîne vide : impossibilité d'émettre des requêtes payantes.
     """
+    if model and ("extended-thinking" in model or model in ("gemini-3.8-live-extended-thinking", "voice_thinking", "live_thinking")):
+        return GEMINI_API_KEY_PAID
+    if session_id in ("voice_thinking", "live_thinking"):
+        return GEMINI_API_KEY_PAID
     try:
         from services.key_gate import has_paid_consent
         if has_paid_consent(session_id=session_id, task_id=task_id):
@@ -279,20 +286,15 @@ Ne parle jamais du résultat d'une action avant d'avoir reçu la réponse de l'o
 ══════════════════════════════════════════
 4. MODÈLES, CLÉS API ET COÛTS
 ══════════════════════════════════════════
-Ta voix utilise deux modes, tous deux sur la clé GRATUITE :
-- Mode standard : conversation, ordres simples, classification rapide des demandes.
-- Mode thinking (extended thinking) : bascule-y dès qu'une demande demande du raisonnement à
-  l'oral (comparaison, conseil, planification, problème ambigu, explication technique). N'hésite
-  pas à l'utiliser : il est gratuit et améliore nettement tes réponses.
+Ta voix utilise deux modes :
+- Mode standard (gemini-3.8-live) : sur clé GRATUITE par défaut (conversation, ordres simples, classification rapide).
+- Mode thinking (gemini-3.8-live-extended-thinking) : sur clé GRATUITE en priorité, avec bascule automatique et transparente sur la clé PAYANTE en cas d'échec de la clé gratuite (sans interruption ni question). Live Thinking est le seul modèle autorisé en permanence sur la clé payante.
 
-Pour les tâches lourdes (rédaction, recherche, analyse, code, présentations), tu ne raisonnes pas
+Pour les tâches lourdes (rédaction, recherche approfondie, analyse, code, présentations), tu ne raisonnes pas
 seul : tu délègues à un agent Antigravity via run_agent_task (voir section 5).
 
-La clé PAYANTE est uniquement une clé de SECOURS. Elle sert dans deux cas seulement :
-  a) la clé gratuite a échoué ;
-  b) le quota des agents Antigravity CLI est dépassé.
-Tu ne l'utilises JAMAIS sans un « oui » oral explicite. Quand un outil renvoie needs_user avec
-une demande de clé payante :
+Pour les autres services et agents lourds, la clé PAYANTE est une clé de SECOURS soumise à validation (encoche ou accord oral).
+Quand un outil renvoie needs_user avec une demande de clé payante :
   1. Explique la raison en une phrase : « La clé gratuite a échoué » OU « Le quota des agents
      Antigravity est dépassé ».
   2. Demande : « Veux-tu que j'utilise la clé payante pour cette tâche ? »

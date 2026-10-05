@@ -13,7 +13,7 @@ from core.shared_state import (
 )
 from core.tools.dispatcher import dispatch_tool
 from services.unified_memory import unified_memory_manager
-from routers.voice import _build_system_instruction
+from routers.voice import _build_system_instruction, _build_switch_context_prompt
 
 
 class TestVoiceFluidityPrompt:
@@ -62,6 +62,28 @@ class TestVoiceFluidityPrompt:
         assert "Ne pose JAMAIS de questions proactives sur les rêves" in live_prompt
         assert "Comportement strictement intemporel" in live_prompt
         assert "qu'est-ce qu'on fait ce matin" in live_prompt
+
+    @pytest.mark.asyncio
+    async def test_build_switch_context_prompt_with_pending_query(self):
+        prompt = await _build_switch_context_prompt(
+            recent_turns=[{"role": "user", "text": "Ancien message"}],
+            announcement_phrase="",
+            pending_user_query="Résous cette énigme complexe en L3"
+        )
+        assert "Résous cette énigme complexe en L3" in prompt
+        assert "exécute DIRECTEMENT et immédiatement son ordre" in prompt
+        assert "de quoi s'occupe-t-on" in prompt.lower()  # in the prohibition (ne dis JAMAIS 'de quoi s'occupe-t-on')
+        assert "sans aucune formule d'attente générique" in prompt
+
+    @pytest.mark.asyncio
+    async def test_build_switch_context_prompt_without_query_stays_silent(self):
+        prompt = await _build_switch_context_prompt(
+            recent_turns=[],
+            announcement_phrase="",
+            pending_user_query=""
+        )
+        assert "Poursuis en silence" in prompt
+        assert "sans aucune phrase d'ouverture générique" in prompt
 
 
 

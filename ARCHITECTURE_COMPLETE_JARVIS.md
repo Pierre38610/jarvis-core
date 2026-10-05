@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.59.0 — Timeless Behavior & Zero Morning Bias : Comportement strictement intemporel et uniforme sans aucune altération ni formule selon le moment de la journée (matin, après-midi, soir ou nuit), suppression de l'amorce vocale artificielle au démarrage (écoute immédiate sans blocage audio), exécution directe et prioritaire de tous les ordres (L1/L2/L3, Spotify, emails, agenda, outils).*
+> *Dernière révision majeure : Version 5.60.0 — Live Thinking Auto Paid Fallback & Context Retention : Autorisation permanente et transparente du modèle Live Thinking (gemini-3.8-live-extended-thinking) sur la clé payante sans modal ni interruption, conservation stricte de la directive utilisateur en cours lors de la bascule de modèle Live, comportement vocal intemporel et sans biais matinal.*
 
 
 ---
@@ -559,7 +559,7 @@ Garantit une maîtrise absolue et vivante du dossier professionnel de Pierre :
 
 ### 5.1. Répartition Bimodale des Clés API (Gratuite vs Payante)
 - **Clé Gratuite (`GEMINI_API_KEY_FREE`)** : Flux vocal standard (`gemini-3.8-live`), recherches factuelles, diagnostics légers, exécution Antigravity CLI (coût d'API nul via jeton OAuth2 Google AI Pro).
-- **Clé Payante (`GEMINI_API_KEY_PAID`)** : `gemini-3.8-live-extended-thinking`, `gemini-3.8-flash` haute vitesse, modèles lourds Antigravity (`gemini-3.1-pro-preview`, `claude-3-7-sonnet`), vision Browser-Use et repli `api_paid_gemini`.
+- **Clé Payante (`GEMINI_API_KEY_PAID`)** : `gemini-3.8-live-extended-thinking` (seul modèle autorisé en permanence sur la clé payante sans modal ni case à cocher requise en cas d'échec de la clé gratuite), `gemini-3.8-flash` haute vitesse, modèles lourds Antigravity (`gemini-3.1-pro-preview`, `claude-3-7-sonnet`), vision Browser-Use et repli `api_paid_gemini`.
 - **Gouvernance Centralisée (`services/key_gate.py`)** : `get_key()` est le point unique de distribution des clés. Le module expose :
   - `grant_paid_consent()` / `has_paid_consent()` / `revoke_paid_consent()` / `consume_paid_consent()` : consentement payant **par session ou par tâche** (clé dérivée par `_make_consent_key(session_id, task_id)`), révocable et à usage unique.
   - `is_qualified_free_key_failure(error, retry_count)` : qualification stricte des échecs autorisant un repli payant (quota épuisé, 429, refus serveur) et renvoi du motif.
@@ -567,9 +567,9 @@ Garantit une maîtrise absolue et vivante du dossier professionnel de Pierre :
   - `clear_all_consents()` : purge globale (fin de session ou coupure d'urgence).
 
 ### 5.2. Verrou Physique Applicatif & Double Consentement Oral
-1. **Encoche Applicative (Switch UI)** : Persistée dans SQLite `user_profile` (`paid_key_authorized`). Si décochée, `get_effective_paid_key()` renvoie `""`. Aucune requête payante n'est émise au niveau réseau.
-2. **Double Consentement Oral Explicite** : Même avec l'encoche cochée, toute action payante majeure requiert un accord vocal de Pierre avec estimation chiffrée (~0.03 $).
-3. **Détection 429** : Zéro bascule silencieuse de la clé gratuite vers la clé payante sans accord préalable.
+1. **Encoche Applicative (Switch UI)** : Persistée dans SQLite `user_profile` (`paid_key_authorized`). Si décochée, `get_effective_paid_key()` renvoie `""` pour les modèles standards et lourds. Seul le modèle vocal Live Thinking (`gemini-3.8-live-extended-thinking`) bénéficie d'une autorisation permanente transparente en repli immédiat sans modal.
+2. **Double Consentement Oral Explicite** : Pour les agents de raisonnement lourd ou batch, même avec l'encoche cochée, toute action payante majeure requiert un accord de Pierre avec estimation chiffrée (~0.03 $).
+3. **Détection 429 & Résilience Live Thinking** : Repli immédiat et transparent sur la clé payante pour le flux vocal Live Thinking afin de garantir une fluidité conversationnelle absolue sans boucle de blocage.
 
 ### 5.3. Routage Cognitif Dynamique en 3 Paliers (Tiers 1, 2, 3)
 
@@ -1390,7 +1390,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre profonde (`#070B14`, `#0B0F19`), cyan électrique Stark (`#38bdf8`, `#0284c7`), accents ambre et violet néon.
 - **Typographie** : Polices modernes géométriques sans-serif d'inspiration high-tech.
 - **Responsive PWA** : Conçue pour une expérience native sur smartphone (iOS Safari / Android Chrome) et desktop avec support PWA (`manifest.json`, installation sur écran d'accueil).
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.59.0 TIMELESS BEHAVIOR & ZERO MORNING BIAS`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.60.0 LIVE THINKING AUTO PAID FALLBACK & CONTEXT RETENTION`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
