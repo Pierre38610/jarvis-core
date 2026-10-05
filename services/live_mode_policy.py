@@ -146,47 +146,53 @@ def detect_vocal_cognitive_level(
             }
 
     if norm:
-        # Override explicite L1 vocal : "fais vite", "passe rapide", "sois bref"
-        if any(sig in norm for sig in [
+        # Override explicite L1 vocal : "fais vite", "passe rapide", "sois bref", "L1"
+        tier1_override_signals = [
             "fais vite", "passe rapide", "mode rapide", "en rapide", "reponse rapide",
             "sans reflechir", "juste un resume", "check rapide", "en vitesse", "sois bref",
             "en 2 secondes", "en deux secondes", "ultra rapide", "court et simple"
-        ]):
+        ]
+        has_l1_regex = bool(re.search(r"\b(l1|niveau\s*(1|un)|tier\s*(1|un)|palier\s*(1|un))\b", norm))
+        if has_l1_regex or any(sig in norm for sig in tier1_override_signals):
             return {
                 "level": 1,
                 "level_name": "L1",
-                "reason": "Override vocal explicite: consigne de rapidité L1 ('fais vite' / 'passe rapide')",
+                "reason": "Override vocal explicite: consigne de rapidité L1 ('fais vite' / 'L1')",
                 "is_override": True,
                 "model_tier": "flash-low",
                 "timeout_seconds": 120,
                 "recommended_tools": ["search_web", "run_agentic_task", "get_system_status", "list_workspace_files"],
             }
 
-        # Override explicite L3 vocal : "analyse en profondeur", "prends tout ton temps", "niveau 3", etc.
-        if any(sig in norm for sig in [
+        # Override explicite L3 vocal : "analyse en profondeur", "prends tout ton temps", "niveau 3", "L3", etc.
+        tier3_override_signals = [
             "analyse en profondeur", "recherche approfondie", "analyse approfondie",
             "etude approfondie", "prends tout ton temps", "reflexion maximale",
             "analyse de fond", "etude de fond", "rapport complet", "sources exhaustives",
             "mode pro", "deep research", "cartographie complete", "panorama complet",
             "niveau 3", "niveau trois", "recherche de niveau 3", "recherche niveau 3",
             "recherche l3", "palier 3", "tier 3", "palier de niveau 3"
-        ]):
+        ]
+        has_l3_regex = bool(re.search(r"\b(l3|niveau\s*(3|trois)|tier\s*(3|trois)|palier\s*(3|trois)|deep\s*research)\b", norm))
+        if has_l3_regex or any(sig in norm for sig in tier3_override_signals):
             return {
                 "level": 3,
                 "level_name": "L3",
-                "reason": "Override vocal explicite: consigne de réflexion approfondie L3 ('analyse en profondeur' / 'niveau 3')",
+                "reason": "Override vocal explicite: consigne de réflexion approfondie L3 ('analyse en profondeur' / 'niveau 3' / 'L3')",
                 "is_override": True,
                 "model_tier": "pro-high",
                 "timeout_seconds": 600,
                 "recommended_tools": ["launch_deep_research", "system_self_healing", "ask_deep_reasoning"],
             }
 
-        # Override explicite L2 vocal : "analyse tactique"
-        if any(sig in norm for sig in ["analyse tactique", "passe tactique", "tactique", "intermediaire"]):
+        # Override explicite L2 vocal : "analyse tactique", "L2", "niveau 2", etc.
+        tier2_override_signals = ["analyse tactique", "passe tactique", "tactique", "intermediaire"]
+        has_l2_regex = bool(re.search(r"\b(l2|niveau\s*(2|deux)|tier\s*(2|deux)|palier\s*(2|deux))\b", norm))
+        if has_l2_regex or any(sig in norm for sig in tier2_override_signals):
             return {
                 "level": 2,
                 "level_name": "L2",
-                "reason": "Override vocal explicite: consigne tactique L2",
+                "reason": "Override vocal explicite: consigne tactique L2 ('analyse tactique' / 'L2')",
                 "is_override": True,
                 "model_tier": "flash-high",
                 "timeout_seconds": 300,

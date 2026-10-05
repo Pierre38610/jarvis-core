@@ -212,19 +212,20 @@ def route_search_intent(
             "sans reflechir", "juste un resume", "check rapide", "en vitesse", "sois bref",
             "en 2 secondes", "en deux secondes", "ultra rapide", "en un mot"
         ]
-        if any(sig in norm for sig in tier1_override_signals):
+        has_l1_regex = bool(re.search(r"\b(l1|niveau\s*(1|un)|tier\s*(1|un)|palier\s*(1|un))\b", norm))
+        if has_l1_regex or any(sig in norm for sig in tier1_override_signals):
             return SearchRoutingDecision(
                 tool="search_web",
                 tier=1,
                 level="L1",
                 effort="low",
                 timeout=15,
-                reason="Override vocal explicite: consigne de rapidité L1 ('fais vite' / 'passe rapide')",
+                reason="Override vocal explicite: consigne de rapidité L1 ('fais vite' / 'L1')",
                 is_override=True,
                 query=query,
             )
 
-        # Override explicite L3 : "analyse en profondeur", "deep research", "niveau 3", etc.
+        # Override explicite L3 : "analyse en profondeur", "deep research", "niveau 3", "L3", etc.
         tier3_override_signals = [
             "analyse en profondeur", "recherche approfondie", "analyse approfondie",
             "etude approfondie", "prends tout ton temps", "reflexion maximale",
@@ -233,30 +234,32 @@ def route_search_intent(
             "niveau 3", "niveau trois", "recherche de niveau 3", "recherche niveau 3",
             "recherche l3", "palier 3", "tier 3", "palier de niveau 3"
         ]
-        if any(sig in norm for sig in tier3_override_signals):
+        has_l3_regex = bool(re.search(r"\b(l3|niveau\s*(3|trois)|tier\s*(3|trois)|palier\s*(3|trois)|deep\s*research)\b", norm))
+        if has_l3_regex or any(sig in norm for sig in tier3_override_signals):
             return SearchRoutingDecision(
                 tool="launch_deep_research",
                 tier=3,
                 level="L3",
                 effort="high",
                 timeout=600,
-                reason="Override vocal explicite: consigne de recherche approfondie L3 ('analyse en profondeur' / 'niveau 3')",
+                reason="Override vocal explicite: consigne de recherche approfondie L3 ('analyse en profondeur' / 'niveau 3' / 'L3')",
                 is_override=True,
                 query=query,
             )
 
-        # Override explicite L2 : "analyse tactique", etc.
+        # Override explicite L2 : "analyse tactique", "L2", "niveau 2", etc.
         tier2_override_signals = [
             "analyse tactique", "passe tactique", "tactique", "intermediaire", "mode tactique"
         ]
-        if any(sig in norm for sig in tier2_override_signals):
+        has_l2_regex = bool(re.search(r"\b(l2|niveau\s*(2|deux)|tier\s*(2|deux)|palier\s*(2|deux))\b", norm))
+        if has_l2_regex or any(sig in norm for sig in tier2_override_signals):
             return SearchRoutingDecision(
                 tool="browser_task",
                 tier=2,
                 level="L2",
                 effort="medium",
                 timeout=120,
-                reason="Override vocal explicite: consigne tactique L2",
+                reason="Override vocal explicite: consigne tactique L2 ('analyse tactique' / 'L2')",
                 is_override=True,
                 query=query,
             )

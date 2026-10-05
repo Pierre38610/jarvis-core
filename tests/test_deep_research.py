@@ -89,7 +89,8 @@ async def test_dispatch_lancer_mission_deep_research_uses_browser_recipe_first()
             name="lancer_mission_deep_research",
             args={
                 "consigne_utilisateur": "Trouve 20 entreprises à Malmö pour mon stage IA",
-                "envoyer_email": False
+                "envoyer_email": False,
+                "sync": True,
             },
             websocket=mock_ws,
             session=mock_session,
@@ -124,6 +125,7 @@ async def test_dispatch_lancer_mission_deep_research_fails_robustly_if_cli_unava
             name="lancer_mission_deep_research",
             args={
                 "consigne_utilisateur": "Prospection à Munich",
+                "sync": True,
             },
             websocket=mock_ws,
             session=mock_session,

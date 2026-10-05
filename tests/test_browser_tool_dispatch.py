@@ -360,7 +360,7 @@ async def test_launch_deep_research_browser_agent_success():
     with patch("core.tools.dispatcher.run_browser_agent_task", side_effect=mock_run_agent):
         res = await dispatch_tool(
             name="launch_deep_research",
-            args={"consigne": "Étude quantique 2026"},
+            args={"consigne": "Étude quantique 2026", "sync": True},
             websocket=mock_ws,
             session=mock_session,
         )

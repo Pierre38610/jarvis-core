@@ -130,9 +130,11 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="launch_deep_research",
                     description=(
-                        "Moteur de recherche approfondie multi-agents Antigravity (phases prospecteur flash/medium, "
-                        "analyste pro/high, synthèse pro/medium). À utiliser de ta propre initiative dès qu'il faut "
-                        "rechercher à fond, cartographier un marché, comparer des offres ou explorer un domaine."
+                        "RECHERCHE APPROFONDIE MULTI-SOURCES NIVEAU 3 (L3 / TIER 3 / DEEP RESEARCH). "
+                        "Moteur de recherche approfondie multi-agents Antigravity sur le VPS (prospecteur, analyste, synthèse). "
+                        "À utiliser de ta propre initiative dès que Pierre demande une recherche de niveau 3, une recherche L3, "
+                        "une recherche approfondie, un rapport complet, une étude de fond, une cartographie de marché ou une analyse multi-sources. "
+                        "NE JAMAIS UTILISER 'browser_task' NI 'search_web' pour une demande explicite de niveau 3 (L3)."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -140,7 +142,7 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                         properties={
                             "consigne": types.Schema(
                                 type="STRING",
-                                description="La consigne ou le sujet de recherche approfondie à explorer."
+                                description="La consigne ou le sujet de recherche approfondie L3 à explorer."
                             ),
                             "consigne_utilisateur": types.Schema(
                                 type="STRING",
@@ -244,11 +246,10 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="search_web",
                     description=(
-                        "Recherche textuelle rapide sur Internet via DuckDuckGo pour obtenir des informations factuelles récentes, définitions, cours ou liens en moins de 2 secondes. "
-                        "À UTILISER QUAND : Pierre pose une question factuelle directe (météo, score sportif, date, définition, fait récent, prix indicatif) nécessitant une réponse immédiate. "
-                        "NE JAMAIS UTILISER QUAND : Une interaction complexe est requise sur un site (clics, panier, formulaires : utiliser 'run_browser_task'), "
-                        "ni pour un raisonnement technique approfondi (utiliser 'ask_deep_reasoning'), "
-                        "ni pour une étude sectorielle lourde de 5-10 minutes (utiliser 'launch_deep_research')."
+                        "RECHERCHE FACTUELLE RAPIDE NIVEAU 1 (L1 / TIER 1). "
+                        "Recherche textuelle rapide sur Internet via DuckDuckGo (< 2 secondes) pour obtenir des informations factuelles récentes, définitions, cours ou liens. "
+                        "À UTILISER QUAND : Pierre pose une question factuelle directe nécessitant une réponse immédiate. "
+                        "NE JAMAIS UTILISER POUR UNE RECHERCHE DE NIVEAU 3 (L3 / Deep Research) : utiliser 'launch_deep_research'."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
@@ -270,7 +271,7 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                         "À UTILISER QUAND : Une mission web dynamique requiert clics, interactions, navigation successive de page en page ou exploration visuelle d'un site. "
                         "NE JAMAIS UTILISER QUAND : Une recherche d'information textuelle simple suffit sans navigation complexe (utiliser 'search_web'), "
                         "ni pour une action ciblée sur une URL unique connue (utiliser 'interact_web_page'), "
-                        "ni pour juste ouvrir Chrome à l'écran (utiliser 'open_user_browser')."
+                        "ni pour une recherche de niveau 3 / L3 (utiliser 'launch_deep_research')."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -298,12 +299,13 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                     )
                 ),
 
-                # ─── 6b. browser_task (Nouvel Agent Autonome S1) ───────────────────────
+                # ─── 6b. browser_task (Nouvel Agent Autonome S1/S2 - Niveau 2) ─────────
                 types.FunctionDeclaration(
                     name="browser_task",
                     description=(
-                        "Pour TOUTE action sur un site web (remplir un panier, réserver, rechercher, se connecter à un service web). "
-                        "Ne fabrique jamais d'URL de résultat. Rend la main immédiatement ; le résultat sera annoncé plus tard."
+                        "AGENT WEB AUTONOME NIVEAU 2 (L2 / TIER 2). "
+                        "Pour TOUTE interaction concrète sur un site web (remplir un panier d'achat, réserver un billet de train/vol, se connecter à un compte, remplir un formulaire). "
+                        "NE JAMAIS UTILISER POUR UNE RECHERCHE DE NIVEAU 3 (L3 / Deep Research) : pour toute recherche L3 ou étude approfondie, utiliser obligatoirement 'launch_deep_research'."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(

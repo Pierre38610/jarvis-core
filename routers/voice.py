@@ -235,9 +235,8 @@ async def _build_system_instruction() -> str:
 
 async def _establish_live_session(model: str, client_to_use):
     """Établit une session Gemini Live avec la config JARVIS complète (voix Aoede, outils, instruction système)."""
-    system_instruction_text = await _build_system_instruction()
-
-    thinking_cfg = types.ThinkingConfig(include_thoughts=True) if "extended-thinking" in model else None
+    thinking_level_val = getattr(types.ThinkingLevel, "HIGH", "HIGH")
+    thinking_cfg = types.ThinkingConfig(include_thoughts=True, thinking_level=thinking_level_val) if "extended-thinking" in model else None
 
     live_config = types.LiveConnectConfig(
         response_modalities=["AUDIO"],
@@ -361,6 +360,7 @@ async def voice_channel(websocket: WebSocket):
 
                             if p_type == "speech_started":
                                 active_task_controller["client_speaking"] = True
+                                active_task_controller["tool_response_cooldown"] = 0.0
                                 notify_user_speaking()
 
                             elif p_type == "speech_ended":
@@ -705,6 +705,7 @@ async def voice_channel(websocket: WebSocket):
                                     active_task_controller["info"]["running"]
                                     or bool(active_task_controller.get("bg_task"))
                                     or bool(active_task_controller.get("browser_bg_task"))
+                                    or bool(active_task_controller.get("deep_research_bg_task"))
                                 )
                                 if is_any_task_running and (is_stop_directive(user_txt) or is_stop_directive(user_speech_buffer)):
                                     print(f"[Voice Channel] INTERCEPTION VOCALE IMMÉDIATE D'ARRÊT : '{user_speech_buffer}'")
@@ -924,7 +925,7 @@ async def voice_channel(websocket: WebSocket):
                                     ]
                                 )
                                 active_task_controller["awaiting_tool_response"] = False
-                                active_task_controller["tool_response_cooldown"] = time.time() + 2.5
+                                active_task_controller["tool_response_cooldown"] = time.time() + 0.35
                                 notify_tool_completed(name)
 
                                 # Suivi des échecs consécutifs d'outils pour la politique Live (Règle 3)

@@ -272,10 +272,81 @@ async def test_dispatcher_launch_deep_research_idempotency():
     try:
         result = await dispatch_tool_call(
             name="launch_deep_research",
-            args={"consigne": topic},
+            args={"consigne": topic, "sync": True},
         )
         assert result.get("evidence") == "idempotent_dedup"
         assert "déjà en cours" in result.get("user_message", "")
     finally:
         release_search_lock(topic)
         release_search_lock(topic)
+
+
+def test_search_router_regex_l3_variations():
+    """Vérifie que toutes les formulations de niveau 3 (L3, niveau 3, tier 3, etc.) routent vers L3."""
+    l3_phrases = [
+        "Fais une recherche de niveau 3 sur les supraconducteurs",
+        "Lance une recherche L3 sur le graphène",
+        "Cherche en niveau trois les entreprises de robotique",
+        "Deep research sur les semi-conducteurs",
+        "Palier 3 : cartographie IA",
+        "Fais un L3 s'il te plaît",
+    ]
+    for q in l3_phrases:
+        decision = route_search_intent(q)
+        assert decision.level == "L3", f"Phrase '{q}' did not route to L3"
+        assert decision.tool == "launch_deep_research"
+        assert decision.is_override is True
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_browser_task_redirects_to_l3_when_l3_requested():
+    """Vérifie que browser_task redirige automatiquement vers launch_deep_research si un L3 est mentionné."""
+    from core.tools.dispatcher import dispatch_tool
+    from core.tools.result import ToolResult
+
+    fake_browser_res = ToolResult.done(
+        user_message="Synthèse L3",
+        evidence="recipe gemini_deep_research",
+        verified=True,
+    )
+
+    with patch("core.tools.dispatcher.run_browser_agent_task", new_callable=AsyncMock, return_value=fake_browser_res) as mock_browser:
+        resp = await dispatch_tool(
+            name="browser_task",
+            args={"goal": "Fais une recherche de niveau 3 sur les entreprises de Malmö", "sync": True},
+            websocket=None,
+            session=None,
+        )
+        assert resp["status"] == "done"
+        mock_browser.assert_awaited_once()
+        task = mock_browser.await_args.kwargs.get("task") or mock_browser.await_args.args[0]
+        assert task.recipe == "gemini_deep_research"
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_launch_deep_research_non_blocking_returns_started():
+    """Vérifie que launch_deep_research retourne instantanément ToolResult.started (non-bloquant)."""
+    from core.tools.dispatcher import dispatch_tool
+    from core.tools.result import ToolResult
+    from core.shared_state import active_task_controller
+
+    fake_browser_res = ToolResult.done(
+        user_message="Synthèse L3 rapide",
+        evidence="recipe gemini_deep_research",
+        verified=True,
+    )
+
+    with patch("core.tools.dispatcher.run_browser_agent_task", new_callable=AsyncMock, return_value=fake_browser_res) as mock_browser:
+        resp = await dispatch_tool(
+            name="launch_deep_research",
+            args={"consigne": "Étude prospective non bloquante"},
+            websocket=None,
+            session=None,
+        )
+        assert resp["status"] == "started"
+        assert "recherche approfondie de niveau 3" in resp["user_message"].lower()
+        assert active_task_controller.get("deep_research_bg_task") is not None
+        await asyncio.sleep(0.05)
+
+
+

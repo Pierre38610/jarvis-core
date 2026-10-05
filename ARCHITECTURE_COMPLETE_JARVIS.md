@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.60.0 — Live Thinking Auto Paid Fallback & Context Retention : Autorisation permanente et transparente du modèle Live Thinking (gemini-3.8-live-extended-thinking) sur la clé payante sans modal ni interruption, conservation stricte de la directive utilisateur en cours lors de la bascule de modèle Live, comportement vocal intemporel et sans biais matinal.*
+> *Dernière révision majeure : Version 5.61.0 — Live Thinking Level, L3 Deterministic Routing & Non-Blocking Deep Research : Configuration explicite de thinking_level pour l'API Gemini Live, routage L3 robuste et prioritaire empêchant toute confusion L2, exécution asynchrone non-bloquante des missions Deep Research préservant la fluidité du canal vocal.*
 
 
 ---
