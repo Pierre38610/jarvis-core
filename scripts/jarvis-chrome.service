@@ -1,0 +1,39 @@
+[Unit]
+Description=J.A.R.V.I.S. Headless Chrome CDP Service (Port 9222)
+Documentation=https://github.com/Pierre38610/jarvis-core
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=opc
+Group=opc
+Environment=DISPLAY=:99
+EnvironmentFile=-/home/opc/jarvis-core/.env
+ExecStartPre=/bin/mkdir -p /home/opc/.jarvis_chrome_profile
+ExecStart=/usr/bin/chromium-browser \
+    --headless=new \
+    --remote-debugging-port=9222 \
+    --remote-debugging-address=127.0.0.1 \
+    --user-data-dir=/home/opc/.jarvis_chrome_profile \
+    --no-first-run \
+    --no-default-browser-check \
+    --disable-blink-features=AutomationControlled \
+    --disable-gpu \
+    --no-sandbox \
+    --disable-dev-shm-usage \
+    --disable-background-networking \
+    --disable-background-timer-throttling \
+    --disable-breakpad \
+    --disable-features=Translate,OptimizationHints,MediaRouter \
+    --window-size=1280,800
+Restart=always
+RestartSec=5s
+KillMode=process
+TimeoutStopSec=10s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jarvis-chrome
+
+[Install]
+WantedBy=multi-user.target

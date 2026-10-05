@@ -56,10 +56,34 @@ SPOTIFY_REDIRECT_URI = os.environ.get(
 MACRODROID_DEVICE_ID = os.environ.get("MACRODROID_DEVICE_ID", "").strip()
 MACRODROID_BASE_URL = os.environ.get("MACRODROID_BASE_URL", "https://ask.macrodroid.com").strip()
 
-# Détection de l'exécutable Chrome sous Windows
-CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-if not os.path.exists(CHROME_PATH):
-    CHROME_PATH = r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+# Configuration Google Chrome & CDP Headless (VPS / Local)
+JARVIS_VPS_CHROME_PROFILE = os.environ.get(
+    "JARVIS_VPS_CHROME_PROFILE",
+    os.path.expanduser("~/.jarvis_chrome_profile") if sys.platform != "win32" else os.path.join(BASE_DIR, ".jarvis_chrome_profile")
+).strip()
+JARVIS_CDP_HOST = os.environ.get("JARVIS_CDP_HOST", "127.0.0.1").strip()
+JARVIS_CDP_PORT = int(os.environ.get("JARVIS_CDP_PORT", "9222"))
+JARVIS_CDP_URL = os.environ.get("JARVIS_CDP_URL", f"http://{JARVIS_CDP_HOST}:{JARVIS_CDP_PORT}").strip()
+JARVIS_CHROME_BIN = os.environ.get("JARVIS_CHROME_BIN", "").strip()
+JARVIS_CHROME_HEADLESS = os.environ.get("JARVIS_CHROME_HEADLESS", "true").lower() in ("true", "1", "yes")
+
+# Détection de l'exécutable Chrome (Windows / Linux)
+if JARVIS_CHROME_BIN and os.path.exists(JARVIS_CHROME_BIN):
+    CHROME_PATH = JARVIS_CHROME_BIN
+elif sys.platform == "win32":
+    CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+    if not os.path.exists(CHROME_PATH):
+        CHROME_PATH = r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+else:
+    # Linux / VPS candidates
+    _linux_chrome_candidates = [
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/google-chrome",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium",
+        "/snap/bin/chromium",
+    ]
+    CHROME_PATH = next((p for p in _linux_chrome_candidates if os.path.exists(p)), "/usr/bin/chromium-browser")
 
 # Détection des clés GEMINI (plan gratuit + plan payant)
 if not os.environ.get("GEMINI_API_KEY"):

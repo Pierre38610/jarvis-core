@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.65.0 — GitHub Public Repository Preparation & Security Harmonization : Assainissement exhaustif des fichiers suivis par git, création de .env.example et nvs_jarvis.csv.example génériques, protection stricte des dumps binaires et tokens matériels dans .gitignore, suppression de l'index des fichiers scratchs/temporaires et dynamique multi-hôtes pour le déploiement.*
+> *Dernière révision majeure : Version 5.68.0 — Chrome CDP Persistant sur VPS & Autonomie L3 : Installation automatisée idempotente (scripts/setup_vps_chrome.sh), unité systemd dédiée (scripts/jarvis-chrome.service), profil persistant hors dépôt et paramétrage CDP dynamique.*
 
 
 ---
@@ -266,7 +266,7 @@ jarvis-core/
 │   ├── workspace_service.py             # Exploration et lecture seule stricte des projets locaux _anti_gravity (anti-traversal, filtres)
 │   └── architecture_service.py          # Hot-reload de ARCHITECTURE_COMPLETE_JARVIS.md et outil live query_jarvis_architecture
 │
-├── scripts/                             # install_agent_rules.py, quality_report.py, deploy_n8n_vps.py, setup_*.py, show_qr.py, try_browser_task.py, *.bat
+├── scripts/                             # setup_vps_chrome.sh, jarvis-chrome.service, install_agent_rules.py, quality_report.py, deploy_n8n_vps.py, setup_*.py, show_qr.py, try_browser_task.py, *.bat
 │
 ├── db/
 │   ├── schema.sql                       # Schéma PostgreSQL (conversations, memories, tier_routing_log, tool_call_metrics, patches)
@@ -357,7 +357,7 @@ jarvis-core/
 - **Ressources matérielles** : Architecture ARM64 (`aarch64` Ampere Altra), 4 cœurs virtuels OCPU, 24 Go de mémoire vive physique, stockage SSD NVMe.
 - **Système d'exploitation & Emplacement** : Ubuntu 22.04 LTS, répertoire applicatif `/home/opc/jarvis-core/`.
 - **Adresse IP publique** : `158.178.206.213`.
-- **Service systemd** : Géré via `jarvis.service` (`sudo systemctl restart jarvis`, logs : `journalctl -u jarvis -f`).
+- **Services systemd** : Géré via `jarvis.service` (`sudo systemctl restart jarvis`, logs : `journalctl -u jarvis -f`) et `jarvis-chrome.service` (Google Chrome Headless CDP sur le port 9222, script d'initialisation : `scripts/setup_vps_chrome.sh`, logs : `journalctl -u jarvis-chrome -f`).
 
 ### 2.3. Le PC Physique Windows 11 & Rôle Exécutant
 - **Rôle fonctionnel** : Exécutant matériel de bureau. Ne disposant d'aucun affichage graphique direct sur le VPS Cloud, toute opération nécessitant une interface visuelle à l'écran (ouvrir VS Code, manipuler Google Chrome avec sessions authentifiées, lancer un film dans Stremio, lancer Spotify Desktop ou détecter une liseuse branchée en USB) est déléguée à l'agent local.
@@ -1594,4 +1594,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.64.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.68.0.*

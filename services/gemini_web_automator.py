@@ -44,7 +44,7 @@ os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
 
 # ─── Constantes ───────────────────────────────────────────────────────────────
-CDP_URL = "http://localhost:9222"
+CDP_URL = getattr(config, "JARVIS_CDP_URL", os.environ.get("JARVIS_CDP_URL", "http://127.0.0.1:9222"))
 GEMINI_URL = "https://gemini.google.com/app"
 RESEARCH_POLL_INTERVAL = 5.0    # secondes entre chaque sonde de fin de recherche
 RESEARCH_MAX_WAIT = 1200.0      # 20 minutes max d'attente
