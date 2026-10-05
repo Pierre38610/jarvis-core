@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.73.0 — Intégration Finale & Validation de la Checklist VPS Deep Research L3 (Prompt P8) : Validation complète et déterministe de l'ensemble du cycle de vie Deep Research L3 (requête L3 -> health check Chrome VPS -> automateur CDP -> rapport -> affichage ou e-mail), couverture intégrale de tous les scénarios de repli (PC éteint, redémarrage automatique du service jarvis-chrome, session expirée avec erreur structurée L3ErrorDetails, bascule Map-Reduce Antigravity, résilience en cas d'échec SMTP), ajout d'une checklist opérationnelle VPS pas-à-pas (docs/VPS_L3_CHECKLIST.md) avec commandes réelles et matrice de dépannage rapide, test d'intégration mocké (tests/test_l3_integration_vps.py) et 597 tests unitaires et d'intégration 100% verts.*
+> *Dernière révision majeure : Version 5.74.0 — Exécution Automatisée de la Checklist VPS Deep Research L3 & Guide des Actions Manuelles Restantes : Exécution complète des étapes d'infrastructure sur le VPS Oracle Cloud aarch64 (Chromium 151, Xvfb, Playwright, service systemd jarvis-chrome actif sur le port CDP 9222, .env configuré, repli nominal validé), mise à disposition du script de synchronisation 1-clic deploy_gemini_session_to_vps.py / sync_gemini_session_to_vps.bat et du guide exhaustif des actions manuelles réservées à l'opérateur (docs/VPS_L3_ACTIONS_RESTANTES.md), 597 tests unitaires 100% verts.*
 
 
 ---
@@ -1596,4 +1596,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.73.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.74.0.*

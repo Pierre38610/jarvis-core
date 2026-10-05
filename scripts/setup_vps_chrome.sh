@@ -150,9 +150,9 @@ elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
     info "Installation des dépendances système Chromium / Xvfb via ${YUM_CMD}..."
     $SUDO_CMD $YUM_CMD install -y -q "${RPM_PKGS[@]}" || true
 
-    if ! command -v chromium >/dev/null 2>&1 && ! command -v google-chrome >/dev/null 2>&1; then
+    if ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1 && ! command -v google-chrome >/dev/null 2>&1; then
         info "Tentative d'installation de Chromium..."
-        $SUDO_CMD $YUM_CMD install -y -q chromium || true
+        $SUDO_CMD $YUM_CMD --enablerepo=ol9_developer_EPEL install -y -q chromium 2>/dev/null || $SUDO_CMD $YUM_CMD install -y -q chromium || true
     fi
 else
     warn "Gestionnaire de paquets non standard. Assurez-vous que Xvfb, Chromium et les bibliothèques partagées sont installés."
@@ -193,9 +193,12 @@ CANDIDATE_BINS=(
     "/usr/bin/google-chrome"
     "/usr/bin/chromium-browser"
     "/usr/bin/chromium"
+    "/usr/lib64/chromium-browser/chromium-browser"
     "/snap/bin/chromium"
     "${TARGET_HOME}/.cache/ms-playwright/chromium-*/chrome-linux/chrome"
+    "${TARGET_HOME}/.cache/ms-playwright/chromium-*/chrome-linux-arm64/chrome"
     "/root/.cache/ms-playwright/chromium-*/chrome-linux/chrome"
+    "/root/.cache/ms-playwright/chromium-*/chrome-linux-arm64/chrome"
 )
 
 for cand in "${CANDIDATE_BINS[@]}"; do
