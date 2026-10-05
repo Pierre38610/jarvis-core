@@ -12,6 +12,7 @@ import subprocess
 import tarfile
 import tempfile
 import time
+from typing import Optional
 import paramiko
 
 if sys.platform == "win32":
@@ -28,12 +29,38 @@ USER = "opc"
 
 EXCLUDE_DIRS = {
     "venv", ".git", ".jarvis_chrome_profile", ".jarvis_shopping_profile",
-    ".browseruse", ".antigravity_save", "downloads", "__pycache__", "clés ssh", "my-project",
+    ".browseruse", ".antigravity_save", "downloads", "__pycache__", "clés ssh", "cles ssh", "my-project",
     "releases", "current", ".cache", ".pytest_cache", "build", "managed_components"
 }
 EXCLUDE_FILES = {
     "cloudflared.exe", "jarvis_memory.db", ".env"
 }
+
+
+def resolve_ssh_key() -> Optional[str]:
+    """Recherche la clé SSH privée dans les emplacements locaux standards et ~/.ssh/."""
+    candidate_paths = [
+        os.path.join(BASE_DIR, r"clés ssh\ssh-key-2026-09-25.key"),
+        os.path.join(BASE_DIR, r"cles ssh\ssh-key-2026-09-25.key"),
+        os.path.join(BASE_DIR, "ssh-key-2026-09-25.key"),
+        os.path.expanduser(r"~/.ssh/ssh-key-2026-09-25.key"),
+        os.path.expanduser(r"~/.ssh/id_rsa"),
+        os.path.expanduser(r"~/.ssh/id_ed25519"),
+    ]
+    for p in candidate_paths:
+        if os.path.exists(p):
+            return p
+    ssh_dir = os.path.expanduser("~/.ssh")
+    if os.path.exists(ssh_dir):
+        try:
+            for f in os.listdir(ssh_dir):
+                if f.endswith((".key", ".pem")) or "oracle" in f.lower() or "vps" in f.lower():
+                    full_p = os.path.join(ssh_dir, f)
+                    if os.path.isfile(full_p):
+                        return full_p
+        except Exception:
+            pass
+    return None
 
 
 def git_commit_and_push(commit_msg: str):
@@ -84,16 +111,17 @@ def deploy_to_vps():
         sz_kb = os.path.getsize(archive_path) / 1024
         print(f"  [✔] Archive générée : {sz_kb:.1f} Ko", flush=True)
 
-        if not os.path.exists(KEY_PATH):
-            print(f"\n[3/3] ⚠️ Clé SSH introuvable ({KEY_PATH}).")
+        key_path = resolve_ssh_key()
+        if not key_path:
+            print(f"\n[3/3] ⚠️ Clé SSH introuvable.")
+            print("  [*] Veuillez placer votre clé privée dans 'clés ssh/ssh-key-2026-09-25.key' (dossier ignoré par git) ou dans '~/.ssh/'.")
             print("  [*] Le code a été commité et synchronisé sur GitHub (git push origin main).")
-            print("  [*] Le déploiement direct VPS SFTP est ignoré tant que la clé SSH n'est pas présente.")
             return
 
         print(f"\n[3/3] Connexion au VPS ({HOST}) & déploiement...", flush=True)
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(hostname=HOST, username=USER, key_filename=KEY_PATH, timeout=15)
+        client.connect(hostname=HOST, username=USER, key_filename=key_path, timeout=15)
 
         # Upload
         sftp = client.open_sftp()
