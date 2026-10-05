@@ -349,7 +349,9 @@ class TestResearchCompletionPolling(unittest.IsolatedAsyncioTestCase):
             else:
                 if ".spinner" in selector or ".thinking" in selector:
                     return make_locator_mock(count=0)
-                return make_locator_mock(count=1)
+                if "model-response" in selector or ".final-response" in selector or "response" in selector:
+                    return make_locator_mock(count=1)
+                return make_locator_mock(count=0)
 
         page = make_page_mock()
         page.locator = MagicMock(side_effect=mock_locator)

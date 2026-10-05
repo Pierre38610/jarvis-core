@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.69.0 — Gestionnaire Python Chrome VPS & Health Check CDP (services/vps_chrome.py) : API Python robuste ensure_chrome_running, health check explicite port 9222 (/json/version), relance systemd sécurisée, intégration L3ErrorDetails sans secret et intégration GeminiWebAutomator.*
+> *Dernière révision majeure : Version 5.70.0 — Documentation & Persistance Session Google VPS (P5) : Procédure VNC / migration sécurisée PC→VPS (docs/VPS_GOOGLE_SESSION_SETUP.md), vérificateur de session CLI (scripts/check_gemini_session.py) & services/vps_chrome.check_gemini_session(), résilience UIMapManager DEFAULT_UI_MAP si data/gemini_ui_map.json absent ou vide, zéro secret logué.*
 
 
 ---
@@ -268,16 +268,16 @@ jarvis-core/
 │   ├── workspace_service.py             # Exploration et lecture seule stricte des projets locaux _anti_gravity (anti-traversal, filtres)
 │   └── architecture_service.py          # Hot-reload de ARCHITECTURE_COMPLETE_JARVIS.md et outil live query_jarvis_architecture
 │
-├── scripts/                             # setup_vps_chrome.sh, jarvis-chrome.service, install_agent_rules.py, quality_report.py, deploy_n8n_vps.py, setup_*.py, show_qr.py, try_browser_task.py, *.bat
+├── scripts/                             # setup_vps_chrome.sh, check_gemini_session.py, jarvis-chrome.service, install_agent_rules.py, quality_report.py, deploy_n8n_vps.py, setup_*.py, show_qr.py, try_browser_task.py, *.bat
 │
 ├── db/
 │   ├── schema.sql                       # Schéma PostgreSQL (conversations, memories, tier_routing_log, tool_call_metrics, patches)
 │   ├── spotify_schema.sql               # Tables SQLite des tokens OAuth Spotify
 │   └── migrations/001_create_tool_call_metrics.sql
-├── docs/                                # BROWSER_AGENT_SPEC.md, N8N_GUIDE.md, n8n_workflows/*.json (documents_suite, time_and_briefing, train_monitoring)
+├── docs/                                # VPS_GOOGLE_SESSION_SETUP.md, BROWSER_AGENT_SPEC.md, N8N_GUIDE.md, n8n_workflows/*.json (documents_suite, time_and_briefing, train_monitoring)
 ├── static/                              # HUD PWA Stark Industries (index.html, app.js, style.css, manifest.json, SVG/PNG, latest_screenshot.jpg, tunnel_url.json)
-├── data/                                # site_memory/<domain>.json (parcours web réussis), gemini_ui_map.json, migration_reports/
-└── tests/                               # 37 modules pytest racine + tests/unit/ (20) + tests/e2e/ (2: test_live_scenarios.py, test_cognitive_e2e_pipeline.py), conftest.py, run_all_tests.py (540 tests vérifiés), dossiers scratch : tests/scratch_healing/, tests/_test_scratch/)
+├── data/                                # site_memory/<domain>.json (parcours web réussis), gemini_ui_map.json (avec repli DEFAULT_UI_MAP), migration_reports/
+└── tests/                               # 41 modules pytest racine + tests/unit/ (20) + tests/e2e/ (2: test_live_scenarios.py, test_cognitive_e2e_pipeline.py), conftest.py, run_all_tests.py (571 tests vérifiés), dossiers scratch : tests/scratch_healing/, tests/_test_scratch/)
 ```
 
 ---
@@ -996,14 +996,14 @@ Le système dispose de deux moteurs de Deep Research sélectionnés intelligemme
 #### Moteur A (Prioritaire) : Navigation Autonome Gemini Web (`services/browser_agent/` - Recette `gemini_deep_research` & `services/gemini_web_automator.py`)
 - **Principe** : Pilotage autonome de `https://gemini.google.com/app` via l'agent `browser_task` et l'automateur `gemini_web_automator.py` sur le Chrome connecté de l'utilisateur (port CDP 9222).
 - **Machine à États L3 Robuste & Tolérante au Drift** :
-  1. *Contrôle de Session Google (`CHECK_LOGIN`)* : Vérification proactive de l'état d'authentification (`_check_login_state`). Détection des indicateurs de connexion réussie (avatar utilisateur, sélecteur de modèle) et des pages d'authentification (`accounts.google.com`, bouton "Connexion"). En cas de session déconnectée, génération d'une erreur actionnable immédiate sans tentative de clic aveugle.
-  2. *Saisie Résiliente & Sélecteurs Accessibles ARIA* : Utilisation prioritaire des sélecteurs sémantiques et rôles ARIA (`get_by_role("textbox")`, `get_by_text()`, sélecteurs de contenu `contenteditable` / placeholder "Demandez à Gemini") combinés à la cartographie dynamique `data/gemini_ui_map.json` pour absorber sans rupture les mises à jour DOM de l'interface Google.
+  1. *Contrôle de Session Google & Diagnostic Dédié (`CHECK_LOGIN`)* : Vérification proactive de l'état d'authentification (`_check_login_state` et `services/vps_chrome.check_gemini_session()`). Détection des indicateurs de connexion réussie (avatar utilisateur, sélecteur de modèle) et des pages d'authentification (`accounts.google.com`, bouton "Connexion"). Outil CLI dédié `scripts/check_gemini_session.py` (codes de retour standardisés : 0=actif, 1=login requis, 2=erreur CDP) documenté dans `docs/VPS_GOOGLE_SESSION_SETUP.md`.
+  2. *Saisie Résiliente & Repli par Défaut (`DEFAULT_UI_MAP`)* : Utilisation prioritaire des sélecteurs sémantiques et rôles ARIA (`get_by_role("textbox")`, `get_by_text()`, sélecteurs de contenu `contenteditable` / placeholder "Demandez à Gemini") combinés à la cartographie dynamique `data/gemini_ui_map.json`. En cas d'absence du fichier ou de contenu vide (`{"actions": {}}`), `UIMapManager` bascule automatiquement sur le dictionnaire de repli `DEFAULT_UI_MAP` sans blocage ni panne silencieuse.
   3. *Validation Déterministe du Plan de Recherche (`CONFIRM_PLAN`)* : Détection et clic automatique sur le bouton de confirmation de plan de recherche approfondie (`_confirm_research_plan` : `plan_confirmation_button`, `Démarrer la recherche`, `Lancer la recherche`), avec repli DOM vérifié.
   4. *Polling Asynchrone Non-Bloquant (`POLL_COMPLETION`)* : Surveillance cadencée de la génération en tâche de fond (`_poll_completion`) sans gel du thread principal ni du flux vocal. Détection des marqueurs de progression, des conteneurs de résultats terminés et des indicateurs d'erreurs éventuels.
   5. *Extraction Intégrale Markdown & Canvas Interactif* : Extraction textuelle fidèle du rapport final (`extract_result`), incluant les sections Markdown complètes, les citations de sources web, et les composants interactifs Canvas le cas échéant.
   6. *Persistance Sécurisée des Fichiers* : Sauvegarde déterministe et persistante des rapports au format `.md` et `.html` dans `downloads/` et `artifacts/` (`_save_report_file`), protégée contre le path traversal (`os.path.abspath` confiné au workspace) avec contrôle strict de non-vacuité (`os.path.getsize > 0`).
   7. *Routage Intelligent de Livraison & Acquittement* : Livraison locale à l'écran (`deliver_result`) via `jarvis_local_agent` (`browser_open_task` / `open_browser`) avec acquittement formel (`acknowledged=True`). En cas de PC hors-ligne ou d'absence, bascule automatique vers l'expédition SMTP HTML via `email_service` vers `pierrecassagnettes@gmail.com`.
-  8. *Capture Post-Mortem d'Erreur* : En cas d'anomalie ou d'obstacle DOM non résolu, capture automatique d'un screenshot JPEG horodaté (`_capture_screenshot`) pour diagnostic SRE instantané.
+  8. *Capture Post-Mortem d'Erreur & Structure L3ErrorDetails* : En cas d'anomalie ou d'obstacle DOM non résolu, capture automatique d'un screenshot JPEG horodaté (`_capture_screenshot`) et transmission de la structure `L3ErrorDetails` (P2) pour diagnostic SRE instantané.
 - **Point d'Entrée Unifié** : `services/deep_research_service.launch_deep_research_gemini_web(topic, live_session=None, use_legacy_engine=False)` encapsule ce Moteur A : elle instancie `BrowserTask(task_id="bt_dr_<ms>", goal=topic, recipe="gemini_deep_research")`, exécute `await run_browser_task(task)` et retourne `{"status": "success", "task_id": str, "result": dict}` en cas de succès, sinon `{"status": "error", "error": str, "fallback": "legacy"}`. Avec `use_legacy_engine=True`, elle court-circuite le Browser Agent vers le Moteur B (`{"status": "legacy_engine"}`).
 
 #### Moteur B (Repli) : Pipeline Map-Reduce VPS (`services/deep_research_service.py`)
@@ -1596,4 +1596,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.68.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.70.0.*

@@ -349,3 +349,204 @@ async def ensure_chrome_running(
         "error": err_msg,
         "l3_error": l3_err.to_dict(),
     }
+
+
+# ─── Détection de Session Google / Gemini (P5) ───────────────────────────────
+
+LOGIN_INDICATOR_SELECTORS = [
+    "a:has-text('Sign in')",
+    "a:has-text('Connexion')",
+    "button:has-text('Sign in')",
+    "button:has-text('Connexion')",
+    "[href*='accounts.google.com']",
+    "input[type='email']",
+    "input[name='identifier']",
+]
+
+GEMINI_ACTIVE_SELECTORS = [
+    "rich-textarea",
+    "div[contenteditable='true'][role='textbox']",
+    "button[aria-label*='Deep Research' i]",
+    "button[aria-label*='Recherche approfondie' i]",
+    "[data-test-id='text-input']",
+    "model-response",
+    "chat-window",
+]
+
+
+async def check_gemini_session(
+    cdp_url: Optional[str] = None,
+    timeout: float = 15.0,
+    browser_connector: Optional[Callable] = None,
+    navigate_if_needed: bool = True,
+) -> Dict[str, Any]:
+    """
+    Vérifie si une session Google / Gemini Web est active et authentifiée sur Chrome CDP (P5).
+    Ne tente aucune saisie de mot de passe, ni validation de formulaire ou de MFA.
+    Ne logue et n'expose jamais de cookies, tokens ou identifiants.
+
+    Retourne un dict structuré :
+      {
+        "ok": bool,              # True si la session est active, False sinon
+        "status": str,           # 'active' | 'login_required' | 'unavailable' | 'unknown' | 'error'
+        "exit_code": int,        # 0 (active), 1 (login requis/inconnu), 2 (CDP indisponible/erreur)
+        "message": str,          # Message utilisateur explicatif
+        "current_url": Optional[str],
+        "error": Optional[str],
+      }
+    """
+    target_url = get_effective_cdp_url(cdp_url)
+    logger.info(f"[VPSChrome] Vérification de la session Google Gemini sur {target_url}...")
+
+    # 1. Vérification de santé CDP préalable
+    is_healthy, _ = await check_cdp_health(cdp_url=target_url, timeout=min(timeout, 3.0))
+    if not is_healthy:
+        msg = f"Chrome CDP inaccessible sur {target_url}. Assurez-vous que le service systemd est actif."
+        logger.warning(f"[VPSChrome] [Session Gemini] {msg}")
+        return {
+            "ok": False,
+            "status": "unavailable",
+            "exit_code": 2,
+            "message": msg,
+            "current_url": None,
+            "error": "Chrome CDP unreachable",
+        }
+
+    pw_instance = None
+    browser_instance = None
+    created_page = False
+
+    try:
+        # 2. Connexion Playwright CDP
+        if browser_connector is not None:
+            if asyncio.iscoroutinefunction(browser_connector):
+                browser_instance = await browser_connector(target_url)
+            else:
+                browser_instance = browser_connector(target_url)
+        else:
+            from playwright.async_api import async_playwright
+            pw_instance = await async_playwright().start()
+            browser_instance = await pw_instance.chromium.connect_over_cdp(target_url)
+
+        contexts = getattr(browser_instance, "contexts", [])
+        if contexts:
+            ctx = contexts[0]
+        elif hasattr(browser_instance, "new_context"):
+            ctx = await browser_instance.new_context()
+        else:
+            ctx = None
+
+        page = None
+        if ctx and hasattr(ctx, "pages"):
+            for p in ctx.pages:
+                p_url = getattr(p, "url", "")
+                if "gemini.google.com" in p_url or "accounts.google.com" in p_url:
+                    page = p
+                    break
+
+        if not page and ctx and hasattr(ctx, "new_page") and navigate_if_needed:
+            page = await ctx.new_page()
+            created_page = True
+            if hasattr(page, "goto"):
+                await page.goto(
+                    "https://gemini.google.com/app",
+                    wait_until="domcontentloaded",
+                    timeout=int(timeout * 1000),
+                )
+                if hasattr(page, "wait_for_timeout"):
+                    await page.wait_for_timeout(1500)
+
+        if not page:
+            msg = "Aucun onglet de navigation n'a pu être inspecté."
+            return {
+                "ok": False,
+                "status": "error",
+                "exit_code": 2,
+                "message": msg,
+                "current_url": None,
+                "error": msg,
+            }
+
+        curr_url = getattr(page, "url", "") or ""
+        safe_url = sanitize_error_text(curr_url)
+
+        # 3. Détection de page d'authentification Google
+        if "accounts.google.com" in curr_url.lower():
+            msg = "Connexion Google requise : redirection vers accounts.google.com détectée."
+            logger.info(f"[VPSChrome] [Session Gemini] {msg}")
+            return {
+                "ok": False,
+                "status": "login_required",
+                "exit_code": 1,
+                "message": msg,
+                "current_url": safe_url,
+                "error": None,
+            }
+
+        # 4. Détection d'indicateurs de connexion dans le DOM
+        login_detected = False
+        if hasattr(page, "locator"):
+            for sel in LOGIN_INDICATOR_SELECTORS:
+                try:
+                    loc = page.locator(sel)
+                    if hasattr(loc, "count") and await loc.count() > 0:
+                        login_detected = True
+                        break
+                except Exception:
+                    pass
+
+        if login_detected:
+            msg = "Connexion Google requise : bouton ou formulaire de connexion détecté sur l'interface."
+            logger.info(f"[VPSChrome] [Session Gemini] {msg}")
+            return {
+                "ok": False,
+                "status": "login_required",
+                "exit_code": 1,
+                "message": msg,
+                "current_url": safe_url,
+                "error": None,
+            }
+
+        # 5. Détection d'interface Gemini active
+        if "gemini.google.com" in curr_url.lower():
+            msg = "Session Google Gemini active et authentifiée."
+            logger.info(f"[VPSChrome] [Session Gemini] ✔ {msg}")
+            return {
+                "ok": True,
+                "status": "active",
+                "exit_code": 0,
+                "message": msg,
+                "current_url": safe_url,
+                "error": None,
+            }
+
+        # 6. Page inconnue
+        msg = f"Page non reconnue sur {safe_url} (attendu: gemini.google.com)."
+        logger.warning(f"[VPSChrome] [Session Gemini] ⚠️ {msg}")
+        return {
+            "ok": False,
+            "status": "unknown",
+            "exit_code": 1,
+            "message": msg,
+            "current_url": safe_url,
+            "error": None,
+        }
+
+    except Exception as e:
+        safe_err = sanitize_error_text(str(e))
+        msg = f"Erreur lors de la vérification de session Gemini : {safe_err}"
+        logger.error(f"[VPSChrome] [Session Gemini] ❌ {msg}")
+        return {
+            "ok": False,
+            "status": "error",
+            "exit_code": 2,
+            "message": msg,
+            "current_url": None,
+            "error": safe_err,
+        }
+    finally:
+        if pw_instance and hasattr(pw_instance, "stop"):
+            try:
+                await pw_instance.stop()
+            except Exception:
+                pass

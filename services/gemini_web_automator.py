@@ -53,6 +53,175 @@ DOM_FALLBACK_TIMEOUT = 6000     # ms pour les localisations DOM de repli
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Carte d'Interface Par Défaut (Repli Résilient si gemini_ui_map.json est absent ou vide)
+# ──────────────────────────────────────────────────────────────────────────────
+
+DEFAULT_UI_MAP: Dict[str, Dict[str, Any]] = {
+    "deep_research_button": {
+        "x": 120,
+        "y": 720,
+        "description": "Bouton acces au mode Deep Research dans la barre d'outils Gemini",
+        "fallback_selectors": [
+            "[aria-label*='Deep Research' i]",
+            "[aria-label*='Recherche approfondie' i]",
+            "button:has-text('Deep Research')",
+            "button:has-text('Recherche approfondie')",
+            "[data-test-id='deep-research-button']",
+            "mat-icon[fonticon='manage_search']",
+            "[class*='deep-research']",
+            "button[jsname*='research' i]",
+        ],
+        "validation": {
+            "selector": "[aria-label*='Deep Research' i][aria-pressed='true'], [class*='deep-research'][class*='active']",
+            "description": "Mode Deep Research active",
+        },
+    },
+    "prompt_textarea": {
+        "x": 760,
+        "y": 720,
+        "description": "Champ de saisie principal de Gemini",
+        "fallback_selectors": [
+            "rich-textarea [contenteditable='true']",
+            "div[contenteditable='true'][role='textbox']",
+            "textarea[placeholder*='Gemini' i]",
+            "textarea[aria-label*='message' i]",
+            "[data-test-id='text-input']",
+            ".ql-editor[contenteditable='true']",
+            "p[data-placeholder]",
+        ],
+        "validation": {
+            "selector": "rich-textarea [contenteditable='true'], div[contenteditable='true'][role='textbox']",
+            "description": "Champ de texte actif",
+        },
+    },
+    "send_button": {
+        "x": 1200,
+        "y": 720,
+        "description": "Bouton d'envoi de la requete",
+        "fallback_selectors": [
+            "button[aria-label*='Envoyer' i]",
+            "button[aria-label*='Send' i]",
+            "[class*='send'][role='button']",
+        ],
+        "validation": {
+            "selector": "[class*='thinking'], [class*='loading'], [class*='generating'], [aria-label*='stop' i]",
+            "description": "Indicateur de generation en cours",
+        },
+    },
+    "research_completion": {
+        "x": None,
+        "y": None,
+        "description": "Detecteur fin de recherche Deep Research (polling DOM uniquement)",
+        "fallback_selectors": [
+            "model-response",
+            "[class*='response-container']",
+            "[class*='final-response']",
+            "[class*='deep-research-result']",
+            "message-content",
+            "[data-test-id='response-container']",
+        ],
+        "absence_selectors": [
+            "[class*='thinking']",
+            "[class*='loading']",
+            "[class*='generating']",
+            "[aria-label*='stop' i]",
+            ".spinner",
+        ],
+        "validation": {
+            "selector": "model-response, [class*='final-response']",
+            "description": "Rapport final present",
+        },
+    },
+    "create_webpage_button": {
+        "x": 760,
+        "y": 650,
+        "description": "Bouton Creer une page web dans la reponse Gemini",
+        "fallback_selectors": [
+            "button:has-text('Create a web page')",
+            "button:has-text('Creer une page web')",
+            "[aria-label*='page web' i]",
+            "[aria-label*='webpage' i]",
+            "[aria-label*='canvas' i]",
+            "button[class*='artifact']",
+            "button[class*='canvas']",
+        ],
+        "validation": {
+            "selector": "[class*='canvas-container'], iframe[title*='canvas' i], [class*='artifact-container']",
+            "description": "Canvas ou iframe de la page web generee",
+        },
+    },
+    "webpage_url": {
+        "x": None,
+        "y": None,
+        "description": "URL de la page web Canvas Gemini (extraite du DOM)",
+        "fallback_selectors": [
+            "iframe[src*='gemini']",
+            "iframe[src*='canvas']",
+            "a[href*='g.co/canvas']",
+            "[class*='artifact-link']",
+        ],
+        "validation": {
+            "selector": "iframe[src], a[href*='canvas']",
+            "description": "Iframe ou lien de la page web generee",
+        },
+    },
+    "plan_confirmation_button": {
+        "x": 760,
+        "y": 600,
+        "description": "Bouton pour confirmer et lancer le plan de recherche Deep Research",
+        "fallback_selectors": [
+            "button:has-text('Start research')",
+            "button:has-text('Démarrer la recherche')",
+            "button:has-text('Confirmer le plan')",
+            "button:has-text('Lancer la recherche')",
+            "button:has-text('Start')",
+            "[aria-label*='Start research' i]",
+            "[aria-label*='Démarrer la recherche' i]",
+            "[data-test-id='start-research-button']",
+        ],
+        "validation": {
+            "selector": "[class*='thinking'], [class*='generating'], [class*='loading'], [aria-label*='stop' i], .spinner",
+            "description": "Génération Deep Research engagée post-plan",
+        },
+    },
+    "login_indicator": {
+        "x": None,
+        "y": None,
+        "description": "Indicateurs d'écran de connexion requise",
+        "fallback_selectors": [
+            "a:has-text('Sign in')",
+            "a:has-text('Connexion')",
+            "button:has-text('Sign in')",
+            "button:has-text('Connexion')",
+            "[href*='accounts.google.com']",
+            "input[type='email']",
+            "input[name='identifier']",
+        ],
+        "validation": {
+            "selector": "[href*='accounts.google.com'], input[type='email']",
+            "description": "Page de connexion Google affichée",
+        },
+    },
+    "error_indicator": {
+        "x": None,
+        "y": None,
+        "description": "Indicateurs d'erreur ou d'anomalie de génération",
+        "fallback_selectors": [
+            "[class*='error-message']",
+            "[class*='error-banner']",
+            "[class*='snackbar'][class*='error']",
+            "div:has-text('Une erreur est survenue')",
+            "div:has-text('Something went wrong')",
+        ],
+        "validation": {
+            "selector": "[class*='error-message'], [class*='error-banner']",
+            "description": "Message d'erreur affiché dans l'UI",
+        },
+    },
+}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Gestionnaire de la carte UI persistante
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -65,7 +234,7 @@ class UIMapManager:
         self._load()
 
     def _load(self) -> None:
-        """Charge le JSON depuis le disque."""
+        """Charge le JSON depuis le disque ou initialise une structure par défaut."""
         try:
             if os.path.exists(self._path):
                 with open(self._path, "r", encoding="utf-8") as f:
@@ -86,8 +255,20 @@ class UIMapManager:
             logger.error(f"[UIMap] Échec de sauvegarde : {e}")
 
     def get_action(self, action_name: str) -> Dict[str, Any]:
-        """Retourne la définition mémorisée d'une action (coordonnées + sélecteurs)."""
-        return self._data.get("actions", {}).get(action_name, {})
+        """Retourne la définition mémorisée d'une action (coordonnées + sélecteurs), avec repli par défaut."""
+        action = self._data.get("actions", {}).get(action_name, {})
+        default_def = DEFAULT_UI_MAP.get(action_name, {})
+        if not action:
+            return default_def
+        merged = dict(default_def)
+        merged.update(action)
+        if not merged.get("fallback_selectors") and default_def.get("fallback_selectors"):
+            merged["fallback_selectors"] = default_def["fallback_selectors"]
+        if not merged.get("validation") and default_def.get("validation"):
+            merged["validation"] = default_def["validation"]
+        if not merged.get("absence_selectors") and default_def.get("absence_selectors"):
+            merged["absence_selectors"] = default_def["absence_selectors"]
+        return merged
 
     def update_coordinates(self, action_name: str, x: float, y: float) -> None:
         """Met à jour les coordonnées mémorisées après recalcul DOM et sauvegarde."""
