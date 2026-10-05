@@ -16,7 +16,7 @@ from google.genai import types
 
 import config
 logger = logging.getLogger("jarvis.dispatcher")
-from google_antigravity import resolve_antigravity_model, is_stop_directive
+from google_antigravity import resolve_antigravity_model, is_stop_directive, _sanitize_secrets
 from services.google_antigravity import (
     MODEL_FLASH,
     MODEL_PRO,
@@ -85,6 +85,24 @@ from services.key_gate import (
     grant_paid_consent,
     consume_paid_consent,
 )
+
+
+def _is_explicit_l3_research_request(query: str) -> bool:
+    """Distinguish an L3 research request from generic deep reasoning."""
+    normalized = str(query or "").lower()
+    return any(
+        marker in normalized
+        for marker in (
+            "recherche de niveau 3",
+            "recherche niveau 3",
+            "recherche l3",
+            "deep research",
+            "recherche approfondie",
+            "étude de marché",
+            "cartographie",
+            "sources exhaustives",
+        )
+    )
 from core.tools.verifier import (
     verify_email_sent,
     verify_presentation_slides,
@@ -345,9 +363,11 @@ async def dispatch_tool(
             return res
 
         status = "failure"
+        detail = _sanitize_secrets(str(exc)).strip() or exc.__class__.__name__
         tool_result = ToolResult.failed(
-            user_message=f"L'outil '{name}' a rencontré une erreur d'exécution.",
-            error_hint=str(exc)
+            user_message=f"L'outil '{name}' a rencontré une erreur d'exécution : {detail}",
+            error_hint=detail,
+            data={"exception_type": exc.__class__.__name__},
         )
         res = tool_result.to_dict()
         logger.info(
@@ -490,8 +510,13 @@ async def _execute_dispatch_tool(
         if tier is None:
             if effort_override in ("low", "rapide", "min", "tier1", "tier 1") or (model_override and "flash" in str(model_override).lower()):
                 tier = 1
+            elif effort_override in ("high", "approfondie", "max", "tier3", "tier 3") or (
+                model_override and "pro" in str(model_override).lower()
+            ):
+                tier = 3
             else:
-                tier = 2
+                tier = int(active_task_controller.get("current_cognitive_level") or 2)
+                tier = max(1, min(3, tier))
 
         cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
         if not cli_ok:
@@ -583,11 +608,31 @@ async def _execute_dispatch_tool(
         effort_override = args.get("effort_override") or args.get("intensite_reflexion")
         tier_arg = args.get("tier")
         tier = int(tier_arg) if tier_arg is not None else None
+        search_route = route_search_intent(question)
+        if tier is None and search_route.level == "L3" and _is_explicit_l3_research_request(question):
+            logger.info(
+                "[Dispatcher] Redirection automatique de ask_deep_reasoning vers "
+                "launch_deep_research pour une intention L3 : '%s'",
+                question,
+            )
+            return await dispatch_tool(
+                name="launch_deep_research",
+                args={"consigne": question, "sync": args.get("sync", False)},
+                websocket=websocket,
+                session=session,
+                is_paid_live=is_paid_live,
+                live_display_label=live_display_label,
+            )
         if tier is None:
             if effort_override in ("rapide", "low", "min", "tier1", "tier 1") or (model_override and "flash" in str(model_override).lower()):
                 tier = 1
+            elif effort_override in ("approfondie", "high", "max", "tier3", "tier 3") or (
+                model_override and "pro" in str(model_override).lower()
+            ):
+                tier = 3
             else:
-                tier = 2
+                tier = int(active_task_controller.get("current_cognitive_level") or 2)
+                tier = max(1, min(3, tier))
 
         cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
         if not cli_ok:
@@ -3544,6 +3589,3 @@ async def _execute_dispatch_tool(
 # Aliases pratiques pour les tests et modules tiers
 dispatch_tool_call = dispatch_tool
 execute_tool = dispatch_tool
-
-
-

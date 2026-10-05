@@ -377,6 +377,55 @@ async def test_dispatcher_search_web_redirects_to_l3():
 
 
 @pytest.mark.asyncio
+async def test_dispatcher_ask_deep_reasoning_redirects_l3_research_to_deep_research():
+    """Une demande de recherche L3 ne doit pas retomber sur le pipeline de raisonnement L2."""
+    from core.tools.dispatcher import dispatch_tool
+    from core.tools.result import ToolResult
+
+    fake_browser_res = ToolResult.done(
+        user_message="Synthèse L3",
+        evidence="recipe gemini_deep_research",
+        verified=True,
+    )
+
+    with patch("core.tools.dispatcher.run_browser_agent_task", new_callable=AsyncMock, return_value=fake_browser_res) as mock_browser:
+        resp = await dispatch_tool(
+            name="ask_deep_reasoning",
+            args={"question": "Fais une recherche de niveau 3 sur l'IA quantique", "sync": True},
+            websocket=None,
+            session=None,
+        )
+
+    assert resp["status"] == "done"
+    mock_browser.assert_awaited_once()
+    task = mock_browser.await_args.kwargs.get("task") or mock_browser.await_args.args[0]
+    assert task.recipe == "gemini_deep_research"
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_exposes_sanitized_execution_error_detail():
+    """Le retour vocal doit contenir le motif technique, sans exposer de secret."""
+    from core.tools.dispatcher import dispatch_tool
+
+    with patch(
+        "core.tools.dispatcher._execute_dispatch_tool",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("connexion refusée vers le serveur de recherche"),
+    ):
+        resp = await dispatch_tool(
+            name="test_tool",
+            args={},
+            websocket=None,
+            session=None,
+        )
+
+    assert resp["status"] == "failed"
+    assert "connexion refusée" in resp["user_message"]
+    assert "serveur de recherche" in resp["user_message"]
+    assert resp["error_hint"] == resp["user_message"].split(" : ", 1)[1]
+
+
+@pytest.mark.asyncio
 async def test_dispatcher_launch_deep_research_non_blocking_returns_started():
     """Vérifie que launch_deep_research retourne instantanément ToolResult.started (non-bloquant)."""
     from core.tools.dispatcher import dispatch_tool
@@ -430,6 +479,3 @@ async def test_dispatcher_launch_deep_research_bg_failure_injects_voice():
         mock_enqueue.assert_awaited()
         call_kwargs = mock_enqueue.await_args.kwargs
         assert "n'a pas pu aboutir" in call_kwargs.get("text", "") or "échoué" in call_kwargs.get("text", "")
-
-
-

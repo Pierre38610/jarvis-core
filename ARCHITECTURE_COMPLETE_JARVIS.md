@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.63.0 — Deep Research L3 Deterministic Routing & Error Traceability Fix : Renforcement du routage déterministe L3 (résilience aux fautes de frappe vocales "nievau 3", redirection automatique systématique de browser_task/search_web vers launch_deep_research), élimination de la fausse recette gemini_deep_research des déclarations de browser_task, et injection vocale systématique de l'explication d'erreur en arrière-plan via VoiceInjectionQueue (élimination du message opaque "erreur système sans pouvoir la détailler").*
+> *Dernière révision majeure : Version 5.64.0 — L3 Tool Enforcement & Diagnostic Detail : Une intention de recherche L3 redirige aussi l'outil générique ask_deep_reasoning vers launch_deep_research, les outils agentiques reprennent le niveau cognitif courant, et les erreurs d'exécution restituent désormais leur détail technique assaini.*
 
 
 ---
@@ -1594,4 +1594,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.62.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.64.0.*
