@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.61.0 — Live Thinking Level, L3 Deterministic Routing & Non-Blocking Deep Research : Configuration explicite de thinking_level pour l'API Gemini Live, routage L3 robuste et prioritaire empêchant toute confusion L2, exécution asynchrone non-bloquante des missions Deep Research préservant la fluidité du canal vocal.*
+> *Dernière révision majeure : Version 5.62.0 — Live Session Fix & Dynamic System Instruction Binding : Résolution du NameError sur system_instruction_text dans _establish_live_session par liaison dynamique asynchrone avec _build_system_instruction(), fiabilisant la connexion audio bidirectionnelle Gemini Live sur /ws et /ws/device.*
 
 
 ---
@@ -1594,4 +1594,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.54.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.62.0.*

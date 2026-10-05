@@ -233,8 +233,11 @@ async def _build_system_instruction() -> str:
 
 
 
-async def _establish_live_session(model: str, client_to_use):
+async def _establish_live_session(model: str, client_to_use, system_instruction_text: str = None):
     """Établit une session Gemini Live avec la config JARVIS complète (voix Aoede, outils, instruction système)."""
+    if not system_instruction_text:
+        system_instruction_text = await _build_system_instruction()
+
     thinking_level_val = getattr(types.ThinkingLevel, "HIGH", "HIGH")
     thinking_cfg = types.ThinkingConfig(include_thoughts=True, thinking_level=thinking_level_val) if "extended-thinking" in model else None
 

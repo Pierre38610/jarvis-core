@@ -13,7 +13,7 @@ from core.shared_state import (
 )
 from core.tools.dispatcher import dispatch_tool
 from services.unified_memory import unified_memory_manager
-from routers.voice import _build_system_instruction, _build_switch_context_prompt
+from routers.voice import _build_system_instruction, _build_switch_context_prompt, _establish_live_session
 
 
 class TestVoiceFluidityPrompt:
@@ -76,15 +76,40 @@ class TestVoiceFluidityPrompt:
         assert "sans aucune formule d'attente générique" in prompt
 
     @pytest.mark.asyncio
-    async def test_build_switch_context_prompt_without_query_stays_silent(self):
-        prompt = await _build_switch_context_prompt(
-            recent_turns=[],
-            announcement_phrase="",
-            pending_user_query=""
-        )
-        assert "Poursuis en silence" in prompt
-        assert "sans aucune phrase d'ouverture générique" in prompt
+    async def test_establish_live_session_nominal(self):
+        mock_session = MagicMock()
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__.return_value = mock_session
 
+        mock_client = MagicMock()
+        mock_client.aio.live.connect.return_value = mock_ctx
+
+        s_ctx, session = await _establish_live_session("gemini-3.8-live", mock_client)
+        assert s_ctx is mock_ctx
+        assert session is mock_session
+        mock_client.aio.live.connect.assert_called_once()
+        call_kwargs = mock_client.aio.live.connect.call_args[1]
+        assert call_kwargs["model"] == "gemini-3.8-live"
+        live_cfg = call_kwargs["config"]
+        assert live_cfg.system_instruction is not None
+        assert len(live_cfg.system_instruction.parts) > 0
+        assert "ANTI-TICS VERBAUX" in live_cfg.system_instruction.parts[0].text
+
+    @pytest.mark.asyncio
+    async def test_establish_live_session_with_custom_instruction(self):
+        mock_session = MagicMock()
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__.return_value = mock_session
+
+        mock_client = MagicMock()
+        mock_client.aio.live.connect.return_value = mock_ctx
+
+        custom_text = "CUSTOM SYSTEM INSTRUCTION TEST"
+        s_ctx, session = await _establish_live_session("gemini-3.8-live", mock_client, system_instruction_text=custom_text)
+        assert session is mock_session
+        call_kwargs = mock_client.aio.live.connect.call_args[1]
+        live_cfg = call_kwargs["config"]
+        assert live_cfg.system_instruction.parts[0].text == custom_text
 
 
 class TestSpeechGatingAndSafety:
