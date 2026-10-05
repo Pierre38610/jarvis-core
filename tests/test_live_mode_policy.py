@@ -56,6 +56,11 @@ def test_rule_1_explicit_demand():
     assert res_reflechis["voice_mode"] == VOICE_MODE_THINKING
 
     policy.reset()
+    res_n3 = policy.decide(transcript="Fais une recherche de niveau 3 sur l'IA", tier_hint=1)
+    assert res_n3["voice_mode"] == VOICE_MODE_THINKING
+    assert res_n3["cognitive_level"] == 3
+
+    policy.reset()
     res_temps = policy.decide(transcript="Prends ton temps pour me dire", tier_hint=1)
     assert res_temps["voice_mode"] == VOICE_MODE_THINKING
 

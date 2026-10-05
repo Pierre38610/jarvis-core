@@ -224,12 +224,14 @@ def route_search_intent(
                 query=query,
             )
 
-        # Override explicite L3 : "analyse en profondeur", "deep research", etc.
+        # Override explicite L3 : "analyse en profondeur", "deep research", "niveau 3", etc.
         tier3_override_signals = [
             "analyse en profondeur", "recherche approfondie", "analyse approfondie",
             "etude approfondie", "prends tout ton temps", "reflexion maximale",
             "analyse de fond", "etude de fond", "rapport complet", "sources exhaustives",
-            "mode pro", "deep research", "cartographie complete", "panorama complet"
+            "mode pro", "deep research", "cartographie complete", "panorama complet",
+            "niveau 3", "niveau trois", "recherche de niveau 3", "recherche niveau 3",
+            "recherche l3", "palier 3", "tier 3", "palier de niveau 3"
         ]
         if any(sig in norm for sig in tier3_override_signals):
             return SearchRoutingDecision(
@@ -238,7 +240,7 @@ def route_search_intent(
                 level="L3",
                 effort="high",
                 timeout=600,
-                reason="Override vocal explicite: consigne de recherche approfondie L3 ('analyse en profondeur')",
+                reason="Override vocal explicite: consigne de recherche approfondie L3 ('analyse en profondeur' / 'niveau 3')",
                 is_override=True,
                 query=query,
             )

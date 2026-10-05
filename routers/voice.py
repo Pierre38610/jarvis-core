@@ -296,6 +296,9 @@ async def voice_channel(websocket: WebSocket):
     setup_done_event = asyncio.Event()
     speaking_state = {"active": False}
 
+    active_task_controller.pop("pending_model_switch", None)
+    active_task_controller.pop("pending_model_switch_meta", None)
+
     active_live_model = config.GEMINI_LIVE_MODEL
 
     try:
@@ -1075,6 +1078,11 @@ async def voice_channel(websocket: WebSocket):
                             detail=fail_detail or str(initial_conn_err),
                             session_id="voice"
                         )
+                elif "extended-thinking" in active_live_model and is_paid_live:
+                    print(f"[Voice Channel] Échec PAID sur thinking ({initial_conn_err}). Repli cascade sur Live standard PAID...")
+                    active_live_model = LIVE_MODEL_STANDARD
+                    config.GEMINI_LIVE_MODEL = LIVE_MODEL_STANDARD
+                    session_ctx, session = await _establish_live_session(active_live_model, current_live_client)
                 else:
                     raise initial_conn_err
 
@@ -1147,18 +1155,10 @@ async def voice_channel(websocket: WebSocket):
                 break
             except (WebSocketDisconnect, WebSocketDisconnected, asyncio.CancelledError):
                 break
-            except Exception as loop_e:
-                err_s = str(loop_e).lower()
-                is_loop_normal = (
-                    getattr(loop_e, "code", None) in (1000, 1001)
-                    or any(k in err_s for k in ["1000", "1001", "connection closed", "connectionclosed", "normal closure", "(1000, none)", "1000 none", "disconnect"])
-                )
-                if is_loop_normal:
-                    break
-                raise
             except ModelSwitchRequested as switch_req:
                 new_model = switch_req.model
                 print(f"[Voice Channel] Bascule dynamique de modèle vocal demandée : {new_model}")
+                active_task_controller.pop("pending_model_switch", None)
                 if not is_speech_idle():
                     print(f"[Voice Channel] Attente de la fin de l'élocution avant bascule modèle...")
                     await wait_until_speech_finished(timeout=8.0, buffer_drainage_delay=0.35)
@@ -1230,6 +1230,15 @@ async def voice_channel(websocket: WebSocket):
                         detail="Quota clé gratuite épuisé sur thinking et standard",
                         session_id="voice"
                     )
+            except Exception as loop_e:
+                err_s = str(loop_e).lower()
+                is_loop_normal = (
+                    getattr(loop_e, "code", None) in (1000, 1001)
+                    or any(k in err_s for k in ["1000", "1001", "connection closed", "connectionclosed", "normal closure", "(1000, none)", "1000 none", "disconnect"])
+                )
+                if is_loop_normal:
+                    break
+                raise
 
     except (WebSocketDisconnect, WebSocketDisconnected, asyncio.CancelledError):
         pass

@@ -166,6 +166,9 @@ def test_detect_vocal_cognitive_level_overrides():
         "Prends tout ton temps pour chercher",
         "Fais une étude de fond exhaustive",
         "Lance une recherche approfondie",
+        "Fais une recherche de niveau 3",
+        "Recherche niveau 3 sur l'IA quantique",
+        "Lance une recherche L3",
     ]
     for text in l3_cases:
         res = detect_vocal_cognitive_level(text)

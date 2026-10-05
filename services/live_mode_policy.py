@@ -162,17 +162,19 @@ def detect_vocal_cognitive_level(
                 "recommended_tools": ["search_web", "run_agentic_task", "get_system_status", "list_workspace_files"],
             }
 
-        # Override explicite L3 vocal : "analyse en profondeur", "prends tout ton temps"
+        # Override explicite L3 vocal : "analyse en profondeur", "prends tout ton temps", "niveau 3", etc.
         if any(sig in norm for sig in [
             "analyse en profondeur", "recherche approfondie", "analyse approfondie",
             "etude approfondie", "prends tout ton temps", "reflexion maximale",
             "analyse de fond", "etude de fond", "rapport complet", "sources exhaustives",
-            "mode pro", "deep research", "cartographie complete", "panorama complet"
+            "mode pro", "deep research", "cartographie complete", "panorama complet",
+            "niveau 3", "niveau trois", "recherche de niveau 3", "recherche niveau 3",
+            "recherche l3", "palier 3", "tier 3", "palier de niveau 3"
         ]):
             return {
                 "level": 3,
                 "level_name": "L3",
-                "reason": "Override vocal explicite: consigne de réflexion approfondie L3 ('analyse en profondeur')",
+                "reason": "Override vocal explicite: consigne de réflexion approfondie L3 ('analyse en profondeur' / 'niveau 3')",
                 "is_override": True,
                 "model_tier": "pro-high",
                 "timeout_seconds": 600,
@@ -286,7 +288,7 @@ def _detect_agentic_need(
         return False, "conversation"
 
     # Missions agentiques Stark & délégations lourdes
-    if any(k in norm for k in ["deep research", "recherche approfondie", "investigation", "slides", "veille tech"]):
+    if any(k in norm for k in ["deep research", "recherche approfondie", "recherche de niveau 3", "recherche niveau 3", "niveau 3", "recherche l3", "investigation", "slides", "veille tech"]):
         return True, "deep_research"
     if any(k in norm for k in ["tableur", "excel", "spreadsheet", "modele financier", "modele comptable"]):
         return True, "spreadsheet_modeler"
@@ -390,7 +392,7 @@ class LiveModePolicy:
         # Règle 1 : Demande explicite
         is_explicit_standard = bool(re.search(r"\b(vite|rapide|rapidement|en vitesse|fais vite|sois bref|bref|court)\b", norm))
         is_explicit_thinking = bool(re.search(
-            r"\b(reflechis bien|prends ton temps|en detail|analyse en detail|pose-toi|pose toi)\b", norm
+            r"\b(reflechis bien|prends ton temps|en detail|analyse en detail|pose-toi|pose toi|niveau 3|niveau trois|recherche de niveau 3|recherche niveau 3|recherche approfondie|palier 3|tier 3)\b", norm
         ))
 
         if is_explicit_standard:

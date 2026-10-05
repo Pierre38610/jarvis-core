@@ -29,7 +29,9 @@ data/
 
 # Logs & temp files
 *.lock
+*.pid
 .agent_instance.lock
+.agent_instance.pid
 tunnel_url.txt
 static/latest_screenshot.jpg
 outbox_emails/
