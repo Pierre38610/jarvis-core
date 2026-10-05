@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.72.0 — Livraison Déterministe du Rapport Deep Research L3 (Prompt P7) : Détection fiable et non-bloquante du statut de connexion du PC (`is_pc_connected_async`), livraison prioritaire à l'écran/session quand le PC est connecté, livraison automatique par e-mail Stark sécurisé avec pièces jointes si le PC est hors-ligne ou sur demande explicite, bascule écran -> e-mail sans doublon en cas d'échec d'affichage physique, gestion gracieuse des erreurs SMTP sans plantage et traçabilité complète des métadonnées (sources, confiance, artefacts).*
+> *Dernière révision majeure : Version 5.73.0 — Intégration Finale & Validation de la Checklist VPS Deep Research L3 (Prompt P8) : Validation complète et déterministe de l'ensemble du cycle de vie Deep Research L3 (requête L3 -> health check Chrome VPS -> automateur CDP -> rapport -> affichage ou e-mail), couverture intégrale de tous les scénarios de repli (PC éteint, redémarrage automatique du service jarvis-chrome, session expirée avec erreur structurée L3ErrorDetails, bascule Map-Reduce Antigravity, résilience en cas d'échec SMTP), ajout d'une checklist opérationnelle VPS pas-à-pas (docs/VPS_L3_CHECKLIST.md) avec commandes réelles et matrice de dépannage rapide, test d'intégration mocké (tests/test_l3_integration_vps.py) et 597 tests unitaires et d'intégration 100% verts.*
 
 
 ---
@@ -274,10 +274,10 @@ jarvis-core/
 │   ├── schema.sql                       # Schéma PostgreSQL (conversations, memories, tier_routing_log, tool_call_metrics, patches)
 │   ├── spotify_schema.sql               # Tables SQLite des tokens OAuth Spotify
 │   └── migrations/001_create_tool_call_metrics.sql
-├── docs/                                # VPS_GOOGLE_SESSION_SETUP.md, BROWSER_AGENT_SPEC.md, N8N_GUIDE.md, n8n_workflows/*.json (documents_suite, time_and_briefing, train_monitoring)
+├── docs/                                # VPS_L3_CHECKLIST.md, VPS_GOOGLE_SESSION_SETUP.md, BROWSER_AGENT_SPEC.md, N8N_GUIDE.md, n8n_workflows/*.json (documents_suite, time_and_briefing, train_monitoring)
 ├── static/                              # HUD PWA Stark Industries (index.html, app.js, style.css, manifest.json, SVG/PNG, latest_screenshot.jpg, tunnel_url.json)
 ├── data/                                # site_memory/<domain>.json (parcours web réussis), gemini_ui_map.json (avec repli DEFAULT_UI_MAP), migration_reports/
-└── tests/                               # 43 modules pytest racine (dont test_l3_report_delivery.py, test_l3_vps_routing.py, test_l3_error_propagation.py) + tests/unit/ (20) + tests/e2e/ (2: test_live_scenarios.py, test_cognitive_e2e_pipeline.py), conftest.py, run_all_tests.py (589 tests vérifiés), dossiers scratch : tests/scratch_healing/, tests/_test_scratch/)
+└── tests/                               # 44 modules pytest racine (dont test_l3_integration_vps.py, test_l3_report_delivery.py, test_l3_vps_routing.py, test_l3_error_propagation.py) + tests/unit/ (20) + tests/e2e/ (2: test_live_scenarios.py, test_cognitive_e2e_pipeline.py), conftest.py, run_all_tests.py (597 tests vérifiés), dossiers scratch : tests/scratch_healing/, tests/_test_scratch/)
 ```
 
 ---
@@ -1016,7 +1016,7 @@ Mobilisé automatiquement si le Moteur A échoue ou si le navigateur local n'est
    - **Zéro Tolérance aux Livraisons Maquillées** : Si l'audit échoue après relances, `quality_gate_passed = False`. Aoede alerte immédiatement Pierre de vive voix, bannière rouge dans le rapport Markdown, et mention `[PARTIEL - AUDIT NON VALIDÉ]` dans les e-mails et messages Telegram.
 6. *Livraison Déterministe Multi-Canal* : Rapport Markdown `/artifacts/`, deck Google Slides via n8n, notification Telegram et jalons vocaux intermédiaires.
 
-> **Contrat de Dispatch Vérifié** : contrairement à `browser_task` (qui rend la main immédiatement avec `{"status": "launched_in_background", "task_id": str}`), l'outil `launch_deep_research` **attend** le verdict du Moteur A. `core/tools/dispatcher.py` (branche `launch_deep_research`, l. 595-624) instancie `BrowserTask(task_id="bt_dr_<ms>", goal=consigne, recipe="gemini_deep_research")`, l'exécute via `await run_browser_agent_task(task=dr_task)` et retourne **directement** le `ToolResult` du Browser Agent si `is_success` et `dr_task.status != "failed"` (le rapport est alors expédié par e-mail si `envoyer_email=true`, destinataire par défaut `pierrecassagnettes@gmail.com`). Le repli Map-Reduce VPS n'est déclenché qu'en cas d'échec ou d'exception, après contrôle `verify_antigravity_cli_ready()` (retour `ToolResult.failed(error_hint=cli_err)` si le CLI `agy` est indisponible, sans jamais annoncer un lancement fictif). Ce contrat est verrouillé par `tests/test_deep_research.py` (9/9 verts) et `tests/test_gemini_web_automator.py` (27/27 verts, 45 tests globaux avec SRE healing).
+> **Contrat de Dispatch Vérifié** : contrairement à `browser_task` (qui rend la main immédiatement avec `{"status": "launched_in_background", "task_id": str}`), l'outil `launch_deep_research` **attend** le verdict du Moteur A. `core/tools/dispatcher.py` (branche `launch_deep_research`, l. 595-624) instancie `BrowserTask(task_id="bt_dr_<ms>", goal=consigne, recipe="gemini_deep_research")`, l'exécute via `await run_browser_agent_task(task=dr_task)` et retourne **directement** le `ToolResult` du Browser Agent si `is_success` et `dr_task.status != "failed"` (le rapport est alors expédié par e-mail si `envoyer_email=true`, destinataire par défaut `pierrecassagnettes@gmail.com`). Le repli Map-Reduce VPS n'est déclenché qu'en cas d'échec ou d'exception, après contrôle `verify_antigravity_cli_ready()` (retour `ToolResult.failed(error_hint=cli_err)` si le CLI `agy` est indisponible, sans jamais annoncer un lancement fictif). Ce contrat et l'ensemble de la cascade de replis VPS sont validés par `tests/test_l3_integration_vps.py` (8/8), `tests/test_l3_report_delivery.py` (10/10), `tests/test_l3_vps_routing.py` (8/8), `tests/test_l3_error_propagation.py` (7/7), `tests/test_deep_research.py` (9/9) et documentés dans `docs/VPS_L3_CHECKLIST.md`.
 
 ### 9.4. Moteur Délibératif Système 2 Transverse (Les 8 Missions Agentiques Spécialisées)
 Orchestrées par `services/agentic_dispatcher.py` :
@@ -1596,4 +1596,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.72.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.73.0.*
