@@ -150,13 +150,23 @@ class GeminiWebAutomator:
     async def _connect(self) -> bool:
         """
         Connecte Playwright au Chrome réel de Pierre via CDP (port 9222).
+        S'assure au préalable que Chrome VPS est actif et répond au health check CDP.
         Réutilise l'onglet Gemini s'il existe déjà.
         """
         try:
             from playwright.async_api import async_playwright
+            from services.vps_chrome import ensure_chrome_running
 
             if self._page and not self._page.is_closed():
                 return True
+
+            chrome_status = await ensure_chrome_running(cdp_url=CDP_URL)
+            if not chrome_status.get("ok"):
+                err_text = chrome_status.get("error", "Chrome CDP inaccessible")
+                logger.error(f"[CDP] Échec préalable ensure_chrome_running : {err_text}")
+                if chrome_status.get("l3_error"):
+                    set_last_l3_error(chrome_status["l3_error"])
+                return False
 
             self._playwright = await async_playwright().start()
             self._browser = await self._playwright.chromium.connect_over_cdp(CDP_URL)

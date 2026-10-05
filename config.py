@@ -252,7 +252,14 @@ BROWSER_MAX_STEPS = int(os.environ.get("BROWSER_MAX_STEPS", "40"))
 BROWSER_CLI_TIMEOUT = int(os.environ.get("BROWSER_CLI_TIMEOUT", "90"))
 BROWSER_MAX_PARALLEL_TASKS = int(os.environ.get("BROWSER_MAX_PARALLEL_TASKS", "2"))
 
-
+# Configuration Google Chrome & CDP Headless (VPS Cloud & Local)
+JARVIS_CDP_HOST = os.environ.get("JARVIS_CDP_HOST", "127.0.0.1").strip()
+JARVIS_CDP_PORT = int(os.environ.get("JARVIS_CDP_PORT", 9222))
+JARVIS_CDP_URL = os.environ.get("JARVIS_CDP_URL", f"http://{JARVIS_CDP_HOST}:{JARVIS_CDP_PORT}").strip()
+JARVIS_VPS_CHROME_PROFILE = os.environ.get("JARVIS_VPS_CHROME_PROFILE", os.path.expanduser("~/.jarvis_chrome_profile")).strip()
+JARVIS_VPS_CHROME_SERVICE = os.environ.get("JARVIS_VPS_CHROME_SERVICE", "jarvis-chrome").strip()
+JARVIS_CHROME_BIN = os.environ.get("JARVIS_CHROME_BIN", "").strip()
+JARVIS_CHROME_HEADLESS = os.environ.get("JARVIS_CHROME_HEADLESS", "true").lower() in ("true", "1", "yes")
 
 # ─── Instruction système J.A.R.V.I.S. (Template) ─────────────────────────────
 # Contient les placeholders {memory_context}, {paid_key_status}, {live_model}

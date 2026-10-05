@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.68.0 — Chrome CDP Persistant sur VPS & Autonomie L3 : Installation automatisée idempotente (scripts/setup_vps_chrome.sh), unité systemd dédiée (scripts/jarvis-chrome.service), profil persistant hors dépôt et paramétrage CDP dynamique.*
+> *Dernière révision majeure : Version 5.69.0 — Gestionnaire Python Chrome VPS & Health Check CDP (services/vps_chrome.py) : API Python robuste ensure_chrome_running, health check explicite port 9222 (/json/version), relance systemd sécurisée, intégration L3ErrorDetails sans secret et intégration GeminiWebAutomator.*
 
 
 ---
@@ -235,6 +235,8 @@ jarvis-core/
 │   ├── live_mode_policy.py              # Politique voice_mode (thinking vs standard), hystérésis, détection besoin agentique, log tier routing
 │   ├── task_planner.py                  # Planificateur multi-étapes (needs_planning, decompose, get_plan_status, mark_plan_step, HUD)
 │   ├── turn_audit.py                    # Audit de tour : détection de fausses affirmations, contexte plan/sous-agents injecté au prompt
+│   ├── vps_chrome.py                    # Gestionnaire Python du Chrome Headless/CDP VPS (ensure_chrome_running, health check port 9222, relance systemd)
+│   ├── l3_error.py                      # Structure stable d'erreur L3 détaillée (L3ErrorDetails), assainissement des secrets et diagnostic
 │   ├── gemini_web_automator.py          # Automatisation de l'UI Gemini Web (Moteur A Deep Research via Chrome local)
 │   ├── chat_service.py                  # Messagerie écrite multimodale (clients FREE/PAID, consentement key_gate)
 │   ├── system_healing_service.py        # SRE autonome : analyse RCA, tests sandbox isolés, auto-tests, Blue/Green releases, symlink
