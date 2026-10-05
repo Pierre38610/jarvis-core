@@ -765,17 +765,60 @@ async def _execute_dispatch_tool(
                     )
                     browser_res: ToolResult = await run_browser_agent_task(task=dr_task)
                     if browser_res and browser_res.is_success and dr_task.status != "failed":
-                        if envoyer_email and browser_res.user_message:
+                        # Vérification de livraison e-mail existante (pour éviter tout doublon)
+                        already_emailed = False
+                        if isinstance(browser_res.data, dict):
+                            delivery = browser_res.data.get("delivery")
+                            if isinstance(delivery, dict) and delivery.get("delivery_mode") in ("email", "email_fallback") and delivery.get("status") == "sent":
+                                already_emailed = True
+
+                        pc_online = False
+                        try:
+                            from services.local_agent_service import is_pc_connected_async
+                            pc_online = await is_pc_connected_async()
+                        except Exception:
+                            pass
+
+                        should_email = envoyer_email or (not pc_online)
+                        if should_email and not already_emailed and browser_res.user_message:
                             try:
                                 dest = destinataire_email or "pierrecassagnettes@gmail.com"
+                                md_path = browser_res.data.get("markdown_path") if isinstance(browser_res.data, dict) else None
+                                attachments = [md_path] if md_path and os.path.exists(md_path) else []
                                 await send_email_async(
                                     subject=f"[Deep Research] Synthèse : {consigne[:60]}",
                                     body=browser_res.user_message,
                                     to_email=dest,
+                                    attachments=attachments,
                                     session_id=getattr(_sess_dr, "id", None) if _sess_dr else None,
                                 )
+                                logger.info(f"[DeepResearch] Rapport livré par e-mail à {dest} (pc_online={pc_online}, envoyer_email={envoyer_email})")
+                                if isinstance(browser_res.data, dict):
+                                    browser_res.data["delivery"] = {
+                                        "delivery_mode": "email",
+                                        "status": "sent",
+                                        "to_email": dest,
+                                        "attachment": md_path,
+                                    }
                             except Exception as mail_err:
-                                logger.warning(f"[Deep Research Mail Error] {mail_err}")
+                                logger.warning(f"[DeepResearch] [Échec envoi e-mail] {mail_err}")
+                                if isinstance(browser_res.data, dict):
+                                    browser_res.data["delivery"] = {
+                                        "delivery_mode": "email",
+                                        "status": "error",
+                                        "error": str(mail_err),
+                                    }
+
+                        if pc_online and _ws_dr:
+                            try:
+                                await _ws_dr.send_text(json.dumps({
+                                    "type": "jarvis_announcement",
+                                    "text": f"Rapport de recherche approfondie prêt : {consigne[:60]}",
+                                    "voice": False,
+                                }))
+                            except Exception:
+                                pass
+
                         return browser_res
                     else:
                         err_step = "browser_agent"
@@ -1047,17 +1090,58 @@ async def _execute_dispatch_tool(
                 total_duration = time.perf_counter() - t_total_0
                 all_sources = list(out_p.sources) + [s for s in out_a.sources if s not in out_p.sources]
 
-                if envoyer_email:
+                pc_online = False
+                try:
+                    from services.local_agent_service import is_pc_connected_async
+                    pc_online = await is_pc_connected_async()
+                except Exception:
+                    pass
+
+                delivery_info: Dict[str, Any] = {
+                    "delivery_mode": "screen" if pc_online else "email",
+                    "status": "pending",
+                }
+
+                should_send_mail = envoyer_email or (not pc_online)
+                if should_send_mail:
                     try:
                         dest = destinataire_email or "pierrecassagnettes@gmail.com"
                         await send_email_async(
                             subject=f"[Deep Research] Synthèse : {consigne[:60]}",
                             body=out_s.conclusion,
                             to_email=dest,
+                            attachments=out_s.artifacts,
                             session_id=session_id,
                         )
+                        logger.info(f"[DeepResearch] Synthèse Map-Reduce livrée par e-mail à {dest} (pc_online={pc_online}, envoyer_email={envoyer_email})")
+                        delivery_info = {
+                            "delivery_mode": "email",
+                            "status": "sent",
+                            "to_email": dest,
+                            "attachments": out_s.artifacts,
+                        }
                     except Exception as mail_err:
-                        logger.warning(f"[Deep Research Mail Error] {mail_err}")
+                        logger.warning(f"[DeepResearch] [Échec envoi e-mail] {mail_err}")
+                        delivery_info = {
+                            "delivery_mode": "email",
+                            "status": "error",
+                            "error": str(mail_err),
+                        }
+                else:
+                    delivery_info = {
+                        "delivery_mode": "screen",
+                        "status": "success",
+                        "message": "Affiché sur la session et l'interface Jarvis.",
+                    }
+                    if _ws_dr:
+                        try:
+                            await _ws_dr.send_text(json.dumps({
+                                "type": "jarvis_announcement",
+                                "text": f"Synthèse Deep Research prête : {consigne[:60]}",
+                                "voice": False,
+                            }))
+                        except Exception:
+                            pass
 
                 return ToolResult.done(
                     user_message=out_s.conclusion,
@@ -1069,6 +1153,7 @@ async def _execute_dispatch_tool(
                         "sources": all_sources,
                         "artifacts": out_s.artifacts,
                         "open_questions": out_s.open_questions,
+                        "delivery": delivery_info,
                         "phases": {
                             "prospector": {"model": MODEL_FLASH, "effort": "medium", "duration_s": round(dur_p, 2)},
                             "analyst": {"model": MODEL_PRO, "effort": "high", "duration_s": round(dur_a, 2)},

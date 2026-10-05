@@ -904,16 +904,28 @@ class GeminiWebAutomator:
         """
         Route le résultat selon la connectivité du PC :
           - PC en ligne → ouverture locale avec accusé d'exécution vérifié.
-          - PC hors ligne → envoi par e-mail Stark avec pièce jointe.
+          - PC hors ligne (ou échec d'affichage écran) → envoi par e-mail Stark avec pièce jointe.
         """
         from services.local_agent_service import is_pc_connected_async
 
-        pc_online = await is_pc_connected_async()
+        pc_online = False
+        try:
+            pc_online = await is_pc_connected_async()
+        except Exception:
+            pass
         logger.info(f"[Delivery] PC connecté : {pc_online}")
 
         if pc_online and (page_url or filepath_md or snapshot_path):
             target_to_open = page_url or filepath_md or snapshot_path
-            return await self._deliver_to_screen(target_to_open, topic)
+            screen_res = await self._deliver_to_screen(target_to_open, topic)
+            if screen_res.get("status") == "success" or screen_res.get("acknowledged") is True:
+                return screen_res
+            # Échec affichage écran (ex: PC non réactif ou erreur RPC) : bascule sur la livraison par e-mail sans doublon
+            logger.warning("[Delivery] Affichage écran non confirmé, repli vers l'envoi par e-mail.")
+            attachment = filepath_md or snapshot_path
+            email_res = await self._deliver_by_email(attachment, topic)
+            email_res["fallback_from_screen"] = True
+            return email_res
         else:
             attachment = filepath_md or snapshot_path
             return await self._deliver_by_email(attachment, topic)
@@ -922,7 +934,7 @@ class GeminiWebAutomator:
         """Ouvre le rapport ou la page web sur l'écran du PC avec accusé d'exécution."""
         try:
             from services.local_agent_service import local_agent_service
-            is_web_url = target.startswith(("http://", "https://"))
+            is_web_url = str(target).startswith(("http://", "https://"))
             cmd = "open_browser" if is_web_url else "open_browser"
 
             result = await local_agent_service.execute_command(
@@ -941,7 +953,7 @@ class GeminiWebAutomator:
             }
         except Exception as e:
             logger.error(f"[Delivery] Erreur affichage écran : {e}")
-            return {"delivery_mode": "screen", "status": "error", "error": str(e)}
+            return {"delivery_mode": "screen", "status": "error", "error": str(e), "acknowledged": False}
 
     async def _deliver_by_email(self, attachment_path: Optional[str], topic: str) -> Dict[str, Any]:
         """Envoie le rapport par e-mail Stark avec pièce jointe sécurisée."""
@@ -971,8 +983,8 @@ class GeminiWebAutomator:
                 "message": "Rapport Deep Research envoyé par email Stark.",
             }
         except Exception as e:
-            logger.error(f"[Delivery] Erreur envoi email : {e}")
-            return {"delivery_mode": "email", "status": "error", "error": str(e)}
+            logger.warning(f"[Delivery] [Échec envoi e-mail] Erreur envoi email : {e}")
+            return {"delivery_mode": "email", "status": "error", "error": str(e), "attachment": attachment_path}
 
     async def _inject_voice_milestone(self, text: str, action_key: str) -> None:
         """Émet un jalon de progression vocal non-bloquant."""

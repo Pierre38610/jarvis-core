@@ -781,7 +781,8 @@ async def send_email_async(
     to_email: Optional[str] = None,
     attachments: Optional[List[str]] = None,
     include_screenshot: bool = False,
-    is_html_report: bool = True
+    is_html_report: bool = True,
+    **kwargs: Any
 ) -> Dict[str, Any]:
     """Version asynchrone non-bloquante de send_email pour FastAPI et Gemini Live."""
     return await asyncio.to_thread(

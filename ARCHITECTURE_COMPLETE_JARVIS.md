@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.71.0 — Routage L3 Autonome VPS (P6) : Chrome Headless VPS (CDP 9222 / GeminiWebAutomator) prioritaire pour Deep Research sans dépendance au PC local ni délai bloquant, détection rapide de statut hors-ligne PC (`is_pc_connected_async`), chaîne de repli ordonnée Chrome VPS -> Agent PC local (si connecté) -> Map-Reduce Antigravity VPS, propagation L3ErrorDetails.*
+> *Dernière révision majeure : Version 5.72.0 — Livraison Déterministe du Rapport Deep Research L3 (Prompt P7) : Détection fiable et non-bloquante du statut de connexion du PC (`is_pc_connected_async`), livraison prioritaire à l'écran/session quand le PC est connecté, livraison automatique par e-mail Stark sécurisé avec pièces jointes si le PC est hors-ligne ou sur demande explicite, bascule écran -> e-mail sans doublon en cas d'échec d'affichage physique, gestion gracieuse des erreurs SMTP sans plantage et traçabilité complète des métadonnées (sources, confiance, artefacts).*
 
 
 ---
@@ -277,7 +277,7 @@ jarvis-core/
 ├── docs/                                # VPS_GOOGLE_SESSION_SETUP.md, BROWSER_AGENT_SPEC.md, N8N_GUIDE.md, n8n_workflows/*.json (documents_suite, time_and_briefing, train_monitoring)
 ├── static/                              # HUD PWA Stark Industries (index.html, app.js, style.css, manifest.json, SVG/PNG, latest_screenshot.jpg, tunnel_url.json)
 ├── data/                                # site_memory/<domain>.json (parcours web réussis), gemini_ui_map.json (avec repli DEFAULT_UI_MAP), migration_reports/
-└── tests/                               # 41 modules pytest racine + tests/unit/ (20) + tests/e2e/ (2: test_live_scenarios.py, test_cognitive_e2e_pipeline.py), conftest.py, run_all_tests.py (571 tests vérifiés), dossiers scratch : tests/scratch_healing/, tests/_test_scratch/)
+└── tests/                               # 43 modules pytest racine (dont test_l3_report_delivery.py, test_l3_vps_routing.py, test_l3_error_propagation.py) + tests/unit/ (20) + tests/e2e/ (2: test_live_scenarios.py, test_cognitive_e2e_pipeline.py), conftest.py, run_all_tests.py (589 tests vérifiés), dossiers scratch : tests/scratch_healing/, tests/_test_scratch/)
 ```
 
 ---
@@ -1392,7 +1392,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre profonde (`#070B14`, `#0B0F19`), cyan électrique Stark (`#38bdf8`, `#0284c7`), accents ambre et violet néon.
 - **Typographie** : Polices modernes géométriques sans-serif d'inspiration high-tech.
 - **Responsive PWA** : Conçue pour une expérience native sur smartphone (iOS Safari / Android Chrome) et desktop avec support PWA (`manifest.json`, installation sur écran d'accueil).
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.71.0 L3 AUTONOMOUS VPS ROUTING`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.72.0 L3 REPORT DELIVERY (PC/EMAIL)`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
@@ -1596,4 +1596,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.71.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.72.0.*
