@@ -186,6 +186,15 @@ async def _build_system_instruction() -> str:
         f"- Règle anti-doublon : Ne lance jamais deux outils de recherche pour une même intention."
     )
 
+    dreams_and_morning_rule = (
+        f"\n\nINTERDICTION PROACTIVE SUR LES RÊVES ET GESTION DU JOURNAL NOCTURNE :\n"
+        f"- Ne pose JAMAIS de ta propre initiative de question sur la nuit, le sommeil ou les rêves de Pierre (ex: 'Qu'est-ce que ton esprit a imaginé cette nuit ?', 'As-tu bien dormi ?', etc.). Cette question est STRICTEMENT PROHIBÉE en amorce et ne doit jamais interrompre ni parasiter une commande.\n"
+        f"- Si et UNIQUEMENT SI Pierre te raconte un rêve de lui-même ou te demande explicitement de noter/enregistrer son rêve :\n"
+        f"  1. Note le rêve fidèlement via 'save_memory' (fact=..., category='fait') ou 'save_notion_entry'.\n"
+        f"  2. Si Pierre demande de lui envoyer par e-mail (ou le demande explicitement), envoie-le par mail via 'send_email' à pierrecassagnettes@gmail.com (sujet: 'Journal des rêves - [Date]').\n"
+        f"- PRIORITÉ IMMÉDIATE AUX DIRECTIVES : Dès que Pierre demande une recherche L1/L2/L3, son briefing matinal, un état système, Spotify ou toute autre tâche, exécute directement l'action demandée sans jamais bifurquer vers des questions de sommeil ou de rêves."
+    )
+
     current_dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     plan_st = get_active_plan_status_str()
     sub_st = get_active_subagents_status_str()
@@ -204,12 +213,12 @@ async def _build_system_instruction() -> str:
             )
         except Exception:
             base_prompt = str(template)
-        return f"{base_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}\n{cognitive_tier_instruction}"
+        return f"{base_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}\n{cognitive_tier_instruction}\n{dreams_and_morning_rule}"
 
     static = getattr(config, "JARVIS_SYSTEM_INSTRUCTION", "")
     full_prompt = f"{memory_context}\n\n{static}" if memory_context else static
     full_prompt = inject_turn_status_into_prompt(full_prompt)
-    return f"{full_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}\n{cognitive_tier_instruction}"
+    return f"{full_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}\n{cognitive_tier_instruction}\n{dreams_and_morning_rule}"
 
 
 
@@ -1102,7 +1111,8 @@ async def voice_channel(websocket: WebSocket):
                 greeting_sent = True
                 greeting_instruction = (
                     "[INSTRUCTION SYSTÈME INVISIBLE] La session vocale vient de démarrer. "
-                    "Salue Pierre naturellement et d'égal à égal avec ta voix Aoede en une courte phrase sympa, directe et décontractée pour lui dire que tu es prête."
+                    "Salue Pierre très brièvement en une courte formule naturelle, sobre et directe (ex: 'Bonjour Pierre, je t'écoute') "
+                    "SANS JAMAIS poser de question sur sa nuit, son sommeil ou ses rêves, et reste prête pour ses ordres."
                 )
                 try:
                     await safe_send_live_client_content(

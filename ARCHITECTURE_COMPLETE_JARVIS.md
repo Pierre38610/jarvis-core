@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.56.0 — L2/L3 Research Engine & Live Logs Viewer : Correction de l'encapsulation de prompt dans l'agentic runner, validation de l'orchestration multi-agents parallèle L2 (gather, cross-check, synthèse reduce) sur VPS, fiabilisation L3 (moteur web Gemini via CDP et repli Map-Reduce).*
+> *Dernière révision majeure : Version 5.58.0 — Morning Dream Intrusion Fix & Email On-Demand Policy : Interdiction formelle des questions proactives intrusives sur les rêves/sommeil au réveil, enregistrement et envoi par e-mail des récits de rêves sur demande explicite uniquement, exécution directe prioritaire des ordres (L1/L2/L3, briefings, outils).*
 
 
 ---
@@ -643,10 +643,11 @@ La stratégie d'exécution et de repli de J.A.R.V.I.S. respecte une hiérarchie 
 
 ### 6.2. Assemblage Dynamique de l'Instruction Système & Contexte
 À l'ouverture du WebSocket, compilation de :
-1. Gabarit Stark Industries (`JARVIS_SYSTEM_INSTRUCTION_TEMPLATE`).
+1. Gabarit Stark Industries (`JARVIS_SYSTEM_INSTRUCTION_TEMPLATE`) incluant les règles fondamentales, paliers cognitifs, directives d'élocution et **l'interdiction formelle de questions proactives sur les rêves / la nuit** (gestion et envoi par email des rêves sur demande explicite uniquement).
 2. Bloc de mémoire contextuelle unifiée (`unified_memory_manager.build_live_context_prompt()`).
 3. État matériel PC (`is_pc_connected()`).
 4. Résumé architectural dynamique extrait d'`ARCHITECTURE_COMPLETE_JARVIS.md`.
+
 
 ### 6.3. Modèles Vocaux Actifs & Permutation à Chaud Différée
 - Modèle standard : `gemini-3.8-live` ; Modèle avec réflexion : `gemini-3.8-live-extended-thinking`.
@@ -1389,7 +1390,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre profonde (`#070B14`, `#0B0F19`), cyan électrique Stark (`#38bdf8`, `#0284c7`), accents ambre et violet néon.
 - **Typographie** : Polices modernes géométriques sans-serif d'inspiration high-tech.
 - **Responsive PWA** : Conçue pour une expérience native sur smartphone (iOS Safari / Android Chrome) et desktop avec support PWA (`manifest.json`, installation sur écran d'accueil).
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.47.0 TOOLRESULT FIX & BROWSER RPC REPAIR`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.58.0 MORNING DREAM INTRUSION FIX & EMAIL ON-DEMAND POLICY`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.

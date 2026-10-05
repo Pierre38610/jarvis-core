@@ -46,6 +46,19 @@ class TestVoiceFluidityPrompt:
         assert "Bannis les amorces robotiques" in instruction
         assert "verbe d'action" in instruction
 
+    @pytest.mark.asyncio
+    async def test_prompt_contains_dreams_and_morning_rule(self):
+        instruction = await _build_system_instruction()
+        assert "INTERDICTION PROACTIVE SUR LES RÊVES" in instruction
+        assert "Ne pose JAMAIS de ta propre initiative de question sur la nuit" in instruction
+        assert "save_memory" in instruction
+        assert "send_email" in instruction
+
+    @pytest.mark.asyncio
+    async def test_unified_memory_dreams_guidelines(self):
+        live_prompt = await unified_memory_manager.build_live_context_prompt()
+        assert "Ne pose JAMAIS de questions proactives sur les rêves" in live_prompt
+
 
 class TestSpeechGatingAndSafety:
     @pytest.mark.asyncio

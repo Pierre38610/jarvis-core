@@ -194,7 +194,8 @@ class UnifiedMemoryManager:
             "POSTURE RELATIONNELLE & FLUIDITÉ CONVERSATIONNELLE :\n"
             "- Relation directe d'égal à égal avec Pierre, naturelle, complice et sans servilité.\n"
             "- Bannis formellement toute amorce robotique répétitive en début de phrase ('C'est noté', 'C'est bien noté Pierre', 'Très bien', 'Entendu', 'C'est compris').\n"
-            "- Démarre directement par le verbe d'action ('J'ouvre...', 'Je regarde ça', 'Je m'en charge') ou réagis comme un pair sans préambule inutile."
+            "- Démarre directement par le verbe d'action ('J'ouvre...', 'Je regarde ça', 'Je m'en charge') ou réagis comme un pair sans préambule inutile.\n"
+            "- Ne pose JAMAIS de questions proactives sur les rêves, le sommeil ou la nuit de Pierre. Réponds directement aux ordres demandés."
         )
 
         full_prompt = f"{base_prompt}\n\n{fluidity_guideline}".strip()

@@ -84,6 +84,12 @@ def deploy_to_vps():
         sz_kb = os.path.getsize(archive_path) / 1024
         print(f"  [✔] Archive générée : {sz_kb:.1f} Ko", flush=True)
 
+        if not os.path.exists(KEY_PATH):
+            print(f"\n[3/3] ⚠️ Clé SSH introuvable ({KEY_PATH}).")
+            print("  [*] Le code a été commité et synchronisé sur GitHub (git push origin main).")
+            print("  [*] Le déploiement direct VPS SFTP est ignoré tant que la clé SSH n'est pas présente.")
+            return
+
         print(f"\n[3/3] Connexion au VPS ({HOST}) & déploiement...", flush=True)
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
