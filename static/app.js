@@ -5,7 +5,7 @@
 // --- REDIRECTION AUTOMATIQUE VERS HTTPS SI ACCÈS HTTP DISTANT ---
 // Indispensable car les navigateurs bloquent strictement le microphone (getUserMedia) sur HTTP non-localhost.
 if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-  const targetHttps = 'https://jarvis.signalcraftapps.com' + window.location.pathname + window.location.search;
+  const targetHttps = 'https://' + window.location.host + window.location.pathname + window.location.search;
   console.warn("[Security] Accès non sécurisé HTTP détecté. Redirection vers", targetHttps);
   window.location.replace(targetHttps);
 }
@@ -2049,10 +2049,10 @@ async function startJarvis() {
     // Vérification de la disponibilité du microphone (contexte sécurisé HTTPS requis)
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        window.location.replace('https://jarvis.signalcraftapps.com');
+        window.location.replace('https://' + window.location.host + window.location.pathname + window.location.search);
         return;
       }
-      throw new Error("L'accès au microphone requiert une connexion HTTPS sécurisée (https://jarvis.signalcraftapps.com).");
+      throw new Error(`L'accès au microphone requiert une connexion HTTPS sécurisée (${window.location.origin}).`);
     }
 
     const savedMicId = localStorage.getItem('jarvis_selected_mic_id');

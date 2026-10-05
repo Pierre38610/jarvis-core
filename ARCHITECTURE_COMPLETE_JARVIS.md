@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.64.0 — L3 Tool Enforcement & Diagnostic Detail : Une intention de recherche L3 redirige aussi l'outil générique ask_deep_reasoning vers launch_deep_research, les outils agentiques reprennent le niveau cognitif courant, et les erreurs d'exécution restituent désormais leur détail technique assaini.*
+> *Dernière révision majeure : Version 5.65.0 — GitHub Public Repository Preparation & Security Harmonization : Assainissement exhaustif des fichiers suivis par git, création de .env.example et nvs_jarvis.csv.example génériques, protection stricte des dumps binaires et tokens matériels dans .gitignore, suppression de l'index des fichiers scratchs/temporaires et dynamique multi-hôtes pour le déploiement.*
 
 
 ---

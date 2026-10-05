@@ -1,0 +1,5 @@
+key,type,encoding,value
+websocket,namespace,,
+url,data,string,wss://jarvis.example.com/ws/device
+token,data,string,VOTRE_TOKEN_JWT_APPAREIL_ICI
+version,data,u32,1

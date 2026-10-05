@@ -162,5 +162,5 @@ Pour déployer les modifications instantanément vers GitHub et sur le VPS Oracl
 
 Ce script effectue :
 1. Commit & `git push origin main`
-2. Téléversement optimisé vers le VPS (`158.178.206.213`)
+2. Téléversement optimisé vers le VPS (SFTP SSH direct / paramétrable via `JARVIS_VPS_HOST`)
 3. Redémarrage transparent du service systemd `jarvis`

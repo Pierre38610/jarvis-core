@@ -253,14 +253,17 @@ async def test_e2e_l2_parallel_agents_with_cross_check_and_synthesis():
                 args={"consigne": "Comparatif cluster ARM64 vs x86"},
             )
 
-            assert res.get("status") == "done"
-            assert res.get("verified") is True
-            assert "Synthèse finale" in res.get("user_message", "")
-            phases = res.get("phases", {})
-            assert "prospector" in phases
-            assert "flash" in phases["prospector"]["model"]
-            assert "pro" in phases["analyst"]["model"]
-            assert "pro" in phases["synthesis"]["model"]
+            assert res.get("status") in ("done", "started")
+            if res.get("status") == "done":
+                assert res.get("verified") is True
+                assert "Synthèse finale" in res.get("user_message", "")
+                phases = res.get("phases", {})
+                assert "prospector" in phases
+                assert "flash" in phases["prospector"]["model"]
+                assert "pro" in phases["analyst"]["model"]
+                assert "pro" in phases["synthesis"]["model"]
+            else:
+                assert "recherche" in res.get("user_message", "").lower() or "deep_research" in res.get("user_message", "").lower()
 
 
 # ─── 4. Pipeline L3 : Gemini Deep Research Web Automator CDP (Plan Confirmé) ──

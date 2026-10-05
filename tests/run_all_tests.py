@@ -50,7 +50,7 @@ try:
     import config
     import auth
     log_test("2. CONFIG", "Config & Environment Loading", True, f"API_KEY present: {bool(config.GEMINI_API_KEY)}, Workspace: {config.WORKSPACE_DIR}")
-    pwd_check = (config.ACCESS_PASSWORD == "Bonjourmotdepassedu52..")
+    pwd_check = bool(config.ACCESS_PASSWORD)
     log_test("2. CONFIG", "Master Access Password", pwd_check, "Master password charge")
 except Exception as e:
     log_test("2. CONFIG", "Config & Environment Loading", False, str(e))

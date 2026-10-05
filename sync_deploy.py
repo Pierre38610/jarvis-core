@@ -24,8 +24,8 @@ if sys.platform == "win32":
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 KEY_PATH = os.path.join(BASE_DIR, r"clés ssh\ssh-key-2026-09-25.key")
-HOST = "158.178.206.213"
-USER = "opc"
+HOST = os.environ.get("JARVIS_VPS_HOST", "158.178.206.213").strip()
+USER = os.environ.get("JARVIS_VPS_USER", "opc").strip()
 
 EXCLUDE_DIRS = {
     "venv", ".git", ".jarvis_chrome_profile", ".jarvis_shopping_profile",

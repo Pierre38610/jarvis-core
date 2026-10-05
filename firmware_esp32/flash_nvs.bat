@@ -14,6 +14,15 @@ set SCRIPT_DIR=%~dp0
 set NVS_BIN=%SCRIPT_DIR%nvs_jarvis.bin
 set NVS_CSV=%SCRIPT_DIR%nvs_jarvis.csv
 
+if not exist "%NVS_CSV%" (
+    if exist "%SCRIPT_DIR%nvs_jarvis.csv.example" (
+        echo [INFO] Fichier nvs_jarvis.csv non trouve.
+        echo Veuillez creer firmware_esp32/nvs_jarvis.csv a partir de firmware_esp32/nvs_jarvis.csv.example
+        echo en y renseignant votre token JWT d'appareil.
+        exit /b 1
+    )
+)
+
 if not exist "%NVS_BIN%" (
     echo [INFO] Generation du binaire NVS...
     python -m esp_idf_nvs_partition_gen generate "%NVS_CSV%" "%NVS_BIN%" 0x6000

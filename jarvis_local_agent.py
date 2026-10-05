@@ -123,7 +123,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 HOSTNAME = os.environ.get("CLOUDFLARE_HOSTNAME", "jarvis.signalcraftapps.com").strip()
-PASSWORD = os.environ.get("JARVIS_PASSWORD", "Bonjourmotdepassedu52..").strip()
+PASSWORD = os.environ.get("JARVIS_PASSWORD", "ChangeMeWithAStrongPassword!").strip()
 
 # Répertoire racine _anti_gravity local (lecture seule stricte)
 ANTI_GRAVITY_DIR = os.environ.get(

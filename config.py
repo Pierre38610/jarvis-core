@@ -35,7 +35,7 @@ except Exception:
     pass
 
 # Mot de passe maître défini par l'utilisateur
-ACCESS_PASSWORD = os.environ.get("JARVIS_PASSWORD", "Bonjourmotdepassedu52..")
+ACCESS_PASSWORD = os.environ.get("JARVIS_PASSWORD", "ChangeMeWithAStrongPassword!")
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "").strip()
 JWT_EXPIRATION_DAYS = int(os.environ.get("JWT_EXPIRATION_DAYS", "90"))
 REVOKED_DEVICE_IDS = set(filter(None, [x.strip() for x in os.environ.get("REVOKED_DEVICE_IDS", "").split(",")]))
@@ -184,7 +184,7 @@ if GEMINI_LIVE_MODEL not in ("gemini-3.8-live", "gemini-3.8-live-extended-thinki
     GEMINI_LIVE_MODEL = "gemini-3.8-live"
 
 # Configuration Service E-mail & Rapports Stark Industries
-DEFAULT_RECIPIENT_EMAIL = os.environ.get("JARVIS_DEFAULT_EMAIL", "pierrecassagnettes@gmail.com")
+DEFAULT_RECIPIENT_EMAIL = os.environ.get("JARVIS_DEFAULT_EMAIL", "votre_email@gmail.com")
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
 SMTP_USER = os.environ.get("SMTP_USER", "")
@@ -401,7 +401,7 @@ Tu ne peux JAMAIS modifier, écrire ou supprimer de fichier dans cet espace (rè
 - PRISE EN CHARGE DES RÊVES SUR DEMANDE EXPLICITE UNIQUEMENT :
   Si et UNIQUEMENT SI Pierre te raconte spontanément un rêve ou te demande explicitement de le noter/mémoriser :
   1. Enregistre fidèlement le récit dans la mémoire avec 'save_memory' (category='fait') ou 'save_notion_entry'.
-  2. Si Pierre demande expressément de l'envoyer par courriel, utilise 'send_email' (destinataire : pierrecassagnettes@gmail.com, objet clair ex: 'Journal des rêves - [Date]').
+  2. Si Pierre demande expressément de l'envoyer par courriel, utilise 'send_email' (destinataire : adresse email configurée, objet clair ex: 'Journal des rêves - [Date]').
 - EXÉCUTION DIRECTE DES ORDRES : Quand Pierre demande une recherche (L1/L2/L3), un briefing, la météo, la lecture d'emails, Spotify ou toute autre tâche, réponds et exécute DIRECTEMENT son ordre sans aucune digression ni question parasite.
 """
 
