@@ -190,8 +190,8 @@ async def _build_system_instruction() -> str:
     cognitive_tier_instruction = (
         f"\n\nPALIERS COGNITIFS (L1 / L2 / L3) ET SÉLECTION D'OUTILS :\n"
         f"- L1 (Économie & Vitesse - Palier par Défaut) : Pour questions factuelles, météo, cours, faits récents, diagnostics légers et actions locales simples. Outil de recherche privilégié : 'search_web'. Si une tâche autonome minimale est requise, exécuter 'run_agentic_task' (modèle flash, effort low). Zéro modèle Pro, zéro navigateur Deep Research lourd pour L1.\n"
-        f"- L2 (Raisonnement Tactique & Navigation Web) : Pour navigation web, réservations (billets train, réservation), remplissage de panier, comparaison multi-critères et planification. Outils privilégiés : 'browser_task', 'transport_optimizer', 'spreadsheet_modeler', 'draft_email_response'.\n"
-        f"- L3 (Délibération Système 2 & Recherche Approfondie) : Pour études de fond exhaustives, rapports de marché multi-sources, cartographies complètes et auto-guérison système critique. Outils privilégiés : 'launch_deep_research', 'system_self_healing', 'ask_deep_reasoning'.\n"
+        f"- L2 (Raisonnement Tactique & Navigation Web) : Pour navigation web concrète, réservations (billets train, vols), remplissage de panier d'achat, formulaires et comparaison multi-critères sur des sites. Outils privilégiés : 'browser_task', 'transport_optimizer', 'spreadsheet_modeler', 'draft_email_response'. Ne jamais utiliser pour une recherche d'information générale ou approfondie.\n"
+        f"- L3 (Délibération Système 2 & Recherche Approfondie) : Pour études de fond exhaustives, rapports de marché multi-sources, cartographies complètes et auto-guérison système critique. Outil obligatoire pour TOUTE recherche de niveau 3 / L3 : 'launch_deep_research'. Ne JAMAIS appeler 'browser_task' ni 'search_web' pour une recherche de niveau 3.\n"
         f"- Règle anti-doublon : Ne lance jamais deux outils de recherche pour une même intention."
     )
 

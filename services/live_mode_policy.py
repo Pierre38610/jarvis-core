@@ -171,9 +171,12 @@ def detect_vocal_cognitive_level(
             "analyse de fond", "etude de fond", "rapport complet", "sources exhaustives",
             "mode pro", "deep research", "cartographie complete", "panorama complet",
             "niveau 3", "niveau trois", "recherche de niveau 3", "recherche niveau 3",
-            "recherche l3", "palier 3", "tier 3", "palier de niveau 3"
+            "recherche de nievau 3", "recherche nievau 3", "nievau 3", "nievau trois",
+            "recherche l3", "palier 3", "tier 3", "palier de niveau 3", "lance une recherche l3",
+            "lance une recherche de niveau 3", "lance recherche niveau 3", "fais une recherche l3",
+            "fais une recherche de niveau 3", "fais une recherche niveau 3", "recherche approfondie l3"
         ]
-        has_l3_regex = bool(re.search(r"\b(l3|niveau\s*(3|trois)|tier\s*(3|trois)|palier\s*(3|trois)|deep\s*research)\b", norm))
+        has_l3_regex = bool(re.search(r"\b(l3|nive?a?u\s*(3|trois)|nievau\s*(3|trois)|niv\s*(3|trois)|tier\s*(3|trois)|palier\s*(3|trois)|deep\s*research)\b", norm))
         if has_l3_regex or any(sig in norm for sig in tier3_override_signals):
             return {
                 "level": 3,

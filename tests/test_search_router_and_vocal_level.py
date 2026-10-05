@@ -290,6 +290,10 @@ def test_search_router_regex_l3_variations():
         "Deep research sur les semi-conducteurs",
         "Palier 3 : cartographie IA",
         "Fais un L3 s'il te plaît",
+        "recherche de nievau 3 sur l'espace",
+        "lance une recherche nievau 3",
+        "recherche l3",
+        "recherche approfondie l3",
     ]
     for q in l3_phrases:
         decision = route_search_intent(q)
@@ -310,7 +314,8 @@ async def test_dispatcher_browser_task_redirects_to_l3_when_l3_requested():
         verified=True,
     )
 
-    with patch("core.tools.dispatcher.run_browser_agent_task", new_callable=AsyncMock, return_value=fake_browser_res) as mock_browser:
+    with patch("core.tools.dispatcher.run_browser_agent_task", new_callable=AsyncMock, return_value=fake_browser_res) as mock_browser, \
+         patch("services.local_agent_service.is_pc_connected", return_value=True):
         resp = await dispatch_tool(
             name="browser_task",
             args={"goal": "Fais une recherche de niveau 3 sur les entreprises de Malmö", "sync": True},
@@ -321,6 +326,54 @@ async def test_dispatcher_browser_task_redirects_to_l3_when_l3_requested():
         mock_browser.assert_awaited_once()
         task = mock_browser.await_args.kwargs.get("task") or mock_browser.await_args.args[0]
         assert task.recipe == "gemini_deep_research"
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_browser_task_redirects_on_recipe_gemini_deep_research():
+    """Vérifie que browser_task avec recipe='gemini_deep_research' redirige vers launch_deep_research même sans mot-clé L3."""
+    from core.tools.dispatcher import dispatch_tool
+    from core.tools.result import ToolResult
+
+    fake_browser_res = ToolResult.done(
+        user_message="Synthèse recette",
+        evidence="recipe gemini_deep_research",
+        verified=True,
+    )
+
+    with patch("core.tools.dispatcher.run_browser_agent_task", new_callable=AsyncMock, return_value=fake_browser_res) as mock_browser, \
+         patch("services.local_agent_service.is_pc_connected", return_value=True):
+        resp = await dispatch_tool(
+            name="browser_task",
+            args={"goal": "Entreprises spatiales", "recipe": "gemini_deep_research", "sync": True},
+            websocket=None,
+            session=None,
+        )
+        assert resp["status"] == "done"
+        mock_browser.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_search_web_redirects_to_l3():
+    """Vérifie que search_web redirige automatiquement vers launch_deep_research pour une requête L3."""
+    from core.tools.dispatcher import dispatch_tool
+    from core.tools.result import ToolResult
+
+    fake_browser_res = ToolResult.done(
+        user_message="Synthèse L3",
+        evidence="recipe gemini_deep_research",
+        verified=True,
+    )
+
+    with patch("core.tools.dispatcher.run_browser_agent_task", new_callable=AsyncMock, return_value=fake_browser_res) as mock_browser, \
+         patch("services.local_agent_service.is_pc_connected", return_value=True):
+        resp = await dispatch_tool(
+            name="search_web",
+            args={"query": "Recherche de niveau 3 sur l'IA quantique", "sync": True},
+            websocket=None,
+            session=None,
+        )
+        assert resp["status"] == "done"
+        mock_browser.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -347,6 +400,36 @@ async def test_dispatcher_launch_deep_research_non_blocking_returns_started():
         assert "recherche approfondie de niveau 3" in resp["user_message"].lower()
         assert active_task_controller.get("deep_research_bg_task") is not None
         await asyncio.sleep(0.05)
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_launch_deep_research_bg_failure_injects_voice():
+    """Vérifie que l'échec en tâche de fond de launch_deep_research injecte une explication vocale claire."""
+    from core.tools.dispatcher import dispatch_tool
+    from core.tools.result import ToolResult
+    from services.voice_injection_queue import voice_injection_queue
+
+    failed_res = ToolResult.failed(
+        user_message="Antigravity CLI n'est pas disponible sur le serveur VPS.",
+        error_hint="cli_not_ready",
+    )
+
+    with patch("core.tools.dispatcher.run_browser_agent_task", new_callable=AsyncMock, return_value=ToolResult.failed("PC offline", "pc_offline")), \
+         patch("services.local_agent_service.is_pc_connected", return_value=False), \
+         patch("core.tools.dispatcher.verify_antigravity_cli_ready", new_callable=AsyncMock, return_value=(False, "cli_not_ready", None)), \
+         patch.object(voice_injection_queue, "enqueue", new_callable=AsyncMock) as mock_enqueue:
+        resp = await dispatch_tool(
+            name="launch_deep_research",
+            args={"consigne": "Test échec vocal"},
+            websocket=None,
+            session=None,
+        )
+        assert resp["status"] == "started"
+        # Attendre l'exécution de la tâche de fond
+        await asyncio.sleep(0.1)
+        mock_enqueue.assert_awaited()
+        call_kwargs = mock_enqueue.await_args.kwargs
+        assert "n'a pas pu aboutir" in call_kwargs.get("text", "") or "échoué" in call_kwargs.get("text", "")
 
 
 

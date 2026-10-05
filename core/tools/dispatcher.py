@@ -921,7 +921,8 @@ async def _execute_dispatch_tool(
         async def _run_deep_research_bg():
             try:
                 core_res: ToolResult = await _execute_deep_research_core()
-                supervision_service.complete_action("deep_research", status="completed" if core_res.is_success else "error", summary=core_res.user_message[:250])
+                status_str = "completed" if core_res.is_success else "error"
+                supervision_service.complete_action("deep_research", status=status_str, summary=core_res.user_message[:250])
                 await broadcast_supervision()
 
                 if core_res.is_success and core_res.user_message:
@@ -936,10 +937,49 @@ async def _execute_dispatch_tool(
                         )
                     except Exception as inj_err:
                         logger.warning(f"[DeepResearch BG] Erreur injection vocale : {inj_err}")
+                else:
+                    err_detail = core_res.user_message or core_res.error_hint or "Erreur interne lors de la recherche"
+                    final_oral_msg = f"Pierre, la recherche approfondie de niveau 3 sur « {consigne} » n'a pas pu aboutir : {err_detail}"
+                    try:
+                        await voice_injection_queue.enqueue(
+                            text=final_oral_msg,
+                            priority=InjectionPriority.TOOL_RESPONSE,
+                            session=_sess_dr,
+                            action_key=f"deep_research_err_{int(time.time())}",
+                            metadata={"status": "error", "query": consigne, "error": err_detail},
+                        )
+                    except Exception as inj_err:
+                        logger.warning(f"[DeepResearch BG] Erreur injection vocale d'échec : {inj_err}")
+                    if _sess_dr:
+                        try:
+                            await safe_send_live_client_content(
+                                _sess_dr,
+                                f"[ÉCHEC RECHERCHE L3] La recherche approfondie sur '{consigne}' a échoué ({err_detail}). Explique l'anomalie à Pierre avec ta voix Aoede."
+                            )
+                        except Exception:
+                            pass
             except Exception as bg_err:
                 logger.error(f"[DeepResearch BG] Erreur d'exécution : {bg_err}", exc_info=True)
                 supervision_service.complete_action("deep_research", status="error", summary=str(bg_err))
                 await broadcast_supervision()
+                try:
+                    await voice_injection_queue.enqueue(
+                        text=f"Pierre, la recherche approfondie de niveau 3 sur « {consigne} » a rencontré une anomalie : {str(bg_err)[:150]}",
+                        priority=InjectionPriority.TOOL_RESPONSE,
+                        session=_sess_dr,
+                        action_key=f"deep_research_exc_{int(time.time())}",
+                        metadata={"status": "error", "query": consigne, "error": str(bg_err)},
+                    )
+                except Exception:
+                    pass
+                if _sess_dr:
+                    try:
+                        await safe_send_live_client_content(
+                            _sess_dr,
+                            f"[EXCEPTION RECHERCHE L3] Erreur technique sur '{consigne}' : {bg_err}. Détaille l'erreur à Pierre."
+                        )
+                    except Exception:
+                        pass
             finally:
                 active_task_controller["deep_research_bg_task"] = None
 
@@ -960,7 +1000,7 @@ async def _execute_dispatch_tool(
 
         # Redirection automatique vers launch_deep_research si intention L3 détectée
         routing_check = route_search_intent(query)
-        if routing_check.level == "L3" and routing_check.is_override:
+        if routing_check.level == "L3":
             logger.info(f"[Dispatcher] Redirection automatique de search_web vers launch_deep_research pour requête L3 : '{query}'")
             return await dispatch_tool(
                 name="launch_deep_research",
@@ -1040,7 +1080,7 @@ async def _execute_dispatch_tool(
 
         # Redirection automatique vers launch_deep_research si intention L3 détectée
         routing_check = route_search_intent(goal)
-        if routing_check.level == "L3" and routing_check.is_override:
+        if routing_check.level == "L3":
             logger.info(f"[Dispatcher] Redirection automatique de run_browser_task vers launch_deep_research pour requête L3 : '{goal}'")
             return await dispatch_tool(
                 name="launch_deep_research",
@@ -1136,9 +1176,9 @@ async def _execute_dispatch_tool(
         start_url = args.get("start_url") or args.get("url") or None
         recipe = args.get("recipe") or None
 
-        # Redirection automatique vers launch_deep_research si intention L3 détectée
+        # Redirection automatique vers launch_deep_research si intention L3 détectée ou recette deep research
         routing_check = route_search_intent(goal)
-        if routing_check.level == "L3" and routing_check.is_override:
+        if routing_check.level == "L3" or recipe == "gemini_deep_research":
             logger.info(f"[Dispatcher] Redirection automatique de browser_task vers launch_deep_research pour requête L3 : '{goal}'")
             return await dispatch_tool(
                 name="launch_deep_research",

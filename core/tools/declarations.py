@@ -305,7 +305,7 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                     description=(
                         "AGENT WEB AUTONOME NIVEAU 2 (L2 / TIER 2). "
                         "Pour TOUTE interaction concrète sur un site web (remplir un panier d'achat, réserver un billet de train/vol, se connecter à un compte, remplir un formulaire). "
-                        "NE JAMAIS UTILISER POUR UNE RECHERCHE DE NIVEAU 3 (L3 / Deep Research) : pour toute recherche L3 ou étude approfondie, utiliser obligatoirement 'launch_deep_research'."
+                        "INTERDICTION FORMELLE D'UTILISER CET OUTIL POUR UNE RECHERCHE DE NIVEAU 3 (L3 / Deep Research / Recherche approfondie / Étude de fond) : pour toute recherche L3, analyse multi-sources ou étude de marché, utiliser obligatoirement et uniquement 'launch_deep_research'."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -321,8 +321,8 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                             ),
                             "recipe": types.Schema(
                                 type="STRING",
-                                enum=["cart", "train", "gemini_deep_research"],
-                                description="Recette optionnelle : cart, train, ou gemini_deep_research."
+                                enum=["cart", "train"],
+                                description="Recette optionnelle : cart (remplissage panier/achats) ou train (réservation SNCF/Trainline)."
                             ),
                         },
                         required=["goal"]

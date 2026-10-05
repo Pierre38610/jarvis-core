@@ -42,7 +42,7 @@ async def test_browser_task_dispatch_under_200ms():
             args={
                 "goal": "Rechercher un vol pour Rome le 12 octobre",
                 "start_url": "https://google.com",
-                "recipe": "gemini_deep_research",
+                "recipe": "cart",
             },
             websocket=mock_ws,
             session=mock_session,
@@ -63,7 +63,7 @@ async def test_browser_task_dispatch_under_200ms():
             args={
                 "goal": "Rechercher un vol pour Rome le 12 octobre",
                 "start_url": "https://google.com",
-                "recipe": "gemini_deep_research",
+                "recipe": "cart",
             },
             websocket=mock_ws,
             session=mock_session,
@@ -92,7 +92,7 @@ async def test_browser_task_dispatch_under_200ms():
     task = BROWSER_TASKS[task_id]
     assert task.goal == "Rechercher un vol pour Rome le 12 octobre"
     assert task.start_url == "https://google.com"
-    assert task.recipe == "gemini_deep_research"
+    assert task.recipe == "cart"
 
 
 @pytest.mark.asyncio
