@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import config
 from config import BASE_DIR, WORKSPACE_DIR
 from services.voice_injection_queue import voice_injection_queue, InjectionPriority
+from services.l3_error import L3ErrorDetails, set_last_l3_error, get_last_l3_error, sanitize_error_text
 
 logger = logging.getLogger("jarvis.gemini_web_automator")
 
@@ -834,7 +835,7 @@ class GeminiWebAutomator:
 
         try:
             # 1. Connexion CDP
-            logger.info(f"[DR-L3] Démarrage Deep Research : '{topic}' (task_id={t_id})")
+            logger.info(f"[DR-L3] [DeepResearch] Démarrage Deep Research : '{topic}' (task_id={t_id})")
             await self._inject_voice_milestone(
                 "Je lance la recherche approfondie sur Gemini Web via votre navigateur.",
                 "dr_step1_connect"
@@ -843,7 +844,23 @@ class GeminiWebAutomator:
             connected = await self._connect()
             if not connected:
                 shot = await self._capture_screenshot("connect_error")
-                result.update({"status": "error", "error": "Impossible de se connecter à Chrome CDP.", "screenshot_path": shot})
+                err_msg = "Impossible de se connecter à Chrome CDP sur le port 9222."
+                l3_err = L3ErrorDetails(
+                    etape="cdp_connection",
+                    exception=err_msg,
+                    traceback_court="",
+                    capture_ecran=shot,
+                    cause_courte="Chrome CDP non joignable (port 9222)",
+                    fallback_initiated=True,
+                )
+                set_last_l3_error(l3_err)
+                logger.error(f"[DeepResearch] [Étape: cdp_connection] {l3_err.cause_courte}")
+                result.update({
+                    "status": "error",
+                    "error": err_msg,
+                    "screenshot_path": shot,
+                    "l3_error": l3_err.to_dict(),
+                })
                 return result
             result["steps_completed"].append("cdp_connected")
 
@@ -851,17 +868,45 @@ class GeminiWebAutomator:
             nav_ok = await self._navigate_to_gemini()
             if not nav_ok:
                 shot = await self._capture_screenshot("nav_error")
-                result.update({"status": "error", "error": "Navigation vers Gemini échouée.", "screenshot_path": shot})
+                err_msg = "Navigation vers Gemini échouée."
+                l3_err = L3ErrorDetails(
+                    etape="navigation",
+                    exception=err_msg,
+                    traceback_court="",
+                    capture_ecran=shot,
+                    cause_courte="Page Gemini inaccessible",
+                    fallback_initiated=True,
+                )
+                set_last_l3_error(l3_err)
+                logger.error(f"[DeepResearch] [Étape: navigation] {l3_err.cause_courte}")
+                result.update({
+                    "status": "error",
+                    "error": err_msg,
+                    "screenshot_path": shot,
+                    "l3_error": l3_err.to_dict(),
+                })
                 return result
             result["steps_completed"].append("navigation_ok")
 
             # Vérification de connexion / session Google
             if await self._check_login_state():
                 shot = await self._capture_screenshot("login_required")
+                err_msg = "Connexion Google requise sur votre navigateur Chrome."
+                l3_err = L3ErrorDetails(
+                    etape="login_required",
+                    exception=err_msg,
+                    traceback_court="",
+                    capture_ecran=shot,
+                    cause_courte="Session Google/Gemini non authentifiée",
+                    fallback_initiated=True,
+                )
+                set_last_l3_error(l3_err)
+                logger.warning(f"[DeepResearch] [Étape: login_required] {l3_err.cause_courte}")
                 result.update({
                     "status": "needs_login",
-                    "error": "Connexion Google requise sur votre navigateur Chrome.",
+                    "error": err_msg,
                     "screenshot_path": shot,
+                    "l3_error": l3_err.to_dict(),
                 })
                 await self._inject_voice_milestone(
                     "Une connexion à votre compte Google est requise sur Chrome pour utiliser Deep Research.",
@@ -877,7 +922,23 @@ class GeminiWebAutomator:
             fill_ok = await self._fill_prompt(topic)
             if not fill_ok:
                 shot = await self._capture_screenshot("fill_error")
-                result.update({"status": "error", "error": "Impossible d'injecter le sujet dans le prompt Gemini.", "screenshot_path": shot})
+                err_msg = "Impossible d'injecter le sujet dans le prompt Gemini."
+                l3_err = L3ErrorDetails(
+                    etape="prompt_fill",
+                    exception=err_msg,
+                    traceback_court="",
+                    capture_ecran=shot,
+                    cause_courte="Champ de saisie Gemini introuvable",
+                    fallback_initiated=True,
+                )
+                set_last_l3_error(l3_err)
+                logger.error(f"[DeepResearch] [Étape: prompt_fill] {l3_err.cause_courte}")
+                result.update({
+                    "status": "error",
+                    "error": err_msg,
+                    "screenshot_path": shot,
+                    "l3_error": l3_err.to_dict(),
+                })
                 return result
             result["steps_completed"].append("prompt_filled")
 
@@ -903,10 +964,22 @@ class GeminiWebAutomator:
 
             if not markdown_content and not page_url:
                 shot = await self._capture_screenshot("extraction_failed")
+                err_msg = "Échec d'extraction du rapport final de recherche."
+                l3_err = L3ErrorDetails(
+                    etape="extract_report",
+                    exception=err_msg,
+                    traceback_court="",
+                    capture_ecran=shot,
+                    cause_courte="Contenu du rapport introuvable ou vide",
+                    fallback_initiated=True,
+                )
+                set_last_l3_error(l3_err)
+                logger.error(f"[DeepResearch] [Étape: extract_report] {l3_err.cause_courte}")
                 result.update({
                     "status": "error",
-                    "error": "Échec d'extraction du rapport final de recherche.",
+                    "error": err_msg,
                     "screenshot_path": shot,
+                    "l3_error": l3_err.to_dict(),
                 })
                 return result
 
@@ -939,9 +1012,30 @@ class GeminiWebAutomator:
             return result
 
         except Exception as e:
-            logger.error(f"[DR-L3] Erreur inattendue : {e}", exc_info=True)
-            shot = await self._capture_screenshot("unexpected_error")
-            result.update({"status": "error", "error": str(e), "screenshot_path": shot})
+            shot = None
+            try:
+                shot = await self._capture_screenshot("unexpected_error")
+            except Exception:
+                pass
+            import traceback
+            tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
+            e_str = sanitize_error_text(str(e))
+            l3_err = L3ErrorDetails(
+                etape="unexpected_exception",
+                exception=f"{e.__class__.__name__}: {e_str}",
+                traceback_court=tb_short,
+                capture_ecran=shot,
+                cause_courte=f"Erreur inattendue ({e.__class__.__name__})",
+                fallback_initiated=True,
+            )
+            set_last_l3_error(l3_err)
+            logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] {l3_err.cause_courte} : {e_str}\n{tb_short}", exc_info=True)
+            result.update({
+                "status": "error",
+                "error": e_str,
+                "screenshot_path": shot,
+                "l3_error": l3_err.to_dict(),
+            })
             return result
 
         finally:
@@ -958,6 +1052,7 @@ class GeminiDeepResearchEngine:
     def __init__(self):
         self._current_task: Optional[asyncio.Task] = None
         self._last_result: Optional[Dict[str, Any]] = None
+        self._last_l3_error: Optional[Dict[str, Any]] = None
         self._automator: Optional[GeminiWebAutomator] = None
         self._active_tasks: Dict[str, asyncio.Task] = {}
 
@@ -972,6 +1067,14 @@ class GeminiDeepResearchEngine:
         if self._last_result:
             return {"active": False, **self._last_result}
         return {"active": False, "status": "idle"}
+
+    def get_last_error(self) -> Optional[Dict[str, Any]]:
+        """Retourne la dernière erreur L3 enregistrée."""
+        return self._last_l3_error or get_last_l3_error()
+
+    def get_last_l3_error(self) -> Optional[Dict[str, Any]]:
+        """Retourne la dernière erreur L3 enregistrée (alias)."""
+        return self._last_l3_error or get_last_l3_error()
 
     async def launch(
         self,
@@ -999,15 +1102,29 @@ class GeminiDeepResearchEngine:
                     task_id=t_id,
                 )
                 self._last_result = res
+                if res.get("l3_error"):
+                    self._last_l3_error = res["l3_error"]
             except Exception as e:
-                self._last_result = {"status": "error", "error": str(e), "task_id": t_id}
+                import traceback
+                tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
+                e_str = sanitize_error_text(str(e))
+                l3_err = L3ErrorDetails(
+                    etape="engine_bg_task",
+                    exception=f"{e.__class__.__name__}: {e_str}",
+                    traceback_court=tb_short,
+                    cause_courte=f"Erreur d'arrière-plan ({e.__class__.__name__})",
+                    fallback_initiated=True,
+                )
+                self._last_l3_error = l3_err.to_dict()
+                set_last_l3_error(l3_err)
+                self._last_result = {"status": "error", "error": e_str, "task_id": t_id, "l3_error": self._last_l3_error}
             finally:
                 self._current_task = None
                 self._active_tasks.pop(t_id, None)
 
         self._current_task = asyncio.create_task(_bg_task())
         self._active_tasks[t_id] = self._current_task
-        logger.info(f"[Engine] Deep Research L3 lancé en arrière-plan (task_id={t_id}) : '{topic}'")
+        logger.info(f"[Engine] [DeepResearch] Deep Research L3 lancé en arrière-plan (task_id={t_id}) : '{topic}'")
 
         return {
             "status": "launched_in_background",

@@ -19,6 +19,7 @@ import config
 from core.tools.result import ToolResult
 from services.browser_agent import cli_brain, guards, site_memory
 from services.local_agent_service import local_agent_service
+from services.l3_error import L3ErrorDetails, set_last_l3_error, get_last_l3_error, sanitize_error_text
 
 logger = logging.getLogger("jarvis.browser_agent.loop")
 
@@ -40,6 +41,7 @@ class BrowserTask:
     history: List[Dict[str, Any]] = field(default_factory=list)
     result: str = ""
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
+    last_error: Optional[Dict[str, Any]] = None
 
 
 # Registre global des tâches
@@ -199,18 +201,30 @@ async def run_browser_task(
         )
         if open_res.get("ok") is False or open_res.get("status") in {"error", "pc_offline", "timeout"}:
             task.status = "failed"
-            err_msg = open_res.get("error") or open_res.get("message") or "Échec browser_open_task"
-            logger.error("[BrowserLoop] task=%s échec ouverture: %s", task.task_id, err_msg)
+            raw_err = open_res.get("error") or open_res.get("message") or "Échec browser_open_task"
+            err_msg = sanitize_error_text(str(raw_err))
+            l3_err = L3ErrorDetails(
+                etape="browser_open_task",
+                exception=err_msg,
+                traceback_court="",
+                capture_ecran=None,
+                cause_courte=f"Impossible de démarrer la navigation : {err_msg}",
+            )
+            task.last_error = l3_err.to_dict()
+            set_last_l3_error(task.last_error)
+            logger.error("[BrowserLoop] [DeepResearch] task=%s échec ouverture: %s", task.task_id, err_msg)
             return ToolResult.failed(
                 user_message=f"Impossible de démarrer la navigation : {err_msg}",
                 task_id=task.task_id,
                 error_hint=err_msg,
+                data={"l3_error": l3_err.to_dict()},
             )
 
         consecutive_errors = 0
         need_screenshot = False
         step_thoughts: List[str] = []
         current_url = task.start_url or ""
+        screenshot_path = None
         start_time = time.time()
 
         # 2. Boucle principale de navigation (S2)
@@ -220,12 +234,22 @@ async def run_browser_task(
             if time.time() - start_time > max_duration:
                 task.status = "failed"
                 await _call_rpc("browser_close_task", task_id=task.task_id)
-                logger.warning("[BrowserLoop] task=%s timeout max_duration=%ss", task.task_id, max_duration)
+                logger.warning("[BrowserLoop] [DeepResearch] task=%s timeout max_duration=%ss", task.task_id, max_duration)
+                l3_err = L3ErrorDetails(
+                    etape="max_duration",
+                    exception="max_duration_exceeded",
+                    traceback_court="",
+                    capture_ecran=screenshot_path,
+                    cause_courte=f"Durée maximale dépassée ({int(max_duration)}s)",
+                )
+                task.last_error = l3_err.to_dict()
+                set_last_l3_error(task.last_error)
                 return ToolResult.failed(
                     user_message=f"La tâche de navigation a dépassé la durée maximale de {int(max_duration)}s.",
                     task_id=task.task_id,
                     error_hint="max_duration_exceeded",
                     evidence=current_url,
+                    data={"l3_error": l3_err.to_dict()},
                 )
 
             if task.cancel_event.is_set():
@@ -521,9 +545,24 @@ async def run_browser_task(
 
         # Fin des étapes maximales sans complétion
         task.status = "failed"
+        l3_err = L3ErrorDetails(
+            etape="max_steps",
+            exception="max_steps_exceeded",
+            traceback_court="",
+            capture_ecran=screenshot_path if 'screenshot_path' in locals() else None,
+            cause_courte=f"Limite de {max_steps} étapes atteinte sans validation",
+        )
+        task.last_error = l3_err.to_dict()
+        set_last_l3_error(task.last_error)
+        logger.warning("[BrowserLoop] [DeepResearch] task=%s max_steps_exceeded (%s steps)", task.task_id, max_steps)
         return ToolResult.failed(
             user_message=f"La tâche de navigation n'a pas abouti après {max_steps} étapes.",
             task_id=task.task_id,
             error_hint="max_steps_exceeded",
             evidence=current_url,
+            data={"l3_error": l3_err.to_dict()},
         )
+
+
+# Alias pour compatibilité d'orchestration
+run_browser_agent_task = run_browser_task

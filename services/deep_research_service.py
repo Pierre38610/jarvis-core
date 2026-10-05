@@ -1500,17 +1500,39 @@ async def launch_deep_research_gemini_web(
 
     try:
         from services.browser_agent.loop import BrowserTask, run_browser_task
+        from services.l3_error import L3ErrorDetails, set_last_l3_error, sanitize_error_text
         task_id = f"bt_dr_{int(time.time() * 1000)}"
         task = BrowserTask(task_id=task_id, goal=topic, recipe="gemini_deep_research")
         res = await run_browser_task(task)
         if res and res.is_success and task.status != "failed":
             return {"status": "success", "task_id": task_id, "result": res.to_dict()}
-        logger.info(f"[DR] Browser Agent non réussi ({task.status if task else 'unknown'}), repli vers moteur legacy.")
-        return {"status": "error", "error": res.error_hint if res else "browser_task_failed", "fallback": "legacy"}
-    except Exception as e:
-        logger.error(f"[DR] Erreur moteur Browser Agent : {e}. Repli vers moteur legacy.", exc_info=True)
+
+        err_data = getattr(task, "last_error", None) or (res.data.get("l3_error") if res and isinstance(res.data, dict) else None)
+        err_hint = res.error_hint if res else "browser_task_failed"
+        logger.info(f"[DeepResearch] Browser Agent non réussi ({task.status if task else 'unknown'}), repli vers moteur legacy. Détail: {err_data}")
         return {
             "status": "error",
-            "error": str(e),
+            "error": err_hint,
             "fallback": "legacy",
+            "l3_error": err_data,
+        }
+    except Exception as e:
+        import traceback
+        from services.l3_error import L3ErrorDetails, set_last_l3_error, sanitize_error_text
+        tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
+        e_str = sanitize_error_text(str(e))
+        l3_err = L3ErrorDetails(
+            etape="launch_deep_research_gemini_web",
+            exception=f"{e.__class__.__name__}: {e_str}",
+            traceback_court=tb_short,
+            cause_courte=f"Erreur Browser Agent ({e.__class__.__name__})",
+            fallback_initiated=True,
+        )
+        set_last_l3_error(l3_err)
+        logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] Erreur moteur Browser Agent : {e_str}. Repli vers moteur legacy.\n{tb_short}", exc_info=True)
+        return {
+            "status": "error",
+            "error": e_str,
+            "fallback": "legacy",
+            "l3_error": l3_err.to_dict(),
         }

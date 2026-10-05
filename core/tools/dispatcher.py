@@ -17,6 +17,7 @@ from google.genai import types
 import config
 logger = logging.getLogger("jarvis.dispatcher")
 from google_antigravity import resolve_antigravity_model, is_stop_directive, _sanitize_secrets
+from services.l3_error import L3ErrorDetails, set_last_l3_error, get_last_l3_error, sanitize_error_text
 from services.google_antigravity import (
     MODEL_FLASH,
     MODEL_PRO,
@@ -777,17 +778,53 @@ async def _execute_dispatch_tool(
                                 logger.warning(f"[Deep Research Mail Error] {mail_err}")
                         return browser_res
                     else:
-                        logger.info(f"[DeepResearch] Browser task gemini_deep_research non réussi ({dr_task.status if dr_task else 'unknown'}), repli vers le moteur Map-Reduce.")
+                        err_step = "browser_agent"
+                        err_cause = "tâche non aboutie"
+                        err_details = None
+                        if browser_res and isinstance(browser_res.data, dict) and "l3_error" in browser_res.data:
+                            err_details = browser_res.data["l3_error"]
+                            err_step = err_details.get("etape", err_step)
+                            err_cause = err_details.get("cause_courte", err_details.get("exception", err_cause))
+                        elif dr_task and getattr(dr_task, "last_error", None):
+                            err_details = dr_task.last_error
+                            err_step = err_details.get("etape", err_step)
+                            err_cause = err_details.get("cause_courte", err_details.get("exception", err_cause))
+                        elif browser_res and browser_res.error_hint:
+                            err_cause = browser_res.error_hint
+
+                        logger.info(f"[DeepResearch] [Étape: {err_step}] Browser task gemini_deep_research non réussi ({err_cause}), repli vers le moteur Map-Reduce.")
                 except Exception as b_err:
-                    logger.warning(f"[DeepResearch] Erreur browser task gemini_deep_research ({b_err}), repli vers le moteur Map-Reduce.")
+                    import traceback
+                    tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
+                    b_err_sanitized = sanitize_error_text(str(b_err))
+                    l3_err = L3ErrorDetails(
+                        etape="browser_task_exception",
+                        exception=f"{b_err.__class__.__name__}: {b_err_sanitized}",
+                        traceback_court=tb_short,
+                        cause_courte=f"Erreur Browser Task ({b_err.__class__.__name__})",
+                        fallback_initiated=True,
+                    )
+                    set_last_l3_error(l3_err)
+                    logger.warning(f"[DeepResearch] [EXCEPTION RECHERCHE L3] Erreur browser task gemini_deep_research ({b_err_sanitized}), repli vers le moteur Map-Reduce.\n{tb_short}")
 
                 # 2. Repli existant Map-Reduce (Phase 1: Prospecteur, Phase 2: Analyste, Phase 3: Synthèse)
                 cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
                 if not cli_ok:
+                    clean_err = sanitize_error_text(cli_err or "cli_not_ready")
+                    l3_err = L3ErrorDetails(
+                        etape="cli_verification",
+                        exception=clean_err,
+                        traceback_court="",
+                        cause_courte=f"Antigravity CLI indisponible sur le serveur VPS ({clean_err})",
+                        fallback_initiated=False,
+                    )
+                    set_last_l3_error(l3_err)
+                    logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] [Étape: cli_verification] {l3_err.cause_courte}")
                     return ToolResult.failed(
-                        user_message="Antigravity CLI n'est pas disponible sur le serveur VPS.",
-                        error_hint=cli_err or "cli_not_ready",
+                        user_message=f"Échec à l'étape 'cli_verification' : {l3_err.cause_courte}.",
+                        error_hint=clean_err,
                         verified=False,
+                        data={"l3_error": l3_err.to_dict()},
                     )
 
                 t_total_0 = time.perf_counter()
@@ -824,15 +861,43 @@ async def _execute_dispatch_tool(
                     dur_p = time.perf_counter() - t_p0
                     await complete_subagent(p_agent_id, summary=f"{out_p.conclusion[:70]} (flash/medium, durée: {dur_p:.1f}s)")
                     if out_p.status != "success":
+                        err_msg = sanitize_error_text(out_p.error or out_p.conclusion or "prospector_phase_failed")
+                        l3_err = L3ErrorDetails(
+                            etape="prospector_phase",
+                            exception=err_msg,
+                            traceback_court="",
+                            cause_courte=f"Échec de la collecte des sources ({err_msg[:100]})",
+                            fallback_initiated=False,
+                        )
+                        set_last_l3_error(l3_err)
+                        logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] [Étape: prospector_phase] {l3_err.cause_courte}")
                         return ToolResult.failed(
-                            user_message=out_p.conclusion or "Échec de la phase de prospection.",
-                            error_hint=out_p.error or "prospector_phase_failed",
+                            user_message=f"Échec à l'étape 'prospector_phase' : {l3_err.cause_courte}.",
+                            error_hint=err_msg,
                             verified=False,
+                            data={"l3_error": l3_err.to_dict()},
                         )
                 except Exception as e:
                     dur_p = time.perf_counter() - t_p0
-                    await complete_subagent(p_agent_id, summary=f"Erreur: {str(e)[:70]} (durée: {dur_p:.1f}s)")
-                    return ToolResult.failed(user_message=f"Erreur phase Prospecteur : {str(e)}", error_hint=str(e), verified=False)
+                    import traceback
+                    tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
+                    e_sanitized = sanitize_error_text(str(e))
+                    l3_err = L3ErrorDetails(
+                        etape="prospector_phase",
+                        exception=f"{e.__class__.__name__}: {e_sanitized}",
+                        traceback_court=tb_short,
+                        cause_courte=f"Erreur phase Prospecteur ({e_sanitized[:100]})",
+                        fallback_initiated=False,
+                    )
+                    set_last_l3_error(l3_err)
+                    logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] [Étape: prospector_phase] {l3_err.cause_courte}\n{tb_short}", exc_info=True)
+                    await complete_subagent(p_agent_id, summary=f"Erreur: {e_sanitized[:70]} (durée: {dur_p:.1f}s)")
+                    return ToolResult.failed(
+                        user_message=f"Échec à l'étape 'prospector_phase' : {l3_err.cause_courte}.",
+                        error_hint=e_sanitized,
+                        verified=False,
+                        data={"l3_error": l3_err.to_dict()},
+                    )
 
                 # ── Phase 2 : Analyste (pro/high) ──
                 a_agent_id = f"agy_analyst_{int(time.time()*1000)}"
@@ -868,15 +933,43 @@ async def _execute_dispatch_tool(
                     dur_a = time.perf_counter() - t_a0
                     await complete_subagent(a_agent_id, summary=f"{out_a.conclusion[:70]} (pro/high, durée: {dur_a:.1f}s)")
                     if out_a.status != "success":
+                        err_msg = sanitize_error_text(out_a.error or out_a.conclusion or "analyst_phase_failed")
+                        l3_err = L3ErrorDetails(
+                            etape="analyst_phase",
+                            exception=err_msg,
+                            traceback_court="",
+                            cause_courte=f"Échec de l'analyse critique ({err_msg[:100]})",
+                            fallback_initiated=False,
+                        )
+                        set_last_l3_error(l3_err)
+                        logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] [Étape: analyst_phase] {l3_err.cause_courte}")
                         return ToolResult.failed(
-                            user_message=out_a.conclusion or "Échec de la phase d'analyse critique.",
-                            error_hint=out_a.error or "analyst_phase_failed",
+                            user_message=f"Échec à l'étape 'analyst_phase' : {l3_err.cause_courte}.",
+                            error_hint=err_msg,
                             verified=False,
+                            data={"l3_error": l3_err.to_dict()},
                         )
                 except Exception as e:
                     dur_a = time.perf_counter() - t_a0
-                    await complete_subagent(a_agent_id, summary=f"Erreur: {str(e)[:70]} (durée: {dur_a:.1f}s)")
-                    return ToolResult.failed(user_message=f"Erreur phase Analyste : {str(e)}", error_hint=str(e), verified=False)
+                    import traceback
+                    tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
+                    e_sanitized = sanitize_error_text(str(e))
+                    l3_err = L3ErrorDetails(
+                        etape="analyst_phase",
+                        exception=f"{e.__class__.__name__}: {e_sanitized}",
+                        traceback_court=tb_short,
+                        cause_courte=f"Erreur phase Analyste ({e_sanitized[:100]})",
+                        fallback_initiated=False,
+                    )
+                    set_last_l3_error(l3_err)
+                    logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] [Étape: analyst_phase] {l3_err.cause_courte}\n{tb_short}", exc_info=True)
+                    await complete_subagent(a_agent_id, summary=f"Erreur: {e_sanitized[:70]} (durée: {dur_a:.1f}s)")
+                    return ToolResult.failed(
+                        user_message=f"Échec à l'étape 'analyst_phase' : {l3_err.cause_courte}.",
+                        error_hint=e_sanitized,
+                        verified=False,
+                        data={"l3_error": l3_err.to_dict()},
+                    )
 
                 # ── Phase 3 : Synthèse (pro/medium) ──
                 s_agent_id = f"agy_synthesis_{int(time.time()*1000)}"
@@ -913,15 +1006,43 @@ async def _execute_dispatch_tool(
                     dur_s = time.perf_counter() - t_s0
                     await complete_subagent(s_agent_id, summary=f"{out_s.conclusion[:70]} (pro/medium, durée: {dur_s:.1f}s)")
                     if out_s.status != "success":
+                        err_msg = sanitize_error_text(out_s.error or out_s.conclusion or "synthesis_phase_failed")
+                        l3_err = L3ErrorDetails(
+                            etape="synthesis_phase",
+                            exception=err_msg,
+                            traceback_court="",
+                            cause_courte=f"Échec de la synthèse finale ({err_msg[:100]})",
+                            fallback_initiated=False,
+                        )
+                        set_last_l3_error(l3_err)
+                        logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] [Étape: synthesis_phase] {l3_err.cause_courte}")
                         return ToolResult.failed(
-                            user_message=out_s.conclusion or "Échec de la phase de synthèse.",
-                            error_hint=out_s.error or "synthesis_phase_failed",
+                            user_message=f"Échec à l'étape 'synthesis_phase' : {l3_err.cause_courte}.",
+                            error_hint=err_msg,
                             verified=False,
+                            data={"l3_error": l3_err.to_dict()},
                         )
                 except Exception as e:
                     dur_s = time.perf_counter() - t_s0
-                    await complete_subagent(s_agent_id, summary=f"Erreur: {str(e)[:70]} (durée: {dur_s:.1f}s)")
-                    return ToolResult.failed(user_message=f"Erreur phase Synthèse : {str(e)}", error_hint=str(e), verified=False)
+                    import traceback
+                    tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
+                    e_sanitized = sanitize_error_text(str(e))
+                    l3_err = L3ErrorDetails(
+                        etape="synthesis_phase",
+                        exception=f"{e.__class__.__name__}: {e_sanitized}",
+                        traceback_court=tb_short,
+                        cause_courte=f"Erreur phase Synthèse ({e_sanitized[:100]})",
+                        fallback_initiated=False,
+                    )
+                    set_last_l3_error(l3_err)
+                    logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] [Étape: synthesis_phase] {l3_err.cause_courte}\n{tb_short}", exc_info=True)
+                    await complete_subagent(s_agent_id, summary=f"Erreur: {e_sanitized[:70]} (durée: {dur_s:.1f}s)")
+                    return ToolResult.failed(
+                        user_message=f"Échec à l'étape 'synthesis_phase' : {l3_err.cause_courte}.",
+                        error_hint=e_sanitized,
+                        verified=False,
+                        data={"l3_error": l3_err.to_dict()},
+                    )
 
                 total_duration = time.perf_counter() - t_total_0
                 all_sources = list(out_p.sources) + [s for s in out_a.sources if s not in out_p.sources]
@@ -983,15 +1104,28 @@ async def _execute_dispatch_tool(
                     except Exception as inj_err:
                         logger.warning(f"[DeepResearch BG] Erreur injection vocale : {inj_err}")
                 else:
-                    err_detail = core_res.user_message or core_res.error_hint or "Erreur interne lors de la recherche"
-                    final_oral_msg = f"Pierre, la recherche approfondie de niveau 3 sur « {consigne} » n'a pas pu aboutir : {err_detail}"
+                    err_step = "recherche"
+                    err_cause = "cause indéterminée"
+                    if isinstance(core_res.data, dict) and "l3_error" in core_res.data:
+                        l3_err_data = core_res.data["l3_error"]
+                        err_step = l3_err_data.get("etape", err_step)
+                        err_cause = l3_err_data.get("cause_courte", l3_err_data.get("exception", err_cause))
+                    elif core_res.error_hint:
+                        err_cause = core_res.error_hint
+                    elif core_res.user_message:
+                        err_cause = core_res.user_message
+
+                    err_detail = f"Échec à l'étape '{err_step}' : {err_cause}"
+                    logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] {err_detail}")
+                    supervision_service.record_event("L3_ERROR", err_detail)
+                    final_oral_msg = f"Pierre, la recherche approfondie de niveau 3 sur « {consigne} » n'a pas pu aboutir (étape '{err_step}') : {err_cause}"
                     try:
                         await voice_injection_queue.enqueue(
                             text=final_oral_msg,
                             priority=InjectionPriority.TOOL_RESPONSE,
                             session=_sess_dr,
                             action_key=f"deep_research_err_{int(time.time())}",
-                            metadata={"status": "error", "query": consigne, "error": err_detail},
+                            metadata={"status": "error", "query": consigne, "error": err_detail, "etape": err_step},
                         )
                     except Exception as inj_err:
                         logger.warning(f"[DeepResearch BG] Erreur injection vocale d'échec : {inj_err}")
@@ -999,21 +1133,32 @@ async def _execute_dispatch_tool(
                         try:
                             await safe_send_live_client_content(
                                 _sess_dr,
-                                f"[ÉCHEC RECHERCHE L3] La recherche approfondie sur '{consigne}' a échoué ({err_detail}). Explique l'anomalie à Pierre avec ta voix Aoede."
+                                f"[EXCEPTION RECHERCHE L3] La recherche approfondie sur '{consigne}' a échoué à l'étape '{err_step}' ({err_cause}). Explique l'anomalie à Pierre avec ta voix Aoede."
                             )
                         except Exception:
                             pass
             except Exception as bg_err:
-                logger.error(f"[DeepResearch BG] Erreur d'exécution : {bg_err}", exc_info=True)
-                supervision_service.complete_action("deep_research", status="error", summary=str(bg_err))
+                import traceback
+                tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
+                bg_err_str = sanitize_error_text(str(bg_err))
+                l3_err = L3ErrorDetails(
+                    etape="background_execution",
+                    exception=f"{bg_err.__class__.__name__}: {bg_err_str}",
+                    traceback_court=tb_short,
+                    cause_courte=f"Erreur technique ({bg_err.__class__.__name__})",
+                )
+                set_last_l3_error(l3_err)
+                logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] Erreur d'exécution sur '{consigne}' : {bg_err_str}\n{tb_short}", exc_info=True)
+                supervision_service.complete_action("deep_research", status="error", summary=f"Échec étape background: {bg_err_str[:150]}")
+                supervision_service.record_event("L3_ERROR", f"Échec background: {bg_err_str[:150]}")
                 await broadcast_supervision()
                 try:
                     await voice_injection_queue.enqueue(
-                        text=f"Pierre, la recherche approfondie de niveau 3 sur « {consigne} » a rencontré une anomalie : {str(bg_err)[:150]}",
+                        text=f"Pierre, la recherche approfondie de niveau 3 sur « {consigne} » n'a pas pu aboutir (étape 'background_execution') : {bg_err_str[:150]}",
                         priority=InjectionPriority.TOOL_RESPONSE,
                         session=_sess_dr,
                         action_key=f"deep_research_exc_{int(time.time())}",
-                        metadata={"status": "error", "query": consigne, "error": str(bg_err)},
+                        metadata={"status": "error", "query": consigne, "error": bg_err_str, "etape": "background_execution"},
                     )
                 except Exception:
                     pass
@@ -1021,7 +1166,7 @@ async def _execute_dispatch_tool(
                     try:
                         await safe_send_live_client_content(
                             _sess_dr,
-                            f"[EXCEPTION RECHERCHE L3] Erreur technique sur '{consigne}' : {bg_err}. Détaille l'erreur à Pierre."
+                            f"[EXCEPTION RECHERCHE L3] Erreur technique à l'étape background sur '{consigne}' : {bg_err_str}. Détaille l'erreur à Pierre."
                         )
                     except Exception:
                         pass
