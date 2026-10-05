@@ -12,6 +12,15 @@ __pycache__/
 !.env.example
 authorized_devices.json
 qr_tickets.json
+*.key
+*.key.pub
+*.pem
+*.id_rsa
+*ssh-key*
+clés ssh/
+cles ssh/
+ssh/
+
 
 # Binaries & Large files
 cloudflared.exe
