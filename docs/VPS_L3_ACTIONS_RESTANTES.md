@@ -29,65 +29,38 @@ Toutes les étapes d'infrastructure, de dépendances et de configuration systèm
 
 ---
 
-## 3. Procédure Recommandée en 2 Clics (Moins de 2 minutes)
+## 3. Méthode Recommandée : Connexion Directe dans votre Navigateur Web (1-Clic)
 
-Deux scripts prêts à l'emploi ont été créés pour vous éviter toute commande complexe.
+Cette méthode est la plus simple et la plus fiable : elle ouvre Chromium du VPS directement dans votre navigateur web local habituel (Chrome/Edge/Brave).
 
 ```
-   ┌─────────────────────────────┐        ┌─────────────────────────────┐        ┌─────────────────────────────┐
-   │ 1. connect_gemini_web.bat   │        │ 2. sync_gemini_session_     │        │ 3. Deep Research L3 Prêt    │
-   │    Connexion Google locale  │ ─────► │    to_vps.bat               │ ─────► │    Autonomie totale 24/7    │
-   │    (Mot de passe + 2FA)     │        │    Migration auto vers VPS  │        │    sur le Cloud             │
-   └─────────────────────────────┘        └─────────────────────────────┘        └─────────────────────────────┘
+   ┌───────────────────────────────────┐        ┌───────────────────────────────────┐
+   │ 1. Double-clic sur :              │        │ 2. Authentification Google        │
+   │    connect_gemini_vps_browser.bat │ ─────► │    dans votre navigateur          │ ─────► [✔ SUCCÈS] Prêt !
+   │    (Ouvre l'interface Web VPS)    │        │    (Mot de passe + 2FA sur tél)   │
+   └───────────────────────────────────┘        └───────────────────────────────────┘
 ```
 
-### Étape 1 : Connexion Unique sur votre PC Local
+### Marche à suivre :
 1. Dans le dossier `jarvis-core\scripts\`, double-cliquez sur :
    ```batch
-   scripts\connect_gemini_web.bat
+   scripts\connect_gemini_vps_browser.bat
    ```
-2. Une fenêtre officielle de Google Chrome s'ouvre sur `https://gemini.google.com/app` avec le profil isolé de Jarvis.
-3. Connectez-vous à votre compte Google (saisissez votre mot de passe et validez votre 2FA sur votre téléphone).
-4. Dès que vous êtes connecté et que l'interface de **Google Gemini** s'affiche : **fermez simplement la fenêtre de Chrome**.
+2. Votre navigateur web par défaut s'ouvre automatiquement sur la page sécurisée de Chromium distant (`http://127.0.0.1:6080`).
+3. Connectez-vous à votre compte Google sur l'interface de Gemini (entrez votre e-mail, mot de passe et validez votre 2FA sur votre smartphone).
+4. Dès que vous êtes connecté et que l'interface de **Google Gemini** (`gemini.google.com`) est affichée :
+   - Revenez sur la fenêtre de terminal noire.
+   - Appuyez simplement sur la touche **[ENTRÉE]**.
+5. Le script ferme automatiquement l'accès temporaire, démarre le service autonome `jarvis-chrome` et valide la session : `[✔ SUCCÈS] Statut : ACTIVE`.
 
 ---
 
-### Étape 2 : Synchronisation 1-Clic vers le VPS
-1. Dans le dossier `jarvis-core\scripts\`, double-cliquez sur :
-   ```batch
-   scripts\sync_gemini_session_to_vps.bat
-   ```
-2. Le script effectue automatiquement et en toute sécurité :
-   - La compression du profil connecté (en excluant les caches volumineux inutiles).
-   - Le transfert chiffré vers le serveur VPS Oracle.
-   - L'application des permissions de sécurité strictes (`chmod 700`).
-   - Le redémarrage transparent du service `jarvis-chrome`.
-   - Le diagnostic immédiat confirmant le statut `[✔ SUCCÈS] ACTIVE`.
+## 4. Méthode Alternative : Synchronisation depuis le Profil PC Local
 
----
+Si vous préférez synchroniser le profil Chrome de votre PC vers le VPS :
 
-## 4. Méthode Alternative : Connexion Directe sur le VPS via VNC
-
-Si vous préférez vous connecter directement sur le VPS sans passer par le PC local :
-
-```bash
-# 1. Arrêter le service Chrome sur le VPS
-ssh opc@158.178.206.213 "sudo systemctl stop jarvis-chrome"
-
-# 2. Lancer Xvfb et le serveur VNC sur le VPS
-ssh opc@158.178.206.213 "Xvfb :99 -screen 0 1280x800x24 & x11vnc -display :99 -nopw -listen 127.0.0.1 &"
-
-# 3. Ouvrir un tunnel SSH depuis votre PC
-ssh -L 5900:127.0.0.1:5900 opc@158.178.206.213
-
-# 4. Lancer Chrome sur le VPS (dans un second terminal SSH)
-DISPLAY=:99 /usr/bin/chromium-browser --user-data-dir=/home/opc/.jarvis_chrome_profile https://gemini.google.com/app
-
-# 5. Ouvrir votre client VNC local sur localhost:5900, vous connecter à Google, puis fermer Chrome.
-
-# 6. Relancer le service Chrome
-ssh opc@158.178.206.213 "sudo systemctl start jarvis-chrome"
-```
+1. **Étape 1 (PC Local)** : Double-cliquez sur `scripts\connect_gemini_web.bat`, connectez-vous puis fermez Chrome.
+2. **Étape 2 (Migration VPS)** : Double-cliquez sur `scripts\sync_gemini_session_to_vps.bat`. L'archivage ultra-optimisé s'exécute désormais en **0,5 seconde** (fichiers essentiels de moins de 500 Ko) et synchronise le VPS.
 
 ---
 
