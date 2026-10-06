@@ -177,6 +177,8 @@ def start_vps_gui_session():
     try:
         local_server.close()
     except Exception:
+        pass
+
     stop_cmd = (
         "sudo systemctl stop jarvis-chrome ; "
         "sudo pkill -15 -f chromium || true ; sudo pkill -15 -f chrome || true ; "
