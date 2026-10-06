@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.74.0 — Exécution Automatisée de la Checklist VPS Deep Research L3 & Guide des Actions Manuelles Restantes : Exécution complète des étapes d'infrastructure sur le VPS Oracle Cloud aarch64 (Chromium 151, Xvfb, Playwright, service systemd jarvis-chrome actif sur le port CDP 9222, .env configuré, repli nominal validé), mise à disposition du script de synchronisation 1-clic deploy_gemini_session_to_vps.py / sync_gemini_session_to_vps.bat et du guide exhaustif des actions manuelles réservées à l'opérateur (docs/VPS_L3_ACTIONS_RESTANTES.md), 597 tests unitaires 100% verts.*
+> *Dernière révision majeure : Version 5.74.3 — Authentification & Validation Complète de Google Gemini sur le VPS Cloud pour Deep Research L3 : Session Chrome Cloud autonome active et validée sur gemini.google.com/app (CDP 9222), outillage de connexion 1-clic noVNC (connect_gemini_vps_browser.py) et script de vérification à distance instantané (verifier_session_gemini_vps.bat), documentation mise à jour (docs/VPS_L3_ACTIONS_RESTANTES.md), suite de tests 100% verte.*
 
 
 ---
@@ -268,13 +268,13 @@ jarvis-core/
 │   ├── workspace_service.py             # Exploration et lecture seule stricte des projets locaux _anti_gravity (anti-traversal, filtres)
 │   └── architecture_service.py          # Hot-reload de ARCHITECTURE_COMPLETE_JARVIS.md et outil live query_jarvis_architecture
 │
-├── scripts/                             # setup_vps_chrome.sh, check_gemini_session.py, jarvis-chrome.service, install_agent_rules.py, quality_report.py, deploy_n8n_vps.py, setup_*.py, show_qr.py, try_browser_task.py, *.bat
+├── scripts/                             # setup_vps_chrome.sh, check_gemini_session.py, connect_gemini_vps_browser.py, verifier_session_gemini_vps.py, deploy_gemini_session_to_vps.py, jarvis-chrome.service, install_agent_rules.py, quality_report.py, deploy_n8n_vps.py, setup_*.py, show_qr.py, try_browser_task.py, *.bat
 │
 ├── db/
 │   ├── schema.sql                       # Schéma PostgreSQL (conversations, memories, tier_routing_log, tool_call_metrics, patches)
 │   ├── spotify_schema.sql               # Tables SQLite des tokens OAuth Spotify
 │   └── migrations/001_create_tool_call_metrics.sql
-├── docs/                                # VPS_L3_CHECKLIST.md, VPS_GOOGLE_SESSION_SETUP.md, BROWSER_AGENT_SPEC.md, N8N_GUIDE.md, n8n_workflows/*.json (documents_suite, time_and_briefing, train_monitoring)
+├── docs/                                # VPS_L3_ACTIONS_RESTANTES.md, VPS_L3_CHECKLIST.md, VPS_GOOGLE_SESSION_SETUP.md, BROWSER_AGENT_SPEC.md, N8N_GUIDE.md, n8n_workflows/*.json (documents_suite, time_and_briefing, train_monitoring)
 ├── static/                              # HUD PWA Stark Industries (index.html, app.js, style.css, manifest.json, SVG/PNG, latest_screenshot.jpg, tunnel_url.json)
 ├── data/                                # site_memory/<domain>.json (parcours web réussis), gemini_ui_map.json (avec repli DEFAULT_UI_MAP), migration_reports/
 └── tests/                               # 44 modules pytest racine (dont test_l3_integration_vps.py, test_l3_report_delivery.py, test_l3_vps_routing.py, test_l3_error_propagation.py) + tests/unit/ (20) + tests/e2e/ (2: test_live_scenarios.py, test_cognitive_e2e_pipeline.py), conftest.py, run_all_tests.py (597 tests vérifiés), dossiers scratch : tests/scratch_healing/, tests/_test_scratch/)

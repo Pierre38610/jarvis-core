@@ -198,12 +198,12 @@ def start_vps_gui_session():
 
     print("\n--- Diagnostic de Session Gemini sur le VPS ---")
     diag_out = ""
-    for _ in range(3):
+    for attempt in range(1, 7):
+        time.sleep(2)
         stdin, stdout, stderr = client.exec_command("cd /home/opc/jarvis-core && ./venv/bin/python scripts/check_gemini_session.py")
         diag_out = stdout.read().decode('utf-8', errors='replace')
         if "ACTIVE" in diag_out or "SUCCÈS" in diag_out:
             break
-        time.sleep(2)
 
     print(diag_out.strip())
 
