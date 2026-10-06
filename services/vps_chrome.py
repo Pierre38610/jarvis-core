@@ -470,7 +470,7 @@ async def check_gemini_session(
         curr_url = getattr(page, "url", "") or ""
         safe_url = sanitize_error_text(curr_url)
 
-        # 3. Détection de page d'authentification Google
+        # 3. Détection de page d'authentification Google explicite
         if "accounts.google.com" in curr_url.lower():
             msg = "Connexion Google requise : redirection vers accounts.google.com détectée."
             logger.info(f"[VPSChrome] [Session Gemini] {msg}")
@@ -489,9 +489,21 @@ async def check_gemini_session(
             for sel in LOGIN_INDICATOR_SELECTORS:
                 try:
                     loc = page.locator(sel)
-                    if hasattr(loc, "count") and await loc.count() > 0:
-                        login_detected = True
-                        break
+                    if hasattr(loc, "count"):
+                        cnt = await loc.count()
+                        if cnt > 0:
+                            # Vérifier si ce n'est pas un faux positif (lien de chat /app/ ou menu de compte SignOutOptions)
+                            is_real_login = True
+                            if hasattr(loc, "first") and hasattr(loc.first, "get_attribute"):
+                                try:
+                                    href = await loc.first.get_attribute("href") or ""
+                                    if href.startswith("/app/") or "signout" in href.lower():
+                                        is_real_login = False
+                                except Exception:
+                                    pass
+                            if is_real_login:
+                                login_detected = True
+                                break
                 except Exception:
                     pass
 
