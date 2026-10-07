@@ -427,10 +427,13 @@ class TestDeliveryRouting(unittest.IsolatedAsyncioTestCase):
         with patch("services.local_agent_service.is_pc_connected_async", new_callable=AsyncMock, return_value=True), \
              patch.object(automator, "_deliver_to_screen", new_callable=AsyncMock) as mock_screen, \
              patch.object(automator, "_deliver_by_email", new_callable=AsyncMock) as mock_email:
-            mock_screen.return_value = {"delivery_mode": "screen", "status": "success"}
-            await automator._deliver_result("https://gemini.google.com/canvas/xxx", None, "IA médicale")
+            mock_screen.return_value = {"delivery_mode": "screen", "status": "success", "acknowledged": True}
+            mock_email.return_value = {"delivery_mode": "email", "status": "sent"}
+            res = await automator._deliver_result("https://gemini.google.com/canvas/xxx", "/tmp/report.html", "IA médicale")
             mock_screen.assert_awaited_once()
             mock_email.assert_not_awaited()
+            self.assertEqual(res["delivery_mode"], "screen")
+            self.assertEqual(res["status"], "success")
 
     async def test_deliver_by_email_when_pc_offline(self):
         """_deliver_result appelle _deliver_by_email si le PC est hors ligne."""

@@ -1568,9 +1568,10 @@ async def _execute_dispatch_tool(
                         try:
                             dest = destinataire_email or "pierrecassagnettes@gmail.com"
                             md_path = b_res.data.get("markdown_path") if isinstance(b_res.data, dict) else None
-                            attachments = [md_path] if md_path and os.path.exists(md_path) else []
+                            html_path = b_res.data.get("html_path") if isinstance(b_res.data, dict) else None
+                            attachments = [p for p in [html_path, md_path] if p and os.path.exists(p)]
                             await send_email_async(
-                                subject=f"[Deep Research] Synthèse : {_g[:60]}",
+                                subject=f"[Deep Research] Page Web & Synthèse : {_g[:60]}",
                                 body=b_res.user_message,
                                 to_email=dest,
                                 attachments=attachments,
@@ -1581,10 +1582,16 @@ async def _execute_dispatch_tool(
                                     "delivery_mode": "email",
                                     "status": "sent",
                                     "to_email": dest,
-                                    "attachment": md_path,
+                                    "attachment": html_path or md_path,
                                 }
                         except Exception as mail_err:
                             logger.warning(f"[DeepResearch] [Échec envoi e-mail] {mail_err}")
+                            if isinstance(b_res.data, dict):
+                                b_res.data["delivery"] = {
+                                    "delivery_mode": "email",
+                                    "status": "error",
+                                    "error": str(mail_err),
+                                }
                     return b_res
 
                 if b_res and isinstance(b_res.data, dict) and "l3_error" in b_res.data:

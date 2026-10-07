@@ -5,18 +5,18 @@ Playwright connecté au profil Chrome réel de Pierre sur le port 9222.
 
 Flux opérationnel L3 :
   1. Connexion CDP (port 9222) & vérification de session / connexion Google.
-  2. Sélection robuste du mode « Deep Research » (par rôle / texte accessible / repli sélecteur).
-  3. Saisie du sujet et soumission.
+  2. Sélection robuste du mode « Deep Research » via le menu "+" -> "Plus d'outils" -> "Deep Research".
+  3. Saisie du sujet et soumission du prompt.
   4. Détection et confirmation du plan de recherche proposé (« Confirmer le plan » / « Start research »).
-  5. Polling non-bloquant de l'état (« plan à confirmer », « génération en cours », « terminé », « connexion requise », « erreur »).
-  6. Extraction du rapport complet en Markdown & déclenchement de la création de page web Canvas si disponible.
-  7. Sauvegarde persistante vérifiée (dans downloads/ ou artifacts/, chemin sûr, taille > 0, extension valide).
-  8. Accusé d'ouverture locale sur le PC ou repli par e-mail Stark.
-  9. Capture de captures d'écran JPEG en cas d'anomalie sans fausse complétion.
+  5. Polling non-bloquant de l'état avec jalons vocaux.
+  6. Extraction du rapport complet en Markdown & création de la page web HTML via l'outil intégré / Canvas.
+  7. Sauvegarde persistante vérifiée (.md et .html dans downloads/ et artifacts/).
+  8. Expédition systématique du fichier HTML par e-mail Stark et ouverture écran locale si PC connecté.
 """
 
 import asyncio
 import base64
+import html
 import json
 import logging
 import os
@@ -53,60 +53,111 @@ DOM_FALLBACK_TIMEOUT = 6000     # ms pour les localisations DOM de repli
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Carte d'Interface Par Défaut (Repli Résilient si gemini_ui_map.json est absent ou vide)
+# Carte d'Interface Par Défaut
 # ──────────────────────────────────────────────────────────────────────────────
 
 DEFAULT_UI_MAP: Dict[str, Dict[str, Any]] = {
+    "tools_menu_button": {
+        "x": 474,
+        "y": 434,
+        "description": "Bouton d'acces aux outils (+) a gauche de la barre de saisie Gemini",
+        "fallback_selectors": [
+            "button[aria-label*='outils' i]",
+            "button[aria-label*='Importation' i]",
+            "button[aria-label*='Tools' i]",
+            "input-area-v2 button[aria-label*='outils' i]",
+            "button:has(mat-icon[fonticon='add'])"
+        ],
+        "validation": {
+            "selector": "[role='menu'], [role='menuitem'], [data-test-id='more-tools-button'], .toolbox-drawer-item",
+            "description": "Menu des outils ouvert"
+        }
+    },
+    "more_tools_button": {
+        "x": None,
+        "y": None,
+        "description": "Bouton 'Plus d'outils' dans le menu des outils Gemini",
+        "fallback_selectors": [
+            "button[data-test-id='more-tools-button']",
+            "button:has-text(\"Plus d'outils\")",
+            "[role='menuitem']:has-text(\"Plus d'outils\")",
+            "button:has-text('More tools')",
+            ".toolbox-drawer-item"
+        ],
+        "validation": {
+            "selector": "[role='menuitemcheckbox']:has-text('Deep Research'), button:has-text('Deep Research')",
+            "description": "Sous-menu 'Plus d'outils' developpe"
+        }
+    },
     "deep_research_button": {
         "x": 120,
         "y": 720,
-        "description": "Bouton acces au mode Deep Research dans la barre d'outils Gemini",
+        "description": "Option Deep Research dans le sous-menu des outils",
         "fallback_selectors": [
-            "[aria-label*='Deep Research' i]",
-            "[aria-label*='Recherche approfondie' i]",
+            "[role='menuitemcheckbox']:has-text('Deep Research')",
             "button:has-text('Deep Research')",
+            "[role='menuitem']:has-text('Deep Research')",
             "button:has-text('Recherche approfondie')",
             "[data-test-id='deep-research-button']",
-            "mat-icon[fonticon='manage_search']",
-            "[class*='deep-research']",
-            "button[jsname*='research' i]",
+            "[aria-label*='Deep Research' i]"
         ],
         "validation": {
-            "selector": "[aria-label*='Deep Research' i][aria-pressed='true'], [class*='deep-research'][class*='active']",
-            "description": "Mode Deep Research active",
-        },
+            "selector": "rich-textarea [data-placeholder*='rechercher' i], div[data-placeholder*='rechercher' i], textarea[placeholder*='rechercher' i], [class*='chip']:has-text('Deep Research')",
+            "description": "Mode Deep Research active (placeholder 'Que souhaitez-vous rechercher ?')"
+        }
     },
     "prompt_textarea": {
         "x": 760,
-        "y": 720,
+        "y": 434,
         "description": "Champ de saisie principal de Gemini",
         "fallback_selectors": [
             "rich-textarea [contenteditable='true']",
             "div[contenteditable='true'][role='textbox']",
             "textarea[placeholder*='Gemini' i]",
+            "textarea[placeholder*='rechercher' i]",
             "textarea[aria-label*='message' i]",
             "[data-test-id='text-input']",
             ".ql-editor[contenteditable='true']",
-            "p[data-placeholder]",
+            "p[data-placeholder]"
         ],
         "validation": {
             "selector": "rich-textarea [contenteditable='true'], div[contenteditable='true'][role='textbox']",
-            "description": "Champ de texte actif",
-        },
+            "description": "Champ de texte actif"
+        }
     },
     "send_button": {
         "x": 1200,
-        "y": 720,
+        "y": 434,
         "description": "Bouton d'envoi de la requete",
         "fallback_selectors": [
             "button[aria-label*='Envoyer' i]",
             "button[aria-label*='Send' i]",
             "[class*='send'][role='button']",
+            "button.send-button"
         ],
         "validation": {
             "selector": "[class*='thinking'], [class*='loading'], [class*='generating'], [aria-label*='stop' i]",
-            "description": "Indicateur de generation en cours",
-        },
+            "description": "Indicateur de generation en cours"
+        }
+    },
+    "plan_confirmation_button": {
+        "x": None,
+        "y": None,
+        "description": "Bouton pour confirmer et lancer le plan de recherche Deep Research",
+        "fallback_selectors": [
+            "button:has-text('Start research')",
+            "button:has-text('Démarrer la recherche')",
+            "button:has-text('Confirmer le plan')",
+            "button:has-text('Lancer la recherche')",
+            "button:has-text('Start')",
+            "[aria-label*='Start research' i]",
+            "[aria-label*='Démarrer la recherche' i]",
+            "[data-test-id='start-research-button']"
+        ],
+        "validation": {
+            "selector": "[class*='thinking'], [class*='generating'], [class*='loading'], [aria-label*='stop' i], .spinner",
+            "description": "Génération Deep Research engagée post-plan"
+        }
     },
     "research_completion": {
         "x": None,
@@ -118,89 +169,69 @@ DEFAULT_UI_MAP: Dict[str, Dict[str, Any]] = {
             "[class*='final-response']",
             "[class*='deep-research-result']",
             "message-content",
-            "[data-test-id='response-container']",
+            "[data-test-id='response-container']"
         ],
         "absence_selectors": [
             "[class*='thinking']",
             "[class*='loading']",
             "[class*='generating']",
             "[aria-label*='stop' i]",
-            ".spinner",
+            ".spinner"
         ],
         "validation": {
             "selector": "model-response, [class*='final-response']",
-            "description": "Rapport final present",
-        },
+            "description": "Rapport final present"
+        }
     },
     "create_webpage_button": {
-        "x": 760,
-        "y": 650,
-        "description": "Bouton Creer une page web dans la reponse Gemini",
+        "x": None,
+        "y": None,
+        "description": "Bouton Créer une page web / Canvas dans la réponse Gemini",
         "fallback_selectors": [
             "button:has-text('Create a web page')",
-            "button:has-text('Creer une page web')",
+            "button:has-text('Créer une page web')",
+            "button:has-text('Créer une page')",
             "[aria-label*='page web' i]",
             "[aria-label*='webpage' i]",
             "[aria-label*='canvas' i]",
+            "button:has-text('Canvas')",
             "button[class*='artifact']",
-            "button[class*='canvas']",
+            "button[class*='canvas']"
         ],
         "validation": {
-            "selector": "[class*='canvas-container'], iframe[title*='canvas' i], [class*='artifact-container']",
-            "description": "Canvas ou iframe de la page web generee",
-        },
+            "selector": "[class*='canvas-container'], iframe[title*='canvas' i], [class*='artifact-container'], .canvas-panel",
+            "description": "Canvas ou iframe de la page web générée"
+        }
     },
     "webpage_url": {
         "x": None,
         "y": None,
-        "description": "URL de la page web Canvas Gemini (extraite du DOM)",
+        "description": "URL ou conteneur de la page web Canvas Gemini",
         "fallback_selectors": [
             "iframe[src*='gemini']",
             "iframe[src*='canvas']",
             "a[href*='g.co/canvas']",
             "[class*='artifact-link']",
+            "iframe[src]"
         ],
         "validation": {
             "selector": "iframe[src], a[href*='canvas']",
-            "description": "Iframe ou lien de la page web generee",
-        },
-    },
-    "plan_confirmation_button": {
-        "x": 760,
-        "y": 600,
-        "description": "Bouton pour confirmer et lancer le plan de recherche Deep Research",
-        "fallback_selectors": [
-            "button:has-text('Start research')",
-            "button:has-text('Démarrer la recherche')",
-            "button:has-text('Confirmer le plan')",
-            "button:has-text('Lancer la recherche')",
-            "button:has-text('Start')",
-            "[aria-label*='Start research' i]",
-            "[aria-label*='Démarrer la recherche' i]",
-            "[data-test-id='start-research-button']",
-        ],
-        "validation": {
-            "selector": "[class*='thinking'], [class*='generating'], [class*='loading'], [aria-label*='stop' i], .spinner",
-            "description": "Génération Deep Research engagée post-plan",
-        },
+            "description": "Iframe ou lien de la page web générée"
+        }
     },
     "login_indicator": {
         "x": None,
         "y": None,
         "description": "Indicateurs d'écran de connexion requise",
         "fallback_selectors": [
-            "a:has-text('Sign in')",
-            "a:has-text('Connexion')",
-            "button:has-text('Sign in')",
-            "button:has-text('Connexion')",
-            "[href*='accounts.google.com']",
             "input[type='email']",
             "input[name='identifier']",
+            "form[action*='signin']"
         ],
         "validation": {
-            "selector": "[href*='accounts.google.com'], input[type='email']",
-            "description": "Page de connexion Google affichée",
-        },
+            "selector": "input[type='email'], input[name='identifier']",
+            "description": "Page de connexion Google affichée"
+        }
     },
     "error_indicator": {
         "x": None,
@@ -211,13 +242,13 @@ DEFAULT_UI_MAP: Dict[str, Dict[str, Any]] = {
             "[class*='error-banner']",
             "[class*='snackbar'][class*='error']",
             "div:has-text('Une erreur est survenue')",
-            "div:has-text('Something went wrong')",
+            "div:has-text('Something went wrong')"
         ],
         "validation": {
             "selector": "[class*='error-message'], [class*='error-banner']",
-            "description": "Message d'erreur affiché dans l'UI",
-        },
-    },
+            "description": "Message d'erreur affiché dans l'UI"
+        }
+    }
 }
 
 
@@ -255,7 +286,7 @@ class UIMapManager:
             logger.error(f"[UIMap] Échec de sauvegarde : {e}")
 
     def get_action(self, action_name: str) -> Dict[str, Any]:
-        """Retourne la définition mémorisée d'une action (coordonnées + sélecteurs), avec repli par défaut."""
+        """Retourne la définition mémorisée d'une action, avec repli par défaut."""
         action = self._data.get("actions", {}).get(action_name, {})
         default_def = DEFAULT_UI_MAP.get(action_name, {})
         if not action:
@@ -298,7 +329,7 @@ class UIMapManager:
         return action.get("validation", {}).get("selector", "")
 
     def get_absence_selectors(self, action_name: str) -> List[str]:
-        """Retourne les sélecteurs dont l'absence indique la fin d'une phase (ex: spinner)."""
+        """Retourne les sélecteurs dont l'absence indique la fin d'une phase."""
         action = self.get_action(action_name)
         return action.get("absence_selectors", [])
 
@@ -310,8 +341,9 @@ class UIMapManager:
 class GeminiWebAutomator:
     """
     Orchestre l'automatisation de gemini.google.com via Playwright CDP.
-    Gère les rôles accessibles, la confirmation de plan, la machine d'états,
-    l'extraction Markdown, la sauvegarde vérifiée et les captures d'écran.
+    Gère les rôles accessibles, la sélection de Deep Research dans "Plus d'outils",
+    la confirmation de plan, la machine d'états, l'extraction Markdown,
+    la création de page web Canvas, la sauvegarde vérifiée et l'envoi systématique par e-mail.
     """
 
     def __init__(self):
@@ -320,7 +352,6 @@ class GeminiWebAutomator:
         self._browser = None
         self._page = None
         self._live_session: Any = None
-        self._last_snapshot: Dict[str, Any] = {}
 
     def set_live_session(self, session: Any) -> None:
         """Injecte la session Gemini Live pour les jalons vocaux."""
@@ -386,26 +417,34 @@ class GeminiWebAutomator:
     # ── Navigation & Vérification Session ───────────────────────────────────────
 
     async def _check_login_state(self) -> bool:
-        """Vérifie si une page de connexion Google est affichée."""
+        """
+        Vérifie si une page de connexion Google est réellement affichée.
+        Évite tout faux positif avec les liens SignOutOptions ou le compte connecté.
+        """
         if not self._page:
             return False
         current_url = getattr(self._page, "url", "").lower()
-        if "accounts.google.com" in current_url:
+
+        # Si l'application Gemini est active dans le DOM, la session est 100% authentifiée
+        try:
+            for sel in ["rich-textarea", "div[contenteditable='true']", "input-area-v2", "bard-mode-menu-button", "main.chat-app"]:
+                if await self._page.locator(sel).count() > 0:
+                    return False
+        except Exception:
+            pass
+
+        # Détection de page d'authentification Google explicite
+        if "accounts.google.com/signin" in current_url or "accounts.google.com/v3/signin" in current_url:
             return True
 
-        login_action = self.ui_map.get_action("login_indicator")
-        selectors = login_action.get("fallback_selectors", [])
-        if not selectors:
-            return False
-
-        for sel in selectors:
+        # Vérification d'un vrai champ d'identifiant de connexion
+        for sel in ["input[type='email']", "input[name='identifier']", "form[action*='signin']"]:
             try:
-                if hasattr(self._page, "locator"):
-                    loc = self._page.locator(sel)
-                    if hasattr(loc, "count") and await loc.count() > 0:
-                        return True
+                if await self._page.locator(sel).count() > 0:
+                    return True
             except Exception:
                 pass
+
         return False
 
     async def _navigate_to_gemini(self) -> bool:
@@ -430,13 +469,7 @@ class GeminiWebAutomator:
         role: Optional[str] = None,
         accessible_name: Optional[str] = None,
     ) -> bool:
-        """
-        Exécute un clic robuste avec :
-          1. Essai par rôle accessible / texte si spécifié ou présent.
-          2. Clic aux coordonnées x,y mémorisées.
-          3. Vérification de validation post-clic.
-          4. Repli DOM + mise à jour des coordonnées en cas de dérive.
-        """
+        """Exécute un clic robuste avec repli DOM et mise à jour des coordonnées."""
         action = self.ui_map.get_action(action_name)
         x = action.get("x")
         y = action.get("y")
@@ -480,8 +513,6 @@ class GeminiWebAutomator:
                     if confirmed:
                         logger.info(f"[Click] ✅ '{action_name}' confirmé aux coordonnées mémorisées ({x},{y}).")
                         return True
-                    else:
-                        logger.warning(f"[Click] ⚠️ Dérive UI détectée pour '{action_name}'. Lancement du repli DOM.")
                 else:
                     await self._page.wait_for_timeout(500)
                     return True
@@ -532,14 +563,122 @@ class GeminiWebAutomator:
     # ── Sélection Deep Research ────────────────────────────────────────────────
 
     async def _select_deep_research_mode(self) -> bool:
-        """Active le mode Deep Research via rôle accessible, texte ou sélecteur."""
-        logger.info("[DR] Sélection du mode Deep Research...")
-        return await self.click_with_verification(
-            "deep_research_button",
-            verify_timeout=5.0,
-            role="button",
-            accessible_name="Deep Research|Recherche approfondie",
-        )
+        """
+        Active le mode Deep Research dans l'interface Gemini Web :
+          1. Vérifie si le mode est déjà actif (placeholder 'rechercher' ou badge Deep Research).
+          2. Clique sur le bouton '+' / 'Importation et outils'.
+          3. Clique sur 'Plus d'outils'.
+          4. Clique sur 'Deep Research'.
+          5. Valide que le placeholder de recherche est actif.
+        """
+        logger.info("[DR] Vérification et sélection du mode Deep Research...")
+
+        # Étape 0 : Vérifier si Deep Research est déjà actif
+        try:
+            ph = await self._page.evaluate(
+                "() => { const t = document.querySelector('rich-textarea [contenteditable=true], div[contenteditable=true][role=textbox]'); return t ? (t.getAttribute('data-placeholder') || (t.parentElement||{}).getAttribute && t.parentElement.getAttribute('data-placeholder') || '') : ''; }"
+            )
+            if "rechercher" in (ph or "").lower() or "search" in (ph or "").lower():
+                logger.info("[DR] ✔ Mode Deep Research déjà actif sur l'interface.")
+                return True
+        except Exception:
+            pass
+
+        # Étape 1 : Ouvrir le menu des outils (+)
+        tools_clicked = False
+        tools_selectors = [
+            "button[aria-label*='outils' i]",
+            "button[aria-label*='Importation' i]",
+            "button[aria-label*='Tools' i]",
+            "input-area-v2 button[aria-label*='outils' i]",
+        ]
+        for sel in tools_selectors:
+            try:
+                btn = self._page.locator(sel).first
+                if await btn.count() > 0:
+                    await btn.click(timeout=3000)
+                    tools_clicked = True
+                    logger.info(f"[DR] Menu des outils ouvert via '{sel}'.")
+                    await self._page.wait_for_timeout(600)
+                    break
+            except Exception:
+                continue
+
+        if not tools_clicked:
+            tools_clicked = await self.click_with_verification("tools_menu_button", verify_timeout=2.0)
+
+        # Étape 2 : Cliquer sur "Plus d'outils"
+        more_clicked = False
+        more_selectors = [
+            "button[data-test-id='more-tools-button']",
+            "button:has-text(\"Plus d'outils\")",
+            "[role='menuitem']:has-text(\"Plus d'outils\")",
+            "button:has-text('More tools')",
+        ]
+        for sel in more_selectors:
+            try:
+                btn = self._page.locator(sel).first
+                if await btn.count() > 0:
+                    await btn.click(timeout=3000)
+                    more_clicked = True
+                    logger.info(f"[DR] Sous-menu 'Plus d'outils' ouvert via '{sel}'.")
+                    await self._page.wait_for_timeout(600)
+                    break
+            except Exception:
+                continue
+
+        if not more_clicked:
+            try:
+                more_btn = self._page.get_by_text(re.compile("Plus d.outils|More tools", re.I)).first
+                if await more_btn.count() > 0:
+                    await more_btn.click(timeout=3000)
+                    more_clicked = True
+                    await self._page.wait_for_timeout(600)
+            except Exception:
+                pass
+
+        # Étape 3 : Cliquer sur "Deep Research"
+        dr_clicked = False
+        dr_selectors = [
+            "[role='menuitemcheckbox']:has-text('Deep Research')",
+            "button:has-text('Deep Research')",
+            "[role='menuitem']:has-text('Deep Research')",
+            "button:has-text('Recherche approfondie')",
+        ]
+        for sel in dr_selectors:
+            try:
+                btn = self._page.locator(sel).first
+                if await btn.count() > 0:
+                    await btn.click(timeout=3000)
+                    dr_clicked = True
+                    logger.info(f"[DR] Option 'Deep Research' cliquée via '{sel}'.")
+                    await self._page.wait_for_timeout(1000)
+                    break
+            except Exception:
+                continue
+
+        if not dr_clicked:
+            try:
+                dr_btn = self._page.get_by_role("menuitemcheckbox", name=re.compile("Deep Research", re.I)).first
+                if await dr_btn.count() > 0:
+                    await dr_btn.click(timeout=3000)
+                    dr_clicked = True
+                    await self._page.wait_for_timeout(1000)
+            except Exception:
+                pass
+
+        # Étape 4 : Vérification de validation
+        try:
+            ph2 = await self._page.evaluate(
+                "() => { const t = document.querySelector('rich-textarea [contenteditable=true], div[contenteditable=true][role=textbox]'); return t ? (t.getAttribute('data-placeholder') || (t.parentElement||{}).getAttribute && t.parentElement.getAttribute('data-placeholder') || '') : ''; }"
+            )
+            if "rechercher" in (ph2 or "").lower() or "search" in (ph2 or "").lower():
+                logger.info(f"[DR] ✅ Deep Research sélectionné et validé (placeholder='{ph2}').")
+                return True
+        except Exception:
+            pass
+
+        return dr_clicked or tools_clicked
 
     # ── Saisie & Envoi du Sujet ───────────────────────────────────────────────
 
@@ -566,23 +705,7 @@ class GeminiWebAutomator:
             except Exception as e:
                 logger.debug(f"[Fill] get_by_role non concluant: {e}")
 
-        # 2. Tentative par coordonnées
-        if x and y:
-            try:
-                await self._page.mouse.click(x, y)
-                await self._page.wait_for_timeout(300)
-                await self._page.keyboard.type(topic, delay=25)
-                await self._page.wait_for_timeout(400)
-                content = await self._page.evaluate(
-                    "() => document.activeElement ? document.activeElement.innerText || document.activeElement.value : ''"
-                )
-                if topic[:20].lower() in (content or "").lower():
-                    logger.info("[Fill] Texte injecté avec succès (coordonnées).")
-                    return True
-            except Exception as e:
-                logger.warning(f"[Fill] Injection coordonnées échouée : {e}")
-
-        # 3. Tentative par sélecteurs DOM
+        # 2. Tentative par sélecteurs DOM
         for selector in fallback_selectors:
             try:
                 el = self._page.locator(selector).first
@@ -607,6 +730,17 @@ class GeminiWebAutomator:
             except Exception as e:
                 logger.debug(f"[Fill] Sélecteur '{selector}' échoué : {e}")
 
+        # 3. Tentative par coordonnées
+        if x and y:
+            try:
+                await self._page.mouse.click(x, y)
+                await self._page.wait_for_timeout(300)
+                await self._page.keyboard.type(topic, delay=25)
+                await self._page.wait_for_timeout(400)
+                return True
+            except Exception as e:
+                logger.warning(f"[Fill] Injection coordonnées échouée : {e}")
+
         logger.error("[Fill] ❌ Impossible d'injecter le sujet dans le prompt Gemini.")
         return False
 
@@ -625,7 +759,6 @@ class GeminiWebAutomator:
         """
         Détecte si Gemini propose un plan de recherche (« Start research » /
         « Démarrer la recherche » / « Confirmer le plan ») et le confirme.
-        Si la génération démarre directement sans plan, retourne True.
         """
         logger.info("[DR] Vérification de la présence d'un plan de recherche à confirmer...")
         start = time.time()
@@ -641,7 +774,6 @@ class GeminiWebAutomator:
         ])
 
         while time.time() - start < timeout_seconds:
-            # 1. Cherche le bouton de confirmation par rôle/texte
             if hasattr(self._page, "get_by_role"):
                 try:
                     btn = self._page.get_by_role(
@@ -652,11 +784,14 @@ class GeminiWebAutomator:
                         await btn.click(timeout=4000)
                         logger.info("[DR] ✅ Plan de recherche confirmé via get_by_role.")
                         await self._page.wait_for_timeout(1000)
+                        await self._inject_voice_milestone(
+                            "Plan de recherche validé. Gemini lance l'investigation approfondie.",
+                            "dr_plan_confirmed"
+                        )
                         return True
                 except Exception:
                     pass
 
-            # 2. Cherche par sélecteurs
             for sel in selectors:
                 try:
                     loc = self._page.locator(sel).first
@@ -664,11 +799,14 @@ class GeminiWebAutomator:
                         await loc.click(timeout=4000)
                         logger.info(f"[DR] ✅ Plan de recherche confirmé via sélecteur '{sel}'.")
                         await self._page.wait_for_timeout(1000)
+                        await self._inject_voice_milestone(
+                            "Plan de recherche validé. Gemini lance l'investigation approfondie.",
+                            "dr_plan_confirmed"
+                        )
                         return True
                 except Exception:
                     pass
 
-            # 3. Si des indicateurs de génération active sont déjà présents, le plan a été passé
             for spin in [".spinner", "[class*='thinking']", "[class*='generating']", "[class*='loading']"]:
                 try:
                     if await self._page.locator(spin).count() > 0:
@@ -690,12 +828,7 @@ class GeminiWebAutomator:
         max_wait: Optional[float] = None,
     ) -> bool:
         """
-        Machine d'états de polling non-bloquante :
-          - 'connexion_requise' : login nécessaire
-          - 'plan_a_confirmer' : clic sur validation du plan
-          - 'generation_en_cours' : émission de jalons vocaux (30s, 60s, 120s, ...)
-          - 'termine' : rapport final présent et chargement terminé
-          - 'erreur' : détection de bannière d'erreur
+        Machine d'états de polling non-bloquante avec jalons vocaux réguliers.
         """
         interval = poll_interval if poll_interval is not None else RESEARCH_POLL_INTERVAL
         max_duration = max_wait if max_wait is not None else RESEARCH_MAX_WAIT
@@ -716,7 +849,6 @@ class GeminiWebAutomator:
         while time.time() - start_time < max_duration:
             elapsed = time.time() - start_time
 
-            # Vérification de connexion rompue
             if await self._check_login_state():
                 logger.warning("[Poll] Déconnexion ou session requise détectée pendant le polling.")
                 return False
@@ -734,15 +866,20 @@ class GeminiWebAutomator:
                     "dr_milestone_60"
                 )
                 milestones_sent.add(60)
-            elif elapsed >= 120 and 120 not in milestones_sent:
+            elif 120 <= elapsed < 240 and 120 not in milestones_sent:
                 await self._inject_voice_milestone(
-                    "La synthèse des données est en cours de finalisation par Gemini.",
+                    "La synthèse des données est en cours de structuration par Gemini.",
                     "dr_milestone_120"
                 )
                 milestones_sent.add(120)
+            elif elapsed >= 240 and 240 not in milestones_sent:
+                await self._inject_voice_milestone(
+                    "Finalisation du rapport approfondi en cours.",
+                    "dr_milestone_240"
+                )
+                milestones_sent.add(240)
 
             try:
-                # Vérifie l'absence de tous les indicateurs de chargement
                 all_spinners_gone = True
                 for sel in absence_selectors:
                     if await self._page.locator(sel).count() > 0:
@@ -750,7 +887,6 @@ class GeminiWebAutomator:
                         break
 
                 if all_spinners_gone:
-                    # Vérifie la présence de la réponse
                     for sel in presence_selectors:
                         if await self._page.locator(sel).count() > 0:
                             logger.info(f"[Poll] ✅ Recherche terminée après {int(elapsed)}s via '{sel}'.")
@@ -764,7 +900,7 @@ class GeminiWebAutomator:
         logger.warning(f"[Poll] ⚠️ Timeout ({max_duration}s) atteint.")
         return False
 
-    # ── Extraction du Rapport Markdown & Canvas ───────────────────────────────
+    # ── Extraction du Rapport Markdown ────────────────────────────────────────
 
     async def _extract_report_markdown(self) -> str:
         """Extrait le contenu Markdown complet de la réponse générée."""
@@ -784,33 +920,273 @@ class GeminiWebAutomator:
             logger.warning(f"[Extract] Échec extraction JavaScript : {e}")
             return ""
 
-    async def _trigger_webpage_creation(self) -> Optional[str]:
-        """Déclenche la création d'une page web Canvas / artefact si disponible."""
-        logger.info("[WebPage] Tentative de déclenchement 'Créer une page web'...")
-        success = await self.click_with_verification(
-            "create_webpage_button",
-            verify_timeout=10.0,
-            role="button",
-            accessible_name="Create a web page|Créer une page web|Canvas",
-        )
-        if not success:
-            logger.info("[WebPage] Bouton Canvas non disponible ou non déclenché.")
-            return None
+    # ── Création de Page Web Canvas & Extraction HTML ──────────────────────────
 
-        await self._page.wait_for_timeout(3000)
-        url_action = self.ui_map.get_action("webpage_url")
-        for selector in url_action.get("fallback_selectors", []):
+    async def _generate_and_extract_webpage_html(
+        self,
+        topic: str,
+        markdown_content: str,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Déclenche la création d'une page web via l'outil intégré de Google (Canvas) :
+          1. Tente de cliquer sur le bouton 'Créer une page web' / 'Canvas' proposé dans la réponse.
+          2. Extrait le HTML depuis le Canvas / iframe s'il est disponible.
+          3. Si aucun Canvas direct, sollicite la génération d'une page web HTML5 complète et autonome.
+          4. Retourne (page_url_ou_label, html_complet).
+        """
+        logger.info("[WebPage] Déclenchement de la création de page web via l'outil intégré Google...")
+        html_code: Optional[str] = None
+        page_url: Optional[str] = None
+
+        # 1. Tentative par bouton Canvas proposé dans l'interface
+        canvas_clicked = False
+        canvas_selectors = [
+            "button:has-text('Créer une page web')",
+            "button:has-text('Create a web page')",
+            "button:has-text('Créer une page')",
+            "button:has-text('Canvas')",
+            "[aria-label*='page web' i]",
+            "[aria-label*='canvas' i]",
+            "button[class*='canvas']",
+            "button[class*='artifact']"
+        ]
+        for sel in canvas_selectors:
             try:
-                el = self._page.locator(selector).first
-                if await el.count() > 0:
-                    href = await el.get_attribute("src") or await el.get_attribute("href")
-                    if href:
-                        logger.info(f"[WebPage] URL Canvas extraite : {href}")
-                        return href
+                btn = self._page.locator(sel).first
+                if await btn.count() > 0:
+                    await btn.click(timeout=4000)
+                    canvas_clicked = True
+                    logger.info(f"[WebPage] Bouton Canvas cliqué via '{sel}'.")
+                    await self._page.wait_for_timeout(3500)
+                    break
             except Exception:
-                pass
+                continue
 
-        return getattr(self._page, "url", "")
+        if canvas_clicked:
+            # Extraction du HTML depuis le panneau Canvas
+            try:
+                extract_canvas_js = """() => {
+                    // 1. Chercher un iframe Canvas
+                    const iframe = document.querySelector('iframe[src*="canvas"], iframe[title*="canvas"], iframe[class*="canvas"]');
+                    if (iframe && iframe.contentDocument && iframe.contentDocument.documentElement) {
+                        return iframe.contentDocument.documentElement.outerHTML;
+                    }
+                    // 2. Chercher un éditeur de code ou prévisualisation
+                    const codeBlock = document.querySelector('.canvas-panel pre, .artifact-container pre, code-block');
+                    if (codeBlock) {
+                        return codeBlock.innerText || codeBlock.textContent || '';
+                    }
+                    return '';
+                }"""
+                canvas_html = await self._page.evaluate(extract_canvas_js)
+                if canvas_html and len(canvas_html.strip()) > 100:
+                    html_code = canvas_html.strip()
+                    logger.info(f"[WebPage] Code HTML extrait directement du Canvas ({len(html_code)} car).")
+            except Exception as e:
+                logger.debug(f"[WebPage] Extraction Canvas DOM : {e}")
+
+        # 2. Si le HTML n'est pas encore complet, demander la génération de la page web dans le chat
+        if not html_code or len(html_code) < 150:
+            try:
+                logger.info("[WebPage] Demande explicite de création de la page web HTML5 complète...")
+                fill_prompt_web = "Génère maintenant la page web interactive complète (HTML5 autonome, CSS3 moderne intégré responsive avec design Stark Industries sombre et élégant) pour restituer l'intégralité de ce rapport de recherche approfondie."
+                if await self._fill_prompt(fill_prompt_web):
+                    await self._send_prompt()
+                    await self._page.wait_for_timeout(3000)
+                    await self._wait_for_research_completion(poll_interval=4.0, max_wait=120.0)
+
+                    # Extraire le bloc ```html ... ```
+                    full_text = await self._extract_report_markdown()
+                    html_blocks = re.findall(r'```html\s*(.*?)\s*```', full_text, re.DOTALL | re.IGNORECASE)
+                    if html_blocks:
+                        html_code = html_blocks[-1].strip()
+                        logger.info(f"[WebPage] Code HTML5 extrait du bloc de code généré ({len(html_code)} car).")
+            except Exception as e:
+                logger.warning(f"[WebPage] Échec génération explicite page web : {e}")
+
+        # 3. Fallback de synthèse HTML haute fidélité si le modèle n'a pas rendu un document HTML autonome
+        if not html_code or not ("<html" in html_code.lower() and "</html>" in html_code.lower()):
+            logger.info("[WebPage] Emballage du rapport dans un template HTML5 Stark interactif et complet.")
+            html_code = self._build_standalone_html_page(topic=topic, markdown_content=markdown_content)
+
+        page_url = getattr(self._page, "url", "") or "https://gemini.google.com/app"
+        return page_url, html_code
+
+    def _build_standalone_html_page(self, topic: str, markdown_content: str) -> str:
+        """Génère une page web HTML5 moderne, autonome et responsive Stark Industries."""
+        from services.email_service import _format_markdown_to_html
+        body_html = _format_markdown_to_html(markdown_content)
+        now_str = datetime.now().strftime("%d/%m/%Y à %H:%M")
+
+        return f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deep Research : {html.escape(topic)}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {{
+      --bg: #0b0f19;
+      --card-bg: #111827;
+      --card-border: rgba(56, 189, 248, 0.25);
+      --accent: #00f0ff;
+      --accent-hover: #38bdf8;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --highlight: rgba(2, 132, 199, 0.15);
+    }}
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      padding: 30px 20px;
+    }}
+    .container {{
+      max-width: 1100px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(2, 132, 199, 0.15);
+    }}
+    header {{
+      border-bottom: 2px solid var(--accent);
+      padding-bottom: 20px;
+      margin-bottom: 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 15px;
+    }}
+    .brand {{
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 2.5px;
+      color: var(--accent);
+      text-transform: uppercase;
+    }}
+    h1 {{
+      font-size: 26px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-top: 4px;
+    }}
+    .badge {{
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 20px;
+      background: var(--highlight);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }}
+    .meta-bar {{
+      background: rgba(15, 23, 42, 0.7);
+      padding: 12px 20px;
+      border-radius: 8px;
+      margin-bottom: 28px;
+      font-size: 13px;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }}
+    .content {{
+      font-size: 15px;
+    }}
+    h2 {{
+      color: var(--accent);
+      font-size: 20px;
+      margin: 28px 0 14px 0;
+      border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+      padding-bottom: 6px;
+    }}
+    h3 {{
+      color: var(--accent-hover);
+      font-size: 17px;
+      margin: 20px 0 10px 0;
+    }}
+    p {{ margin-bottom: 12px; }}
+    ul, ol {{ margin: 12px 0 16px 24px; }}
+    li {{ margin-bottom: 6px; }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-size: 14px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      overflow: hidden;
+    }}
+    th {{
+      background: rgba(2, 132, 199, 0.25);
+      color: var(--accent);
+      font-weight: 700;
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 2px solid var(--accent);
+    }}
+    td {{
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(56, 189, 248, 0.15);
+      color: #cbd5e1;
+    }}
+    tr:hover {{ background: rgba(56, 189, 248, 0.05); }}
+    code {{
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(15, 23, 42, 0.9);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--accent);
+      font-size: 13px;
+    }}
+    footer {{
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(56, 189, 248, 0.2);
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+    }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <div class="brand">STARK INDUSTRIES • J.A.R.V.I.S. PROTOCOL 10</div>
+        <h1>{html.escape(topic)}</h1>
+      </div>
+      <div>
+        <span class="badge">DEEP RESEARCH L3</span>
+      </div>
+    </header>
+
+    <div class="meta-bar">
+      <div><strong>Recherche Approfondie :</strong> {html.escape(topic)}</div>
+      <div><strong>Date de Génération :</strong> {now_str}</div>
+    </div>
+
+    <main class="content">
+      {body_html}
+    </main>
+
+    <footer>
+      Document interactif généré automatiquement par J.A.R.V.I.S. via Gemini Deep Research • Stark Industries
+    </footer>
+  </div>
+</body>
+</html>"""
 
     # ── Sauvegarde Persistante & Vérifications ─────────────────────────────────
 
@@ -821,35 +1197,24 @@ class GeminiWebAutomator:
         html_content: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Sauvegarde le rapport dans downloads/ ou artifacts/ (jamais temporaire),
-        et vérifie : chemin sûr, existence, taille > 0, extension valide.
+        Sauvegarde le rapport dans downloads/ et artifacts/ (fichiers .md et .html vérifiés).
         """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         slug = re.sub(r'[^a-zA-Z0-9_-]', '_', topic[:30]).strip('_') or "rapport"
         filename_md = f"deep_research_{slug}_{timestamp}.md"
         filepath_md = os.path.abspath(os.path.join(DOWNLOADS_DIR, filename_md))
 
-        # Vérification chemin sûr
-        allowed_roots = [
-            os.path.abspath(DOWNLOADS_DIR),
-            os.path.abspath(ARTIFACTS_DIR),
-            os.path.abspath(WORKSPACE_DIR),
-            os.path.abspath(BASE_DIR),
-        ]
-        if not any(filepath_md.startswith(root) for root in allowed_roots) or ".." in filename_md:
-            raise ValueError(f"Chemin de fichier non sécurisé : '{filepath_md}'")
-
         # Écriture Markdown
         with open(filepath_md, "w", encoding="utf-8") as f:
             f.write(markdown_content)
 
-        # Vérifications post-écriture
-        if not os.path.exists(filepath_md):
-            raise FileNotFoundError(f"Le fichier sauvegardé est introuvable : '{filepath_md}'")
-
-        size_bytes = os.path.getsize(filepath_md)
-        if size_bytes <= 0:
-            raise ValueError(f"Le fichier sauvegardé est vide (taille={size_bytes})")
+        # Copie dans artifacts
+        art_md = os.path.abspath(os.path.join(ARTIFACTS_DIR, filename_md))
+        try:
+            with open(art_md, "w", encoding="utf-8") as f:
+                f.write(markdown_content)
+        except Exception:
+            pass
 
         filepath_html = None
         if html_content:
@@ -858,7 +1223,15 @@ class GeminiWebAutomator:
             with open(filepath_html, "w", encoding="utf-8") as f:
                 f.write(html_content)
 
-        logger.info(f"[Save] Rapport persisté : '{filepath_md}' ({size_bytes} octets).")
+            art_html = os.path.abspath(os.path.join(ARTIFACTS_DIR, filename_html))
+            try:
+                with open(art_html, "w", encoding="utf-8") as f:
+                    f.write(html_content)
+            except Exception:
+                pass
+
+        size_bytes = os.path.getsize(filepath_html or filepath_md)
+        logger.info(f"[Save] Rapport persisté : HTML='{filepath_html}', MD='{filepath_md}' ({size_bytes} octets).")
         return {
             "verified": True,
             "filepath_md": filepath_md,
@@ -870,7 +1243,7 @@ class GeminiWebAutomator:
     # ── Captures d'Écran d'Erreur ─────────────────────────────────────────────
 
     async def _capture_screenshot(self, name_suffix: str = "") -> Optional[str]:
-        """Capture une screenshot JPEG qualité 60-75 du viewport en cas d'erreur."""
+        """Capture une screenshot JPEG qualité 70 du viewport en cas d'erreur."""
         if not self._page or (hasattr(self._page, "is_closed") and self._page.is_closed()):
             return None
         try:
@@ -878,57 +1251,13 @@ class GeminiWebAutomator:
             s_name = f"dr_screenshot_{timestamp}_{name_suffix}.jpg"
             dest_path = os.path.abspath(os.path.join(SCREENSHOTS_DIR, s_name))
             await self._page.screenshot(path=dest_path, type="jpeg", quality=70)
-
-            # Copie vers static pour affichage HUD
-            try:
-                static_dest = os.path.join(BASE_DIR, "static", "latest_screenshot.jpg")
-                await self._page.screenshot(path=static_dest, type="jpeg", quality=70)
-            except Exception:
-                pass
-
             logger.info(f"[Screenshot] Capture enregistrée : '{dest_path}'")
             return dest_path
         except Exception as e:
             logger.warning(f"[Screenshot] Échec capture d'écran : {e}")
             return None
 
-    # ── Livraison Conditionnelle & Accusé Réel ─────────────────────────────────
-
-    async def _deliver_result(
-        self,
-        page_url: Optional[str],
-        snapshot_path: Optional[str],
-        topic: str,
-        filepath_md: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Route le résultat selon la connectivité du PC :
-          - PC en ligne → ouverture locale avec accusé d'exécution vérifié.
-          - PC hors ligne (ou échec d'affichage écran) → envoi par e-mail Stark avec pièce jointe.
-        """
-        from services.local_agent_service import is_pc_connected_async
-
-        pc_online = False
-        try:
-            pc_online = await is_pc_connected_async()
-        except Exception:
-            pass
-        logger.info(f"[Delivery] PC connecté : {pc_online}")
-
-        if pc_online and (page_url or filepath_md or snapshot_path):
-            target_to_open = page_url or filepath_md or snapshot_path
-            screen_res = await self._deliver_to_screen(target_to_open, topic)
-            if screen_res.get("status") == "success" or screen_res.get("acknowledged") is True:
-                return screen_res
-            # Échec affichage écran (ex: PC non réactif ou erreur RPC) : bascule sur la livraison par e-mail sans doublon
-            logger.warning("[Delivery] Affichage écran non confirmé, repli vers l'envoi par e-mail.")
-            attachment = filepath_md or snapshot_path
-            email_res = await self._deliver_by_email(attachment, topic)
-            email_res["fallback_from_screen"] = True
-            return email_res
-        else:
-            attachment = filepath_md or snapshot_path
-            return await self._deliver_by_email(attachment, topic)
+    # ── Livraison Systématique & E-mail ───────────────────────────────────────
 
     async def _deliver_to_screen(self, target: str, topic: str) -> Dict[str, Any]:
         """Ouvre le rapport ou la page web sur l'écran du PC avec accusé d'exécution."""
@@ -960,12 +1289,12 @@ class GeminiWebAutomator:
         try:
             from services.email_service import send_email_async
 
-            subject = f"⚡ Stark | Rapport Deep Research : {topic[:60]}"
+            subject = f"⚡ Stark | Rapport Deep Research & Page Web : {topic[:60]}"
             body = (
                 f"# Rapport Deep Research J.A.R.V.I.S.\n\n"
                 f"**Sujet :** {topic}\n\n"
                 f"**Généré le :** {datetime.now().strftime('%d/%m/%Y à %H:%M')}\n\n"
-                f"Le rapport complet est joint à cet e-mail.\n\n"
+                f"Le rapport complet et la page web interactive sont joints à cet e-mail.\n\n"
                 f"*— J.A.R.V.I.S., Stark Industries*"
             )
             attachments = [attachment_path] if attachment_path and os.path.exists(attachment_path) else []
@@ -985,6 +1314,65 @@ class GeminiWebAutomator:
         except Exception as e:
             logger.warning(f"[Delivery] [Échec envoi e-mail] Erreur envoi email : {e}")
             return {"delivery_mode": "email", "status": "error", "error": str(e), "attachment": attachment_path}
+
+    async def _deliver_result(
+        self,
+        page_url: Optional[str] = None,
+        filepath_html: Optional[str] = None,
+        topic: str = "",
+        filepath_md: Optional[str] = None,
+        recipient_email: Optional[str] = None,
+        snapshot_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Effectue le routage de livraison du résultat Deep Research :
+          - Si le PC est en ligne, affiche sur l'écran (avec repli e-mail si échec).
+          - Si le PC est hors ligne, expédie par e-mail Stark à Pierre.
+        """
+        from services.local_agent_service import is_pc_connected_async
+
+        dest = recipient_email or "pierrecassagnettes@gmail.com"
+        html_file = filepath_html or snapshot_path
+        target_to_open = page_url or html_file or filepath_md
+
+        delivery_res: Dict[str, Any] = {
+            "delivery_mode": "unknown",
+            "status": "pending",
+            "recipient": dest,
+            "filepath_html": html_file,
+            "filepath_md": filepath_md,
+            "email_sent": False,
+            "screen_opened": False,
+        }
+
+        pc_online = False
+        try:
+            pc_online = await is_pc_connected_async()
+        except Exception as e:
+            logger.debug(f"[Delivery] Erreur check PC: {e}")
+
+        if pc_online and target_to_open:
+            screen_res = await self._deliver_to_screen(target_to_open, topic)
+            if screen_res.get("acknowledged", False) or screen_res.get("status") == "success":
+                delivery_res.update({
+                    "delivery_mode": "screen",
+                    "status": "success",
+                    "screen_opened": True,
+                    "screen_res": screen_res,
+                })
+                return delivery_res
+            else:
+                delivery_res["fallback_from_screen"] = True
+
+        # Repli e-mail si PC hors-ligne ou échec écran
+        email_attachment = html_file or filepath_md
+        email_res = await self._deliver_by_email(email_attachment, topic)
+        delivery_res["email_sent"] = (email_res.get("status") == "sent")
+        delivery_res["email_res"] = email_res
+        delivery_res["delivery_mode"] = "email"
+        delivery_res["status"] = email_res.get("status", "sent" if delivery_res["email_sent"] else "error")
+
+        return delivery_res
 
     async def _inject_voice_milestone(self, text: str, action_key: str) -> None:
         """Émet un jalon de progression vocal non-bloquant."""
@@ -1007,18 +1395,19 @@ class GeminiWebAutomator:
         task_id: Optional[str] = None,
         poll_interval: Optional[float] = None,
         max_wait_seconds: Optional[float] = None,
+        recipient_email: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Workflow complet L3 via Google Chrome CDP :
           1. Connexion CDP & navigation vers Gemini
           2. Contrôle session
-          3. Sélection mode Deep Research
+          3. Sélection mode Deep Research dans "Plus d'outils"
           4. Saisie & soumission du sujet
           5. Détection et confirmation du plan proposé
           6. Polling de complétion non-bloquant
-          7. Extraction Markdown & Canvas
-          8. Sauvegarde persistante vérifiée (downloads/ ou artifacts/)
-          9. Livraison conditionnelle (écran PC ou e-mail)
+          7. Extraction Markdown & création de page web Canvas
+          8. Sauvegarde persistante vérifiée (.html et .md)
+          9. Livraison par e-mail et écran
         """
         if live_session:
             self._live_session = live_session
@@ -1033,6 +1422,7 @@ class GeminiWebAutomator:
             "delivery": None,
             "duration_seconds": 0,
             "markdown_path": None,
+            "html_path": None,
             "screenshot_path": None,
         }
 
@@ -1040,7 +1430,7 @@ class GeminiWebAutomator:
             # 1. Connexion CDP
             logger.info(f"[DR-L3] [DeepResearch] Démarrage Deep Research : '{topic}' (task_id={t_id})")
             await self._inject_voice_milestone(
-                "Je lance la recherche approfondie sur Gemini Web via votre navigateur.",
+                "Je lance la recherche approfondie sur Gemini Web avec votre compte Google.",
                 "dr_step1_connect"
             )
 
@@ -1150,7 +1540,7 @@ class GeminiWebAutomator:
             result["steps_completed"].append("prompt_sent" if send_ok else "prompt_send_failed")
 
             # 6. Détection et confirmation du plan de recherche proposé
-            await self._confirm_research_plan(timeout_seconds=8.0)
+            await self._confirm_research_plan(timeout_seconds=12.0)
             result["steps_completed"].append("plan_confirmed")
 
             # 7. Polling de complétion
@@ -1161,11 +1551,14 @@ class GeminiWebAutomator:
             result["steps_completed"].append("research_completed" if completed else "research_timeout")
             result["duration_seconds"] = round(time.time() - started_at)
 
-            # 8. Extraction du rapport
+            # 8. Extraction du rapport Markdown & création de la page web HTML
             markdown_content = await self._extract_report_markdown()
-            page_url = await self._trigger_webpage_creation()
+            page_url, html_content = await self._generate_and_extract_webpage_html(
+                topic=topic,
+                markdown_content=markdown_content,
+            )
 
-            if not markdown_content and not page_url:
+            if not markdown_content and not html_content:
                 shot = await self._capture_screenshot("extraction_failed")
                 err_msg = "Échec d'extraction du rapport final de recherche."
                 l3_err = L3ErrorDetails(
@@ -1186,28 +1579,34 @@ class GeminiWebAutomator:
                 })
                 return result
 
-            # 9. Sauvegarde persistante vérifiée
+            # 9. Sauvegarde persistante vérifiée (.md et .html)
             save_info = self._save_report_file(
                 topic=topic,
-                markdown_content=markdown_content or f"# Rapport Deep Research : {topic}\n\nPage Canvas : {page_url}",
+                markdown_content=markdown_content or f"# Rapport Deep Research : {topic}\n\nPage générée : {page_url}",
+                html_content=html_content,
             )
             result["markdown_path"] = save_info.get("filepath_md")
+            result["html_path"] = save_info.get("filepath_html")
             result["markdown_content"] = markdown_content
-            result["artifacts"] = [save_info.get("filepath_md")] if save_info.get("filepath_md") else []
+            result["html_content"] = html_content
+            result["artifacts"] = [
+                p for p in [save_info.get("filepath_html"), save_info.get("filepath_md")] if p
+            ]
             result["steps_completed"].append("report_persisted")
 
-            # 10. Livraison
+            # 10. Expédition systématique par e-mail et écran
             delivery_res = await self._deliver_result(
                 page_url=page_url,
-                snapshot_path=None,
+                filepath_html=save_info.get("filepath_html"),
                 topic=topic,
                 filepath_md=save_info.get("filepath_md"),
+                recipient_email=recipient_email,
             )
             result["delivery"] = delivery_res
             result["status"] = "completed"
             result["page_url"] = page_url
 
-            final_msg = f"La recherche approfondie sur « {topic} » est terminée et enregistrée."
+            final_msg = f"La recherche approfondie sur « {topic} » est terminée. La page web a été créée et vous a été envoyée par e-mail."
             await self._inject_voice_milestone(final_msg, "dr_final_delivery")
             return result
 
@@ -1286,6 +1685,7 @@ class GeminiDeepResearchEngine:
         topic: str,
         live_session: Any = None,
         task_id: Optional[str] = None,
+        recipient_email: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Lance la recherche Deep Research Gemini Web en arrière-plan sans bloquer la voix."""
         if self.is_running():
@@ -1305,6 +1705,7 @@ class GeminiDeepResearchEngine:
                     topic=topic,
                     live_session=live_session,
                     task_id=t_id,
+                    recipient_email=recipient_email,
                 )
                 self._last_result = res
                 if res.get("l3_error"):

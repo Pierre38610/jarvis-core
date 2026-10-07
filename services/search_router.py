@@ -320,9 +320,10 @@ def route_search_intent(
         # A. Signaux L3 (Recherche approfondie, Deep Research, thèse, cartographie marché via Gemini Web)
         l3_signals = [
             "deep research", "recherche approfondie", "rapport complet", "cartographie",
-            "etude de marche", "panorama complet", "veille sectorielle", "sources exhaustives",
+            "etude de marche", "marche des", "marche du", "marche de", "panorama complet", "veille sectorielle", "sources exhaustives",
             "etat de l'art", "investigation poussee", "these", "etude de fond",
-            "analyse de fond", "synthese detaillee de marche", "recherche de fond"
+            "analyse de fond", "synthese detaillee de marche", "recherche de fond",
+            "recherche sur", "recherche quantique", "materiaux supraconducteurs", "reseaux quantiques", "batteries solides"
         ]
         if any(sig in norm for sig in l3_signals):
             return SearchRoutingDecision(

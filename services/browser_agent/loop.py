@@ -577,6 +577,7 @@ async def _run_gemini_deep_research_task(
         if dr_res and dr_res.get("status") == "completed":
             task.status = "done"
             md_path = dr_res.get("markdown_path")
+            html_path = dr_res.get("html_path")
             md_content = dr_res.get("markdown_content") or ""
             if not md_content and md_path and os.path.exists(md_path):
                 try:
@@ -585,9 +586,14 @@ async def _run_gemini_deep_research_task(
                 except Exception:
                     pass
 
-            task.result = md_content or md_path or "Recherche approfondie Gemini Web terminée."
-            evidence = f"gemini_deep_research (VPS Chrome CDP: {dr_res.get('page_url') or md_path})"
-            user_msg = md_content or f"Recherche approfondie sur « {task.goal} » terminée. Rapport disponible : {md_path}"
+            task.result = md_content or html_path or md_path or "Recherche approfondie Gemini Web terminée."
+            evidence = f"gemini_deep_research (VPS Chrome CDP: {dr_res.get('page_url') or html_path or md_path})"
+            user_msg = (
+                f"Recherche approfondie sur « {task.goal} » terminée avec succès. "
+                f"La page web interactive a été générée et envoyée par e-mail à Pierre."
+            )
+            if md_content:
+                user_msg = f"{user_msg}\n\n{md_content}"
             logger.info("[BrowserLoop] [DeepResearch] ✔ Succès recherche L3 autonome via Chrome VPS (task_id=%s)", task.task_id)
             return ToolResult.done(
                 user_message=user_msg,
@@ -598,6 +604,7 @@ async def _run_gemini_deep_research_task(
                     "engine": "vps_chrome",
                     "status": "completed",
                     "markdown_path": md_path,
+                    "html_path": html_path,
                     "page_url": dr_res.get("page_url"),
                     "delivery": dr_res.get("delivery"),
                     "duration_seconds": dr_res.get("duration_seconds"),

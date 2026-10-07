@@ -268,7 +268,7 @@ async def test_dispatcher_map_reduce_success_pc_online():
     sources = resp.get("sources") or resp.get("data", {}).get("sources")
     assert len(sources) == 2
     artifacts = resp.get("artifacts") or resp.get("data", {}).get("artifacts")
-    assert artifacts == ["/tmp/rapport.md"]
+    assert "/tmp/rapport.md" in artifacts
     mock_email.assert_not_awaited()
 
 
@@ -331,7 +331,7 @@ async def test_dispatcher_map_reduce_email_failure_handled_gracefully():
         )
 
     assert resp["status"] == "done"
-    assert resp["user_message"] == "# Synthèse finale L3\nRapport complet"
+    assert "# Synthèse finale L3\nRapport complet" in resp["user_message"]
     delivery = resp.get("delivery") or resp.get("data", {}).get("delivery")
     assert delivery["delivery_mode"] == "email"
     assert delivery["status"] == "error"

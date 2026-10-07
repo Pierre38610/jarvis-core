@@ -358,7 +358,8 @@ LOGIN_INDICATOR_SELECTORS = [
     "a:has-text('Connexion')",
     "button:has-text('Sign in')",
     "button:has-text('Connexion')",
-    "[href*='accounts.google.com']",
+    "a[href*='accounts.google.com/signin']",
+    "a[href*='accounts.google.com/ServiceLogin']",
     "input[type='email']",
     "input[name='identifier']",
 ]
@@ -471,7 +472,7 @@ async def check_gemini_session(
         safe_url = sanitize_error_text(curr_url)
 
         # 3. Détection de page d'authentification Google explicite
-        if "accounts.google.com" in curr_url.lower():
+        if "accounts.google.com" in curr_url.lower() and not ("signout" in curr_url.lower() or "continue=" in curr_url.lower()):
             msg = "Connexion Google requise : redirection vers accounts.google.com détectée."
             logger.info(f"[VPSChrome] [Session Gemini] {msg}")
             return {
@@ -492,7 +493,6 @@ async def check_gemini_session(
                     if hasattr(loc, "count"):
                         cnt = await loc.count()
                         if cnt > 0:
-                            # Vérifier si ce n'est pas un faux positif (lien de chat /app/ ou menu de compte SignOutOptions)
                             is_real_login = True
                             if hasattr(loc, "first") and hasattr(loc.first, "get_attribute"):
                                 try:
@@ -521,6 +521,16 @@ async def check_gemini_session(
 
         # 5. Détection d'interface Gemini active
         if "gemini.google.com" in curr_url.lower():
+            msg = "Session Google Gemini active et authentifiée."
+            logger.info(f"[VPSChrome] [Session Gemini] ✔ {msg}")
+            return {
+                "ok": True,
+                "status": "active",
+                "exit_code": 0,
+                "message": msg,
+                "current_url": safe_url,
+                "error": None,
+            }
             msg = "Session Google Gemini active et authentifiée."
             logger.info(f"[VPSChrome] [Session Gemini] ✔ {msg}")
             return {

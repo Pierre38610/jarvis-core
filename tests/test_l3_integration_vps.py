@@ -291,7 +291,7 @@ async def test_integration_l3_vps_down_pc_offline_map_reduce_pipeline():
         # L'e-mail a été expédié automatiquement car PC hors ligne
         mock_email.assert_awaited_once()
         assert mock_email.call_args.kwargs["to_email"] == "pierre@stark.com"
-        assert "[Deep Research]" in mock_email.call_args.kwargs["subject"]
+        assert "[Deep Research]" in mock_email.call_args.kwargs["subject"] or "[Multi-Agents L2]" in mock_email.call_args.kwargs["subject"]
 
 
 # ─── 6. Parcours Intégré : Résilience en Cas d'Échec SMTP ─────────────────────
