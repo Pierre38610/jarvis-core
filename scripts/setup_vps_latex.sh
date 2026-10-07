@@ -43,32 +43,72 @@ if [ "$(id -u)" -ne 0 ]; then
     fi
 fi
 
-# 2. Liste exacte des paquets requis
-REQUIRED_PACKAGES=(
-    texlive-latex-recommended
-    texlive-latex-extra
-    texlive-lang-french
-    texlive-fonts-recommended
-    latexmk
-    lmodern
-)
+# 2. Détection du gestionnaire de paquets et installation
+if command -v apt-get >/dev/null 2>&1; then
+    PKG_MGR="apt"
+    REQUIRED_PACKAGES=(
+        texlive-latex-recommended
+        texlive-latex-extra
+        texlive-lang-french
+        texlive-fonts-recommended
+        latexmk
+        lmodern
+    )
+elif command -v dnf >/dev/null 2>&1; then
+    PKG_MGR="dnf"
+    REQUIRED_PACKAGES=(
+        texlive-scheme-basic
+        texlive-collection-latexrecommended
+        texlive-collection-fontsrecommended
+        texlive-babel-french
+        texlive-lm
+        latexmk
+    )
+elif command -v yum >/dev/null 2>&1; then
+    PKG_MGR="yum"
+    REQUIRED_PACKAGES=(
+        texlive-scheme-basic
+        texlive-collection-latexrecommended
+        texlive-collection-fontsrecommended
+        texlive-babel-french
+        texlive-lm
+        latexmk
+    )
+else
+    echo "[ERREUR] Gestionnaire de paquets non supporté (apt, dnf ou yum requis)." >&2
+    exit 1
+fi
 
-echo "[INFO] Vérification des paquets LaTeX requis..."
+echo "[INFO] Vérification des paquets LaTeX requis ($PKG_MGR)..."
 MISSING_PACKAGES=()
 
-for pkg in "${REQUIRED_PACKAGES[@]}"; do
-    if ! dpkg -s "$pkg" >/dev/null 2>&1; then
-        MISSING_PACKAGES+=("$pkg")
-    fi
-done
+if [ "$PKG_MGR" = "apt" ]; then
+    for pkg in "${REQUIRED_PACKAGES[@]}"; do
+        if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+            MISSING_PACKAGES+=("$pkg")
+        fi
+    done
+else
+    for pkg in "${REQUIRED_PACKAGES[@]}"; do
+        if ! rpm -q "$pkg" >/dev/null 2>&1; then
+            MISSING_PACKAGES+=("$pkg")
+        fi
+    done
+fi
 
 if [ ${#MISSING_PACKAGES[@]} -eq 0 ]; then
     echo "[INFO] Tous les paquets LaTeX requis sont déjà installés. Aucune installation nécessaire."
 else
     echo "[INFO] Paquets manquants à installer : ${MISSING_PACKAGES[*]}"
-    export DEBIAN_FRONTEND=noninteractive
-    $SUDO apt-get update -y
-    $SUDO apt-get install -y --no-install-recommends "${MISSING_PACKAGES[@]}"
+    if [ "$PKG_MGR" = "apt" ]; then
+        export DEBIAN_FRONTEND=noninteractive
+        $SUDO apt-get update -y
+        $SUDO apt-get install -y --no-install-recommends "${MISSING_PACKAGES[@]}"
+    elif [ "$PKG_MGR" = "dnf" ]; then
+        $SUDO dnf --enablerepo=ol9_codeready_builder --enablerepo=ol9_developer_EPEL install -y "${MISSING_PACKAGES[@]}"
+    else
+        $SUDO yum install -y "${MISSING_PACKAGES[@]}"
+    fi
     echo "[INFO] Installation des paquets LaTeX terminée avec succès."
 fi
 
