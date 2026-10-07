@@ -17,7 +17,7 @@
   <link rel="icon" type="image/svg+xml" href="/static/jarvis-icon.svg">
   <link rel="apple-touch-icon" href="/static/jarvis-icon.png">
   <link rel="shortcut icon" href="/static/jarvis-icon.png">
-  <link rel="stylesheet" href="/static/style.css?v=5.85.0">
+  <link rel="stylesheet" href="/static/style.css?v=5.86.0">
 </head>
 <body>
 
@@ -100,7 +100,7 @@
         </div>
 
         <div class="statusbar-right">
-          <span class="hud-version-tag statusbar-version" id="hudVersionTag" title="Version 5.85.0 Stark AI">v5.85.0</span>
+          <span class="hud-version-tag statusbar-version" id="hudVersionTag" title="Version 5.85.0 Stark AI">v5.86.0</span>
         </div>
       </header>
 
@@ -984,12 +984,12 @@
           <span class="supervision-pulse-orb" style="background: #f59e0b; box-shadow: 0 0 10px #f59e0b;"></span>
           <div>
             <div class="supervision-title">AMAZON SEND TO KINDLE // LISEUSE</div>
-            <div class="supervision-subtitle">Transfert direct de livres & documents vers votre Kindle</div>
+            <div class="supervision-subtitle">Transfert direct de livres &amp; documents vers votre Kindle</div>
           </div>
         </div>
         <div class="supervision-header-actions">
           <button id="btnRefreshKindleStatus" class="supervision-icon-btn" onclick="fetchKindleStatus()" title="Actualiser le statut">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            <i data-lucide="refresh-cw"></i>
           </button>
           <button id="btnCloseKindleModal" class="supervision-icon-btn btn-close-modal" onclick="closeKindleModal()" title="Fermer"><i data-lucide="x"></i></button>
         </div>
@@ -1019,32 +1019,32 @@
         <!-- Zone de Dépôt de fichier -->
         <div class="supervision-section" style="margin-bottom: 16px;">
           <div class="section-badge-header">
-            <span class="section-icon"><i data-lucide="download"></i></span>
+            <span class="section-icon"><i data-lucide="upload"></i></span>
             <span class="section-title">DÉPOSER UN FICHIER POUR LA KINDLE</span>
           </div>
-          <div id="kindleDropzone" class="kindle-dropzone-box" onclick="document.getElementById('kindleFileInput').click()" style="border: 2px dashed rgba(56, 189, 248, 0.4); border-radius: 12px; padding: 24px 16px; text-align: center; cursor: pointer; background: rgba(15, 23, 42, 0.5); transition: all 0.2s ease;">
+          <div id="kindleDropzone" class="kindle-dropzone" onclick="document.getElementById('kindleFileInput').click()">
             <input type="file" id="kindleFileInput" accept=".pdf,.doc,.docx,.txt,.rtf,.htm,.html,.png,.gif,.jpg,.jpeg,.bmp,.epub" style="display: none;" onchange="handleKindleFileSelected(event)" />
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="1.8" style="margin-bottom: 8px;">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
-            <div style="color: #f1f5f9; font-weight: 600; font-size: 13px; margin-bottom: 4px;">Glissez un fichier ici ou cliquez pour parcourir</div>
-            <div style="color: #94a3b8; font-size: 11px;">Formats acceptés : EPUB, PDF, DOCX, TXT, DOC (jusqu'à 200 Mo)</div>
+            <div class="kindle-dropzone-icon"><i data-lucide="upload-cloud"></i></div>
+            <div class="kindle-dropzone-title">Glissez un fichier ici ou cliquez pour parcourir</div>
+            <div class="kindle-dropzone-hint">Formats acceptés : EPUB, PDF, DOCX, TXT, DOC (jusqu'à 200 Mo)</div>
           </div>
         </div>
 
         <!-- État / Progression d'envoi -->
-        <div id="kindleUploadCard" style="display: none; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 10px; padding: 14px; margin-bottom: 16px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <span id="kindleUploadFileName" style="font-weight: 600; color: #38bdf8; font-size: 13px;">document.epub</span>
-            <span id="kindleUploadStatusTag" class="section-tag" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8;">ENVOI EN COURS</span>
+        <div id="kindleUploadCard" class="kindle-upload-card" style="display: none;">
+          <div class="kindle-upload-header">
+            <span id="kindleUploadFileName" class="kindle-upload-file-name">document.epub</span>
+            <span id="kindleUploadStatusTag" class="section-tag">ENVOI EN COURS</span>
           </div>
-          <div id="kindleUploadMessage" style="color: #cbd5e1; font-size: 12px; line-height: 1.4;">Téléversement sur Amazon Send to Kindle en cours...</div>
+          <!-- Barre de progression fine (4px) -->
+          <div class="kindle-progress-track">
+            <div id="kindleProgressBar" class="kindle-progress-bar" style="width: 0%;"></div>
+          </div>
+          <div id="kindleUploadMessage" class="kindle-upload-message">Téléversement sur Amazon Send to Kindle en cours...</div>
         </div>
 
         <!-- Envoi d'article Web par URL -->
-        <div class="supervision-section">
+        <div class="supervision-section" style="margin-bottom: 16px;">
           <div class="section-badge-header">
             <span class="section-icon"><i data-lucide="globe"></i></span>
             <span class="section-title">ENVOYER UN ARTICLE WEB DIRECT</span>
@@ -1055,11 +1055,23 @@
           </div>
         </div>
 
+        <!-- Derniers envois -->
+        <div class="supervision-section">
+          <div class="section-badge-header">
+            <span class="section-icon"><i data-lucide="history"></i></span>
+            <span class="section-title">DERNIERS ENVOIS</span>
+          </div>
+          <div id="kindleHistoryContainer" class="kindle-history-container">
+            <div id="kindleHistoryEmpty" class="kindle-history-empty">Aucun envoi récent enregistré.</div>
+            <div id="kindleHistoryList" class="kindle-history-list" style="display: none;"></div>
+          </div>
+        </div>
+
       </div>
 
       <!-- Pied -->
       <div class="supervision-footer">
-        <button class="modal-btn" style="background:#1e293b; color:#cbd5e1; padding:8px 16px;" onclick="closeKindleModal()">FERMER</button>
+        <button class="modal-btn" style="background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); padding: 8px 16px;" onclick="closeKindleModal()">FERMER</button>
       </div>
 
     </div>
@@ -1072,10 +1084,10 @@
       <!-- En-tête -->
       <div class="supervision-header">
         <div class="supervision-title-group">
-          <span class="supervision-pulse-orb" style="background: #06b6d4; box-shadow: 0 0 12px #06b6d4;"></span>
+          <span class="supervision-pulse-orb" style="background: var(--accent); box-shadow: 0 0 10px var(--accent);"></span>
           <div>
-            <div class="supervision-title">JOURNAL SYSTÈME // STARK TERMINAL LOGS</div>
-            <div class="supervision-subtitle">Flux d'exécution VPS journalctl, Antigravity CLI &amp; Gemini Deep Research</div>
+            <div class="supervision-title">JOURNAL SYSTÈME // TERMINAL LOGS</div>
+            <div class="supervision-subtitle">Flux d'exécution VPS journalctl, Antigravity CLI &amp; Deep Research</div>
           </div>
         </div>
         <div class="supervision-header-actions">
@@ -1084,22 +1096,29 @@
             <span class="logs-auto-refresh-text">AUTO (3s)</span>
           </label>
           <button id="btnRefreshLogs" class="supervision-icon-btn" onclick="fetchJarvisLogs()" title="Rafraîchir les logs">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            <i data-lucide="refresh-cw"></i>
           </button>
           <button id="btnCopyLogs" class="supervision-icon-btn" onclick="copyJarvisLogs()" title="Copier les logs">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <i data-lucide="copy"></i>
           </button>
           <button id="btnCloseLogsModal" class="supervision-icon-btn btn-close-modal" onclick="closeLogsModal()" title="Fermer"><i data-lucide="x"></i></button>
         </div>
       </div>
 
-      <!-- Barre de filtres rapides -->
+      <!-- Barre de filtres rapides & recherche (Segmented Control + Search input) -->
       <div class="logs-filter-bar">
-        <button class="logs-filter-btn active" id="btnFilterAll" onclick="setLogsFilter('all')">TOUS</button>
-        <button class="logs-filter-btn" id="btnFilterError" onclick="setLogsFilter('error')"><i data-lucide="alert-octagon"></i> ERREURS</button>
-        <button class="logs-filter-btn" id="btnFilterWarning" onclick="setLogsFilter('warning')"><i data-lucide="alert-triangle"></i> WARNINGS</button>
-        <button class="logs-filter-btn" id="btnFilterAgy" onclick="setLogsFilter('agy')"><i data-lucide="zap"></i> ANTIGRAVITY (L2)</button>
-        <button class="logs-filter-btn" id="btnFilterDr" onclick="setLogsFilter('dr')"><i data-lucide="flask-conical"></i> DEEP RESEARCH (L3)</button>
+        <div class="logs-segmented-control">
+          <button class="logs-filter-btn active" id="btnFilterAll" data-filter="all" onclick="setLogsFilter('all')">Tous</button>
+          <button class="logs-filter-btn" id="btnFilterInfo" data-filter="info" onclick="setLogsFilter('info')">Info</button>
+          <button class="logs-filter-btn" id="btnFilterWarning" data-filter="warn" onclick="setLogsFilter('warn')">Warn</button>
+          <button class="logs-filter-btn" id="btnFilterError" data-filter="error" onclick="setLogsFilter('error')">Erreur</button>
+          <button class="logs-filter-btn" id="btnFilterAgy" data-filter="agy" onclick="setLogsFilter('agy')">Antigravity</button>
+          <button class="logs-filter-btn" id="btnFilterDr" data-filter="dr" onclick="setLogsFilter('dr')">Research</button>
+        </div>
+        <div class="logs-search-wrapper">
+          <i data-lucide="search" class="logs-search-icon"></i>
+          <input type="search" id="logsSearchInput" class="logs-search-input" placeholder="Filtrer les logs..." oninput="handleLogsSearch(this.value)" autocomplete="off" />
+        </div>
         <span id="logsCountBadge" class="logs-count-badge">0 LIGNES</span>
       </div>
 
@@ -1110,10 +1129,10 @@
 
       <!-- Pied -->
       <div class="supervision-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-        <span id="logsLastUpdate" style="font-size: 11px; color: #64748b;">Dernière synchronisation : --:--:--</span>
+        <span id="logsLastUpdate" style="font-size: 11px; color: var(--text-muted);">Dernière synchronisation : --:--:--</span>
         <div style="display: flex; gap: 8px;">
-          <button class="modal-btn" style="background:#0f172a; color:#38bdf8; border: 1px solid rgba(56,189,248,0.3); padding:6px 14px; font-size:11px;" onclick="scrollToLogsBottom()">EN BAS ↓</button>
-          <button class="modal-btn" style="background:#1e293b; color:#cbd5e1; padding:6px 14px; font-size:11px;" onclick="closeLogsModal()">FERMER</button>
+          <button class="modal-btn" style="background: var(--surface-2); color: var(--accent); border: 1px solid var(--border); padding: 6px 14px; font-size: 11px;" onclick="scrollToLogsBottom()">EN BAS ↓</button>
+          <button class="modal-btn" style="background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); padding: 6px 14px; font-size: 11px;" onclick="closeLogsModal()">FERMER</button>
         </div>
       </div>
 
@@ -1121,6 +1140,6 @@
   </div>
 
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="/static/app.js?v=5.85.0"></script>
+  <script src="/static/app.js?v=5.86.0"></script>
 </body>
 </html>

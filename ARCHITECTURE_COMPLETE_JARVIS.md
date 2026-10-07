@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.85.0 — Refonte Messagerie Pro (Style ChatGPT / Linear) : Fil de messages centré max 760px, bulles utilisateur surface-2, réponses Jarvis fluides sans fond avec texte 15px line-height 1.6, zone de saisie fixe avec textarea auto-resize max 6 lignes, raccourcis Entrée / Maj+Entrée, glisser-déposer d'images direct et suggestions de prompts en pastilles quand le fil est vide.*
+> *Dernière révision majeure : Version 5.86.0 — Modernisation Kindle & Logs Terminal Pro : Zone de dépôt Kindle épurée (1px dashed var(--border), hover accent, icône upload), barre de progression fine (4px), tableau/liste d'historique des derniers envois persistée en local avec badges de statut. Terminal de logs refondu (fond #070708, monospace 12.5px, niveaux colorés INFO/WARN/ERROR), segmented control ergonomique (Tous/Info/Warn/Erreur), recherche client en temps réel et auto-scroll intelligent sauf si remontée utilisateur.*
 
 
 ---
@@ -1413,7 +1413,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre minérale et raffinée (`#05070D`, `#0B0F19`, `#0D1321`), verre dépoli avec bordures ultra-fines (`backdrop-filter: blur(24px)`), hiérarchie chromatique équilibrée (cyan glace, émeraude, ambre, violet, rose alerte) sans saturation agressive.
 - **Typographie** : Polices modernes géométriques sans-serif (`Inter`, `Plus Jakarta Sans`) et code monospace technique (`JetBrains Mono`).
 - **Responsive Fluid Architecture** : Expérience fluide optimisée sur smartphone (`100dvh`, iOS Safari / Android Chrome) et cockpit glassmorphic centré sur grand écran desktop PC.
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `v5.85.0`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `v5.86.0`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
