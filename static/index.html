@@ -17,7 +17,7 @@
   <link rel="icon" type="image/svg+xml" href="/static/jarvis-icon.svg">
   <link rel="apple-touch-icon" href="/static/jarvis-icon.png">
   <link rel="shortcut icon" href="/static/jarvis-icon.png">
-  <link rel="stylesheet" href="/static/style.css?v=4.0">
+  <link rel="stylesheet" href="/static/style.css?v=5.81.0">
 </head>
 <body>
 
@@ -37,7 +37,7 @@
 
   <!-- Interface Principale (Arc Reactor & HUD) -->
   <div id="mainScreen">
-    <!-- En-tête -->
+    <!-- En-tête Pleine Largeur Edge-to-Edge -->
     <div class="hud-header">
       <div class="hud-header-left">
         <div class="hud-brand-wrap">
@@ -47,7 +47,7 @@
             <span class="system-tag"><span class="system-tag-dot"></span> CORE</span>
           </div>
         </div>
-        <span class="hud-version-tag" id="hudVersionTag" title="Version 5.80.0 Stark AI">v5.80.0</span>
+        <span class="hud-version-tag" id="hudVersionTag" title="Version 5.81.0 Stark AI">v5.81.0</span>
       </div>
       <!-- Actions d'en-tête (Kindle, Logs, Messagerie & Supervision) -->
       <div class="hud-header-right">
@@ -80,552 +80,559 @@
       </div>
     </div>
 
-    <!-- Barre de contrôle rapide Stark : Encoches Micro & Clé Payante -->
-    <div class="hud-quick-bar">
-      <!-- Encoche Micro -->
-      <label class="stark-quick-toggle" for="micToggle" id="micToggleContainer" title="Activer ou couper votre microphone (Raccourci clavier: M)">
-        <span class="quick-toggle-icon" id="micToggleIcon">🎙️</span>
-        <span class="quick-toggle-label">MICRO</span>
-        <div class="stark-switch">
-          <input type="checkbox" id="micToggle" class="stark-switch-input" checked aria-label="Activer ou couper le microphone">
-          <span class="stark-switch-track">
-            <span class="stark-switch-thumb"></span>
-          </span>
+    <!-- Scène Centrale Scrollable (Cockpit Stage) -->
+    <div class="hud-content-stage">
+      <div class="hud-stage-inner">
+
+        <!-- Barre de contrôle rapide Stark : Encoches Micro & Clé Payante -->
+        <div class="hud-quick-bar">
+          <!-- Encoche Micro -->
+          <label class="stark-quick-toggle" for="micToggle" id="micToggleContainer" title="Activer ou couper votre microphone (Raccourci clavier: M)">
+            <span class="quick-toggle-icon" id="micToggleIcon">🎙️</span>
+            <span class="quick-toggle-label">MICRO</span>
+            <div class="stark-switch">
+              <input type="checkbox" id="micToggle" class="stark-switch-input" checked aria-label="Activer ou couper le microphone">
+              <span class="stark-switch-track">
+                <span class="stark-switch-thumb"></span>
+              </span>
+            </div>
+            <span id="micToggleBadge" class="quick-toggle-badge badge-mic-on">ACTIF</span>
+          </label>
+
+          <!-- Encoche Clé Payante -->
+          <label class="stark-quick-toggle" for="paidKeyToggle" id="paidToggleContainer" title="Cochez pour autoriser le modèle à utiliser la clé payante. Si décoché, toute requête sur la clé payante est physiquement bloquée.">
+            <span class="quick-toggle-icon">⚡</span>
+            <span class="quick-toggle-label">CLÉ PAYANTE</span>
+            <div class="stark-switch">
+              <input type="checkbox" id="paidKeyToggle" class="stark-switch-input" aria-label="Autoriser la clé payante au modèle">
+              <span class="stark-switch-track">
+                <span class="stark-switch-thumb"></span>
+              </span>
+            </div>
+            <span id="paidToggleBadge" class="quick-toggle-badge badge-locked">🔒 VERROUILLÉE</span>
+          </label>
         </div>
-        <span id="micToggleBadge" class="quick-toggle-badge badge-mic-on">ACTIF</span>
-      </label>
 
-      <!-- Encoche Clé Payante -->
-      <label class="stark-quick-toggle" for="paidKeyToggle" id="paidToggleContainer" title="Cochez pour autoriser le modèle à utiliser la clé payante. Si décoché, toute requête sur la clé payante est physiquement bloquée.">
-        <span class="quick-toggle-icon">⚡</span>
-        <span class="quick-toggle-label">CLÉ PAYANTE</span>
-        <div class="stark-switch">
-          <input type="checkbox" id="paidKeyToggle" class="stark-switch-input" aria-label="Autoriser la clé payante au modèle">
-          <span class="stark-switch-track">
-            <span class="stark-switch-thumb"></span>
-          </span>
+        <!-- Centre Avatar Féminin Futuriste avec halo réactif au son -->
+        <div class="reactor-container avatar-pod-container">
+          <div class="reactor-halo" id="reactorHalo"></div>
+          <!-- Satellites Orbitaux Holographiques (Sous-agents Antigravity CLI) -->
+          <div class="subagents-orbital-container" id="subagentsContainer" aria-label="Constellation sous-agents Antigravity"></div>
+          <div class="jarvis-avatar-pod arc-reactor" id="toggleBtn" title="Touchez JARVIS pour interagir">
+            <svg class="jarvis-avatar-svg" viewBox="0 0 200 210" aria-label="Avatar Jarvis">
+              <defs>
+                <linearGradient id="avatarHairGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#070d1e"/>
+                  <stop offset="50%" stop-color="#0f172a"/>
+                  <stop offset="100%" stop-color="#1e1b4b"/>
+                </linearGradient>
+                <linearGradient id="avatarFaceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stop-color="#0d1b2a"/>
+                  <stop offset="60%" stop-color="#112240"/>
+                  <stop offset="100%" stop-color="#0a192f"/>
+                </linearGradient>
+                <linearGradient id="avatarVisorGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="rgba(147, 51, 234, 0.45)"/>
+                  <stop offset="100%" stop-color="rgba(79, 70, 229, 0.5)"/>
+                </linearGradient>
+                <filter id="avatarGlowCyan" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+                <filter id="avatarGlowPurple" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="3" result="blur"/>
+                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+                <filter id="avatarGlowAmber" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+                <filter id="avatarGlowPink" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+                <filter id="avatarGlowRed" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+                <filter id="avatarGlowGreen" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+                <filter id="avatarGlowIndigo" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+                <clipPath id="avatarVisorClip">
+                  <path d="M 68 83 Q 100 87 132 83 L 134 104 Q 100 110 66 104 Z"/>
+                </clipPath>
+              </defs>
+
+              <!-- ANNEAUX HOLOGRAPHIQUES EXTÉRIEURS -->
+              <circle cx="100" cy="105" r="95" fill="none" stroke="#0284c7" stroke-width="0.8" stroke-dasharray="4 6" opacity="0.35" class="avatar-rings-outer"/>
+              <circle cx="100" cy="105" r="91" fill="none" stroke="#38bdf8" stroke-width="0.6" stroke-dasharray="20 4 4 4" opacity="0.4" class="avatar-rings-inner"/>
+              <circle cx="100" cy="105" r="88" fill="none" stroke="rgba(56, 189, 248, 0.2)" stroke-width="0.5"/>
+
+              <g class="avatar-head-group">
+                <!-- BASE HOLOGRAPHIQUE ÉMETTEUR -->
+                <ellipse cx="100" cy="204" rx="55" ry="5" fill="none" stroke="#38bdf8" stroke-width="1.2" opacity="0.4" filter="url(#avatarGlowCyan)"/>
+                <path d="M 45 198 C 60 180 80 174 100 174 C 120 174 140 180 155 198 L 164 210 L 36 210 Z" fill="#070c18" stroke="#0284c7" stroke-width="1" opacity="0.9"/>
+                <path d="M 65 184 Q 100 198 135 184" fill="none" stroke="#38bdf8" stroke-width="1.5" filter="url(#avatarGlowCyan)" opacity="0.8"/>
+
+                <!-- ROBOT BLEU JARVIS (Avatar & Emblème Officiel) -->
+                <g class="jarvis-robot-core">
+                  <image href="/static/jarvis-robot-transparent.png" x="18" y="23" width="164" height="164" class="jarvis-robot-img" preserveAspectRatio="xMidYMid meet" />
+                </g>
+                <!-- Éléments de rétrocompatibilité masqués pour le moteur audio/sync -->
+                <g id="avatarEyesGroup" style="display:none;"></g>
+                <g id="avatarMouthGroup" style="display:none;">
+                  <span class="avatar-lip-lower"></span>
+                  <ellipse class="avatar-mouth-cavity"></ellipse>
+                </g>
+              </g>
+
+              <!-- COUCHE MIME 1 : PAROLE (Ondes vocales holographiques) -->
+              <g class="mime-layer mime-speaking-layer" style="display: none;">
+                <path d="M 96 135 Q 100 138 104 135" fill="none" stroke="#00f0ff" stroke-width="1.5" class="vocal-wave-1 vocal-wave" filter="url(#avatarGlowCyan)"/>
+                <path d="M 92 140 Q 100 145 108 140" fill="none" stroke="#00f0ff" stroke-width="1.5" class="vocal-wave-2 vocal-wave" filter="url(#avatarGlowCyan)"/>
+                <path d="M 88 145 Q 100 152 112 145" fill="none" stroke="#38bdf8" stroke-width="1.2" class="vocal-wave-3 vocal-wave" filter="url(#avatarGlowCyan)"/>
+              </g>
+
+              <!-- COUCHE MIME 2 : PROGRAMMATION / CODING (Visière cybernétique & flux code) -->
+              <g class="mime-layer mime-coding-layer" style="display: none;">
+                <path d="M 68 83 Q 100 87 132 83 L 134 104 Q 100 110 66 104 Z" fill="url(#avatarVisorGrad)" stroke="#c084fc" stroke-width="1.8" filter="url(#avatarGlowPurple)"/>
+                <path d="M 97 85 Q 100 84 103 85" fill="none" stroke="#e9d5ff" stroke-width="2"/>
+                <line x1="68" y1="85" x2="60" y2="88" stroke="#c084fc" stroke-width="1.5"/>
+                <line x1="132" y1="85" x2="140" y2="88" stroke="#c084fc" stroke-width="1.5"/>
+                <!-- Flux de code dans la visière -->
+                <g clip-path="url(#avatarVisorClip)">
+                  <text x="72" y="93" fill="#4ade80" font-family="monospace" font-size="6.5" font-weight="bold" class="code-stream-1">&lt;code/&gt; 0101 fn()</text>
+                  <text x="72" y="102" fill="#c084fc" font-family="monospace" font-size="6.5" font-weight="bold" class="code-stream-2">async { dev: OK } 10</text>
+                </g>
+                <!-- Jetons de code holographiques flottants -->
+                <g class="float-bracket-l">
+                  <rect x="36" y="85" width="22" height="15" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#a855f7" stroke-width="1"/>
+                  <text x="40" y="96" fill="#d8b4fe" font-family="monospace" font-size="9" font-weight="bold">{ ; }</text>
+                </g>
+                <g class="float-bracket-r">
+                  <rect x="142" y="85" width="22" height="15" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#a855f7" stroke-width="1"/>
+                  <text x="145" y="96" fill="#4ade80" font-family="monospace" font-size="8" font-weight="bold">&lt;/&gt;</text>
+                </g>
+              </g>
+
+              <!-- COUCHE MIME 3 : RECHERCHE / BROWSING (Réticule & Radar) -->
+              <g class="mime-layer mime-browsing-layer" style="display: none;">
+                <g class="radar-reticle">
+                  <circle cx="114" cy="92" r="16" fill="none" stroke="#38bdf8" stroke-width="1" stroke-dasharray="3 3"/>
+                  <circle cx="114" cy="92" r="10" fill="none" stroke="#00f0ff" stroke-width="1.2" filter="url(#avatarGlowCyan)"/>
+                  <line x1="114" y1="78" x2="114" y2="82" stroke="#38bdf8" stroke-width="1.5"/>
+                  <line x1="114" y1="102" x2="114" y2="106" stroke="#38bdf8" stroke-width="1.5"/>
+                  <line x1="100" y1="92" x2="104" y2="92" stroke="#38bdf8" stroke-width="1.5"/>
+                  <line x1="124" y1="92" x2="128" y2="92" stroke="#38bdf8" stroke-width="1.5"/>
+                </g>
+                <path d="M 114 92 L 126 80 A 16 16 0 0 1 130 92 Z" fill="rgba(56, 189, 248, 0.25)" class="radar-sweep-beam"/>
+                <rect x="136" y="80" width="38" height="18" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#38bdf8" stroke-width="0.8"/>
+                <text x="139" y="88" fill="#38bdf8" font-family="monospace" font-size="5.5" font-weight="bold">SEARCH // WEB</text>
+                <text x="139" y="95" fill="#4ade80" font-family="monospace" font-size="5" font-weight="bold">INDEX 0x4F</text>
+              </g>
+
+              <!-- COUCHE MIME 4 : RÉFLEXION / THINKING (Orbites quantiques & halo neural) -->
+              <g class="mime-layer mime-thinking-layer" style="display: none;">
+                <ellipse cx="100" cy="62" rx="36" ry="12" fill="none" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="4 4" class="quantum-orbit-1" filter="url(#avatarGlowCyan)"/>
+                <ellipse cx="100" cy="62" rx="36" ry="12" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="2 4" class="quantum-orbit-2"/>
+                <circle cx="68" cy="60" r="2" fill="#fbbf24" filter="url(#avatarGlowCyan)"/>
+                <circle cx="132" cy="64" r="2" fill="#fbbf24" filter="url(#avatarGlowCyan)"/>
+              </g>
+
+              <!-- COUCHE MIME 5 : EMAIL (Transmission de données) -->
+              <g class="mime-layer mime-emailing-layer" style="display: none;">
+                <g class="email-beam">
+                  <rect x="91" y="44" width="18" height="13" rx="2" fill="rgba(16, 185, 129, 0.2)" stroke="#10b981" stroke-width="1.2"/>
+                  <path d="M 91 46 L 100 52 L 109 46" fill="none" stroke="#10b981" stroke-width="1.2"/>
+                </g>
+              </g>
+
+              <!-- COUCHE MIME 6 : KINDLE & LIVRES NUMÉRIQUES (Liseuse, Ebooks, Transfert Amazon) -->
+              <g class="mime-layer mime-kindle-layer" style="display: none;">
+                <!-- Rayon de lecture laser sur les yeux -->
+                <line x1="72" y1="92" x2="128" y2="92" stroke="#f59e0b" stroke-width="1.2" class="kindle-read-scan" filter="url(#avatarGlowAmber)"/>
+                
+                <!-- Faisceau de transfert montant vers le cloud Amazon / Liseuse -->
+                <g class="kindle-beam-group">
+                  <path d="M 94 152 Q 100 146 106 152" fill="none" stroke="#fbbf24" stroke-width="1.5" class="kindle-wave-1" filter="url(#avatarGlowAmber)"/>
+                  <path d="M 90 144 Q 100 136 110 144" fill="none" stroke="#f59e0b" stroke-width="1.5" class="kindle-wave-2" filter="url(#avatarGlowAmber)"/>
+                  <path d="M 86 136 Q 100 126 114 136" fill="none" stroke="#d97706" stroke-width="1.2" class="kindle-wave-3" filter="url(#avatarGlowAmber)"/>
+                </g>
+
+                <!-- Livre numérique holographique ouvert à la poitrine -->
+                <g class="kindle-book-holo">
+                  <!-- Page gauche -->
+                  <path d="M 100 186 C 88 183 76 182 70 184 L 70 165 C 76 163 88 164 100 167 Z" fill="rgba(15, 23, 42, 0.92)" stroke="#f59e0b" stroke-width="1.2"/>
+                  <!-- Lignes de texte page gauche -->
+                  <line x1="74" y1="169" x2="94" y2="171" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
+                  <line x1="74" y1="174" x2="92" y2="176" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="3 1.5"/>
+                  <line x1="74" y1="179" x2="90" y2="181" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
+
+                  <!-- Page droite -->
+                  <path d="M 100 186 C 112 183 124 182 130 184 L 130 165 C 124 163 112 164 100 167 Z" fill="rgba(15, 23, 42, 0.92)" stroke="#f59e0b" stroke-width="1.2"/>
+                  <!-- Lignes de texte page droite -->
+                  <line x1="106" y1="171" x2="126" y2="169" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="3 1.5"/>
+                  <line x1="108" y1="176" x2="126" y2="174" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
+                  <line x1="110" y1="181" x2="124" y2="179" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2.5 1"/>
+
+                  <!-- Reliure centrale -->
+                  <line x1="100" y1="167" x2="100" y2="186" stroke="#fde047" stroke-width="1.6"/>
+
+                  <!-- Page animée en rotation/tournement -->
+                  <path d="M 100 186 C 104 178 108 170 114 164 L 100 167 Z" fill="rgba(245, 158, 11, 0.35)" stroke="#fbbf24" stroke-width="0.8" class="kindle-page-turn"/>
+
+                  <!-- Flèche / Sourire emblème Kindle sous le livre -->
+                  <path d="M 86 195 Q 100 203 114 195" fill="none" stroke="#f59e0b" stroke-width="1.6" stroke-linecap="round"/>
+                  <path d="M 111 192 L 115 195 L 112 198" fill="none" stroke="#f59e0b" stroke-width="1.4" stroke-linecap="round"/>
+                </g>
+
+                <!-- Badges latéraux flottants (EPUB et KINDLE) -->
+                <g class="kindle-badge-left">
+                  <rect x="28" y="100" width="30" height="15" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#f59e0b" stroke-width="0.9"/>
+                  <text x="33" y="111" fill="#fde047" font-family="monospace" font-size="7" font-weight="bold">EPUB</text>
+                </g>
+                <g class="kindle-badge-right">
+                  <rect x="142" y="100" width="38" height="15" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#f59e0b" stroke-width="0.9"/>
+                  <text x="146" y="111" fill="#fbbf24" font-family="monospace" font-size="6.5" font-weight="bold">KINDLE</text>
+                </g>
+              </g>
+
+              <!-- COUCHE MIME 7 : MUSIQUE & STREAMING AUDIO (Spotify Connect, Égaliseurs, Vinyle) -->
+              <g class="mime-layer mime-music-layer" style="display: none;">
+                <!-- Disque Vinyle / Anneau sonique rotatif Spotify vert/magenta -->
+                <circle cx="100" cy="105" r="76" fill="none" stroke="#1db954" stroke-width="1.2" stroke-dasharray="10 6 3 6" opacity="0.7" class="music-disc-spin" filter="url(#avatarGlowGreen)"/>
+
+                <!-- Barres d'égaliseur sur casque gauche -->
+                <g class="eq-left-ear">
+                  <line x1="53" y1="99" x2="53" y2="91" stroke="#1db954" stroke-width="1.8" stroke-linecap="round" class="music-bar-1"/>
+                  <line x1="56" y1="102" x2="56" y2="88" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" class="music-bar-2"/>
+                  <line x1="59" y1="100" x2="59" y2="93" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" class="music-bar-3"/>
+                </g>
+
+                <!-- Barres d'égaliseur sur casque droit -->
+                <g class="eq-right-ear">
+                  <line x1="141" y1="100" x2="141" y2="93" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" class="music-bar-3"/>
+                  <line x1="144" y1="102" x2="144" y2="88" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" class="music-bar-2"/>
+                  <line x1="147" y1="99" x2="147" y2="91" stroke="#1db954" stroke-width="1.8" stroke-linecap="round" class="music-bar-1"/>
+                </g>
+
+                <!-- Notes de musique holographiques flottantes -->
+                <text x="44" y="78" fill="#1db954" font-family="sans-serif" font-size="14" class="music-note-float-1" filter="url(#avatarGlowGreen)">♪</text>
+                <text x="146" y="72" fill="#10b981" font-family="sans-serif" font-size="16" class="music-note-float-2">♫</text>
+                <text x="135" y="52" fill="#00f0ff" font-family="sans-serif" font-size="11" class="music-note-float-3">♪</text>
+
+                <!-- Badge Spotify Connect -->
+                <g class="music-badge">
+                  <rect x="132" y="118" width="52" height="15" rx="3" fill="rgba(15, 23, 42, 0.9)" stroke="#1db954" stroke-width="0.9"/>
+                  <text x="135" y="129" fill="#1ed760" font-family="monospace" font-size="6" font-weight="bold">SPOTIFY CONNECT</text>
+                </g>
+              </g>
+
+              <!-- COUCHE MIME 8 : CINÉMA & STREAMING VIDÉO (Stremio, Visière 4K, Bobine) -->
+              <g class="mime-layer mime-media-layer" style="display: none;">
+                <!-- Visière Widescreen Cinéma avec barres de cadrage format 2.39:1 -->
+                <rect x="64" y="82" width="72" height="22" rx="2" fill="rgba(15, 23, 42, 0.75)" stroke="#ef4444" stroke-width="1.3" filter="url(#avatarGlowRed)"/>
+                <!-- Repères de cadrage caméra cinéma -->
+                <path d="M 67 86 L 67 84 L 71 84" fill="none" stroke="#fca5a5" stroke-width="1"/>
+                <path d="M 133 86 L 133 84 L 129 84" fill="none" stroke="#fca5a5" stroke-width="1"/>
+                <path d="M 67 100 L 67 102 L 71 102" fill="none" stroke="#fca5a5" stroke-width="1"/>
+                <path d="M 133 100 L 133 102 L 129 102" fill="none" stroke="#fca5a5" stroke-width="1"/>
+                
+                <!-- Symbole Play holographique au centre de la visière -->
+                <polygon points="98,87 106,93 98,99" fill="#ef4444" stroke="#ffffff" stroke-width="0.6" class="cinema-play-pulse" filter="url(#avatarGlowRed)"/>
+
+                <!-- Bobine de film rotative holographique -->
+                <circle cx="152" cy="74" r="10" fill="rgba(15, 23, 42, 0.85)" stroke="#ef4444" stroke-width="1" stroke-dasharray="4 3" class="film-reel-spin"/>
+                <circle cx="152" cy="74" r="4" fill="#030712" stroke="#ef4444" stroke-width="0.8"/>
+
+                <!-- Badge 4K HDR -->
+                <g class="media-badge">
+                  <rect x="136" y="90" width="38" height="14" rx="2" fill="rgba(15, 23, 42, 0.88)" stroke="#ef4444" stroke-width="0.8"/>
+                  <text x="140" y="100" fill="#fca5a5" font-family="monospace" font-size="6.5" font-weight="bold">STREMIO 4K</text>
+                </g>
+              </g>
+
+              <!-- COUCHE MIME 9 : TÉLÉCHARGEMENT SÉCURISÉ (Transfert de flux, Flèche vortex) -->
+              <g class="mime-layer mime-downloading-layer" style="display: none;">
+                <!-- Flèches de flux descendantes vers le vortex -->
+                <g class="download-stream-arrows">
+                  <path d="M 100 44 L 100 64 M 95 59 L 100 64 L 105 59" fill="none" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="dl-arrow-1" filter="url(#avatarGlowCyan)"/>
+                  <path d="M 100 60 L 100 80 M 95 75 L 100 80 L 105 75" fill="none" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="dl-arrow-2" filter="url(#avatarGlowCyan)"/>
+                </g>
+                <!-- Anneau récepteur avec barre de progression circulaire à la base -->
+                <circle cx="100" cy="180" r="18" fill="none" stroke="rgba(56, 189, 248, 0.3)" stroke-width="2"/>
+                <circle cx="100" cy="180" r="18" fill="none" stroke="#00f0ff" stroke-width="2" stroke-dasharray="35 75" class="dl-circle-progress" filter="url(#avatarGlowCyan)"/>
+                
+                <!-- Badge Download Transfer -->
+                <g class="dl-badge">
+                  <rect x="136" y="80" width="42" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#38bdf8" stroke-width="0.8"/>
+                  <text x="140" y="91" fill="#38bdf8" font-family="monospace" font-size="6" font-weight="bold">DOWNLOADING</text>
+                </g>
+              </g>
+
+              <!-- COUCHE MIME 10 : DIAGNOSTIC SYSTÈME & MAINTENANCE (Télémétrie, ECG, Auto-réparation) -->
+              <g class="mime-layer mime-system-layer" style="display: none;">
+                <!-- Trame hexagonale de diagnostic sur les tempes -->
+                <polygon points="56,76 62,72 68,76 68,84 62,88 56,84" fill="none" stroke="#84cc16" stroke-width="0.8" opacity="0.7" class="sys-hex-pulse"/>
+                <polygon points="132,76 138,72 144,76 144,84 138,88 132,84" fill="none" stroke="#84cc16" stroke-width="0.8" opacity="0.7" class="sys-hex-pulse"/>
+                
+                <!-- Ligne d'oscilloscope ECG (Battement système actif) -->
+                <path d="M 68 148 L 86 148 L 90 141 L 94 155 L 98 144 L 102 151 L 106 148 L 132 148" fill="none" stroke="#84cc16" stroke-width="1.4" class="sys-ecg-pulse" filter="url(#avatarGlowGreen)"/>
+
+                <!-- Badge Télémétrie CPU & OS -->
+                <g class="sys-badge-left">
+                  <rect x="26" y="86" width="34" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#84cc16" stroke-width="0.9"/>
+                  <text x="30" y="97" fill="#bef264" font-family="monospace" font-size="6.5" font-weight="bold">CPU: OK</text>
+                </g>
+                <g class="sys-badge-right">
+                  <rect x="140" y="86" width="38" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#84cc16" stroke-width="0.9"/>
+                  <text x="144" y="97" fill="#bef264" font-family="monospace" font-size="6.5" font-weight="bold">SYS // 0x0</text>
+                </g>
+              </g>
+
+              <!-- COUCHE MIME 11 : MÉMOIRE DURABLE & SOUVENIRS (Constellation synaptique, Cristal) -->
+              <g class="mime-layer mime-memory-layer" style="display: none;">
+                <!-- Cristal de mémoire octaédrique en lévitation au front -->
+                <g class="memory-crystal" filter="url(#avatarGlowIndigo)">
+                  <polygon points="100,38 107,48 100,58 93,48" fill="rgba(99, 102, 241, 0.4)" stroke="#818cf8" stroke-width="1.2"/>
+                  <line x1="93" y1="48" x2="107" y2="48" stroke="#c7d2fe" stroke-width="0.8"/>
+                  <line x1="100" y1="38" x2="100" y2="58" stroke="#c7d2fe" stroke-width="0.8"/>
+                </g>
+
+                <!-- Ondes de réminiscence / résonance mémorielle -->
+                <ellipse cx="100" cy="48" rx="20" ry="7" fill="none" stroke="#6366f1" stroke-width="0.9" stroke-dasharray="3 3" class="memory-wave-1"/>
+                <ellipse cx="100" cy="48" rx="32" ry="11" fill="none" stroke="#818cf8" stroke-width="0.7" stroke-dasharray="4 4" class="memory-wave-2"/>
+
+                <!-- Badge Mémoire SQLite -->
+                <g class="memory-badge">
+                  <rect x="136" y="84" width="44" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#6366f1" stroke-width="0.8"/>
+                  <text x="140" y="95" fill="#a5b4fc" font-family="monospace" font-size="6" font-weight="bold">MEMORY // DB</text>
+                </g>
+              </g>
+
+              <!-- COUCHE MIME 12 : ACHATS & PANIER E-COMMERCE (Panier, Bouclier de validation) -->
+              <g class="mime-layer mime-shopping-layer" style="display: none;">
+                <!-- Panier holographique à la base -->
+                <g class="shopping-cart-group">
+                  <path d="M 88 172 L 91 172 L 95 183 L 109 183 L 113 175 L 94 175" fill="none" stroke="#10b981" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" filter="url(#avatarGlowGreen)"/>
+                  <circle cx="96" cy="186" r="1.5" fill="#10b981"/>
+                  <circle cx="107" cy="186" r="1.5" fill="#10b981"/>
+                </g>
+                <!-- Bouclier de validation sécurisée avec coche -->
+                <polygon points="100,160 106,163 106,169 100,172 94,169 94,163" fill="rgba(16, 185, 129, 0.3)" stroke="#34d399" stroke-width="1"/>
+                <path d="M 97 166 L 99 168 L 103 164" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+
+                <!-- Badge Shopping -->
+                <g class="shopping-badge">
+                  <rect x="136" y="84" width="42" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#10b981" stroke-width="0.8"/>
+                  <text x="140" y="95" fill="#6ee7b7" font-family="monospace" font-size="6" font-weight="bold">CART // READY</text>
+                </g>
+              </g>
+            </svg>
+
+            <!-- Pastille de Statut et d'Action Intégrée -->
+            <div class="avatar-status-pill core-text" id="btnLabel">CONNECT</div>
+          </div>
         </div>
-        <span id="paidToggleBadge" class="quick-toggle-badge badge-locked">🔒 VERROUILLÉE</span>
-      </label>
-    </div>
 
-    <!-- Centre Avatar Féminin Futuriste avec halo réactif au son -->
-    <div class="reactor-container avatar-pod-container">
-      <div class="reactor-halo" id="reactorHalo"></div>
-      <!-- Satellites Orbitaux Holographiques (Sous-agents Antigravity CLI) -->
-      <div class="subagents-orbital-container" id="subagentsContainer" aria-label="Constellation sous-agents Antigravity"></div>
-      <div class="jarvis-avatar-pod arc-reactor" id="toggleBtn" title="Touchez JARVIS pour interagir">
-        <svg class="jarvis-avatar-svg" viewBox="0 0 200 210" aria-label="Avatar Jarvis">
-          <defs>
-            <linearGradient id="avatarHairGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#070d1e"/>
-              <stop offset="50%" stop-color="#0f172a"/>
-              <stop offset="100%" stop-color="#1e1b4b"/>
-            </linearGradient>
-            <linearGradient id="avatarFaceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stop-color="#0d1b2a"/>
-              <stop offset="60%" stop-color="#112240"/>
-              <stop offset="100%" stop-color="#0a192f"/>
-            </linearGradient>
-            <linearGradient id="avatarVisorGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="rgba(147, 51, 234, 0.45)"/>
-              <stop offset="100%" stop-color="rgba(79, 70, 229, 0.5)"/>
-            </linearGradient>
-            <filter id="avatarGlowCyan" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="2.5" result="blur"/>
-              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
-            <filter id="avatarGlowPurple" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="3" result="blur"/>
-              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
-            <filter id="avatarGlowAmber" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="2.5" result="blur"/>
-              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
-            <filter id="avatarGlowPink" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="2.5" result="blur"/>
-              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
-            <filter id="avatarGlowRed" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="2.5" result="blur"/>
-              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
-            <filter id="avatarGlowGreen" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="2.5" result="blur"/>
-              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
-            <filter id="avatarGlowIndigo" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="2.5" result="blur"/>
-              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
-            <clipPath id="avatarVisorClip">
-              <path d="M 68 83 Q 100 87 132 83 L 134 104 Q 100 110 66 104 Z"/>
-            </clipPath>
-          </defs>
-
-          <!-- ANNEAUX HOLOGRAPHIQUES EXTÉRIEURS -->
-          <circle cx="100" cy="105" r="95" fill="none" stroke="#0284c7" stroke-width="0.8" stroke-dasharray="4 6" opacity="0.35" class="avatar-rings-outer"/>
-          <circle cx="100" cy="105" r="91" fill="none" stroke="#38bdf8" stroke-width="0.6" stroke-dasharray="20 4 4 4" opacity="0.4" class="avatar-rings-inner"/>
-          <circle cx="100" cy="105" r="88" fill="none" stroke="rgba(56, 189, 248, 0.2)" stroke-width="0.5"/>
-
-          <g class="avatar-head-group">
-            <!-- BASE HOLOGRAPHIQUE ÉMETTEUR -->
-            <ellipse cx="100" cy="204" rx="55" ry="5" fill="none" stroke="#38bdf8" stroke-width="1.2" opacity="0.4" filter="url(#avatarGlowCyan)"/>
-            <path d="M 45 198 C 60 180 80 174 100 174 C 120 174 140 180 155 198 L 164 210 L 36 210 Z" fill="#070c18" stroke="#0284c7" stroke-width="1" opacity="0.9"/>
-            <path d="M 65 184 Q 100 198 135 184" fill="none" stroke="#38bdf8" stroke-width="1.5" filter="url(#avatarGlowCyan)" opacity="0.8"/>
-
-            <!-- ROBOT BLEU JARVIS (Avatar & Emblème Officiel) -->
-            <g class="jarvis-robot-core">
-              <image href="/static/jarvis-robot-transparent.png" x="18" y="23" width="164" height="164" class="jarvis-robot-img" preserveAspectRatio="xMidYMid meet" />
-            </g>
-            <!-- Éléments de rétrocompatibilité masqués pour le moteur audio/sync -->
-            <g id="avatarEyesGroup" style="display:none;"></g>
-            <g id="avatarMouthGroup" style="display:none;">
-              <span class="avatar-lip-lower"></span>
-              <ellipse class="avatar-mouth-cavity"></ellipse>
-            </g>
-          </g>
-
-          <!-- COUCHE MIME 1 : PAROLE (Ondes vocales holographiques) -->
-          <g class="mime-layer mime-speaking-layer" style="display: none;">
-            <path d="M 96 135 Q 100 138 104 135" fill="none" stroke="#00f0ff" stroke-width="1.5" class="vocal-wave-1 vocal-wave" filter="url(#avatarGlowCyan)"/>
-            <path d="M 92 140 Q 100 145 108 140" fill="none" stroke="#00f0ff" stroke-width="1.5" class="vocal-wave-2 vocal-wave" filter="url(#avatarGlowCyan)"/>
-            <path d="M 88 145 Q 100 152 112 145" fill="none" stroke="#38bdf8" stroke-width="1.2" class="vocal-wave-3 vocal-wave" filter="url(#avatarGlowCyan)"/>
-          </g>
-
-          <!-- COUCHE MIME 2 : PROGRAMMATION / CODING (Visière cybernétique & flux code) -->
-          <g class="mime-layer mime-coding-layer" style="display: none;">
-            <path d="M 68 83 Q 100 87 132 83 L 134 104 Q 100 110 66 104 Z" fill="url(#avatarVisorGrad)" stroke="#c084fc" stroke-width="1.8" filter="url(#avatarGlowPurple)"/>
-            <path d="M 97 85 Q 100 84 103 85" fill="none" stroke="#e9d5ff" stroke-width="2"/>
-            <line x1="68" y1="85" x2="60" y2="88" stroke="#c084fc" stroke-width="1.5"/>
-            <line x1="132" y1="85" x2="140" y2="88" stroke="#c084fc" stroke-width="1.5"/>
-            <!-- Flux de code dans la visière -->
-            <g clip-path="url(#avatarVisorClip)">
-              <text x="72" y="93" fill="#4ade80" font-family="monospace" font-size="6.5" font-weight="bold" class="code-stream-1">&lt;code/&gt; 0101 fn()</text>
-              <text x="72" y="102" fill="#c084fc" font-family="monospace" font-size="6.5" font-weight="bold" class="code-stream-2">async { dev: OK } 10</text>
-            </g>
-            <!-- Jetons de code holographiques flottants -->
-            <g class="float-bracket-l">
-              <rect x="36" y="85" width="22" height="15" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#a855f7" stroke-width="1"/>
-              <text x="40" y="96" fill="#d8b4fe" font-family="monospace" font-size="9" font-weight="bold">{ ; }</text>
-            </g>
-            <g class="float-bracket-r">
-              <rect x="142" y="85" width="22" height="15" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#a855f7" stroke-width="1"/>
-              <text x="145" y="96" fill="#4ade80" font-family="monospace" font-size="8" font-weight="bold">&lt;/&gt;</text>
-            </g>
-          </g>
-
-          <!-- COUCHE MIME 3 : RECHERCHE / BROWSING (Réticule & Radar) -->
-          <g class="mime-layer mime-browsing-layer" style="display: none;">
-            <g class="radar-reticle">
-              <circle cx="114" cy="92" r="16" fill="none" stroke="#38bdf8" stroke-width="1" stroke-dasharray="3 3"/>
-              <circle cx="114" cy="92" r="10" fill="none" stroke="#00f0ff" stroke-width="1.2" filter="url(#avatarGlowCyan)"/>
-              <line x1="114" y1="78" x2="114" y2="82" stroke="#38bdf8" stroke-width="1.5"/>
-              <line x1="114" y1="102" x2="114" y2="106" stroke="#38bdf8" stroke-width="1.5"/>
-              <line x1="100" y1="92" x2="104" y2="92" stroke="#38bdf8" stroke-width="1.5"/>
-              <line x1="124" y1="92" x2="128" y2="92" stroke="#38bdf8" stroke-width="1.5"/>
-            </g>
-            <path d="M 114 92 L 126 80 A 16 16 0 0 1 130 92 Z" fill="rgba(56, 189, 248, 0.25)" class="radar-sweep-beam"/>
-            <rect x="136" y="80" width="38" height="18" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#38bdf8" stroke-width="0.8"/>
-            <text x="139" y="88" fill="#38bdf8" font-family="monospace" font-size="5.5" font-weight="bold">SEARCH // WEB</text>
-            <text x="139" y="95" fill="#4ade80" font-family="monospace" font-size="5" font-weight="bold">INDEX 0x4F</text>
-          </g>
-
-          <!-- COUCHE MIME 4 : RÉFLEXION / THINKING (Orbites quantiques & halo neural) -->
-          <g class="mime-layer mime-thinking-layer" style="display: none;">
-            <ellipse cx="100" cy="62" rx="36" ry="12" fill="none" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="4 4" class="quantum-orbit-1" filter="url(#avatarGlowCyan)"/>
-            <ellipse cx="100" cy="62" rx="36" ry="12" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="2 4" class="quantum-orbit-2"/>
-            <circle cx="68" cy="60" r="2" fill="#fbbf24" filter="url(#avatarGlowCyan)"/>
-            <circle cx="132" cy="64" r="2" fill="#fbbf24" filter="url(#avatarGlowCyan)"/>
-          </g>
-
-          <!-- COUCHE MIME 5 : EMAIL (Transmission de données) -->
-          <g class="mime-layer mime-emailing-layer" style="display: none;">
-            <g class="email-beam">
-              <rect x="91" y="44" width="18" height="13" rx="2" fill="rgba(16, 185, 129, 0.2)" stroke="#10b981" stroke-width="1.2"/>
-              <path d="M 91 46 L 100 52 L 109 46" fill="none" stroke="#10b981" stroke-width="1.2"/>
-            </g>
-          </g>
-
-          <!-- COUCHE MIME 6 : KINDLE & LIVRES NUMÉRIQUES (Liseuse, Ebooks, Transfert Amazon) -->
-          <g class="mime-layer mime-kindle-layer" style="display: none;">
-            <!-- Rayon de lecture laser sur les yeux -->
-            <line x1="72" y1="92" x2="128" y2="92" stroke="#f59e0b" stroke-width="1.2" class="kindle-read-scan" filter="url(#avatarGlowAmber)"/>
-            
-            <!-- Faisceau de transfert montant vers le cloud Amazon / Liseuse -->
-            <g class="kindle-beam-group">
-              <path d="M 94 152 Q 100 146 106 152" fill="none" stroke="#fbbf24" stroke-width="1.5" class="kindle-wave-1" filter="url(#avatarGlowAmber)"/>
-              <path d="M 90 144 Q 100 136 110 144" fill="none" stroke="#f59e0b" stroke-width="1.5" class="kindle-wave-2" filter="url(#avatarGlowAmber)"/>
-              <path d="M 86 136 Q 100 126 114 136" fill="none" stroke="#d97706" stroke-width="1.2" class="kindle-wave-3" filter="url(#avatarGlowAmber)"/>
-            </g>
-
-            <!-- Livre numérique holographique ouvert à la poitrine -->
-            <g class="kindle-book-holo">
-              <!-- Page gauche -->
-              <path d="M 100 186 C 88 183 76 182 70 184 L 70 165 C 76 163 88 164 100 167 Z" fill="rgba(15, 23, 42, 0.92)" stroke="#f59e0b" stroke-width="1.2"/>
-              <!-- Lignes de texte page gauche -->
-              <line x1="74" y1="169" x2="94" y2="171" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
-              <line x1="74" y1="174" x2="92" y2="176" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="3 1.5"/>
-              <line x1="74" y1="179" x2="90" y2="181" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
-
-              <!-- Page droite -->
-              <path d="M 100 186 C 112 183 124 182 130 184 L 130 165 C 124 163 112 164 100 167 Z" fill="rgba(15, 23, 42, 0.92)" stroke="#f59e0b" stroke-width="1.2"/>
-              <!-- Lignes de texte page droite -->
-              <line x1="106" y1="171" x2="126" y2="169" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="3 1.5"/>
-              <line x1="108" y1="176" x2="126" y2="174" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
-              <line x1="110" y1="181" x2="124" y2="179" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2.5 1"/>
-
-              <!-- Reliure centrale -->
-              <line x1="100" y1="167" x2="100" y2="186" stroke="#fde047" stroke-width="1.6"/>
-
-              <!-- Page animée en rotation/tournement -->
-              <path d="M 100 186 C 104 178 108 170 114 164 L 100 167 Z" fill="rgba(245, 158, 11, 0.35)" stroke="#fbbf24" stroke-width="0.8" class="kindle-page-turn"/>
-
-              <!-- Flèche / Sourire emblème Kindle sous le livre -->
-              <path d="M 86 195 Q 100 203 114 195" fill="none" stroke="#f59e0b" stroke-width="1.6" stroke-linecap="round"/>
-              <path d="M 111 192 L 115 195 L 112 198" fill="none" stroke="#f59e0b" stroke-width="1.4" stroke-linecap="round"/>
-            </g>
-
-            <!-- Badges latéraux flottants (EPUB et KINDLE) -->
-            <g class="kindle-badge-left">
-              <rect x="28" y="100" width="30" height="15" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#f59e0b" stroke-width="0.9"/>
-              <text x="33" y="111" fill="#fde047" font-family="monospace" font-size="7" font-weight="bold">EPUB</text>
-            </g>
-            <g class="kindle-badge-right">
-              <rect x="142" y="100" width="38" height="15" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#f59e0b" stroke-width="0.9"/>
-              <text x="146" y="111" fill="#fbbf24" font-family="monospace" font-size="6.5" font-weight="bold">KINDLE</text>
-            </g>
-          </g>
-
-          <!-- COUCHE MIME 7 : MUSIQUE & STREAMING AUDIO (Spotify Connect, Égaliseurs, Vinyle) -->
-          <g class="mime-layer mime-music-layer" style="display: none;">
-            <!-- Disque Vinyle / Anneau sonique rotatif Spotify vert/magenta -->
-            <circle cx="100" cy="105" r="76" fill="none" stroke="#1db954" stroke-width="1.2" stroke-dasharray="10 6 3 6" opacity="0.7" class="music-disc-spin" filter="url(#avatarGlowGreen)"/>
-
-            <!-- Barres d'égaliseur sur casque gauche -->
-            <g class="eq-left-ear">
-              <line x1="53" y1="99" x2="53" y2="91" stroke="#1db954" stroke-width="1.8" stroke-linecap="round" class="music-bar-1"/>
-              <line x1="56" y1="102" x2="56" y2="88" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" class="music-bar-2"/>
-              <line x1="59" y1="100" x2="59" y2="93" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" class="music-bar-3"/>
-            </g>
-
-            <!-- Barres d'égaliseur sur casque droit -->
-            <g class="eq-right-ear">
-              <line x1="141" y1="100" x2="141" y2="93" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" class="music-bar-3"/>
-              <line x1="144" y1="102" x2="144" y2="88" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" class="music-bar-2"/>
-              <line x1="147" y1="99" x2="147" y2="91" stroke="#1db954" stroke-width="1.8" stroke-linecap="round" class="music-bar-1"/>
-            </g>
-
-            <!-- Notes de musique holographiques flottantes -->
-            <text x="44" y="78" fill="#1db954" font-family="sans-serif" font-size="14" class="music-note-float-1" filter="url(#avatarGlowGreen)">♪</text>
-            <text x="146" y="72" fill="#10b981" font-family="sans-serif" font-size="16" class="music-note-float-2">♫</text>
-            <text x="135" y="52" fill="#00f0ff" font-family="sans-serif" font-size="11" class="music-note-float-3">♪</text>
-
-            <!-- Badge Spotify Connect -->
-            <g class="music-badge">
-              <rect x="132" y="118" width="52" height="15" rx="3" fill="rgba(15, 23, 42, 0.9)" stroke="#1db954" stroke-width="0.9"/>
-              <text x="135" y="129" fill="#1ed760" font-family="monospace" font-size="6" font-weight="bold">SPOTIFY CONNECT</text>
-            </g>
-          </g>
-
-          <!-- COUCHE MIME 8 : CINÉMA & STREAMING VIDÉO (Stremio, Visière 4K, Bobine) -->
-          <g class="mime-layer mime-media-layer" style="display: none;">
-            <!-- Visière Widescreen Cinéma avec barres de cadrage format 2.39:1 -->
-            <rect x="64" y="82" width="72" height="22" rx="2" fill="rgba(15, 23, 42, 0.75)" stroke="#ef4444" stroke-width="1.3" filter="url(#avatarGlowRed)"/>
-            <!-- Repères de cadrage caméra cinéma -->
-            <path d="M 67 86 L 67 84 L 71 84" fill="none" stroke="#fca5a5" stroke-width="1"/>
-            <path d="M 133 86 L 133 84 L 129 84" fill="none" stroke="#fca5a5" stroke-width="1"/>
-            <path d="M 67 100 L 67 102 L 71 102" fill="none" stroke="#fca5a5" stroke-width="1"/>
-            <path d="M 133 100 L 133 102 L 129 102" fill="none" stroke="#fca5a5" stroke-width="1"/>
-            
-            <!-- Symbole Play holographique au centre de la visière -->
-            <polygon points="98,87 106,93 98,99" fill="#ef4444" stroke="#ffffff" stroke-width="0.6" class="cinema-play-pulse" filter="url(#avatarGlowRed)"/>
-
-            <!-- Bobine de film rotative holographique -->
-            <circle cx="152" cy="74" r="10" fill="rgba(15, 23, 42, 0.85)" stroke="#ef4444" stroke-width="1" stroke-dasharray="4 3" class="film-reel-spin"/>
-            <circle cx="152" cy="74" r="4" fill="#030712" stroke="#ef4444" stroke-width="0.8"/>
-
-            <!-- Badge 4K HDR -->
-            <g class="media-badge">
-              <rect x="136" y="90" width="38" height="14" rx="2" fill="rgba(15, 23, 42, 0.88)" stroke="#ef4444" stroke-width="0.8"/>
-              <text x="140" y="100" fill="#fca5a5" font-family="monospace" font-size="6.5" font-weight="bold">STREMIO 4K</text>
-            </g>
-          </g>
-
-          <!-- COUCHE MIME 9 : TÉLÉCHARGEMENT SÉCURISÉ (Transfert de flux, Flèche vortex) -->
-          <g class="mime-layer mime-downloading-layer" style="display: none;">
-            <!-- Flèches de flux descendantes vers le vortex -->
-            <g class="download-stream-arrows">
-              <path d="M 100 44 L 100 64 M 95 59 L 100 64 L 105 59" fill="none" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="dl-arrow-1" filter="url(#avatarGlowCyan)"/>
-              <path d="M 100 60 L 100 80 M 95 75 L 100 80 L 105 75" fill="none" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="dl-arrow-2" filter="url(#avatarGlowCyan)"/>
-            </g>
-            <!-- Anneau récepteur avec barre de progression circulaire à la base -->
-            <circle cx="100" cy="180" r="18" fill="none" stroke="rgba(56, 189, 248, 0.3)" stroke-width="2"/>
-            <circle cx="100" cy="180" r="18" fill="none" stroke="#00f0ff" stroke-width="2" stroke-dasharray="35 75" class="dl-circle-progress" filter="url(#avatarGlowCyan)"/>
-            
-            <!-- Badge Download Transfer -->
-            <g class="dl-badge">
-              <rect x="136" y="80" width="42" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#38bdf8" stroke-width="0.8"/>
-              <text x="140" y="91" fill="#38bdf8" font-family="monospace" font-size="6" font-weight="bold">DOWNLOADING</text>
-            </g>
-          </g>
-
-          <!-- COUCHE MIME 10 : DIAGNOSTIC SYSTÈME & MAINTENANCE (Télémétrie, ECG, Auto-réparation) -->
-          <g class="mime-layer mime-system-layer" style="display: none;">
-            <!-- Trame hexagonale de diagnostic sur les tempes -->
-            <polygon points="56,76 62,72 68,76 68,84 62,88 56,84" fill="none" stroke="#84cc16" stroke-width="0.8" opacity="0.7" class="sys-hex-pulse"/>
-            <polygon points="132,76 138,72 144,76 144,84 138,88 132,84" fill="none" stroke="#84cc16" stroke-width="0.8" opacity="0.7" class="sys-hex-pulse"/>
-            
-            <!-- Ligne d'oscilloscope ECG (Battement système actif) -->
-            <path d="M 68 148 L 86 148 L 90 141 L 94 155 L 98 144 L 102 151 L 106 148 L 132 148" fill="none" stroke="#84cc16" stroke-width="1.4" class="sys-ecg-pulse" filter="url(#avatarGlowGreen)"/>
-
-            <!-- Badge Télémétrie CPU & OS -->
-            <g class="sys-badge-left">
-              <rect x="26" y="86" width="34" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#84cc16" stroke-width="0.9"/>
-              <text x="30" y="97" fill="#bef264" font-family="monospace" font-size="6.5" font-weight="bold">CPU: OK</text>
-            </g>
-            <g class="sys-badge-right">
-              <rect x="140" y="86" width="38" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#84cc16" stroke-width="0.9"/>
-              <text x="144" y="97" fill="#bef264" font-family="monospace" font-size="6.5" font-weight="bold">SYS // 0x0</text>
-            </g>
-          </g>
-
-          <!-- COUCHE MIME 11 : MÉMOIRE DURABLE & SOUVENIRS (Constellation synaptique, Cristal) -->
-          <g class="mime-layer mime-memory-layer" style="display: none;">
-            <!-- Cristal de mémoire octaédrique en lévitation au front -->
-            <g class="memory-crystal" filter="url(#avatarGlowIndigo)">
-              <polygon points="100,38 107,48 100,58 93,48" fill="rgba(99, 102, 241, 0.4)" stroke="#818cf8" stroke-width="1.2"/>
-              <line x1="93" y1="48" x2="107" y2="48" stroke="#c7d2fe" stroke-width="0.8"/>
-              <line x1="100" y1="38" x2="100" y2="58" stroke="#c7d2fe" stroke-width="0.8"/>
-            </g>
-
-            <!-- Ondes de réminiscence / résonance mémorielle -->
-            <ellipse cx="100" cy="48" rx="20" ry="7" fill="none" stroke="#6366f1" stroke-width="0.9" stroke-dasharray="3 3" class="memory-wave-1"/>
-            <ellipse cx="100" cy="48" rx="32" ry="11" fill="none" stroke="#818cf8" stroke-width="0.7" stroke-dasharray="4 4" class="memory-wave-2"/>
-
-            <!-- Badge Mémoire SQLite -->
-            <g class="memory-badge">
-              <rect x="136" y="84" width="44" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#6366f1" stroke-width="0.8"/>
-              <text x="140" y="95" fill="#a5b4fc" font-family="monospace" font-size="6" font-weight="bold">MEMORY // DB</text>
-            </g>
-          </g>
-
-          <!-- COUCHE MIME 12 : ACHATS & PANIER E-COMMERCE (Panier, Bouclier de validation) -->
-          <g class="mime-layer mime-shopping-layer" style="display: none;">
-            <!-- Panier holographique à la base -->
-            <g class="shopping-cart-group">
-              <path d="M 88 172 L 91 172 L 95 183 L 109 183 L 113 175 L 94 175" fill="none" stroke="#10b981" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" filter="url(#avatarGlowGreen)"/>
-              <circle cx="96" cy="186" r="1.5" fill="#10b981"/>
-              <circle cx="107" cy="186" r="1.5" fill="#10b981"/>
-            </g>
-            <!-- Bouclier de validation sécurisée avec coche -->
-            <polygon points="100,160 106,163 106,169 100,172 94,169 94,163" fill="rgba(16, 185, 129, 0.3)" stroke="#34d399" stroke-width="1"/>
-            <path d="M 97 166 L 99 168 L 103 164" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-
-            <!-- Badge Shopping -->
-            <g class="shopping-badge">
-              <rect x="136" y="84" width="42" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#10b981" stroke-width="0.8"/>
-              <text x="140" y="95" fill="#6ee7b7" font-family="monospace" font-size="6" font-weight="bold">CART // READY</text>
-            </g>
-          </g>
-        </svg>
-
-        <!-- Pastille de Statut et d'Action Intégrée -->
-        <div class="avatar-status-pill core-text" id="btnLabel">CONNECT</div>
-      </div>
-    </div>
-
-    <!-- Indicateur d'état intelligent de JARVIS et Modèle Actif -->
-    <div>
-      <div class="state-badge badge-offline" id="stateBadge">
-        <span class="state-indicator-dot" id="stateDot"></span>
-        <span id="stateLabel">HORS LIGNE</span>
-      </div>
-      <!-- Badge Moteur, Modèle en direct & Clé API (Cliquer pour ouvrir la vue globale) -->
-      <div class="active-engine-chip" id="engineChip" role="button" tabindex="0" title="Cliquer pour afficher la vue d'ensemble globale">
-        <span class="engine-badge badge-google" id="engineSourceBadge">GOOGLE API</span>
-        <span class="engine-model-text" id="engineModelText">GEMINI 3.8 LIVE</span>
-        <span class="engine-key-badge badge-key-free" id="engineKeyBadge">CLÉ GRATUITE</span>
-        <span class="engine-actions-badge" id="engineActionsBadge" style="display: none;">
-          <span class="pulse-mini-dot"></span>
-          <span id="engineActionsCount">1 EN COURS</span>
-        </span>
-      </div>
-      <div id="statusMessage">Touchez JARVIS pour activer l'assistance</div>
-      <!-- Bouton d'interruption instantanée visible pendant la parole -->
-      <button id="btnInterrupt" class="interrupt-btn" style="display: none;" title="Interrompre immédiatement la parole pour parler">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-        INTERROMPRE LA PAROLE
-      </button>
-    </div>
-
-    <!-- Bandeau d'activité live : visible dès qu'un outil est en cours -->
-    <div id="liveActivityBand" class="live-activity-band" style="display:none;">
-      <div class="live-band-header">
-        <span class="live-band-pulse"></span>
-        <span id="liveActivityTitle" class="live-band-title">OUTIL EN COURS</span>
-        <span id="liveKeyBadge" class="live-band-key-badge badge-key-free">CLÉ GRATUITE</span>
-        <span id="liveModelTag" class="live-band-model">Gemini</span>
-      </div>
-      <div id="liveActivityDetail" class="live-band-detail">Initialisation...</div>
-      <div id="liveActivityStep" class="live-band-step"></div>
-      <div class="live-band-footer">
-        <span id="liveBandTimestamp" class="live-band-ts">—</span>
-        <button class="live-band-sup-btn" onclick="openSupervisionModal()" title="Voir la supervision complète">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-          SUPERVISION COMPLÈTE
-        </button>
-      </div>
-    </div>
-
-    <!-- Panneau de Contrôle du Volume Stark -->
-    <div class="hud-volume-panel">
-      <button class="vol-btn" id="muteBtn" title="Couper/Rétablir le son">
-        <svg id="volIcon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
-      </button>
-      <div class="vol-slider-container">
-        <input type="range" id="volumeSlider" min="0" max="100" value="85" class="hud-slider">
-      </div>
-      <span class="vol-label" id="volPercent">85%</span>
-    </div>
-
-    <!-- Indicateur de micro réactif (VU-mètre) -->
-    <div class="mic-monitor">
-      <div class="mic-header">
-        <span class="mic-status-text">
-          <span class="mic-active-dot" id="micDot"></span>
-          <span id="micText">MICROPHONE EN ATTENTE</span>
-        </span>
-        <span id="micDb">- INF dB</span>
-      </div>
-      <div class="mic-bars-container" id="micBarsContainer">
-        <!-- 9 barres d'égaliseur dynamique -->
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-        <div class="eq-bar"></div>
-      </div>
-    </div>
-
-    <!-- Sélecteur d'entrée audio & Avertissement Bluetooth HD -->
-    <div class="hud-audio-device-bar" id="hudAudioDeviceBar">
-      <div class="hud-audio-device-row">
-        <label for="micSelect" class="hud-audio-device-label">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-          MICROPHONE :
-        </label>
-        <select id="micSelect" class="hud-audio-select" title="Choisir le microphone d'entrée">
-          <option value="">Microphone par défaut (Système)</option>
-        </select>
-      </div>
-      <div id="btWarningBox" class="hud-bt-warning-box" style="display: none;">
-        <span class="hud-bt-icon">⚠️</span>
-        <span class="hud-bt-text"><strong>Microphone Bluetooth / Casque détecté</strong> : Windows peut forcer le mode HFP (son dégradé mono 8-16kHz sur Spotify). Pour préserver un son Spotify haute fidélité stéréo sur PC, sélectionnez le microphone intégré du PC ou de la webcam.</span>
-      </div>
-    </div>
-
-    <!-- Panneau Lecteur Spotify Connect Jarvis (Stark Spotify Dock) -->
-    <div id="spotifyDock" class="spotify-dock" style="display: none;">
-      <div class="spotify-dock-cover-wrapper">
-        <img id="spotifyDockCover" class="spotify-dock-cover" src="/static/jarvis-icon.png" alt="Pochette" />
-        <span class="spotify-dock-live-dot" id="spotifyDockLiveDot"></span>
-      </div>
-      <div class="spotify-dock-info">
-        <div class="spotify-dock-header">
-          <svg class="spotify-logo-icon" viewBox="0 0 24 24" width="13" height="13" fill="#1db954">
-            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
-          </svg>
-          <span id="spotifyDockDevice" class="spotify-dock-device">SPOTIFY CONNECT</span>
+        <!-- Indicateur d'état intelligent de JARVIS et Modèle Actif -->
+        <div class="state-control-group">
+          <div class="state-badge badge-offline" id="stateBadge">
+            <span class="state-indicator-dot" id="stateDot"></span>
+            <span id="stateLabel">HORS LIGNE</span>
+          </div>
+          <!-- Badge Moteur, Modèle en direct & Clé API (Cliquer pour ouvrir la vue globale) -->
+          <div class="active-engine-chip" id="engineChip" role="button" tabindex="0" title="Cliquer pour afficher la vue d'ensemble globale">
+            <span class="engine-badge badge-google" id="engineSourceBadge">GOOGLE API</span>
+            <span class="engine-model-text" id="engineModelText">GEMINI 3.8 LIVE</span>
+            <span class="engine-key-badge badge-key-free" id="engineKeyBadge">CLÉ GRATUITE</span>
+            <span class="engine-actions-badge" id="engineActionsBadge" style="display: none;">
+              <span class="pulse-mini-dot"></span>
+              <span id="engineActionsCount">1 EN COURS</span>
+            </span>
+          </div>
+          <div id="statusMessage">Touchez JARVIS pour activer l'assistance</div>
+          <!-- Bouton d'interruption instantanée visible pendant la parole -->
+          <button id="btnInterrupt" class="interrupt-btn" style="display: none;" title="Interrompre immédiatement la parole pour parler">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            INTERROMPRE LA PAROLE
+          </button>
         </div>
-        <div id="spotifyDockTrack" class="spotify-dock-track">Titre du morceau</div>
-        <div id="spotifyDockArtist" class="spotify-dock-artist">Artiste</div>
-        <div class="spotify-dock-progress-bar">
-          <div id="spotifyDockProgress" class="spotify-dock-progress-fill" style="width: 0%;"></div>
+
+        <!-- Bandeau d'activité live : visible dès qu'un outil est en cours -->
+        <div id="liveActivityBand" class="live-activity-band" style="display:none;">
+          <div class="live-band-header">
+            <span class="live-band-pulse"></span>
+            <span id="liveActivityTitle" class="live-band-title">OUTIL EN COURS</span>
+            <span id="liveKeyBadge" class="live-band-key-badge badge-key-free">CLÉ GRATUITE</span>
+            <span id="liveModelTag" class="live-band-model">Gemini</span>
+          </div>
+          <div id="liveActivityDetail" class="live-band-detail">Initialisation...</div>
+          <div id="liveActivityStep" class="live-band-step"></div>
+          <div class="live-band-footer">
+            <span id="liveBandTimestamp" class="live-band-ts">—</span>
+            <button class="live-band-sup-btn" onclick="openSupervisionModal()" title="Voir la supervision complète">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+              SUPERVISION COMPLÈTE
+            </button>
+          </div>
         </div>
-      </div>
-      <div class="spotify-dock-controls">
-        <button id="spotifyBtnPrev" class="spotify-ctrl-btn" title="Morceau précédent" onclick="spotifyControl('previous')">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
-        </button>
-        <button id="spotifyBtnPlayPause" class="spotify-ctrl-btn spotify-play-btn" title="Lecture / Pause" onclick="spotifyControl('playpause')">
-          <svg id="spotifyPlayIcon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        </button>
-        <button id="spotifyBtnNext" class="spotify-ctrl-btn" title="Morceau suivant" onclick="spotifyControl('next')">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
-        </button>
-        <button id="spotifyBtnLike" class="spotify-ctrl-btn" title="J'aime ce titre" onclick="spotifyControl('like')">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-        </button>
-      </div>
-    </div>
 
-    <!-- Panneau Notification E-mail Jarvis (Stark Transmission Dock) -->
-    <div id="emailDock" class="email-dock" style="display: none;">
-      <div class="email-dock-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-      </div>
-      <div class="email-dock-info">
-        <div class="email-dock-header">
-          <span class="email-dock-dot"></span>
-          <span id="emailDockStatus" class="email-dock-badge">TRANSMISSION RÉUSSIE</span>
+        <!-- Panneau de Contrôle du Volume Stark -->
+        <div class="hud-volume-panel">
+          <button class="vol-btn" id="muteBtn" title="Couper/Rétablir le son">
+            <svg id="volIcon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+          </button>
+          <div class="vol-slider-container">
+            <input type="range" id="volumeSlider" min="0" max="100" value="85" class="hud-slider">
+          </div>
+          <span class="vol-label" id="volPercent">85%</span>
         </div>
-        <div id="emailDockSubject" class="email-dock-subject">Rapport J.A.R.V.I.S.</div>
-        <div id="emailDockRecipient" class="email-dock-recipient">pierrecassagnettes@gmail.com</div>
-      </div>
-    </div>
 
-    <!-- Panneau Exécution de Tâche Active Jarvis (Stark Task Dock) -->
-    <div id="taskDock" class="task-dock" style="display: none;">
-      <div class="task-dock-header">
-        <span class="task-dock-dot"></span>
-        <span id="taskDockStatus" class="task-dock-badge">ANTIGRAVITY CLI EN COURS</span>
-        <span id="taskDockModel" class="task-dock-model">Antigravity CLI (VPS)</span>
-      </div>
-      <div id="taskDockInstruction" class="task-dock-instruction">Développement du projet...</div>
-      <div id="taskDockProgress" class="task-dock-progress">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" class="task-spin"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-        <span id="taskDockProgressText">J'analyse les fichiers du projet...</span>
-      </div>
-      <div class="task-dock-guide">
-        <input type="text" id="taskDirectiveInput" placeholder="Consigne ou adaptation en direct (ex: utilise plutôt FastAPI)..." class="task-guide-input" />
-        <button id="btnSendDirective" class="task-guide-btn" title="Adapter le code en cours">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          ADAPTER
-        </button>
-        <button id="btnStopTask" class="task-stop-btn" title="Interrompre et arrêter immédiatement l'action en cours">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
-          ARRÊTER
-        </button>
-      </div>
-    </div>
+        <!-- Indicateur de micro réactif (VU-mètre) -->
+        <div class="mic-monitor">
+          <div class="mic-header">
+            <span class="mic-status-text">
+              <span class="mic-active-dot" id="micDot"></span>
+              <span id="micText">MICROPHONE EN ATTENTE</span>
+            </span>
+            <span id="micDb">- INF dB</span>
+          </div>
+          <div class="mic-bars-container" id="micBarsContainer">
+            <!-- 9 barres d'égaliseur dynamique -->
+            <div class="eq-bar"></div>
+            <div class="eq-bar"></div>
+            <div class="eq-bar"></div>
+            <div class="eq-bar"></div>
+            <div class="eq-bar"></div>
+            <div class="eq-bar"></div>
+            <div class="eq-bar"></div>
+            <div class="eq-bar"></div>
+            <div class="eq-bar"></div>
+          </div>
+        </div>
 
-    <!-- Panneau Navigation Web Jarvis (Stark Browser Dock) -->
-    <div id="browserDock" class="browser-dock">
-      <div class="browser-dock-info">
-        <span class="browser-dock-dot"></span>
-        <span id="browserDockTitle" class="browser-dock-title">Page web ouverte</span>
-      </div>
-      <div class="browser-dock-actions">
-        <button id="btnViewBrowser" class="browser-action-btn btn-preview">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-          VOIR LA PAGE
-        </button>
-        <button id="btnOpenBrowser" class="browser-action-btn btn-open">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          OUVRIR LE LIEN
-        </button>
-      </div>
-    </div>
+        <!-- Sélecteur d'entrée audio & Avertissement Bluetooth HD -->
+        <div class="hud-audio-device-bar" id="hudAudioDeviceBar">
+          <div class="hud-audio-device-row">
+            <label for="micSelect" class="hud-audio-device-label">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              MICROPHONE :
+            </label>
+            <select id="micSelect" class="hud-audio-select" title="Choisir le microphone d'entrée">
+              <option value="">Microphone par défaut (Système)</option>
+            </select>
+          </div>
+          <div id="btWarningBox" class="hud-bt-warning-box" style="display: none;">
+            <span class="hud-bt-icon">⚠️</span>
+            <span class="hud-bt-text"><strong>Microphone Bluetooth / Casque détecté</strong> : Windows peut forcer le mode HFP (son dégradé mono 8-16kHz sur Spotify). Pour préserver un son Spotify haute fidélité stéréo sur PC, sélectionnez le microphone intégré du PC ou de la webcam.</span>
+          </div>
+        </div>
 
-    <!-- Footer statut terminal -->
-    <div class="device-info">
-      <div class="device-dot"></div> TERMINAL AUTORISÉ & SÉCURISÉ
+        <!-- Panneau Lecteur Spotify Connect Jarvis (Stark Spotify Dock) -->
+        <div id="spotifyDock" class="spotify-dock" style="display: none;">
+          <div class="spotify-dock-cover-wrapper">
+            <img id="spotifyDockCover" class="spotify-dock-cover" src="/static/jarvis-icon.png" alt="Pochette" />
+            <span class="spotify-dock-live-dot" id="spotifyDockLiveDot"></span>
+          </div>
+          <div class="spotify-dock-info">
+            <div class="spotify-dock-header">
+              <svg class="spotify-logo-icon" viewBox="0 0 24 24" width="13" height="13" fill="#1db954">
+                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+              </svg>
+              <span id="spotifyDockDevice" class="spotify-dock-device">SPOTIFY CONNECT</span>
+            </div>
+            <div id="spotifyDockTrack" class="spotify-dock-track">Titre du morceau</div>
+            <div id="spotifyDockArtist" class="spotify-dock-artist">Artiste</div>
+            <div class="spotify-dock-progress-bar">
+              <div id="spotifyDockProgress" class="spotify-dock-progress-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+          <div class="spotify-dock-controls">
+            <button id="spotifyBtnPrev" class="spotify-ctrl-btn" title="Morceau précédent" onclick="spotifyControl('previous')">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+            </button>
+            <button id="spotifyBtnPlayPause" class="spotify-ctrl-btn spotify-play-btn" title="Lecture / Pause" onclick="spotifyControl('playpause')">
+              <svg id="spotifyPlayIcon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <button id="spotifyBtnNext" class="spotify-ctrl-btn" title="Morceau suivant" onclick="spotifyControl('next')">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+            </button>
+            <button id="spotifyBtnLike" class="spotify-ctrl-btn" title="J'aime ce titre" onclick="spotifyControl('like')">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Panneau Notification E-mail Jarvis (Stark Transmission Dock) -->
+        <div id="emailDock" class="email-dock" style="display: none;">
+          <div class="email-dock-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <div class="email-dock-info">
+            <div class="email-dock-header">
+              <span class="email-dock-dot"></span>
+              <span id="emailDockStatus" class="email-dock-badge">TRANSMISSION RÉUSSIE</span>
+            </div>
+            <div id="emailDockSubject" class="email-dock-subject">Rapport J.A.R.V.I.S.</div>
+            <div id="emailDockRecipient" class="email-dock-recipient">pierrecassagnettes@gmail.com</div>
+          </div>
+        </div>
+
+        <!-- Panneau Exécution de Tâche Active Jarvis (Stark Task Dock) -->
+        <div id="taskDock" class="task-dock" style="display: none;">
+          <div class="task-dock-header">
+            <span class="task-dock-dot"></span>
+            <span id="taskDockStatus" class="task-dock-badge">ANTIGRAVITY CLI EN COURS</span>
+            <span id="taskDockModel" class="task-dock-model">Antigravity CLI (VPS)</span>
+          </div>
+          <div id="taskDockInstruction" class="task-dock-instruction">Développement du projet...</div>
+          <div id="taskDockProgress" class="task-dock-progress">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" class="task-spin"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <span id="taskDockProgressText">J'analyse les fichiers du projet...</span>
+          </div>
+          <div class="task-dock-guide">
+            <input type="text" id="taskDirectiveInput" placeholder="Consigne ou adaptation en direct (ex: utilise plutôt FastAPI)..." class="task-guide-input" />
+            <button id="btnSendDirective" class="task-guide-btn" title="Adapter le code en cours">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              ADAPTER
+            </button>
+            <button id="btnStopTask" class="task-stop-btn" title="Interrompre et arrêter immédiatement l'action en cours">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+              ARRÊTER
+            </button>
+          </div>
+        </div>
+
+        <!-- Panneau Navigation Web Jarvis (Stark Browser Dock) -->
+        <div id="browserDock" class="browser-dock">
+          <div class="browser-dock-info">
+            <span class="browser-dock-dot"></span>
+            <span id="browserDockTitle" class="browser-dock-title">Page web ouverte</span>
+          </div>
+          <div class="browser-dock-actions">
+            <button id="btnViewBrowser" class="browser-action-btn btn-preview">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              VOIR LA PAGE
+            </button>
+            <button id="btnOpenBrowser" class="browser-action-btn btn-open">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              OUVRIR LE LIEN
+            </button>
+          </div>
+        </div>
+
+        <!-- Footer statut terminal -->
+        <div class="device-info">
+          <div class="device-dot"></div> TERMINAL AUTORISÉ & SÉCURISÉ
+        </div>
+
+      </div>
     </div>
   </div>
 
@@ -1187,6 +1194,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=4.0"></script>
+  <script src="/static/app.js?v=5.81.0"></script>
 </body>
 </html>
