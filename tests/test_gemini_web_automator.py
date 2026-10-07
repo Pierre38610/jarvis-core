@@ -786,6 +786,237 @@ class TestL3DeepResearchAutomatorFlow(unittest.IsolatedAsyncioTestCase):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Tests Anti-Régression Prompt 2 (Mocks Playwright / CDP complets)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestPrompt2AntiRegression(unittest.IsolatedAsyncioTestCase):
+    """Tests unitaires exhaustifs pour les 8 exigences du Prompt 2."""
+
+    def _make_automator(self):
+        from services.gemini_web_automator import GeminiWebAutomator, UIMapManager
+        automator = GeminiWebAutomator()
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8")
+        data = {
+            "actions": {
+                "deep_research_button": {
+                    "x": 120, "y": 720,
+                    "fallback_selectors": ["[aria-label*='Deep Research' i]"],
+                    "validation": {"selector": "[aria-label*='Deep Research' i]"}
+                },
+                "prompt_textarea": {
+                    "x": 760, "y": 720,
+                    "fallback_selectors": ["[contenteditable='true']"]
+                },
+                "send_button": {
+                    "x": 1200, "y": 720,
+                    "fallback_selectors": ["button[aria-label*='Send' i]"]
+                },
+                "plan_confirmation_button": {
+                    "x": 760, "y": 600,
+                    "fallback_selectors": ["button:has-text('Démarrer la recherche')", "button:has-text('Lancer la recherche')", "button:has-text('Start research')"]
+                },
+                "research_completion": {
+                    "fallback_selectors": ["model-response"],
+                    "absence_selectors": [".spinner"]
+                },
+            }
+        }
+        json.dump(data, tmp, ensure_ascii=False)
+        tmp.close()
+        automator.ui_map = UIMapManager(path=tmp.name)
+        self._tmp_path = tmp.name
+        return automator
+
+    async def asyncTearDown(self):
+        try:
+            os.unlink(self._tmp_path)
+        except Exception:
+            pass
+
+    def test_detection_refus_generiques_fr_en_accents_apostrophes_casse(self):
+        """1. Détection des refus génériques FR/EN avec apostrophes typographiques, casse et accents."""
+        automator = self._make_automator()
+
+        refusals = [
+            "Je ne suis qu'un modèle de langage, je ne peux pas...",
+            "Je ne suis qu’un modèle de langage...",  # apostrophe typographique ’
+            "JE NE SUIS QU'UN MODELE DE LANGAGE",
+            "Je ne suis quʼun modèle de langage",     # autre apostrophe Unicode
+            "I'm just a language model and cannot perform this task",
+            "I am just a language model",
+            "I am a large language model",
+            "As an AI language model, I do not have access to real-time tools",
+            "En tant que modèle de langage, je ne peux pas...",
+            "Je ne peux pas effectuer cette recherche",
+            "Je ne peux pas vous aider avec cette demande",
+            "I cannot perform this search",
+            "I cannot help with this request",
+            "Ne dispose pas d'informations en temps réel",
+            "Do not have access to real-time information",
+        ]
+        for ref in refusals:
+            with self.subTest(refusal=ref):
+                self.assertTrue(automator._is_canned_refusal_text(ref), f"Doit être détecté comme refus : {ref}")
+
+        valid_texts = [
+            "# Rapport Deep Research L3\n\nSynthèse détaillée des entreprises en IA.",
+            "Voici les résultats de la recherche approfondie sur les technologies quantiques.",
+            "Tableau comparatif des 20 entreprises à Malmö avec politiques salariales.",
+        ]
+        for val in valid_texts:
+            with self.subTest(valid=val):
+                self.assertFalse(automator._is_canned_refusal_text(val), f"Ne doit PAS être un refus : {val}")
+
+    async def test_no_send_prompt_when_chip_not_active_before_timeout(self):
+        """2. Aucun envoi (_send_prompt jamais appelé) si le chip Deep Research n'est pas actif."""
+        automator = self._make_automator()
+        page = make_page_mock()  # Aucun chip Deep Research actif
+        automator._page = page
+
+        with patch.object(automator, "_connect", new_callable=AsyncMock, return_value=True), \
+             patch.object(automator, "_navigate_to_gemini", new_callable=AsyncMock, return_value=True), \
+             patch.object(automator, "_select_deep_research_mode", new_callable=AsyncMock, return_value=False), \
+             patch.object(automator, "_send_prompt", new_callable=AsyncMock) as mock_send:
+
+            res = await automator.run_deep_research(
+                topic="Test Pas D'Envoi",
+                task_id="task_no_send_test",
+                max_wait_seconds=0.5,
+            )
+
+            # _send_prompt ne doit JAMAIS avoir été appelé
+            mock_send.assert_not_awaited()
+            self.assertEqual(res["status"], "error")
+            self.assertIn("Deep Research non activé", res["error"])
+            self.assertIn("Deep Research non activé", res["l3_error"]["cause_courte"])
+
+    async def test_polling_positif_aria_pressed_selected_chip(self):
+        """3. Polling positif via aria-pressed, aria-selected et chip visible dans la zone de saisie."""
+        automator = self._make_automator()
+
+        # Test aria-pressed="true"
+        page_pressed = make_page_mock(selector_counts={"button[aria-pressed='true'][aria-label*='Deep Research' i]": 1})
+        automator._page = page_pressed
+        self.assertTrue(await automator._is_deep_research_active())
+
+        # Test aria-selected="true"
+        page_selected = make_page_mock(selector_counts={"button[aria-selected='true'][aria-label*='Deep Research' i]": 1})
+        automator._page = page_selected
+        self.assertTrue(await automator._is_deep_research_active())
+
+        # Test chip visible dans la zone de saisie
+        page_chip = make_page_mock(selector_counts={"[class*='chip']:has-text('Deep Research')": 1})
+        automator._page = page_chip
+        self.assertTrue(await automator._is_deep_research_active())
+
+        # Test _wait_for_deep_research_active avec succès
+        self.assertTrue(await automator._wait_for_deep_research_active(timeout_seconds=0.5))
+
+    async def test_verification_contenu_insere_egal_au_prompt_avant_envoi(self):
+        """4. Vérification que le contenu inséré est strictement égal au prompt avant l'envoi."""
+        automator = self._make_automator()
+        page = make_page_mock()
+        topic = "Intelligence Artificielle en Santé"
+
+        # Simuler evaluate pour insertion et relecture
+        async def mock_eval(js, *args):
+            if "innerText" in str(js) or "textContent" in str(js) or "value" in str(js):
+                return topic
+            return True
+
+        page.evaluate = AsyncMock(side_effect=mock_eval)
+        automator._page = page
+
+        fill_res = await automator._fill_prompt(topic)
+        self.assertTrue(fill_res)
+        current_text = await automator._get_current_prompt_text()
+        self.assertEqual(current_text, topic)
+
+    async def test_plan_gemini_present_clic_confirme_demarrer_ou_lancer_recherche(self):
+        """5. Plan Gemini présent puis clic confirmé de 'Démarrer la recherche' / 'Lancer la recherche'."""
+        automator = self._make_automator()
+
+        for btn_text in ["button:has-text('Démarrer la recherche')", "button:has-text('Lancer la recherche')", "button:has-text('Start research')"]:
+            with self.subTest(btn=btn_text):
+                page = make_page_mock(selector_counts={btn_text: 1, ".spinner": 1})
+                automator._page = page
+                confirmed = await automator._confirm_research_plan(timeout_seconds=1.0)
+                self.assertTrue(confirmed)
+
+    async def test_refus_nouveau_chat_et_retry_exactement_une_fois_puis_erreur_explicite(self):
+        """6. Refus modèle : ouverture d'un nouveau chat, retry exactement 1 fois, puis erreur 'Deep Research non activé'."""
+        automator = self._make_automator()
+        page = make_page_mock(
+            selector_counts={
+                "[aria-label*='Deep Research' i]": 1,
+                "[contenteditable='true']": 1,
+                "button[aria-label*='Send' i]": 1,
+                "model-response": 1,
+            }
+        )
+        # Gemini répond systématiquement par un refus
+        page.evaluate = AsyncMock(return_value="Je ne suis qu'un modèle de langage, je ne peux pas traiter cela.")
+        automator._page = page
+
+        new_chat_mock = AsyncMock(return_value=True)
+
+        with patch.object(automator, "_connect", new_callable=AsyncMock, return_value=True), \
+             patch.object(automator, "_navigate_to_gemini", new_callable=AsyncMock, return_value=True), \
+             patch.object(automator, "_open_new_chat", new_chat_mock):
+
+            res = await automator.run_deep_research(
+                topic="Sujet Refusé",
+                task_id="task_retry_refusal",
+                poll_interval=0.01,
+                max_wait_seconds=0.2,
+            )
+
+            # Un nouveau chat a été ouvert pour le retry (tentative 2)
+            self.assertEqual(new_chat_mock.await_count, 1)
+            self.assertEqual(res["status"], "error")
+            self.assertIn("Deep Research non activé", res["error"])
+            self.assertEqual(res["l3_error"]["cause_courte"], "Deep Research non activé")
+
+    async def test_priorite_selecteurs_dom_aria_et_coordonnees_en_dernier_fallback(self):
+        """7. Priorité aux sélecteurs DOM/ARIA et recours aux coordonnées seulement en dernier fallback."""
+        automator = self._make_automator()
+
+        # Cas A : Le sélecteur DOM réussit -> mouse.click n'est PAS appelé
+        page_dom = make_page_mock(selector_counts={"[aria-label*='Deep Research' i]": 1})
+        automator._page = page_dom
+        res_dom = await automator.click_with_verification("deep_research_button", verify_timeout=0.1)
+        self.assertTrue(res_dom)
+        page_dom.mouse.click.assert_not_awaited()
+
+        # Cas B : Tous les sélecteurs DOM échouent -> mouse.click (coordonnées) est appelé en dernier recours
+        page_fallback = make_page_mock(selector_counts={})  # 0 sélecteur trouvé
+        automator._page = page_fallback
+        res_coords = await automator.click_with_verification("deep_research_button", verify_timeout=0.1)
+        self.assertTrue(res_coords)
+        page_fallback.mouse.click.assert_awaited_once_with(120, 720)
+
+    def test_regression_interfaces_existantes(self):
+        """8. Non-régression des signatures et contrats d'interface de UIMapManager et GeminiWebAutomator."""
+        from services.gemini_web_automator import UIMapManager, GeminiWebAutomator
+        import inspect
+
+        mgr = UIMapManager()
+        self.assertTrue(callable(mgr.get_action))
+        self.assertTrue(callable(mgr.update_coordinates))
+        self.assertTrue(callable(mgr.get_fallback_selectors))
+        self.assertTrue(callable(mgr.get_validation_selector))
+
+        automator = GeminiWebAutomator()
+        self.assertTrue(inspect.iscoroutinefunction(automator.click_with_verification))
+        self.assertTrue(inspect.iscoroutinefunction(automator._fill_prompt))
+        self.assertTrue(inspect.iscoroutinefunction(automator._send_prompt))
+        self.assertTrue(inspect.iscoroutinefunction(automator._confirm_research_plan))
+        self.assertTrue(inspect.iscoroutinefunction(automator._wait_for_research_completion))
+        self.assertTrue(inspect.iscoroutinefunction(automator.run_deep_research))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
