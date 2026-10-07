@@ -35,54 +35,78 @@
     </div>
   </div>
 
-  <!-- Interface Principale (Arc Reactor & HUD) -->
-  <div id="mainScreen">
-    <!-- En-tête Pleine Largeur Edge-to-Edge -->
-    <div class="hud-header">
-      <div class="hud-header-left">
-        <div class="hud-brand-wrap">
-          <img src="/static/jarvis-icon.png" alt="JARVIS Logo" class="hud-header-logo">
-          <div class="hud-brand-meta">
-            <span class="hud-brand-name">J.A.R.V.I.S.</span>
-            <span class="system-tag"><span class="system-tag-dot"></span> CORE</span>
-          </div>
-        </div>
-        <span class="hud-version-tag" id="hudVersionTag" title="Version 5.81.0 Stark AI">v5.81.0</span>
+  <!-- Interface Principale (App Shell avec Sidebar & Main) -->
+  <div id="mainScreen" class="app-shell">
+    <!-- Sidebar Latérale (220px) -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="/static/jarvis-icon.png" alt="Logo Jarvis" class="sidebar-logo">
+        <span class="sidebar-title">Jarvis</span>
       </div>
-      <!-- Actions d'en-tête (Kindle, Logs, Messagerie & Supervision) -->
-      <div class="hud-header-right">
-        <button id="btnOpenKindleModal" class="hud-chat-btn" onclick="openKindleModal()" title="Amazon Send to Kindle">
-          <svg class="hud-chat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-          </svg>
-          <span class="hud-chat-btn-label">KINDLE</span>
+      <nav class="sidebar-nav">
+        <button id="navBtnAssistant" class="sidebar-nav-item active" onclick="switchNavTab('assistant')">
+          <span class="sidebar-nav-icon">🤖</span>
+          <span class="sidebar-nav-label">Assistant</span>
         </button>
-        <button id="btnOpenLogs" class="hud-chat-btn" onclick="openLogsModal()" title="Consulter les logs système en direct">
-          <svg class="hud-chat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="4 17 10 11 4 5"/>
-            <line x1="12" y1="19" x2="20" y2="19"/>
-          </svg>
-          <span class="hud-chat-btn-label">LOGS</span>
-        </button>
-        <button id="btnOpenChat" class="hud-chat-btn" onclick="openChatDrawer()" title="Messagerie & Analyse Photo">
-          <svg class="hud-chat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
-          </svg>
-          <span class="hud-chat-btn-label">MESSAGERIE</span>
+        <button id="btnOpenChat" class="sidebar-nav-item" onclick="switchNavTab('messages')" title="Messagerie & Analyse Photo">
+          <span class="sidebar-nav-icon">💬</span>
+          <span class="sidebar-nav-label">Messages</span>
           <span id="chatBadge" class="chat-badge" style="display: none;">0</span>
         </button>
-        <button id="btnOpenOverview" class="header-action-indicator-btn" onclick="openSupervisionModal()" title="Voir la supervision globale Stark AI">
-          <span id="headerActionDot" class="header-action-dot-idle"></span>
-          <span class="header-sup-label">HUB</span>
+        <button id="btnOpenKindleModal" class="sidebar-nav-item" onclick="switchNavTab('kindle')" title="Amazon Send to Kindle">
+          <span class="sidebar-nav-icon">📖</span>
+          <span class="sidebar-nav-label">Kindle</span>
+        </button>
+        <button id="btnOpenOverview" class="sidebar-nav-item" onclick="switchNavTab('supervision')" title="Supervision globale Stark AI">
+          <span class="sidebar-nav-icon">📊</span>
+          <span class="sidebar-nav-label">Supervision</span>
           <span id="supervisionActionBadge" class="supervision-badge-count" style="display: none;">0</span>
         </button>
-      </div>
-    </div>
+        <button id="btnOpenLogs" class="sidebar-nav-item" onclick="switchNavTab('logs')" title="Consulter les logs système en direct">
+          <span class="sidebar-nav-icon">💻</span>
+          <span class="sidebar-nav-label">Logs</span>
+        </button>
+        <button id="btnOpenAntigravity" class="sidebar-nav-item" onclick="switchNavTab('antigravity')" title="Agents Antigravity CLI">
+          <span class="sidebar-nav-icon">⚡</span>
+          <span class="sidebar-nav-label">Antigravity</span>
+        </button>
+      </nav>
+    </aside>
 
-    <!-- Scène Centrale Scrollable (Cockpit Stage) -->
-    <div class="hud-content-stage">
-      <div class="hud-stage-inner">
+    <!-- Zone Principale -->
+    <main class="app-main">
+      <!-- Barre d'état (48px) -->
+      <header class="statusbar">
+        <div class="statusbar-left">
+          <!-- Pastille d'état de connexion -->
+          <div class="statusbar-connection" title="État du système">
+            <span id="headerActionDot" class="header-action-dot-idle"></span>
+            <div class="state-badge badge-offline" id="stateBadge">
+              <span class="state-indicator-dot" id="stateDot"></span>
+              <span id="stateLabel">HORS LIGNE</span>
+            </div>
+          </div>
+
+          <!-- Nom du modèle actif & badge clé -->
+          <div class="active-engine-chip statusbar-chip" id="engineChip" role="button" tabindex="0" title="Cliquer pour afficher la supervision">
+            <span class="engine-badge badge-google" id="engineSourceBadge">GOOGLE API</span>
+            <span class="engine-model-text" id="engineModelText">GEMINI 3.8 LIVE</span>
+            <span class="engine-key-badge badge-key-free" id="engineKeyBadge">CLÉ GRATUITE</span>
+            <span class="engine-actions-badge" id="engineActionsBadge" style="display: none;">
+              <span class="pulse-mini-dot"></span>
+              <span id="engineActionsCount">1 EN COURS</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="statusbar-right">
+          <span class="hud-version-tag statusbar-version" id="hudVersionTag" title="Version 5.81.0 Stark AI">v5.81.0</span>
+        </div>
+      </header>
+
+      <!-- Scène Centrale Scrollable (Cockpit Stage) -->
+      <div class="hud-content-stage">
+        <div class="hud-stage-inner">
 
         <!-- Barre de contrôle rapide Stark : Encoches Micro & Clé Payante -->
         <div class="hud-quick-bar">
@@ -198,26 +222,12 @@
                 <path d="M 88 145 Q 100 152 112 145" fill="none" stroke="#38bdf8" stroke-width="1.2" class="vocal-wave-3 vocal-wave" filter="url(#avatarGlowCyan)"/>
               </g>
 
-              <!-- COUCHE MIME 2 : PROGRAMMATION / CODING (Visière cybernétique & flux code) -->
+              <!-- COUCHE MIME 2 : PROGRAMMATION / CODING (Visière cybernétique) -->
               <g class="mime-layer mime-coding-layer" style="display: none;">
                 <path d="M 68 83 Q 100 87 132 83 L 134 104 Q 100 110 66 104 Z" fill="url(#avatarVisorGrad)" stroke="#c084fc" stroke-width="1.8" filter="url(#avatarGlowPurple)"/>
                 <path d="M 97 85 Q 100 84 103 85" fill="none" stroke="#e9d5ff" stroke-width="2"/>
                 <line x1="68" y1="85" x2="60" y2="88" stroke="#c084fc" stroke-width="1.5"/>
                 <line x1="132" y1="85" x2="140" y2="88" stroke="#c084fc" stroke-width="1.5"/>
-                <!-- Flux de code dans la visière -->
-                <g clip-path="url(#avatarVisorClip)">
-                  <text x="72" y="93" fill="#4ade80" font-family="monospace" font-size="6.5" font-weight="bold" class="code-stream-1">&lt;code/&gt; 0101 fn()</text>
-                  <text x="72" y="102" fill="#c084fc" font-family="monospace" font-size="6.5" font-weight="bold" class="code-stream-2">async { dev: OK } 10</text>
-                </g>
-                <!-- Jetons de code holographiques flottants -->
-                <g class="float-bracket-l">
-                  <rect x="36" y="85" width="22" height="15" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#a855f7" stroke-width="1"/>
-                  <text x="40" y="96" fill="#d8b4fe" font-family="monospace" font-size="9" font-weight="bold">{ ; }</text>
-                </g>
-                <g class="float-bracket-r">
-                  <rect x="142" y="85" width="22" height="15" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#a855f7" stroke-width="1"/>
-                  <text x="145" y="96" fill="#4ade80" font-family="monospace" font-size="8" font-weight="bold">&lt;/&gt;</text>
-                </g>
               </g>
 
               <!-- COUCHE MIME 3 : RECHERCHE / BROWSING (Réticule & Radar) -->
@@ -231,9 +241,6 @@
                   <line x1="124" y1="92" x2="128" y2="92" stroke="#38bdf8" stroke-width="1.5"/>
                 </g>
                 <path d="M 114 92 L 126 80 A 16 16 0 0 1 130 92 Z" fill="rgba(56, 189, 248, 0.25)" class="radar-sweep-beam"/>
-                <rect x="136" y="80" width="38" height="18" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#38bdf8" stroke-width="0.8"/>
-                <text x="139" y="88" fill="#38bdf8" font-family="monospace" font-size="5.5" font-weight="bold">SEARCH // WEB</text>
-                <text x="139" y="95" fill="#4ade80" font-family="monospace" font-size="5" font-weight="bold">INDEX 0x4F</text>
               </g>
 
               <!-- COUCHE MIME 4 : RÉFLEXION / THINKING (Orbites quantiques & halo neural) -->
@@ -252,186 +259,97 @@
                 </g>
               </g>
 
-              <!-- COUCHE MIME 6 : KINDLE & LIVRES NUMÉRIQUES (Liseuse, Ebooks, Transfert Amazon) -->
+              <!-- COUCHE MIME 6 : KINDLE & LIVRES NUMÉRIQUES (Liseuse & Faisceau) -->
               <g class="mime-layer mime-kindle-layer" style="display: none;">
-                <!-- Rayon de lecture laser sur les yeux -->
                 <line x1="72" y1="92" x2="128" y2="92" stroke="#f59e0b" stroke-width="1.2" class="kindle-read-scan" filter="url(#avatarGlowAmber)"/>
-                
-                <!-- Faisceau de transfert montant vers le cloud Amazon / Liseuse -->
                 <g class="kindle-beam-group">
                   <path d="M 94 152 Q 100 146 106 152" fill="none" stroke="#fbbf24" stroke-width="1.5" class="kindle-wave-1" filter="url(#avatarGlowAmber)"/>
                   <path d="M 90 144 Q 100 136 110 144" fill="none" stroke="#f59e0b" stroke-width="1.5" class="kindle-wave-2" filter="url(#avatarGlowAmber)"/>
                   <path d="M 86 136 Q 100 126 114 136" fill="none" stroke="#d97706" stroke-width="1.2" class="kindle-wave-3" filter="url(#avatarGlowAmber)"/>
                 </g>
-
-                <!-- Livre numérique holographique ouvert à la poitrine -->
                 <g class="kindle-book-holo">
-                  <!-- Page gauche -->
                   <path d="M 100 186 C 88 183 76 182 70 184 L 70 165 C 76 163 88 164 100 167 Z" fill="rgba(15, 23, 42, 0.92)" stroke="#f59e0b" stroke-width="1.2"/>
-                  <!-- Lignes de texte page gauche -->
                   <line x1="74" y1="169" x2="94" y2="171" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
                   <line x1="74" y1="174" x2="92" y2="176" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="3 1.5"/>
                   <line x1="74" y1="179" x2="90" y2="181" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
-
-                  <!-- Page droite -->
                   <path d="M 100 186 C 112 183 124 182 130 184 L 130 165 C 124 163 112 164 100 167 Z" fill="rgba(15, 23, 42, 0.92)" stroke="#f59e0b" stroke-width="1.2"/>
-                  <!-- Lignes de texte page droite -->
                   <line x1="106" y1="171" x2="126" y2="169" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="3 1.5"/>
                   <line x1="108" y1="176" x2="126" y2="174" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
                   <line x1="110" y1="181" x2="124" y2="179" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2.5 1"/>
-
-                  <!-- Reliure centrale -->
                   <line x1="100" y1="167" x2="100" y2="186" stroke="#fde047" stroke-width="1.6"/>
-
-                  <!-- Page animée en rotation/tournement -->
                   <path d="M 100 186 C 104 178 108 170 114 164 L 100 167 Z" fill="rgba(245, 158, 11, 0.35)" stroke="#fbbf24" stroke-width="0.8" class="kindle-page-turn"/>
-
-                  <!-- Flèche / Sourire emblème Kindle sous le livre -->
                   <path d="M 86 195 Q 100 203 114 195" fill="none" stroke="#f59e0b" stroke-width="1.6" stroke-linecap="round"/>
                   <path d="M 111 192 L 115 195 L 112 198" fill="none" stroke="#f59e0b" stroke-width="1.4" stroke-linecap="round"/>
-                </g>
-
-                <!-- Badges latéraux flottants (EPUB et KINDLE) -->
-                <g class="kindle-badge-left">
-                  <rect x="28" y="100" width="30" height="15" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#f59e0b" stroke-width="0.9"/>
-                  <text x="33" y="111" fill="#fde047" font-family="monospace" font-size="7" font-weight="bold">EPUB</text>
-                </g>
-                <g class="kindle-badge-right">
-                  <rect x="142" y="100" width="38" height="15" rx="3" fill="rgba(15, 23, 42, 0.85)" stroke="#f59e0b" stroke-width="0.9"/>
-                  <text x="146" y="111" fill="#fbbf24" font-family="monospace" font-size="6.5" font-weight="bold">KINDLE</text>
                 </g>
               </g>
 
               <!-- COUCHE MIME 7 : MUSIQUE & STREAMING AUDIO (Spotify Connect, Égaliseurs, Vinyle) -->
               <g class="mime-layer mime-music-layer" style="display: none;">
-                <!-- Disque Vinyle / Anneau sonique rotatif Spotify vert/magenta -->
                 <circle cx="100" cy="105" r="76" fill="none" stroke="#1db954" stroke-width="1.2" stroke-dasharray="10 6 3 6" opacity="0.7" class="music-disc-spin" filter="url(#avatarGlowGreen)"/>
-
-                <!-- Barres d'égaliseur sur casque gauche -->
                 <g class="eq-left-ear">
                   <line x1="53" y1="99" x2="53" y2="91" stroke="#1db954" stroke-width="1.8" stroke-linecap="round" class="music-bar-1"/>
                   <line x1="56" y1="102" x2="56" y2="88" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" class="music-bar-2"/>
                   <line x1="59" y1="100" x2="59" y2="93" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" class="music-bar-3"/>
                 </g>
-
-                <!-- Barres d'égaliseur sur casque droit -->
                 <g class="eq-right-ear">
                   <line x1="141" y1="100" x2="141" y2="93" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" class="music-bar-3"/>
                   <line x1="144" y1="102" x2="144" y2="88" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" class="music-bar-2"/>
                   <line x1="147" y1="99" x2="147" y2="91" stroke="#1db954" stroke-width="1.8" stroke-linecap="round" class="music-bar-1"/>
                 </g>
-
-                <!-- Notes de musique holographiques flottantes -->
                 <text x="44" y="78" fill="#1db954" font-family="sans-serif" font-size="14" class="music-note-float-1" filter="url(#avatarGlowGreen)">♪</text>
                 <text x="146" y="72" fill="#10b981" font-family="sans-serif" font-size="16" class="music-note-float-2">♫</text>
                 <text x="135" y="52" fill="#00f0ff" font-family="sans-serif" font-size="11" class="music-note-float-3">♪</text>
-
-                <!-- Badge Spotify Connect -->
-                <g class="music-badge">
-                  <rect x="132" y="118" width="52" height="15" rx="3" fill="rgba(15, 23, 42, 0.9)" stroke="#1db954" stroke-width="0.9"/>
-                  <text x="135" y="129" fill="#1ed760" font-family="monospace" font-size="6" font-weight="bold">SPOTIFY CONNECT</text>
-                </g>
               </g>
 
               <!-- COUCHE MIME 8 : CINÉMA & STREAMING VIDÉO (Stremio, Visière 4K, Bobine) -->
               <g class="mime-layer mime-media-layer" style="display: none;">
-                <!-- Visière Widescreen Cinéma avec barres de cadrage format 2.39:1 -->
                 <rect x="64" y="82" width="72" height="22" rx="2" fill="rgba(15, 23, 42, 0.75)" stroke="#ef4444" stroke-width="1.3" filter="url(#avatarGlowRed)"/>
-                <!-- Repères de cadrage caméra cinéma -->
                 <path d="M 67 86 L 67 84 L 71 84" fill="none" stroke="#fca5a5" stroke-width="1"/>
                 <path d="M 133 86 L 133 84 L 129 84" fill="none" stroke="#fca5a5" stroke-width="1"/>
                 <path d="M 67 100 L 67 102 L 71 102" fill="none" stroke="#fca5a5" stroke-width="1"/>
                 <path d="M 133 100 L 133 102 L 129 102" fill="none" stroke="#fca5a5" stroke-width="1"/>
-                
-                <!-- Symbole Play holographique au centre de la visière -->
                 <polygon points="98,87 106,93 98,99" fill="#ef4444" stroke="#ffffff" stroke-width="0.6" class="cinema-play-pulse" filter="url(#avatarGlowRed)"/>
-
-                <!-- Bobine de film rotative holographique -->
                 <circle cx="152" cy="74" r="10" fill="rgba(15, 23, 42, 0.85)" stroke="#ef4444" stroke-width="1" stroke-dasharray="4 3" class="film-reel-spin"/>
                 <circle cx="152" cy="74" r="4" fill="#030712" stroke="#ef4444" stroke-width="0.8"/>
-
-                <!-- Badge 4K HDR -->
-                <g class="media-badge">
-                  <rect x="136" y="90" width="38" height="14" rx="2" fill="rgba(15, 23, 42, 0.88)" stroke="#ef4444" stroke-width="0.8"/>
-                  <text x="140" y="100" fill="#fca5a5" font-family="monospace" font-size="6.5" font-weight="bold">STREMIO 4K</text>
-                </g>
               </g>
 
               <!-- COUCHE MIME 9 : TÉLÉCHARGEMENT SÉCURISÉ (Transfert de flux, Flèche vortex) -->
               <g class="mime-layer mime-downloading-layer" style="display: none;">
-                <!-- Flèches de flux descendantes vers le vortex -->
                 <g class="download-stream-arrows">
                   <path d="M 100 44 L 100 64 M 95 59 L 100 64 L 105 59" fill="none" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="dl-arrow-1" filter="url(#avatarGlowCyan)"/>
                   <path d="M 100 60 L 100 80 M 95 75 L 100 80 L 105 75" fill="none" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="dl-arrow-2" filter="url(#avatarGlowCyan)"/>
                 </g>
-                <!-- Anneau récepteur avec barre de progression circulaire à la base -->
                 <circle cx="100" cy="180" r="18" fill="none" stroke="rgba(56, 189, 248, 0.3)" stroke-width="2"/>
                 <circle cx="100" cy="180" r="18" fill="none" stroke="#00f0ff" stroke-width="2" stroke-dasharray="35 75" class="dl-circle-progress" filter="url(#avatarGlowCyan)"/>
-                
-                <!-- Badge Download Transfer -->
-                <g class="dl-badge">
-                  <rect x="136" y="80" width="42" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#38bdf8" stroke-width="0.8"/>
-                  <text x="140" y="91" fill="#38bdf8" font-family="monospace" font-size="6" font-weight="bold">DOWNLOADING</text>
-                </g>
               </g>
 
               <!-- COUCHE MIME 10 : DIAGNOSTIC SYSTÈME & MAINTENANCE (Télémétrie, ECG, Auto-réparation) -->
               <g class="mime-layer mime-system-layer" style="display: none;">
-                <!-- Trame hexagonale de diagnostic sur les tempes -->
                 <polygon points="56,76 62,72 68,76 68,84 62,88 56,84" fill="none" stroke="#84cc16" stroke-width="0.8" opacity="0.7" class="sys-hex-pulse"/>
                 <polygon points="132,76 138,72 144,76 144,84 138,88 132,84" fill="none" stroke="#84cc16" stroke-width="0.8" opacity="0.7" class="sys-hex-pulse"/>
-                
-                <!-- Ligne d'oscilloscope ECG (Battement système actif) -->
                 <path d="M 68 148 L 86 148 L 90 141 L 94 155 L 98 144 L 102 151 L 106 148 L 132 148" fill="none" stroke="#84cc16" stroke-width="1.4" class="sys-ecg-pulse" filter="url(#avatarGlowGreen)"/>
-
-                <!-- Badge Télémétrie CPU & OS -->
-                <g class="sys-badge-left">
-                  <rect x="26" y="86" width="34" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#84cc16" stroke-width="0.9"/>
-                  <text x="30" y="97" fill="#bef264" font-family="monospace" font-size="6.5" font-weight="bold">CPU: OK</text>
-                </g>
-                <g class="sys-badge-right">
-                  <rect x="140" y="86" width="38" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#84cc16" stroke-width="0.9"/>
-                  <text x="144" y="97" fill="#bef264" font-family="monospace" font-size="6.5" font-weight="bold">SYS // 0x0</text>
-                </g>
               </g>
 
               <!-- COUCHE MIME 11 : MÉMOIRE DURABLE & SOUVENIRS (Constellation synaptique, Cristal) -->
               <g class="mime-layer mime-memory-layer" style="display: none;">
-                <!-- Cristal de mémoire octaédrique en lévitation au front -->
                 <g class="memory-crystal" filter="url(#avatarGlowIndigo)">
                   <polygon points="100,38 107,48 100,58 93,48" fill="rgba(99, 102, 241, 0.4)" stroke="#818cf8" stroke-width="1.2"/>
                   <line x1="93" y1="48" x2="107" y2="48" stroke="#c7d2fe" stroke-width="0.8"/>
                   <line x1="100" y1="38" x2="100" y2="58" stroke="#c7d2fe" stroke-width="0.8"/>
                 </g>
-
-                <!-- Ondes de réminiscence / résonance mémorielle -->
                 <ellipse cx="100" cy="48" rx="20" ry="7" fill="none" stroke="#6366f1" stroke-width="0.9" stroke-dasharray="3 3" class="memory-wave-1"/>
                 <ellipse cx="100" cy="48" rx="32" ry="11" fill="none" stroke="#818cf8" stroke-width="0.7" stroke-dasharray="4 4" class="memory-wave-2"/>
-
-                <!-- Badge Mémoire SQLite -->
-                <g class="memory-badge">
-                  <rect x="136" y="84" width="44" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#6366f1" stroke-width="0.8"/>
-                  <text x="140" y="95" fill="#a5b4fc" font-family="monospace" font-size="6" font-weight="bold">MEMORY // DB</text>
-                </g>
               </g>
 
               <!-- COUCHE MIME 12 : ACHATS & PANIER E-COMMERCE (Panier, Bouclier de validation) -->
               <g class="mime-layer mime-shopping-layer" style="display: none;">
-                <!-- Panier holographique à la base -->
                 <g class="shopping-cart-group">
                   <path d="M 88 172 L 91 172 L 95 183 L 109 183 L 113 175 L 94 175" fill="none" stroke="#10b981" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" filter="url(#avatarGlowGreen)"/>
                   <circle cx="96" cy="186" r="1.5" fill="#10b981"/>
                   <circle cx="107" cy="186" r="1.5" fill="#10b981"/>
                 </g>
-                <!-- Bouclier de validation sécurisée avec coche -->
                 <polygon points="100,160 106,163 106,169 100,172 94,169 94,163" fill="rgba(16, 185, 129, 0.3)" stroke="#34d399" stroke-width="1"/>
                 <path d="M 97 166 L 99 168 L 103 164" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-
-                <!-- Badge Shopping -->
-                <g class="shopping-badge">
-                  <rect x="136" y="84" width="42" height="15" rx="3" fill="rgba(15, 23, 42, 0.88)" stroke="#10b981" stroke-width="0.8"/>
-                  <text x="140" y="95" fill="#6ee7b7" font-family="monospace" font-size="6" font-weight="bold">CART // READY</text>
-                </g>
               </g>
             </svg>
 
@@ -440,22 +358,8 @@
           </div>
         </div>
 
-        <!-- Indicateur d'état intelligent de JARVIS et Modèle Actif -->
+        <!-- Message d'état intelligent de JARVIS et bouton d'interruption -->
         <div class="state-control-group">
-          <div class="state-badge badge-offline" id="stateBadge">
-            <span class="state-indicator-dot" id="stateDot"></span>
-            <span id="stateLabel">HORS LIGNE</span>
-          </div>
-          <!-- Badge Moteur, Modèle en direct & Clé API (Cliquer pour ouvrir la vue globale) -->
-          <div class="active-engine-chip" id="engineChip" role="button" tabindex="0" title="Cliquer pour afficher la vue d'ensemble globale">
-            <span class="engine-badge badge-google" id="engineSourceBadge">GOOGLE API</span>
-            <span class="engine-model-text" id="engineModelText">GEMINI 3.8 LIVE</span>
-            <span class="engine-key-badge badge-key-free" id="engineKeyBadge">CLÉ GRATUITE</span>
-            <span class="engine-actions-badge" id="engineActionsBadge" style="display: none;">
-              <span class="pulse-mini-dot"></span>
-              <span id="engineActionsCount">1 EN COURS</span>
-            </span>
-          </div>
           <div id="statusMessage">Touchez JARVIS pour activer l'assistance</div>
           <!-- Bouton d'interruption instantanée visible pendant la parole -->
           <button id="btnInterrupt" class="interrupt-btn" style="display: none;" title="Interrompre immédiatement la parole pour parler">
@@ -634,7 +538,8 @@
 
       </div>
     </div>
-  </div>
+  </main>
+</div>
 
   <!-- Modal Aperçu d'écran navigateur -->
   <div id="browserModal">

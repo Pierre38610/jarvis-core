@@ -284,6 +284,97 @@ const btnApprovePaid = document.getElementById('btnApprovePaid');
 const btnRejectPaid = document.getElementById('btnRejectPaid');
 let pendingPaidAction = "general";
 
+// --- GESTIONNAIRE DE NAVIGATION LATÉRALE (APP-SHELL SIDEBAR) ---
+function setActiveNavTab(tabName) {
+  const navItems = {
+    assistant: document.getElementById('navBtnAssistant'),
+    messages: document.getElementById('btnOpenChat'),
+    kindle: document.getElementById('btnOpenKindleModal'),
+    supervision: document.getElementById('btnOpenOverview'),
+    logs: document.getElementById('btnOpenLogs'),
+    antigravity: document.getElementById('btnOpenAntigravity')
+  };
+  Object.values(navItems).forEach(el => {
+    if (el) el.classList.remove('active');
+  });
+  if (navItems[tabName]) {
+    navItems[tabName].classList.add('active');
+  }
+}
+window.setActiveNavTab = setActiveNavTab;
+
+function checkAndResetNavTab() {
+  const chat = document.getElementById('chatModal');
+  const sup = document.getElementById('supervisionModal');
+  const kindle = document.getElementById('kindleModal');
+  const logs = document.getElementById('logsModal');
+  if (chat && chat.style.display === 'flex') {
+    setActiveNavTab('messages');
+  } else if (sup && sup.style.display === 'flex') {
+    setActiveNavTab('supervision');
+  } else if (kindle && kindle.style.display === 'flex') {
+    setActiveNavTab('kindle');
+  } else if (logs && logs.style.display === 'flex') {
+    if (typeof currentLogsFilter !== 'undefined' && currentLogsFilter === 'agy') {
+      setActiveNavTab('antigravity');
+    } else {
+      setActiveNavTab('logs');
+    }
+  } else {
+    setActiveNavTab('assistant');
+  }
+}
+window.checkAndResetNavTab = checkAndResetNavTab;
+
+function switchNavTab(tabName) {
+  if (tabName === 'assistant') {
+    if (typeof closeChatDrawer === 'function') closeChatDrawer();
+    if (typeof closeKindleModal === 'function') closeKindleModal();
+    if (typeof closeSupervisionModal === 'function') closeSupervisionModal();
+    if (typeof closeLogsModal === 'function') closeLogsModal();
+    const bm = document.getElementById('browserModal');
+    if (bm) bm.style.display = 'none';
+    setActiveNavTab('assistant');
+  } else if (tabName === 'messages') {
+    if (typeof closeKindleModal === 'function') closeKindleModal();
+    if (typeof closeSupervisionModal === 'function') closeSupervisionModal();
+    if (typeof closeLogsModal === 'function') closeLogsModal();
+    if (typeof openChatDrawer === 'function') openChatDrawer();
+  } else if (tabName === 'kindle') {
+    if (typeof closeChatDrawer === 'function') closeChatDrawer();
+    if (typeof closeSupervisionModal === 'function') closeSupervisionModal();
+    if (typeof closeLogsModal === 'function') closeLogsModal();
+    if (typeof openKindleModal === 'function') openKindleModal();
+  } else if (tabName === 'supervision') {
+    if (typeof closeChatDrawer === 'function') closeChatDrawer();
+    if (typeof closeKindleModal === 'function') closeKindleModal();
+    if (typeof closeLogsModal === 'function') closeLogsModal();
+    if (typeof openSupervisionModal === 'function') openSupervisionModal();
+  } else if (tabName === 'logs') {
+    if (typeof closeChatDrawer === 'function') closeChatDrawer();
+    if (typeof closeKindleModal === 'function') closeKindleModal();
+    if (typeof closeSupervisionModal === 'function') closeSupervisionModal();
+    if (typeof openLogsModal === 'function') openLogsModal('all');
+  } else if (tabName === 'antigravity') {
+    if (typeof closeChatDrawer === 'function') closeChatDrawer();
+    if (typeof closeKindleModal === 'function') closeKindleModal();
+    if (typeof closeSupervisionModal === 'function') closeSupervisionModal();
+    openAntigravityView();
+  }
+}
+window.switchNavTab = switchNavTab;
+
+function openAntigravityView() {
+  if (typeof openLogsModal === 'function') {
+    openLogsModal('agy');
+    if (typeof setLogsFilter === 'function') {
+      setLogsFilter('agy');
+    }
+  }
+  setActiveNavTab('antigravity');
+}
+window.openAntigravityView = openAntigravityView;
+
 function showPaidConsentModal(data) {
   pendingPaidAction = data.action || "general";
   if (paidConsentTitle) paidConsentTitle.innerText = data.title || "AUTORISATION CLÉ PAYANTE REQUISE";
@@ -2685,6 +2776,7 @@ async function fetchSupervisionOverview() {
 function openSupervisionModal() {
   if (!supervisionModal) return;
   supervisionModal.style.display = 'flex';
+  if (typeof setActiveNavTab === 'function') setActiveNavTab('supervision');
   fetchSupervisionOverview();
   fetchSupervisionMetrics();
   fetchSupervisionPatches();
@@ -2701,6 +2793,7 @@ function openSupervisionModal() {
 function closeSupervisionModal() {
   if (!supervisionModal) return;
   supervisionModal.style.display = 'none';
+  if (typeof checkAndResetNavTab === 'function') checkAndResetNavTab();
   if (supervisionPollTimer) {
     clearInterval(supervisionPollTimer);
     supervisionPollTimer = null;
@@ -3492,6 +3585,7 @@ function openChatDrawer() {
     return;
   }
   modal.style.display = 'flex';
+  if (typeof setActiveNavTab === 'function') setActiveNavTab('messages');
   unreadChatCount = 0;
   const badge = chatBadge || document.getElementById('chatBadge');
   if (badge) {
@@ -3515,6 +3609,7 @@ function closeChatDrawer() {
   const modal = chatModal || document.getElementById('chatModal');
   if (!modal) return;
   modal.style.display = 'none';
+  if (typeof checkAndResetNavTab === 'function') checkAndResetNavTab();
 }
 window.closeChatDrawer = closeChatDrawer;
 
@@ -4059,12 +4154,14 @@ const kindleDropzone = document.getElementById('kindleDropzone');
 function openKindleModal() {
   if (!kindleModal) return;
   kindleModal.style.display = 'flex';
+  if (typeof setActiveNavTab === 'function') setActiveNavTab('kindle');
   fetchKindleStatus();
 }
 
 function closeKindleModal() {
   if (!kindleModal) return;
   kindleModal.style.display = 'none';
+  if (typeof checkAndResetNavTab === 'function') checkAndResetNavTab();
 }
 
 async function fetchKindleStatus() {
@@ -4543,10 +4640,15 @@ let currentLogsFilter = 'all';
 let logsPollTimer = null;
 let rawLogsCache = [];
 
-function openLogsModal() {
+function openLogsModal(filter) {
   const modal = document.getElementById('logsModal');
   if (!modal) return;
   modal.style.display = 'flex';
+  if (filter === 'agy') {
+    if (typeof setActiveNavTab === 'function') setActiveNavTab('antigravity');
+  } else {
+    if (typeof setActiveNavTab === 'function') setActiveNavTab('logs');
+  }
   fetchJarvisLogs();
 
   const toggle = document.getElementById('logsAutoRefreshToggle');
@@ -4559,6 +4661,7 @@ function closeLogsModal() {
   const modal = document.getElementById('logsModal');
   if (!modal) return;
   modal.style.display = 'none';
+  if (typeof checkAndResetNavTab === 'function') checkAndResetNavTab();
   if (logsPollTimer) {
     clearInterval(logsPollTimer);
     logsPollTimer = null;
