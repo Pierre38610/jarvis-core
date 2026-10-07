@@ -62,6 +62,7 @@ function showMainUI() {
     authScreen.style.display = 'none';
     mainScreen.style.display = 'flex';
     syncDeviceLocation();
+    if (window.lucide) lucide.createIcons();
   }, 400);
 }
 
@@ -432,21 +433,23 @@ function updatePaidKeyAuthorizationUI(authorized) {
   if (paidToggleBadge) {
     if (authorized) {
       paidToggleBadge.className = 'paid-toggle-badge badge-authorized';
-      paidToggleBadge.innerText = '⚡ AUTORISÉE';
+      paidToggleBadge.innerHTML = '<i data-lucide="zap"></i> AUTORISÉE';
     } else {
       paidToggleBadge.className = 'paid-toggle-badge badge-locked';
-      paidToggleBadge.innerText = '🔒 VERROUILLÉE';
+      paidToggleBadge.innerHTML = '<i data-lucide="lock"></i> VERROUILLÉE';
     }
+    if (window.lucide) lucide.createIcons({ root: paidToggleBadge });
   }
 
   if (supPaidToggleBadge) {
     if (authorized) {
       supPaidToggleBadge.className = 'paid-toggle-badge badge-authorized';
-      supPaidToggleBadge.innerText = '⚡ AUTORISÉE';
+      supPaidToggleBadge.innerHTML = '<i data-lucide="zap"></i> AUTORISÉE';
     } else {
       supPaidToggleBadge.className = 'paid-toggle-badge badge-locked';
-      supPaidToggleBadge.innerText = '🔒 VERROUILLÉE';
+      supPaidToggleBadge.innerHTML = '<i data-lucide="lock"></i> VERROUILLÉE';
     }
+    if (window.lucide) lucide.createIcons({ root: supPaidToggleBadge });
   }
 
   if (supSummaryPaidBadge) {
@@ -541,7 +544,8 @@ function updateMicToggleUI() {
     }
   }
   if (micToggleIcon) {
-    micToggleIcon.innerText = isMicMuted ? '🔇' : '🎙️';
+    micToggleIcon.innerHTML = isMicMuted ? '<i data-lucide="mic-off"></i>' : '<i data-lucide="mic"></i>';
+    if (window.lucide) lucide.createIcons({ root: micToggleIcon });
   }
 }
 
@@ -2990,7 +2994,7 @@ function renderSupervisionOverview(data) {
         return `
           <div class="sup-tool-row ${isRunning ? 'tool-running' : ''}">
             <div class="sup-tool-col-name">
-              <span class="sup-tool-icon">${tool.icon || '⚙️'}</span>
+              <span class="sup-tool-icon"><i data-lucide="wrench"></i></span>
               <div>
                 <div class="sup-tool-name">${escapeHtml(tool.name)}</div>
                 <div class="sup-tool-desc">${escapeHtml(tool.description)}</div>
@@ -3034,22 +3038,22 @@ function renderSupervisionOverview(data) {
       supWindowsList.innerHTML = rawWindows.map(win => {
         const isJarvis = win.is_jarvis || (win.opened_by && win.opened_by.toLowerCase().includes('jarvis'));
         const hasUrl = !!win.url;
-        let icon = '🪟';
+        let iconName = 'app-window';
         const titleLower = (win.title || '').toLowerCase();
         const procLower = (win.process || '').toLowerCase();
         if (procLower.includes('edge') || procLower.includes('chrome') || procLower.includes('firefox') || win.type === 'browser') {
-          icon = '🌐';
+          iconName = 'globe';
         } else if (procLower.includes('code') || titleLower.includes('visual studio') || titleLower.includes('.py')) {
-          icon = '💻';
+          iconName = 'code-2';
         } else if (procLower.includes('terminal') || procLower.includes('cmd') || procLower.includes('powershell')) {
-          icon = '⌨️';
+          iconName = 'terminal';
         } else if (procLower.includes('explorer')) {
-          icon = '📁';
+          iconName = 'folder';
         }
 
         return `
           <div class="sup-window-card ${isJarvis ? 'window-jarvis' : ''}">
-            <span class="sup-window-icon">${icon}</span>
+            <span class="sup-window-icon"><i data-lucide="${iconName}"></i></span>
             <div class="sup-window-info">
               <div class="sup-window-title" title="${escapeHtml(win.title)}">${escapeHtml(win.title)}</div>
               <div class="sup-window-sub">
@@ -3218,7 +3222,7 @@ function renderSupervisionMetrics(data) {
           <div class="sup-bar-row">
             <div class="sup-bar-info">
               <span class="sup-bar-name">
-                <span>⚙️</span>
+                <i data-lucide="wrench"></i>
                 <span>${escapeHtml(tool.tool_name)}</span>
               </span>
               <div class="sup-bar-stats">
@@ -3336,25 +3340,25 @@ function renderSupervisionPatches(data) {
     let actionButtons = '';
 
     if (p.status === 'applied') {
-      statusBadge = '<span class="sup-patch-status-badge badge-applied">✅ APPLIQUÉ</span>';
+      statusBadge = '<span class="sup-patch-status-badge badge-applied"><i data-lucide="check-circle-2"></i> APPLIQUÉ</span>';
       actionButtons = `
         <button class="sup-patch-btn btn-rollback" onclick="rollbackPatch('${escapeHtml(p.id)}')" title="Rollback instantané vers release précédente">
-          🔄 Rollback Instantané
+          <i data-lucide="rotate-ccw"></i> Rollback Instantané
         </button>
       `;
     } else if (p.status === 'requires_validation') {
-      statusBadge = '<span class="sup-patch-status-badge badge-pending">⚠️ EN ATTENTE VALIDATION (PIERRE)</span>';
+      statusBadge = '<span class="sup-patch-status-badge badge-pending"><i data-lucide="alert-triangle"></i> EN ATTENTE VALIDATION (PIERRE)</span>';
       actionButtons = `
         <button class="sup-patch-btn btn-approve" onclick="approvePatch('${escapeHtml(p.id)}')" title="Valider et appliquer le patch en production">
-          🛡️ Valider & Déployer
+          <i data-lucide="shield-check"></i> Valider & Déployer
         </button>
       `;
     } else if (p.status === 'rolled_back') {
-      statusBadge = '<span class="sup-patch-status-badge badge-rolledback">🔄 ROLLED BACK</span>';
+      statusBadge = '<span class="sup-patch-status-badge badge-rolledback"><i data-lucide="rotate-ccw"></i> ROLLED BACK</span>';
     } else if (p.status === 'failed_tests') {
-      statusBadge = '<span class="sup-patch-status-badge badge-failed">❌ TESTS ÉCHOUÉS</span>';
+      statusBadge = '<span class="sup-patch-status-badge badge-failed"><i data-lucide="x-circle"></i> TESTS ÉCHOUÉS</span>';
     } else if (p.status === 'failed_syntax') {
-      statusBadge = '<span class="sup-patch-status-badge badge-failed">❌ SYNTAXE INVALIDE</span>';
+      statusBadge = '<span class="sup-patch-status-badge badge-failed"><i data-lucide="x-circle"></i> SYNTAXE INVALIDE</span>';
     } else {
       statusBadge = `<span class="sup-patch-status-badge">${escapeHtml(p.status)}</span>`;
     }
@@ -3371,7 +3375,7 @@ function renderSupervisionPatches(data) {
       <div class="sup-patch-card" id="patch-card-${escapeHtml(p.id)}">
         <div class="sup-patch-card-header">
           <div class="sup-patch-title-row">
-            <span class="sup-patch-file">📄 ${escapeHtml(p.target_file)}</span>
+            <span class="sup-patch-file"><i data-lucide="file-text"></i> ${escapeHtml(p.target_file)}</span>
             ${critBadge}
             ${statusBadge}
           </div>
@@ -3401,7 +3405,7 @@ function renderSupervisionPatches(data) {
 
         <div class="sup-patch-actions-row">
           <button class="sup-patch-btn btn-diff" onclick="togglePatchDiff('${escapeHtml(p.id)}')">
-            👁️ Afficher / Masquer le Diff
+            <i data-lucide="eye"></i> Afficher / Masquer le Diff
           </button>
           ${actionButtons}
         </div>
@@ -4789,3 +4793,13 @@ if (logsModalEl) {
 }
 
 
+
+
+// Initialisation des icônes Lucide au chargement
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.lucide) lucide.createIcons();
+  });
+} else {
+  if (window.lucide) lucide.createIcons();
+}

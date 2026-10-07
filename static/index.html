@@ -17,7 +17,7 @@
   <link rel="icon" type="image/svg+xml" href="/static/jarvis-icon.svg">
   <link rel="apple-touch-icon" href="/static/jarvis-icon.png">
   <link rel="shortcut icon" href="/static/jarvis-icon.png">
-  <link rel="stylesheet" href="/static/style.css?v=5.81.0">
+  <link rel="stylesheet" href="/static/style.css?v=5.82.0">
 </head>
 <body>
 
@@ -45,29 +45,29 @@
       </div>
       <nav class="sidebar-nav">
         <button id="navBtnAssistant" class="sidebar-nav-item active" onclick="switchNavTab('assistant')">
-          <span class="sidebar-nav-icon">🤖</span>
+          <span class="sidebar-nav-icon"><i data-lucide="bot"></i></span>
           <span class="sidebar-nav-label">Assistant</span>
         </button>
         <button id="btnOpenChat" class="sidebar-nav-item" onclick="switchNavTab('messages')" title="Messagerie & Analyse Photo">
-          <span class="sidebar-nav-icon">💬</span>
+          <span class="sidebar-nav-icon"><i data-lucide="message-square"></i></span>
           <span class="sidebar-nav-label">Messages</span>
           <span id="chatBadge" class="chat-badge" style="display: none;">0</span>
         </button>
         <button id="btnOpenKindleModal" class="sidebar-nav-item" onclick="switchNavTab('kindle')" title="Amazon Send to Kindle">
-          <span class="sidebar-nav-icon">📖</span>
+          <span class="sidebar-nav-icon"><i data-lucide="book-open"></i></span>
           <span class="sidebar-nav-label">Kindle</span>
         </button>
         <button id="btnOpenOverview" class="sidebar-nav-item" onclick="switchNavTab('supervision')" title="Supervision globale Stark AI">
-          <span class="sidebar-nav-icon">📊</span>
+          <span class="sidebar-nav-icon"><i data-lucide="activity"></i></span>
           <span class="sidebar-nav-label">Supervision</span>
           <span id="supervisionActionBadge" class="supervision-badge-count" style="display: none;">0</span>
         </button>
         <button id="btnOpenLogs" class="sidebar-nav-item" onclick="switchNavTab('logs')" title="Consulter les logs système en direct">
-          <span class="sidebar-nav-icon">💻</span>
+          <span class="sidebar-nav-icon"><i data-lucide="terminal"></i></span>
           <span class="sidebar-nav-label">Logs</span>
         </button>
         <button id="btnOpenAntigravity" class="sidebar-nav-item" onclick="switchNavTab('antigravity')" title="Agents Antigravity CLI">
-          <span class="sidebar-nav-icon">⚡</span>
+          <span class="sidebar-nav-icon"><i data-lucide="zap"></i></span>
           <span class="sidebar-nav-label">Antigravity</span>
         </button>
       </nav>
@@ -100,7 +100,7 @@
         </div>
 
         <div class="statusbar-right">
-          <span class="hud-version-tag statusbar-version" id="hudVersionTag" title="Version 5.81.0 Stark AI">v5.81.0</span>
+          <span class="hud-version-tag statusbar-version" id="hudVersionTag" title="Version 5.82.0 Stark AI">v5.82.0</span>
         </div>
       </header>
 
@@ -112,7 +112,7 @@
         <div class="hud-quick-bar">
           <!-- Encoche Micro -->
           <label class="stark-quick-toggle" for="micToggle" id="micToggleContainer" title="Activer ou couper votre microphone (Raccourci clavier: M)">
-            <span class="quick-toggle-icon" id="micToggleIcon">🎙️</span>
+            <span class="quick-toggle-icon" id="micToggleIcon"><i data-lucide="mic"></i></span>
             <span class="quick-toggle-label">MICRO</span>
             <div class="stark-switch">
               <input type="checkbox" id="micToggle" class="stark-switch-input" checked aria-label="Activer ou couper le microphone">
@@ -125,7 +125,7 @@
 
           <!-- Encoche Clé Payante -->
           <label class="stark-quick-toggle" for="paidKeyToggle" id="paidToggleContainer" title="Cochez pour autoriser le modèle à utiliser la clé payante. Si décoché, toute requête sur la clé payante est physiquement bloquée.">
-            <span class="quick-toggle-icon">⚡</span>
+            <span class="quick-toggle-icon"><i data-lucide="zap"></i></span>
             <span class="quick-toggle-label">CLÉ PAYANTE</span>
             <div class="stark-switch">
               <input type="checkbox" id="paidKeyToggle" class="stark-switch-input" aria-label="Autoriser la clé payante au modèle">
@@ -133,7 +133,7 @@
                 <span class="stark-switch-thumb"></span>
               </span>
             </div>
-            <span id="paidToggleBadge" class="quick-toggle-badge badge-locked">🔒 VERROUILLÉE</span>
+            <span id="paidToggleBadge" class="quick-toggle-badge badge-locked"><i data-lucide="lock"></i> VERROUILLÉE</span>
           </label>
         </div>
 
@@ -433,7 +433,7 @@
             </select>
           </div>
           <div id="btWarningBox" class="hud-bt-warning-box" style="display: none;">
-            <span class="hud-bt-icon">⚠️</span>
+            <span class="hud-bt-icon"><i data-lucide="alert-triangle"></i></span>
             <span class="hud-bt-text"><strong>Microphone Bluetooth / Casque détecté</strong> : Windows peut forcer le mode HFP (son dégradé mono 8-16kHz sur Spotify). Pour préserver un son Spotify haute fidélité stéréo sur PC, sélectionnez le microphone intégré du PC ou de la webcam.</span>
           </div>
         </div>
@@ -603,7 +603,7 @@
           <button id="btnRefreshSupervision" class="supervision-icon-btn" title="Rafraîchir les données en direct">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           </button>
-          <button id="btnCloseSupervision" class="supervision-icon-btn btn-close-modal" title="Fermer la vue">✕</button>
+          <button id="btnCloseSupervision" class="supervision-icon-btn btn-close-modal" title="Fermer la vue"><i data-lucide="x"></i></button>
         </div>
       </div>
 
@@ -613,7 +613,7 @@
         <!-- 1. MODÈLE VOCAL ACTIF & CLÉ API -->
         <div class="supervision-section">
           <div class="section-badge-header">
-            <span class="section-icon">🎙️</span>
+            <span class="section-icon"><i data-lucide="mic"></i></span>
             <span class="section-title">MODÈLE VOCAL EN COURS (PAROLE & ÉCOUTE)</span>
             <span class="section-tag" id="supVoiceStatusTag">À L'ÉCOUTE</span>
           </div>
@@ -645,7 +645,7 @@
         <!-- 2. ACTIONS & PROCESSUS EN COURS -->
         <div class="supervision-section">
           <div class="section-badge-header">
-            <span class="section-icon">⚡</span>
+            <span class="section-icon"><i data-lucide="zap"></i></span>
             <span class="section-title">ACTIONS EN COURS D'EXÉCUTION</span>
             <span class="section-counter" id="supActionsCountBadge">0 ACTIVE</span>
           </div>
@@ -660,7 +660,7 @@
         <!-- 3. OUTILS EN COURS D'UTILISATION & REGISTRE DES APIS -->
         <div class="supervision-section">
           <div class="section-badge-header">
-            <span class="section-icon">🛠️</span>
+            <span class="section-icon"><i data-lucide="wrench"></i></span>
             <span class="section-title">OUTILS DU SYSTÈME & APIS CORRESPONDANTES</span>
           </div>
           <div class="sup-tools-table" id="supToolsTable">
@@ -671,7 +671,7 @@
         <!-- 4. FENÊTRES OUVERTES (SYSTÈME & NAVIGATEUR) -->
         <div class="supervision-section">
           <div class="section-badge-header">
-            <span class="section-icon">🪟</span>
+            <span class="section-icon"><i data-lucide="app-window"></i></span>
             <span class="section-title">FENÊTRES OUVERTES & SESSIONS NAVIGATEUR</span>
             <span class="section-counter" id="supWindowsCountBadge">0 FENÊTRE</span>
           </div>
@@ -683,7 +683,7 @@
         <!-- 5. SYNTHÈSE DES CLÉS API CONFIGURÉES -->
         <div class="supervision-section">
           <div class="section-badge-header">
-            <span class="section-icon">💳</span>
+            <span class="section-icon"><i data-lucide="credit-card"></i></span>
             <span class="section-title">ÉTAT DES CLÉS API STARK INDUSTRIES</span>
           </div>
           <div class="sup-api-summary-grid">
@@ -713,7 +713,7 @@
                       <span class="stark-switch-thumb"></span>
                     </span>
                   </div>
-                  <span id="supPaidToggleBadge" class="paid-toggle-badge badge-locked">🔒 VERROUILLÉE</span>
+                  <span id="supPaidToggleBadge" class="paid-toggle-badge badge-locked"><i data-lucide="lock"></i> VERROUILLÉE</span>
                 </label>
               </div>
             </div>
@@ -723,7 +723,7 @@
         <!-- 6. MÉTRIQUES & HISTORIQUE D'INSTRUMENTATION DES OUTILS -->
         <div class="supervision-section" id="supMetricsSection">
           <div class="section-badge-header">
-            <span class="section-icon">📊</span>
+            <span class="section-icon"><i data-lucide="bar-chart-3"></i></span>
             <span class="section-title">MÉTRIQUES D'INSTRUMENTATION & OBSERVABILITÉ DES OUTILS</span>
             <div class="sup-metrics-window-pills">
               <button class="sup-metrics-pill active" id="btnMetrics24h" onclick="switchMetricsWindow('24h')">24H</button>
@@ -822,7 +822,7 @@
         <!-- 7. JOURNAL DES PATCHES D'AUTO-GUÉRISON & SRE (POSTGRESQL) -->
         <div class="supervision-section" id="supPatchesSection">
           <div class="section-badge-header">
-            <span class="section-icon">🛡️</span>
+            <span class="section-icon"><i data-lucide="shield-check"></i></span>
             <span class="section-title">JOURNAL DES PATCHES D'AUTO-GUÉRISON & RELEASES (POSTGRESQL)</span>
             <span class="section-counter" id="supPatchesCountBadge">0 PATCH</span>
           </div>
@@ -865,7 +865,7 @@
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
             </svg>
           </button>
-          <button id="btnCloseChat" class="chat-icon-btn btn-close-modal" onclick="closeChatDrawer()" title="Fermer la messagerie">✕</button>
+          <button id="btnCloseChat" class="chat-icon-btn btn-close-modal" onclick="closeChatDrawer()" title="Fermer la messagerie"><i data-lucide="x"></i></button>
         </div>
       </div>
 
@@ -883,9 +883,9 @@
             Posez une question par écrit ou joignez une photo ou capture d'écran pour que J.A.R.V.I.S. l'analyse minutieusement.
           </div>
           <div class="chat-suggestion-chips">
-            <button class="chat-chip" onclick="applyChatPrompt('Analyse cette capture d\'écran en détail')">🔍 Analyser une capture</button>
-            <button class="chat-chip" onclick="applyChatPrompt('Résume-moi l\'état actuel du système')">⚡ Rapport d'état</button>
-            <button class="chat-chip" onclick="applyChatPrompt('Aide-moi à résoudre ce problème technique')">🛠️ Résolution de bug</button>
+            <button class="chat-chip" onclick="applyChatPrompt('Analyse cette capture d\'écran en détail')"><i data-lucide="search"></i> Analyser une capture</button>
+            <button class="chat-chip" onclick="applyChatPrompt('Résume-moi l\'état actuel du système')"><i data-lucide="zap"></i> Rapport d'état</button>
+            <button class="chat-chip" onclick="applyChatPrompt('Aide-moi à résoudre ce problème technique')"><i data-lucide="wrench"></i> Résolution de bug</button>
           </div>
         </div>
       </div>
@@ -907,7 +907,7 @@
           <div id="chatPreviewName" class="chat-preview-name">photo.jpg</div>
           <div id="chatPreviewMeta" class="chat-preview-meta">Image prête pour analyse</div>
         </div>
-        <button id="btnRemoveChatImage" class="chat-preview-remove" title="Supprimer la photo">✕</button>
+        <button id="btnRemoveChatImage" class="chat-preview-remove" title="Supprimer la photo"><i data-lucide="x"></i></button>
       </div>
 
       <!-- Zone de saisie et envoi -->
@@ -945,7 +945,7 @@
     <div class="chat-lightbox-card">
       <div class="chat-lightbox-header">
         <span id="lightboxTitle">PHOTO ANALYSÉE PAR J.A.R.V.I.S.</span>
-        <button id="btnCloseLightbox" class="chat-icon-btn btn-close-modal">✕</button>
+        <button id="btnCloseLightbox" class="chat-icon-btn btn-close-modal"><i data-lucide="x"></i></button>
       </div>
       <div class="chat-lightbox-body">
         <img id="lightboxImg" src="" alt="Agrandissement photo" />
@@ -970,7 +970,7 @@
           <button id="btnRefreshKindleStatus" class="supervision-icon-btn" onclick="fetchKindleStatus()" title="Actualiser le statut">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           </button>
-          <button id="btnCloseKindleModal" class="supervision-icon-btn btn-close-modal" onclick="closeKindleModal()" title="Fermer">✕</button>
+          <button id="btnCloseKindleModal" class="supervision-icon-btn btn-close-modal" onclick="closeKindleModal()" title="Fermer"><i data-lucide="x"></i></button>
         </div>
       </div>
 
@@ -979,7 +979,7 @@
         <!-- Statut du compte Amazon -->
         <div class="supervision-section" style="margin-bottom: 16px;">
           <div class="section-badge-header">
-            <span class="section-icon">📚</span>
+            <span class="section-icon"><i data-lucide="book"></i></span>
             <span class="section-title">COMPTE AMAZON CONNECTÉ</span>
             <span class="section-tag" id="kindleAccountStatusTag">VÉRIFICATION...</span>
           </div>
@@ -998,7 +998,7 @@
         <!-- Zone de Dépôt de fichier -->
         <div class="supervision-section" style="margin-bottom: 16px;">
           <div class="section-badge-header">
-            <span class="section-icon">📥</span>
+            <span class="section-icon"><i data-lucide="download"></i></span>
             <span class="section-title">DÉPOSER UN FICHIER POUR LA KINDLE</span>
           </div>
           <div id="kindleDropzone" class="kindle-dropzone-box" onclick="document.getElementById('kindleFileInput').click()" style="border: 2px dashed rgba(56, 189, 248, 0.4); border-radius: 12px; padding: 24px 16px; text-align: center; cursor: pointer; background: rgba(15, 23, 42, 0.5); transition: all 0.2s ease;">
@@ -1025,7 +1025,7 @@
         <!-- Envoi d'article Web par URL -->
         <div class="supervision-section">
           <div class="section-badge-header">
-            <span class="section-icon">🌐</span>
+            <span class="section-icon"><i data-lucide="globe"></i></span>
             <span class="section-title">ENVOYER UN ARTICLE WEB DIRECT</span>
           </div>
           <div style="display: flex; gap: 8px;">
@@ -1068,17 +1068,17 @@
           <button id="btnCopyLogs" class="supervision-icon-btn" onclick="copyJarvisLogs()" title="Copier les logs">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           </button>
-          <button id="btnCloseLogsModal" class="supervision-icon-btn btn-close-modal" onclick="closeLogsModal()" title="Fermer">✕</button>
+          <button id="btnCloseLogsModal" class="supervision-icon-btn btn-close-modal" onclick="closeLogsModal()" title="Fermer"><i data-lucide="x"></i></button>
         </div>
       </div>
 
       <!-- Barre de filtres rapides -->
       <div class="logs-filter-bar">
         <button class="logs-filter-btn active" id="btnFilterAll" onclick="setLogsFilter('all')">TOUS</button>
-        <button class="logs-filter-btn" id="btnFilterError" onclick="setLogsFilter('error')">🚨 ERREURS</button>
-        <button class="logs-filter-btn" id="btnFilterWarning" onclick="setLogsFilter('warning')">⚠️ WARNINGS</button>
-        <button class="logs-filter-btn" id="btnFilterAgy" onclick="setLogsFilter('agy')">⚡ ANTIGRAVITY (L2)</button>
-        <button class="logs-filter-btn" id="btnFilterDr" onclick="setLogsFilter('dr')">🔬 DEEP RESEARCH (L3)</button>
+        <button class="logs-filter-btn" id="btnFilterError" onclick="setLogsFilter('error')"><i data-lucide="alert-octagon"></i> ERREURS</button>
+        <button class="logs-filter-btn" id="btnFilterWarning" onclick="setLogsFilter('warning')"><i data-lucide="alert-triangle"></i> WARNINGS</button>
+        <button class="logs-filter-btn" id="btnFilterAgy" onclick="setLogsFilter('agy')"><i data-lucide="zap"></i> ANTIGRAVITY (L2)</button>
+        <button class="logs-filter-btn" id="btnFilterDr" onclick="setLogsFilter('dr')"><i data-lucide="flask-conical"></i> DEEP RESEARCH (L3)</button>
         <span id="logsCountBadge" class="logs-count-badge">0 LIGNES</span>
       </div>
 
@@ -1099,6 +1099,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=5.81.0"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="/static/app.js?v=5.82.0"></script>
 </body>
 </html>

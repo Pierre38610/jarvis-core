@@ -1,6 +1,6 @@
 /* ==========================================================================
    J.A.R.V.I.S. - STARK INDUSTRIES HUD DESIGN SYSTEM
-   Version 5.81.0 | High-End Obsidian & Titanium Glassmorphic Architecture
+   Version 5.82.0 | High-End Obsidian & Titanium Glassmorphic Architecture
    ========================================================================== */
 
 /* --- ROOT VARIABLES & DESIGN TOKENS --- */
@@ -2616,3 +2616,52 @@ html, body {
   background: rgba(56, 189, 248, 0.05) !important;
 }
 
+
+
+/* Lucide Icons Base Style (Prompt 3) */
+[data-lucide], .lucide {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.75;
+  stroke: currentColor;
+  color: currentColor;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.sidebar-nav-item [data-lucide],
+.sidebar-nav-item .lucide {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.75;
+}
+
+.section-icon [data-lucide],
+.section-icon .lucide {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.75;
+}
+
+.quick-toggle-badge [data-lucide],
+.paid-toggle-badge [data-lucide],
+.quick-toggle-badge .lucide,
+.paid-toggle-badge .lucide {
+  width: 11px;
+  height: 11px;
+  vertical-align: -1px;
+  margin-right: 2px;
+}
+
+.chat-chip [data-lucide],
+.chat-chip .lucide,
+.logs-filter-btn [data-lucide],
+.logs-filter-btn .lucide,
+.sup-patch-btn [data-lucide],
+.sup-patch-btn .lucide {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  margin-right: 4px;
+}
