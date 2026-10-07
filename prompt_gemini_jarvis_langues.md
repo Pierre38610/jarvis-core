@@ -1,0 +1,11 @@
+Tu es Gemini Flash 3.7 dans Antigravity IDE, réglage High. Implémente dans Jarvis une réponse toujours dans la langue de l’entrée parlée, FR ou EN uniquement, avec une voix anglaise ajoutée sans remplacer ni dégrader la voix française.
+
+Avant toute modification, inspecte uniquement le code réel et les tests pertinents pour cartographier STT, détection de langue, orchestration par tour, LLM, TTS, configuration/environnement et interfaces de streaming; ne suppose ni noms de fichiers, ni fournisseur, ni architecture, et ne scanne pas tout le dépôt. Si le STT force le français, supprime ce forçage ou rends le paramètre compatible FR/EN.
+
+Conserve la langue détectée pour chaque tour jusqu’au TTS: détection fiable FR/EN avec contexte de la dernière langue pour entrées brèves ou ambiguës, FR par défaut au premier tour; si une autre langue est détectée, demander une clarification en FR ou EN, sans répondre dans une troisième langue. Donne explicitement au LLM la langue du tour et exige une réponse dans celle-ci; ne fais pas de traduction aveugle.
+
+Route le TTS selon cette langue, conserve la voix FR et configure une voix EN compatible avec le fournisseur réellement présent; si c’est ElevenLabs, vérifie d’abord sa configuration et ses capacités réelles, sans inventer de voice ID, secret, clé ou valeur de configuration. Si la voix EN est absente/indisponible, applique un fallback observable et sûr (sans casser la voix FR), avec message/log non sensible.
+
+Fais les changements minimaux, préserve streaming, interfaces et fonctions existantes; aucun refactor ou nouveau secret. Ne journalise ni audio, ni transcriptions, ni secrets. Ajoute/actualise des tests mockés couvrant détection FR/EN, alternance, accents, entrée brève/ambiguë, autre langue, propagation de la langue jusqu’au LLM/TTS, routage des deux voix et non-régression FR.
+
+Exécute les tests, lint et typecheck pertinents; rapporte exactement les commandes, résultats et limites, sans prétendre avoir validé l’audio sans essai réel. Documente seulement la configuration/env nécessaire et les valeurs à fournir par l’utilisateur. N’effectue aucun commit ni push sans demande explicite. À la fin, fournis un rapport concis: fichiers modifiés, comportement, tests passés/échoués et points restant à vérifier.

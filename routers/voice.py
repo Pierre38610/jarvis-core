@@ -53,6 +53,13 @@ from services.key_gate import (
     is_qualified_free_key_failure,
 )
 from services.async_utils import fire_and_forget
+from services.language_service import (
+    TurnLanguageManager,
+    detect_language,
+    get_tts_voice_for_language,
+    format_turn_language_instruction,
+    get_clarification_prompt,
+)
 
 router = APIRouter()
 
@@ -206,6 +213,13 @@ async def _build_system_instruction() -> str:
         f"- PRIORITÉ IMMÉDIATE AUX DIRECTIVES : Dès que Pierre demande une recherche L1/L2/L3, un briefing, un état système, Spotify ou toute autre tâche, exécute directement l'action demandée sans jamais bifurquer vers des questions de sommeil, de rêves ou d'heure de la journée."
     )
 
+    language_rule = (
+        f"\n\nRÈGLE STRICTE DE LANGUE DE RÉPONSE (FR OU EN STRICTEMENT) :\n"
+        f"- Tu réponds TOUJOURS dans la langue de l'entrée parlée ou écrite de Pierre : en français si Pierre s'exprime en français, et en anglais s'il s'exprime en anglais.\n"
+        f"- Si Pierre s'exprime dans une troisième langue non prise en charge (ni français ni anglais), demande poliment une clarification en français ou en anglais pour lui proposer de continuer dans l'une de ces deux langues, SANS JAMAIS répondre dans la troisième langue.\n"
+        f"- N'effectue aucune traduction aveugle ou mot-à-mot superflue : réponds avec clarté, naturel et précision directement dans la langue requise."
+    )
+
     current_dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     plan_st = get_active_plan_status_str()
     sub_st = get_active_subagents_status_str()
@@ -224,22 +238,30 @@ async def _build_system_instruction() -> str:
             )
         except Exception:
             base_prompt = str(template)
-        return f"{base_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}\n{cognitive_tier_instruction}\n{dreams_and_morning_rule}"
+        return f"{base_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}\n{cognitive_tier_instruction}\n{dreams_and_morning_rule}\n{language_rule}"
 
     static = getattr(config, "JARVIS_SYSTEM_INSTRUCTION", "")
     full_prompt = f"{memory_context}\n\n{static}" if memory_context else static
     full_prompt = inject_turn_status_into_prompt(full_prompt)
-    return f"{full_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}\n{cognitive_tier_instruction}\n{dreams_and_morning_rule}"
+    return f"{full_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}\n{cognitive_tier_instruction}\n{dreams_and_morning_rule}\n{language_rule}"
 
 
 
-async def _establish_live_session(model: str, client_to_use, system_instruction_text: str = None):
-    """Établit une session Gemini Live avec la config JARVIS complète (voix Aoede, outils, instruction système)."""
+async def _establish_live_session(
+    model: str,
+    client_to_use,
+    system_instruction_text: str = None,
+    voice_name: str = None,
+    language_code: str = None,
+):
+    """Établit une session Gemini Live avec la config JARVIS complète (voix Aoede / EN configurable, outils, instruction système)."""
     if not system_instruction_text:
         system_instruction_text = await _build_system_instruction()
 
     thinking_level_val = getattr(types.ThinkingLevel, "HIGH", "HIGH")
     thinking_cfg = types.ThinkingConfig(include_thoughts=True, thinking_level=thinking_level_val) if "extended-thinking" in model else None
+
+    chosen_voice = voice_name or getattr(config, "JARVIS_VOICE", None) or "Aoede"
 
     live_config = types.LiveConnectConfig(
         response_modalities=["AUDIO"],
@@ -249,10 +271,10 @@ async def _establish_live_session(model: str, client_to_use, system_instruction_
         speech_config=types.SpeechConfig(
             voice_config=types.VoiceConfig(
                 prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                    voice_name=getattr(config, "JARVIS_VOICE", None) or "Aoede"
+                    voice_name=chosen_voice
                 )
             ),
-            language_code="fr-FR"
+            language_code=language_code
         ),
         input_audio_transcription=types.AudioTranscriptionConfig(),
         output_audio_transcription=types.AudioTranscriptionConfig(),
@@ -317,9 +339,11 @@ async def voice_channel(websocket: WebSocket):
     recent_conversation_turns: list[dict[str, str]] = []
     setup_done_event = asyncio.Event()
     speaking_state = {"active": False}
+    turn_language_mgr = TurnLanguageManager(initial_language="fr")
 
     active_task_controller.pop("pending_model_switch", None)
     active_task_controller.pop("pending_model_switch_meta", None)
+    active_task_controller["current_turn_language"] = "fr"
 
     active_live_model = config.GEMINI_LIVE_MODEL
 
@@ -555,9 +579,13 @@ async def voice_channel(websocket: WebSocket):
                             elif p_type == "text":
                                 text_input = payload.get("text", "").strip()
                                 if text_input and session:
+                                    lang_info = turn_language_mgr.process_turn(text_input)
+                                    active_task_controller["current_turn_language"] = lang_info["effective_language"]
+                                    active_task_controller["current_turn_voice"] = lang_info["voice"]
+                                    turn_prompt = f"{lang_info['prompt_instruction']}\n\n{text_input}"
                                     await safe_send_live_client_content(
                                         session,
-                                        text_content=text_input,
+                                        text_content=turn_prompt,
                                         priority=2,
                                         role="user",
                                         turn_complete=True
@@ -660,12 +688,30 @@ async def voice_channel(websocket: WebSocket):
                             if user_txt:
                                 user_speech_buffer = merge_user_speech(user_speech_buffer, user_txt)
                                 turn_user_transcript = user_speech_buffer
+                                lang_info = turn_language_mgr.process_turn(user_speech_buffer)
+                                current_turn_lang = lang_info["effective_language"]
+                                active_task_controller["current_turn_language"] = current_turn_lang
+                                active_task_controller["current_turn_voice"] = lang_info["voice"]
+
                                 await websocket.send_text(json.dumps({
                                     "type": "transcript",
                                     "role": "user",
                                     "text": user_speech_buffer,
-                                    "mode": "set"
+                                    "mode": "set",
+                                    "language": current_turn_lang
                                 }))
+
+                                if lang_info["is_other_language"] and session:
+                                    try:
+                                        await safe_send_live_client_content(
+                                            session,
+                                            text_content=lang_info["prompt_instruction"],
+                                            priority=1,
+                                            role="user",
+                                            turn_complete=True
+                                        )
+                                    except Exception:
+                                        pass
 
                                 # 1. Évaluation dynamique de la politique Live (LiveModePolicy)
                                 _plan_curr = _task_planner_mod.get_active_plan()
@@ -831,6 +877,7 @@ async def voice_channel(websocket: WebSocket):
                                     record_turn_audit(
                                         transcript=turn_user_transcript,
                                         voice_mode="thinking" if ("extended-thinking" in active_live_model or "thinking" in active_live_model) else "standard",
+                                        language=active_task_controller.get("current_turn_language", "fr"),
                                         tools=list(turn_tools),
                                         plan=get_active_plan_status_str(),
                                         final_sentence=turn_jarvis_sentence,

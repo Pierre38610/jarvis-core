@@ -55,6 +55,7 @@ def init_turn_audit_db(db_path: Optional[str] = None) -> None:
                     session_id TEXT DEFAULT 'voice',
                     transcript TEXT DEFAULT '',
                     voice_mode TEXT DEFAULT 'standard',
+                    language TEXT DEFAULT 'fr',
                     tools TEXT DEFAULT '[]',
                     plan TEXT DEFAULT '',
                     final_sentence TEXT DEFAULT '',
@@ -69,6 +70,10 @@ def init_turn_audit_db(db_path: Optional[str] = None) -> None:
                 )
                 """
             )
+            try:
+                conn.execute("ALTER TABLE turn_audit ADD COLUMN language TEXT DEFAULT 'fr'")
+            except Exception:
+                pass
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_turn_audit_created_at ON turn_audit(created_at)"
             )
@@ -116,6 +121,7 @@ def detect_false_claim(
 def record_turn_audit(
     transcript: str,
     voice_mode: str,
+    language: str = "fr",
     tools: Optional[List[Dict[str, Any]]] = None,
     plan: str = "",
     final_sentence: str = "",
@@ -141,15 +147,16 @@ def record_turn_audit(
             cursor = conn.execute(
                 """
                 INSERT INTO turn_audit (
-                    session_id, transcript, voice_mode, tools, plan,
+                    session_id, transcript, voice_mode, language, tools, plan,
                     final_sentence, cuts, duration, paid_used, paid_reason,
                     paid_consent, false_claim, false_claim_warning, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
                     transcript,
                     voice_mode,
+                    language,
                     tools_json,
                     plan,
                     final_sentence,
@@ -172,6 +179,7 @@ def record_turn_audit(
         "session_id": session_id,
         "transcript": transcript,
         "voice_mode": voice_mode,
+        "language": language,
         "tools": tools,
         "plan": plan,
         "final_sentence": final_sentence,

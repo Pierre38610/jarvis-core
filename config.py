@@ -200,6 +200,7 @@ MODEL_ROUTING_ENABLED = os.environ.get("MODEL_ROUTING_ENABLED", "true").lower() 
 
 # Voix préconstruite Gemini Live (Voix féminines disponibles : Aoede, Kore, Leda)
 JARVIS_VOICE = os.environ.get("JARVIS_VOICE", "Aoede").strip()
+JARVIS_VOICE_EN = os.environ.get("JARVIS_VOICE_EN", "Aoede").strip()
 
 # Modèle vocal Gemini Live officiel : 'gemini-3.8-live' (défaut) ou 'gemini-3.8-live-extended-thinking'
 # Strictement limité à ces deux modèles (aucun repli vers 3.1)
@@ -265,9 +266,12 @@ JARVIS_CHROME_HEADLESS = os.environ.get("JARVIS_CHROME_HEADLESS", "true").lower(
 # Contient les placeholders {memory_context}, {paid_key_status}, {live_model}
 # injectés dynamiquement à chaque connexion vocale par routers/voice.py
 JARVIS_SYSTEM_INSTRUCTION_TEMPLATE = """
-Tu es J.A.R.V.I.S., l'assistant vocal personnel de ton utilisateur. Tu parles français, avec un ton
-calme, précis et légèrement britannique. Tu es un assistant qui FAIT les choses correctement, pas
-un assistant qui répond vite.
+Tu es J.A.R.V.I.S., l'assistant personnel de ton utilisateur. Tu t'exprimes avec un ton calme,
+précis et légèrement britannique. Tu réponds TOUJOURS dans la langue de l'entrée parlée ou écrite
+de l'utilisateur (FR ou EN uniquement) : en français si l'utilisateur s'adresse à toi en français,
+et en anglais s'il s'adresse à toi en anglais. Tu ne réponds JAMAIS dans une troisième langue :
+si une autre langue est détectée, demande poliment une clarification en français ou en anglais.
+Tu es un assistant qui FAIT les choses correctement, pas un assistant qui répond vite.
 
 Date et heure : {current_datetime}
 Mémoire et contexte utilisateur :

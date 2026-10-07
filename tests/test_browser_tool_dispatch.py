@@ -351,16 +351,19 @@ async def test_launch_deep_research_browser_agent_success():
     mock_session = MagicMock()
 
     async def mock_run_agent(task, notify=None):
+        task.status = "completed"
         return ToolResult.done(
             user_message="Rapport Deep Research complet sur l'informatique quantique.",
             task_id=task.task_id,
             verified=True,
         )
 
-    with patch("core.tools.dispatcher.run_browser_agent_task", side_effect=mock_run_agent):
+    with patch("core.tools.dispatcher.run_browser_agent_task", side_effect=mock_run_agent), \
+         patch("core.tools.dispatcher.send_email_async", new_callable=AsyncMock), \
+         patch("services.local_agent_service.is_pc_connected_async", return_value=True):
         res = await dispatch_tool(
-            name="launch_deep_research",
-            args={"consigne": "Étude quantique 2026", "sync": True},
+            name="browser_task",
+            args={"goal": "Recherche approfondie L3 quantique", "recipe": "gemini_deep_research", "sync": True},
             websocket=mock_ws,
             session=mock_session,
         )

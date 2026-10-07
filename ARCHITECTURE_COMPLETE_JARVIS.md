@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.74.4 — Intégration du service de génération et compilation de rapports LaTeX pour les analyses multi-agents L2 (services/latex_report_service.py) avec template professionnel, échappement strict, compilation isolée latexmk, repli Markdown résilient et expédition par email.*
+> *Dernière révision majeure : Version 5.75.0 — Intégration du moteur multilingue strict FR/EN (services/language_service.py) avec détection lexicale par tour de parole, héritage de contexte conversationnel, clarification 3e langue sans fuite, déblocage STT universel et routage vocal dynamique TTS (JARVIS_VOICE / JARVIS_VOICE_EN).*
 
 
 ---
@@ -51,6 +51,7 @@
    - 6.6. Jalons Vocaux Intermédiaires (`VOCAL_MILESTONE_THRESHOLD_SECONDS`)
    - 6.7. Règle d'Or de Canal Unique & Verrou d'Élocution Anti-Coupure
    - 6.8. Gestion des Interruptions (Barge-In) & Gating Micro
+   - 6.9. Moteur Multilingue Strict FR/EN, Détection par Tour & Routage Vocal TTS (`services/language_service.py`)
 7. [L'Agent Relais Local PC Windows (`jarvis_local_agent`)](#7-lagent-relais-local-pc-windows-jarvis_local_agent)
    - 7.1. Problématique Résolue & Rôle Exécutant Physique
    - 7.2. Protocole WebSocket RPC & Reconnexion Résiliente
@@ -239,6 +240,7 @@ jarvis-core/
 │   ├── l3_error.py                      # Structure stable d'erreur L3 détaillée (L3ErrorDetails), assainissement des secrets et diagnostic
 │   ├── gemini_web_automator.py          # Automatisation de l'UI Gemini Web (Moteur A Deep Research via Chrome local)
 │   ├── chat_service.py                  # Messagerie écrite multimodale (clients FREE/PAID, consentement key_gate)
+│   ├── language_service.py              # Moteur multilingue strict FR/EN, détection par tour, héritage de contexte, prompts de clarification et routage TTS
 │   ├── system_healing_service.py        # SRE autonome : analyse RCA, tests sandbox isolés, auto-tests, Blue/Green releases, symlink
 │   ├── metrics_service.py               # Observabilité : enregistrement asynchrone Postgres/RAM des appels d'outils, latences, tiers
 │   ├── browser_service.py               # Navigation Playwright headless VPS et local Chrome CDP, recherche DuckDuckGo, Send to Kindle
@@ -706,6 +708,24 @@ La stratégie d'exécution et de repli de J.A.R.V.I.S. respecte une hiérarchie 
    - Interruption utilisateur : journalisation explicite `SPEECH_CUT reason=user_barge_in source=web|esp32` et incrémentation de `user_barge_in_cuts`.
    - Interruption accidentelle ou interne (système, conflit d'outils) : journalisation explicite `SPEECH_CUT reason=internal` et incrémentation de `internal_speech_cuts`.
    - Compteur `internal_speech_cuts` et ratio de fluidité exposés et tracés en temps réel sur `/api/supervision/metrics` pour audit et alerte SRE.
+
+### 6.9. Moteur Multilingue Strict FR/EN, Détection par Tour & Routage Vocal TTS (`services/language_service.py`)
+1. **Règle Fondamentale de Parité Linguistique** :
+   - Requête formulée en français ➔ Réponse formulée impérativement en français avec la voix française (`JARVIS_VOICE`, défaut `Aoede`).
+   - Requête formulée en anglais ➔ Réponse formulée impérativement en anglais avec la voix anglaise (`JARVIS_VOICE_EN`, défaut `Aoede`, configurable vers `Puck` ou autre).
+2. **Détection Lexicale par Tour de Parole (`detect_turn_language`)** :
+   - Tokenisation intelligente tenant compte des caractères accentués français (`é, è, ê, à, ç, etc.`) et des contractions (`j', c', d', qu', it's, don't, etc.`).
+   - Mots ambigus ou courts (ex. *"ok"*, *"yes"*, *"merci"*, *"stop"*) résolus automatiquement par **héritage du contexte du tour précédent** (`inherited_context`), avec repli par défaut sur le français au tour 1.
+3. **Garde-Fou Absolu Anti-Troisième Langue (`other`)** :
+   - Si l'utilisateur s'exprime dans une troisième langue (espagnol, allemand, italien, etc.), Jarvis a l'**interdiction formelle** de répondre dans cette troisième langue.
+   - Jarvis génère une invite de clarification courte et courtoise en français ou en anglais pour demander à l'utilisateur de reformuler dans l'une des deux langues supportées.
+4. **Déblocage Universel STT (Speech-To-Text)** :
+   - Suppression du paramètre restrictif `language_code="fr-FR"` dans la configuration de session Gemini Live (`SpeechConfig`), permettant au moteur ASR multimodal de transcrire naturellement le français et l'anglais sans forcer un locale unique.
+5. **Instruction Dynamique par Tour & Routage Vocal TTS** :
+   - Injection systématique d'une directive de tour (`[LANGUE DU TOUR : FRANÇAIS]` ou `[TURN LANGUAGE : ENGLISH]`) en amont de l'invite de session et lors des échanges écrits.
+   - Routage de la voix de synthèse via `get_tts_voice_for_language(lang, default_voice)` avec repli sécurisé sur `JARVIS_VOICE` si la voix anglaise est absente ou non spécifiée.
+6. **Audit & Persistance par Tour (`turn_audit`)** :
+   - Sauvegarde de la langue détectée (`language TEXT DEFAULT 'fr'`) dans la base de données SQLite locale (`jarvis_memory.db`) avec migration automatique du schéma pour le suivi et l'observabilité.
 
 ---
 
@@ -1577,6 +1597,8 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 - `JWT_SECRET_KEY` : Clé secrète 64 octets signant les JWT (générée automatiquement si absente).
 - `GEMINI_API_KEY_FREE` : Clé gratuite pour la voix Live standard et les classifications T1.
 - `GEMINI_API_KEY_PAID` : Clé payante pour les modèles Pro/Claude et la vision Browser-Use.
+- `JARVIS_VOICE` : Voix de synthèse française pour Gemini Live (défaut `Aoede`).
+- `JARVIS_VOICE_EN` : Voix de synthèse anglaise pour Gemini Live (défaut `Aoede` ou configurable `Puck`).
 - `CLOUDFLARE_TUNNEL_TOKEN` : Jeton d'authentification du tunnel Zero Trust permanent.
 - `SMTP_USER` / `SMTP_PASSWORD` : Identifiants Gmail pour l'envoi de rapports Stark HTML.
 - `REDIS_HOST` / `POSTGRES_HOST` / `QDRANT_HOST` : Hôtes Docker (défaut `127.0.0.1`).
@@ -1584,7 +1606,8 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ### 14.8. Exécution des Tests & Validation Hors-Ligne
 - Lancer l'intégralité des tests : `.\venv\Scripts\pytest.exe -v tests/`
-- Lancer un test ciblé : `.\venv\Scripts\pytest.exe -v tests/test_architecture_service.py`
+- Lancer les tests unitaires : `.\venv\Scripts\pytest.exe -v tests/unit/` (206 tests unitaires hors-ligne)
+- Lancer un test ciblé : `.\venv\Scripts\pytest.exe -v tests/unit/test_language_service.py`
 - *Règle d'or de test* : Tous les tests unitaires s'exécutent hors-ligne sans consommer le moindre centime d'API grâce aux mocks dans `tests/conftest.py`.
 
 ### 14.9. Procédure de Déploiement & Maintenance Cloud
@@ -1597,4 +1620,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.74.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.75.0.*
