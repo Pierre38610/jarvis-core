@@ -56,19 +56,19 @@ def test_search_router_ambiguous_defaults_to_l1():
         assert decision.reason != ""
 
 
-def test_search_router_structured_navigation_l2():
-    """Les requêtes de navigation web structurée doivent router vers L2 (browser_task)."""
-    nav_queries = [
-        "Ajoute ce produit au panier sur Amazon",
-        "Réserve un billet de train sur SNCF Connect",
-        "Connecte-toi à mon espace client et télécharge la facture",
-        "Remplis le formulaire de contact sur le site",
-        "Va sur https://example.com/login et valide",
+def test_search_router_multi_agent_cli_l2():
+    """Les requêtes de comparatif et analyse multi-sources doivent router vers L2 (launch_deep_research)."""
+    l2_queries = [
+        "Fais une analyse tactique et comparative des solutions CRM",
+        "Compare en détail les frameworks React et Vue",
+        "Analyse multi-sources sur les coûts de l'énergie en Europe",
+        "Fais un benchmark technique des bases vectorielles",
     ]
-    for query in nav_queries:
+    for query in l2_queries:
         decision = route_search_intent(query)
         assert decision.level == "L2", f"Query '{query}' did not route to L2"
-        assert decision.tool == "browser_task"
+        assert decision.tool == "launch_deep_research"
+        assert decision.tool != "browser_task"
         assert decision.tier == 2
         assert decision.effort == "medium"
         assert decision.timeout == 120
@@ -76,7 +76,7 @@ def test_search_router_structured_navigation_l2():
 
 
 def test_search_router_deep_research_l3():
-    """Les études de fond et recherches multi-sources doivent router vers L3 (launch_deep_research)."""
+    """Les études de fond et recherches approfondies doivent router vers L3 (browser_task avec recipe gemini_deep_research)."""
     deep_queries = [
         "Fais une analyse approfondie du marché des réacteurs nucléaires SMR",
         "Cartographie exhaustive de l'écosystème IA en Europe avec rapport complet",
@@ -86,7 +86,9 @@ def test_search_router_deep_research_l3():
     for query in deep_queries:
         decision = route_search_intent(query)
         assert decision.level == "L3", f"Query '{query}' did not route to L3"
-        assert decision.tool == "launch_deep_research"
+        assert decision.tool == "browser_task"
+        assert decision.tool != "launch_deep_research"
+        assert decision.recipe == "gemini_deep_research"
         assert decision.tier == 3
         assert decision.effort == "high"
         assert decision.timeout == 600
@@ -108,7 +110,20 @@ def test_search_router_vocal_overrides():
         assert decision.is_override is True
         assert decision.tier == 1
 
-    # Override L3 prioritaire
+    # Override L2 tactique multi-agent CLI
+    override_l2_queries = [
+        "Fais une analyse tactique de la situation",
+        "Passe au niveau deux pour comparer",
+    ]
+    for query in override_l2_queries:
+        decision = route_search_intent(query)
+        assert decision.level == "L2"
+        assert decision.tool == "launch_deep_research"
+        assert decision.tool != "browser_task"
+        assert decision.tier == 2
+        assert decision.is_override is True
+
+    # Override L3 prioritaire -> browser_task (gemini_deep_research)
     override_l3_queries = [
         "Analyse en profondeur la situation politique au Japon",
         "Prends tout ton temps pour examiner les bilans financiers de Tesla",
@@ -117,7 +132,9 @@ def test_search_router_vocal_overrides():
     for query in override_l3_queries:
         decision = route_search_intent(query)
         assert decision.level == "L3"
-        assert decision.tool == "launch_deep_research"
+        assert decision.tool == "browser_task"
+        assert decision.tool != "launch_deep_research"
+        assert decision.recipe == "gemini_deep_research"
         assert decision.is_override is True
         assert decision.tier == 3
 
@@ -282,7 +299,7 @@ async def test_dispatcher_launch_deep_research_idempotency():
 
 
 def test_search_router_regex_l3_variations():
-    """Vérifie que toutes les formulations de niveau 3 (L3, niveau 3, tier 3, etc.) routent vers L3."""
+    """Vérifie que toutes les formulations de niveau 3 (L3, niveau 3, tier 3, etc.) routent vers L3 (browser_task avec recipe gemini_deep_research)."""
     l3_phrases = [
         "Fais une recherche de niveau 3 sur les supraconducteurs",
         "Lance une recherche L3 sur le graphène",
@@ -298,13 +315,15 @@ def test_search_router_regex_l3_variations():
     for q in l3_phrases:
         decision = route_search_intent(q)
         assert decision.level == "L3", f"Phrase '{q}' did not route to L3"
-        assert decision.tool == "launch_deep_research"
+        assert decision.tool == "browser_task"
+        assert decision.tool != "launch_deep_research"
+        assert decision.recipe == "gemini_deep_research"
         assert decision.is_override is True
 
 
 @pytest.mark.asyncio
-async def test_dispatcher_browser_task_redirects_to_l3_when_l3_requested():
-    """Vérifie que browser_task redirige automatiquement vers launch_deep_research si un L3 est mentionné."""
+async def test_dispatcher_browser_task_executes_l3_when_l3_requested():
+    """Vérifie que browser_task traite directement la recherche L3 avec recipe gemini_deep_research."""
     from core.tools.dispatcher import dispatch_tool
     from core.tools.result import ToolResult
 
@@ -329,8 +348,8 @@ async def test_dispatcher_browser_task_redirects_to_l3_when_l3_requested():
 
 
 @pytest.mark.asyncio
-async def test_dispatcher_browser_task_redirects_on_recipe_gemini_deep_research():
-    """Vérifie que browser_task avec recipe='gemini_deep_research' redirige vers launch_deep_research même sans mot-clé L3."""
+async def test_dispatcher_browser_task_handles_recipe_gemini_deep_research():
+    """Vérifie que browser_task avec recipe='gemini_deep_research' exécute la recherche web L3."""
     from core.tools.dispatcher import dispatch_tool
     from core.tools.result import ToolResult
 
@@ -354,7 +373,7 @@ async def test_dispatcher_browser_task_redirects_on_recipe_gemini_deep_research(
 
 @pytest.mark.asyncio
 async def test_dispatcher_search_web_redirects_to_l3():
-    """Vérifie que search_web redirige automatiquement vers launch_deep_research pour une requête L3."""
+    """Vérifie que search_web redirige automatiquement vers browser_task (gemini_deep_research) pour une requête L3."""
     from core.tools.dispatcher import dispatch_tool
     from core.tools.result import ToolResult
 
@@ -446,7 +465,7 @@ async def test_dispatcher_launch_deep_research_non_blocking_returns_started():
             session=None,
         )
         assert resp["status"] == "started"
-        assert "recherche approfondie de niveau 3" in resp["user_message"].lower()
+        assert "niveau 2" in resp["user_message"].lower() or "analyse multi-agents" in resp["user_message"].lower()
         assert active_task_controller.get("deep_research_bg_task") is not None
         await asyncio.sleep(0.05)
 
@@ -479,3 +498,36 @@ async def test_dispatcher_launch_deep_research_bg_failure_injects_voice():
         mock_enqueue.assert_awaited()
         call_kwargs = mock_enqueue.await_args.kwargs
         assert "n'a pas pu aboutir" in call_kwargs.get("text", "") or "échoué" in call_kwargs.get("text", "")
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_browser_task_l3_fallback_announces_repli_cli():
+    """Si la recherche web L3 échoue, browser_task bascule sur le CLI et annonce explicitement [Repli CLI]."""
+    from core.tools.dispatcher import dispatch_tool
+    from core.tools.result import ToolResult
+    from services.google_antigravity import AgentOutput
+
+    mock_agent_out = AgentOutput(
+        status="success",
+        conclusion="Synthèse CLI de secours",
+        sources=["https://example.com"],
+        confidence="high",
+    )
+
+    with patch("core.tools.dispatcher.run_browser_agent_task", new_callable=AsyncMock, return_value=ToolResult.failed("Navigation web échouée", "web_timeout")), \
+         patch("core.tools.dispatcher.verify_antigravity_cli_ready", new_callable=AsyncMock, return_value=(True, "", None)), \
+         patch("core.tools.dispatcher.run_agentic", new_callable=AsyncMock, return_value=mock_agent_out), \
+         patch("services.local_agent_service.is_pc_connected_async", new_callable=AsyncMock, return_value=True):
+        resp = await dispatch_tool(
+            name="browser_task",
+            args={"goal": "Thèse sur la supraconductivité", "recipe": "gemini_deep_research", "sync": True},
+            websocket=None,
+            session=None,
+        )
+        assert resp["status"] == "done"
+        assert "[Repli CLI]" in resp["user_message"]
+        assert resp.get("fallback_used") is True
+        assert resp.get("cli_fallback") is True
+        assert resp.get("web_search_failed") is True
+
+

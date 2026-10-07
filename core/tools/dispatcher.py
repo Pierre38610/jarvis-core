@@ -10,7 +10,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Optional
+from typing import Any, Optional, Dict
 
 from google.genai import types
 
@@ -211,6 +211,355 @@ def _resolve_agy_effort(effort_override: Optional[str], default: str = "high", t
     if e in ("high", "approfondie", "max", "tier3", "tier 3", "fond"):
         return "high"
     return default
+
+
+async def _execute_cli_map_reduce_pipeline(
+    consigne: str,
+    envoyer_email: bool = False,
+    destinataire_email: Optional[str] = None,
+    session: Any = None,
+    websocket: Any = None,
+    is_cli_fallback: bool = False,
+    fallback_cause: str = "",
+) -> ToolResult:
+    """
+    Exécute le pipeline 3 phases Map-Reduce Antigravity CLI :
+      - Phase 1 : Prospecteur (gemini-2.5-flash / effort medium)
+      - Phase 2 : Analyste (gemini-2.5-pro / effort high)
+      - Phase 3 : Synthèse (gemini-2.5-pro / effort medium)
+    Utilisé pour l'analyse multi-agents L2 et comme repli de secours explicite pour L3.
+    """
+    cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
+    if not cli_ok:
+        clean_err = sanitize_error_text(cli_err or "cli_not_ready")
+        l3_err = L3ErrorDetails(
+            etape="cli_verification",
+            exception=clean_err,
+            traceback_court="",
+            cause_courte=f"Antigravity CLI indisponible sur le serveur VPS ({clean_err})",
+            fallback_initiated=is_cli_fallback,
+        )
+        set_last_l3_error(l3_err)
+        logger.error(f"[CLI Map-Reduce] [Étape: cli_verification] {l3_err.cause_courte}")
+        return ToolResult.failed(
+            user_message=f"Échec à l'étape 'cli_verification' : {l3_err.cause_courte}.",
+            error_hint=clean_err,
+            verified=False,
+            data={"l3_error": l3_err.to_dict(), "cli_fallback": is_cli_fallback},
+        )
+
+    t_total_0 = time.perf_counter()
+    session_id = getattr(session, "id", None) if session else None
+    allow_paid = bool(active_task_controller.get("paid_consent_given", False))
+
+    # ── Phase 1 : Prospecteur (flash/medium) ──
+    p_agent_id = f"agy_prospector_{int(time.time()*1000)}"
+    p_ws = os.path.join(config.WORKSPACE_DIR, p_agent_id)
+    os.makedirs(p_ws, exist_ok=True)
+    t_p0 = time.perf_counter()
+    await spawn_subagent(
+        agent_id=p_agent_id,
+        name="Prospecteur",
+        role="Recherche & Faits",
+        activity="browsing",
+        task=f"Prospection : {consigne[:50]} (flash/medium)",
+        model=MODEL_FLASH,
+    )
+    try:
+        await update_subagent(p_agent_id, activity="browsing", task="Collecte exhaustive des sources & données...")
+        out_p: AgentOutput = await run_agentic(
+            role="prospector",
+            prompt=f"Collecte et prospection exhaustive de données et sources sur : {consigne}",
+            model=MODEL_FLASH,
+            effort="medium",
+            timeout=300,
+            session_id=session_id,
+            task_id=p_agent_id,
+            allow_paid_fallback=allow_paid,
+            workspace=p_ws,
+            worker_id="prospector",
+        )
+        dur_p = time.perf_counter() - t_p0
+        await complete_subagent(p_agent_id, summary=f"{out_p.conclusion[:70]} (flash/medium, durée: {dur_p:.1f}s)")
+        if out_p.status != "success":
+            err_msg = sanitize_error_text(out_p.error or out_p.conclusion or "prospector_phase_failed")
+            l3_err = L3ErrorDetails(
+                etape="prospector_phase",
+                exception=err_msg,
+                traceback_court="",
+                cause_courte=f"Échec de la collecte des sources ({err_msg[:100]})",
+                fallback_initiated=is_cli_fallback,
+            )
+            set_last_l3_error(l3_err)
+            logger.error(f"[CLI Map-Reduce] [Étape: prospector_phase] {l3_err.cause_courte}")
+            return ToolResult.failed(
+                user_message=f"Échec à l'étape 'prospector_phase' : {l3_err.cause_courte}.",
+                error_hint=err_msg,
+                verified=False,
+                data={"l3_error": l3_err.to_dict(), "cli_fallback": is_cli_fallback},
+            )
+    except Exception as e:
+        dur_p = time.perf_counter() - t_p0
+        import traceback
+        tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
+        e_sanitized = sanitize_error_text(str(e))
+        l3_err = L3ErrorDetails(
+            etape="prospector_phase",
+            exception=f"{e.__class__.__name__}: {e_sanitized}",
+            traceback_court=tb_short,
+            cause_courte=f"Erreur phase Prospecteur ({e_sanitized[:100]})",
+            fallback_initiated=is_cli_fallback,
+        )
+        set_last_l3_error(l3_err)
+        logger.error(f"[CLI Map-Reduce] [Étape: prospector_phase] {l3_err.cause_courte}\n{tb_short}", exc_info=True)
+        await complete_subagent(p_agent_id, summary=f"Erreur: {e_sanitized[:70]} (durée: {dur_p:.1f}s)")
+        return ToolResult.failed(
+            user_message=f"Échec à l'étape 'prospector_phase' : {l3_err.cause_courte}.",
+            error_hint=e_sanitized,
+            verified=False,
+            data={"l3_error": l3_err.to_dict(), "cli_fallback": is_cli_fallback},
+        )
+
+    # ── Phase 2 : Analyste (pro/high) ──
+    a_agent_id = f"agy_analyst_{int(time.time()*1000)}"
+    a_ws = os.path.join(config.WORKSPACE_DIR, a_agent_id)
+    os.makedirs(a_ws, exist_ok=True)
+    t_a0 = time.perf_counter()
+    await spawn_subagent(
+        agent_id=a_agent_id,
+        name="Analyste",
+        role="Critique & Logique",
+        activity="thinking",
+        task="Analyse critique & logique (pro/high)",
+        model=MODEL_PRO,
+    )
+    try:
+        await update_subagent(a_agent_id, activity="thinking", task="Analyse critique, détection de biais et triangulation...")
+        out_a: AgentOutput = await run_agentic(
+            role="critic",
+            prompt=(
+                f"Analyse critique et triangulation pour la consigne : {consigne}\n"
+                f"Données brutes recueillies par le prospecteur :\n{out_p.conclusion}\n"
+                f"Sources : {json.dumps(out_p.sources, ensure_ascii=False)}"
+            ),
+            model=MODEL_PRO,
+            effort="high",
+            timeout=300,
+            session_id=session_id,
+            task_id=a_agent_id,
+            allow_paid_fallback=allow_paid,
+            workspace=a_ws,
+            worker_id="analyst",
+        )
+        dur_a = time.perf_counter() - t_a0
+        await complete_subagent(a_agent_id, summary=f"{out_a.conclusion[:70]} (pro/high, durée: {dur_a:.1f}s)")
+        if out_a.status != "success":
+            err_msg = sanitize_error_text(out_a.error or out_a.conclusion or "analyst_phase_failed")
+            l3_err = L3ErrorDetails(
+                etape="analyst_phase",
+                exception=err_msg,
+                traceback_court="",
+                cause_courte=f"Échec de l'analyse critique ({err_msg[:100]})",
+                fallback_initiated=is_cli_fallback,
+            )
+            set_last_l3_error(l3_err)
+            logger.error(f"[CLI Map-Reduce] [Étape: analyst_phase] {l3_err.cause_courte}")
+            return ToolResult.failed(
+                user_message=f"Échec à l'étape 'analyst_phase' : {l3_err.cause_courte}.",
+                error_hint=err_msg,
+                verified=False,
+                data={"l3_error": l3_err.to_dict(), "cli_fallback": is_cli_fallback},
+            )
+    except Exception as e:
+        dur_a = time.perf_counter() - t_a0
+        import traceback
+        tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
+        e_sanitized = sanitize_error_text(str(e))
+        l3_err = L3ErrorDetails(
+            etape="analyst_phase",
+            exception=f"{e.__class__.__name__}: {e_sanitized}",
+            traceback_court=tb_short,
+            cause_courte=f"Erreur phase Analyste ({e_sanitized[:100]})",
+            fallback_initiated=is_cli_fallback,
+        )
+        set_last_l3_error(l3_err)
+        logger.error(f"[CLI Map-Reduce] [Étape: analyst_phase] {l3_err.cause_courte}\n{tb_short}", exc_info=True)
+        await complete_subagent(a_agent_id, summary=f"Erreur: {e_sanitized[:70]} (durée: {dur_a:.1f}s)")
+        return ToolResult.failed(
+            user_message=f"Échec à l'étape 'analyst_phase' : {l3_err.cause_courte}.",
+            error_hint=e_sanitized,
+            verified=False,
+            data={"l3_error": l3_err.to_dict(), "cli_fallback": is_cli_fallback},
+        )
+
+    # ── Phase 3 : Synthèse (pro/medium) ──
+    s_agent_id = f"agy_synthesis_{int(time.time()*1000)}"
+    s_ws = os.path.join(config.WORKSPACE_DIR, s_agent_id)
+    os.makedirs(s_ws, exist_ok=True)
+    t_s0 = time.perf_counter()
+    await spawn_subagent(
+        agent_id=s_agent_id,
+        name="Synthèse",
+        role="Rédaction & Artefact",
+        activity="coding",
+        task="Synthèse finale & livrable (pro/medium)",
+        model=MODEL_PRO,
+    )
+    try:
+        await update_subagent(s_agent_id, activity="coding", task="Rédaction du rapport de synthèse final...")
+        out_s: AgentOutput = await run_agentic(
+            role="synthesis",
+            prompt=(
+                f"Consigne initiale : {consigne}\n"
+                f"Données vérifiées de l'analyste :\n{out_a.conclusion}\n"
+                f"Questions ouvertes restantes : {json.dumps(out_a.open_questions, ensure_ascii=False)}\n"
+                f"Rédige une synthèse exécutive structurée et percutante."
+            ),
+            model=MODEL_PRO,
+            effort="medium",
+            timeout=300,
+            session_id=session_id,
+            task_id=s_agent_id,
+            allow_paid_fallback=allow_paid,
+            workspace=s_ws,
+            worker_id="synthesis",
+        )
+        dur_s = time.perf_counter() - t_s0
+        await complete_subagent(s_agent_id, summary=f"{out_s.conclusion[:70]} (pro/medium, durée: {dur_s:.1f}s)")
+        if out_s.status != "success":
+            err_msg = sanitize_error_text(out_s.error or out_s.conclusion or "synthesis_phase_failed")
+            l3_err = L3ErrorDetails(
+                etape="synthesis_phase",
+                exception=err_msg,
+                traceback_court="",
+                cause_courte=f"Échec de la synthèse finale ({err_msg[:100]})",
+                fallback_initiated=is_cli_fallback,
+            )
+            set_last_l3_error(l3_err)
+            logger.error(f"[CLI Map-Reduce] [Étape: synthesis_phase] {l3_err.cause_courte}")
+            return ToolResult.failed(
+                user_message=f"Échec à l'étape 'synthesis_phase' : {l3_err.cause_courte}.",
+                error_hint=err_msg,
+                verified=False,
+                data={"l3_error": l3_err.to_dict(), "cli_fallback": is_cli_fallback},
+            )
+    except Exception as e:
+        dur_s = time.perf_counter() - t_s0
+        import traceback
+        tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
+        e_sanitized = sanitize_error_text(str(e))
+        l3_err = L3ErrorDetails(
+            etape="synthesis_phase",
+            exception=f"{e.__class__.__name__}: {e_sanitized}",
+            traceback_court=tb_short,
+            cause_courte=f"Erreur phase Synthèse ({e_sanitized[:100]})",
+            fallback_initiated=is_cli_fallback,
+        )
+        set_last_l3_error(l3_err)
+        logger.error(f"[CLI Map-Reduce] [Étape: synthesis_phase] {l3_err.cause_courte}\n{tb_short}", exc_info=True)
+        await complete_subagent(s_agent_id, summary=f"Erreur: {e_sanitized[:70]} (durée: {dur_s:.1f}s)")
+        return ToolResult.failed(
+            user_message=f"Échec à l'étape 'synthesis_phase' : {l3_err.cause_courte}.",
+            error_hint=e_sanitized,
+            verified=False,
+            data={"l3_error": l3_err.to_dict(), "cli_fallback": is_cli_fallback},
+        )
+
+    total_duration = time.perf_counter() - t_total_0
+    all_sources = list(out_p.sources) + [s for s in out_a.sources if s not in out_p.sources]
+
+    pc_online = False
+    try:
+        from services.local_agent_service import is_pc_connected_async
+        pc_online = await is_pc_connected_async()
+    except Exception:
+        pass
+
+    subject_tag = "[Repli CLI]" if is_cli_fallback else "[Multi-Agents L2]"
+    delivery_info: Dict[str, Any] = {
+        "delivery_mode": "screen" if pc_online else "email",
+        "status": "pending",
+    }
+
+    should_send_mail = envoyer_email or (not pc_online)
+    if should_send_mail:
+        try:
+            dest = destinataire_email or "pierrecassagnettes@gmail.com"
+            await send_email_async(
+                subject=f"{subject_tag} Synthèse : {consigne[:60]}",
+                body=out_s.conclusion,
+                to_email=dest,
+                attachments=out_s.artifacts,
+                session_id=session_id,
+            )
+            logger.info(f"[CLI Map-Reduce] Synthèse livrée par e-mail à {dest} (pc_online={pc_online}, envoyer_email={envoyer_email})")
+            delivery_info = {
+                "delivery_mode": "email",
+                "status": "sent",
+                "to_email": dest,
+                "attachments": out_s.artifacts,
+            }
+        except Exception as mail_err:
+            logger.warning(f"[CLI Map-Reduce] [Échec envoi e-mail] {mail_err}")
+            delivery_info = {
+                "delivery_mode": "email",
+                "status": "error",
+                "error": str(mail_err),
+            }
+    else:
+        delivery_info = {
+            "delivery_mode": "screen",
+            "status": "success",
+            "message": "Affiché sur la session et l'interface Jarvis.",
+        }
+        if websocket:
+            try:
+                ann_title = f"{subject_tag} Synthèse prête : {consigne[:60]}"
+                await websocket.send_text(json.dumps({
+                    "type": "jarvis_announcement",
+                    "text": ann_title,
+                    "voice": False,
+                }))
+            except Exception:
+                pass
+
+    if is_cli_fallback:
+        notice = (
+            f"[Repli CLI] La recherche web Gemini Deep Research a rencontré une indisponibilité "
+            f"({fallback_cause or 'échec web'}). Synthèse réalisée via le moteur de secours multi-agents Antigravity CLI :\n\n"
+        )
+        final_user_message = f"{notice}{out_s.conclusion}"
+    else:
+        final_user_message = out_s.conclusion
+
+    evidence_text = f"3 phases (flash/medium -> pro/high -> pro/medium), Durée totale: {total_duration:.1f}s, Confiance: {out_s.confidence}"
+    if is_cli_fallback:
+        evidence_text += " [Repli CLI]"
+
+    return ToolResult.done(
+        user_message=final_user_message,
+        evidence=evidence_text,
+        verified=True,
+        data={
+            "conclusion": out_s.conclusion,
+            "confidence": out_s.confidence,
+            "sources": all_sources,
+            "artifacts": out_s.artifacts,
+            "open_questions": out_s.open_questions,
+            "delivery": delivery_info,
+            "phases": {
+                "prospector": {"model": MODEL_FLASH, "effort": "medium", "duration_s": round(dur_p, 2)},
+                "analyst": {"model": MODEL_PRO, "effort": "high", "duration_s": round(dur_a, 2)},
+                "synthesis": {"model": MODEL_PRO, "effort": "medium", "duration_s": round(dur_s, 2)},
+            },
+            "total_duration_s": round(total_duration, 2),
+            "fallback_used": is_cli_fallback,
+            "cli_fallback": is_cli_fallback,
+            "web_search_failed": is_cli_fallback,
+            "fallback_cause": fallback_cause if is_cli_fallback else "",
+            "is_l2_analysis": not is_cli_fallback,
+        },
+    )
 
 
 async def dispatch_tool(
@@ -613,7 +962,21 @@ async def _execute_dispatch_tool(
         if tier is None and search_route.level == "L3" and _is_explicit_l3_research_request(question):
             logger.info(
                 "[Dispatcher] Redirection automatique de ask_deep_reasoning vers "
-                "launch_deep_research pour une intention L3 : '%s'",
+                "browser_task (gemini_deep_research) pour une intention L3 : '%s'",
+                question,
+            )
+            return await dispatch_tool(
+                name="browser_task",
+                args={"goal": question, "recipe": "gemini_deep_research", "sync": args.get("sync", False)},
+                websocket=websocket,
+                session=session,
+                is_paid_live=is_paid_live,
+                live_display_label=live_display_label,
+            )
+        elif tier is None and search_route.level == "L2":
+            logger.info(
+                "[Dispatcher] Redirection automatique de ask_deep_reasoning vers "
+                "launch_deep_research (multi-agent CLI L2) pour une intention L2 : '%s'",
                 question,
             )
             return await dispatch_tool(
@@ -712,25 +1075,46 @@ async def _execute_dispatch_tool(
                 verified=False,
             )
 
-    # ─── launch_deep_research (Deep Research 3 phases Map-Reduce) ─────────────
-    # ─── launch_deep_research (Deep Research 3 phases Map-Reduce) ─────────────
+    # ─── launch_deep_research (Analyse Multi-Agents CLI L2) ───────────────────
     elif name in ("launch_deep_research", "deep_research", "lancer_mission_deep_research"):
         consigne = args.get("consigne") or args.get("consigne_utilisateur") or args.get("sujet") or ""
         envoyer_email = bool(args.get("envoyer_email", False))
         destinataire_email = args.get("destinataire_email")
         is_sync = bool(args.get("sync", False) or args.get("wait_completion", False))
+        is_cli_fallback = bool(args.get("is_cli_fallback", False))
 
         if not acquire_search_lock(consigne):
             return ToolResult.done(
-                user_message=f"Une mission de recherche approfondie sur « {consigne} » est déjà en cours d'exécution.",
+                user_message=f"Une mission sur « {consigne} » est déjà en cours d'exécution.",
                 evidence="idempotent_dedup",
                 verified=True,
                 data={"status": "in_progress", "query": consigne}
             )
 
+        # Redirection automatique vers browser_task (L3) si intention L3 ou appel direct des alias deep research
+        routing_check = route_search_intent(consigne)
+        if (routing_check.level == "L3" or name in ("lancer_mission_deep_research", "deep_research")) and not is_cli_fallback:
+            release_search_lock(consigne)
+            logger.info(f"[Dispatcher] Redirection automatique de {name} vers browser_task (L3 Gemini Deep Research) pour : '{consigne}'")
+            return await dispatch_tool(
+                name="browser_task",
+                args={
+                    "goal": consigne,
+                    "recipe": "gemini_deep_research",
+                    "envoyer_email": envoyer_email,
+                    "destinataire_email": destinataire_email,
+                    "sync": is_sync,
+                    "wait_completion": is_sync,
+                },
+                websocket=websocket,
+                session=session,
+                is_paid_live=is_paid_live,
+                live_display_label=live_display_label,
+            )
+
         supervision_service.start_action(
             "deep_research",
-            "Recherche Approfondie L3",
+            "Analyse Multi-Agents CLI L2",
             "launch_deep_research",
             consigne,
             "Agents Antigravity VPS",
@@ -744,7 +1128,7 @@ async def _execute_dispatch_tool(
             try:
                 await websocket.send_text(json.dumps({
                     "type": "jarvis_announcement",
-                    "text": f"Recherche approfondie de niveau 3 lancée : {consigne}",
+                    "text": f"Analyse multi-agents CLI L2 lancée : {consigne}",
                     "voice": False,
                 }))
             except Exception:
@@ -753,431 +1137,32 @@ async def _execute_dispatch_tool(
         _sess_dr = session
         _ws_dr = websocket
 
-        async def _execute_deep_research_core() -> ToolResult:
+        async def _execute_l2_cli_core() -> ToolResult:
             try:
-                # 1. Tentative préalable via Browser Agent avec recipe="gemini_deep_research"
-                try:
-                    bt_id = f"bt_dr_{int(time.time() * 1000)}"
-                    dr_task = BrowserTask(
-                        task_id=bt_id,
-                        goal=consigne,
-                        recipe="gemini_deep_research",
-                    )
-                    browser_res: ToolResult = await run_browser_agent_task(task=dr_task)
-                    if browser_res and browser_res.is_success and dr_task.status != "failed":
-                        # Vérification de livraison e-mail existante (pour éviter tout doublon)
-                        already_emailed = False
-                        if isinstance(browser_res.data, dict):
-                            delivery = browser_res.data.get("delivery")
-                            if isinstance(delivery, dict) and delivery.get("delivery_mode") in ("email", "email_fallback") and delivery.get("status") == "sent":
-                                already_emailed = True
-
-                        pc_online = False
-                        try:
-                            from services.local_agent_service import is_pc_connected_async
-                            pc_online = await is_pc_connected_async()
-                        except Exception:
-                            pass
-
-                        should_email = envoyer_email or (not pc_online)
-                        if should_email and not already_emailed and browser_res.user_message:
-                            try:
-                                dest = destinataire_email or "pierrecassagnettes@gmail.com"
-                                md_path = browser_res.data.get("markdown_path") if isinstance(browser_res.data, dict) else None
-                                attachments = [md_path] if md_path and os.path.exists(md_path) else []
-                                await send_email_async(
-                                    subject=f"[Deep Research] Synthèse : {consigne[:60]}",
-                                    body=browser_res.user_message,
-                                    to_email=dest,
-                                    attachments=attachments,
-                                    session_id=getattr(_sess_dr, "id", None) if _sess_dr else None,
-                                )
-                                logger.info(f"[DeepResearch] Rapport livré par e-mail à {dest} (pc_online={pc_online}, envoyer_email={envoyer_email})")
-                                if isinstance(browser_res.data, dict):
-                                    browser_res.data["delivery"] = {
-                                        "delivery_mode": "email",
-                                        "status": "sent",
-                                        "to_email": dest,
-                                        "attachment": md_path,
-                                    }
-                            except Exception as mail_err:
-                                logger.warning(f"[DeepResearch] [Échec envoi e-mail] {mail_err}")
-                                if isinstance(browser_res.data, dict):
-                                    browser_res.data["delivery"] = {
-                                        "delivery_mode": "email",
-                                        "status": "error",
-                                        "error": str(mail_err),
-                                    }
-
-                        if pc_online and _ws_dr:
-                            try:
-                                await _ws_dr.send_text(json.dumps({
-                                    "type": "jarvis_announcement",
-                                    "text": f"Rapport de recherche approfondie prêt : {consigne[:60]}",
-                                    "voice": False,
-                                }))
-                            except Exception:
-                                pass
-
-                        return browser_res
-                    else:
-                        err_step = "browser_agent"
-                        err_cause = "tâche non aboutie"
-                        err_details = None
-                        if browser_res and isinstance(browser_res.data, dict) and "l3_error" in browser_res.data:
-                            err_details = browser_res.data["l3_error"]
-                            err_step = err_details.get("etape", err_step)
-                            err_cause = err_details.get("cause_courte", err_details.get("exception", err_cause))
-                        elif dr_task and getattr(dr_task, "last_error", None):
-                            err_details = dr_task.last_error
-                            err_step = err_details.get("etape", err_step)
-                            err_cause = err_details.get("cause_courte", err_details.get("exception", err_cause))
-                        elif browser_res and browser_res.error_hint:
-                            err_cause = browser_res.error_hint
-
-                        logger.info(f"[DeepResearch] [Étape: {err_step}] Browser task gemini_deep_research non réussi ({err_cause}), repli vers le moteur Map-Reduce.")
-                except Exception as b_err:
-                    import traceback
-                    tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
-                    b_err_sanitized = sanitize_error_text(str(b_err))
-                    l3_err = L3ErrorDetails(
-                        etape="browser_task_exception",
-                        exception=f"{b_err.__class__.__name__}: {b_err_sanitized}",
-                        traceback_court=tb_short,
-                        cause_courte=f"Erreur Browser Task ({b_err.__class__.__name__})",
-                        fallback_initiated=True,
-                    )
-                    set_last_l3_error(l3_err)
-                    logger.warning(f"[DeepResearch] [EXCEPTION RECHERCHE L3] Erreur browser task gemini_deep_research ({b_err_sanitized}), repli vers le moteur Map-Reduce.\n{tb_short}")
-
-                # 2. Repli existant Map-Reduce (Phase 1: Prospecteur, Phase 2: Analyste, Phase 3: Synthèse)
-                cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
-                if not cli_ok:
-                    clean_err = sanitize_error_text(cli_err or "cli_not_ready")
-                    l3_err = L3ErrorDetails(
-                        etape="cli_verification",
-                        exception=clean_err,
-                        traceback_court="",
-                        cause_courte=f"Antigravity CLI indisponible sur le serveur VPS ({clean_err})",
-                        fallback_initiated=False,
-                    )
-                    set_last_l3_error(l3_err)
-                    logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] [Étape: cli_verification] {l3_err.cause_courte}")
-                    return ToolResult.failed(
-                        user_message=f"Échec à l'étape 'cli_verification' : {l3_err.cause_courte}.",
-                        error_hint=clean_err,
-                        verified=False,
-                        data={"l3_error": l3_err.to_dict()},
-                    )
-
-                t_total_0 = time.perf_counter()
-                session_id = getattr(_sess_dr, "id", None) if _sess_dr else None
-                allow_paid = bool(active_task_controller.get("paid_consent_given", False))
-
-                # ── Phase 1 : Prospecteur (flash/medium) ──
-                p_agent_id = f"agy_prospector_{int(time.time()*1000)}"
-                p_ws = os.path.join(config.WORKSPACE_DIR, p_agent_id)
-                os.makedirs(p_ws, exist_ok=True)
-                t_p0 = time.perf_counter()
-                await spawn_subagent(
-                    agent_id=p_agent_id,
-                    name="Prospecteur",
-                    role="Recherche & Faits",
-                    activity="browsing",
-                    task=f"Prospection : {consigne[:50]} (flash/medium)",
-                    model=MODEL_FLASH,
-                )
-                try:
-                    await update_subagent(p_agent_id, activity="browsing", task="Collecte exhaustive des sources & données...")
-                    out_p: AgentOutput = await run_agentic(
-                        role="prospector",
-                        prompt=f"Collecte et prospection exhaustive de données et sources sur : {consigne}",
-                        model=MODEL_FLASH,
-                        effort="medium",
-                        timeout=300,
-                        session_id=session_id,
-                        task_id=p_agent_id,
-                        allow_paid_fallback=allow_paid,
-                        workspace=p_ws,
-                        worker_id="prospector",
-                    )
-                    dur_p = time.perf_counter() - t_p0
-                    await complete_subagent(p_agent_id, summary=f"{out_p.conclusion[:70]} (flash/medium, durée: {dur_p:.1f}s)")
-                    if out_p.status != "success":
-                        err_msg = sanitize_error_text(out_p.error or out_p.conclusion or "prospector_phase_failed")
-                        l3_err = L3ErrorDetails(
-                            etape="prospector_phase",
-                            exception=err_msg,
-                            traceback_court="",
-                            cause_courte=f"Échec de la collecte des sources ({err_msg[:100]})",
-                            fallback_initiated=False,
-                        )
-                        set_last_l3_error(l3_err)
-                        logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] [Étape: prospector_phase] {l3_err.cause_courte}")
-                        return ToolResult.failed(
-                            user_message=f"Échec à l'étape 'prospector_phase' : {l3_err.cause_courte}.",
-                            error_hint=err_msg,
-                            verified=False,
-                            data={"l3_error": l3_err.to_dict()},
-                        )
-                except Exception as e:
-                    dur_p = time.perf_counter() - t_p0
-                    import traceback
-                    tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
-                    e_sanitized = sanitize_error_text(str(e))
-                    l3_err = L3ErrorDetails(
-                        etape="prospector_phase",
-                        exception=f"{e.__class__.__name__}: {e_sanitized}",
-                        traceback_court=tb_short,
-                        cause_courte=f"Erreur phase Prospecteur ({e_sanitized[:100]})",
-                        fallback_initiated=False,
-                    )
-                    set_last_l3_error(l3_err)
-                    logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] [Étape: prospector_phase] {l3_err.cause_courte}\n{tb_short}", exc_info=True)
-                    await complete_subagent(p_agent_id, summary=f"Erreur: {e_sanitized[:70]} (durée: {dur_p:.1f}s)")
-                    return ToolResult.failed(
-                        user_message=f"Échec à l'étape 'prospector_phase' : {l3_err.cause_courte}.",
-                        error_hint=e_sanitized,
-                        verified=False,
-                        data={"l3_error": l3_err.to_dict()},
-                    )
-
-                # ── Phase 2 : Analyste (pro/high) ──
-                a_agent_id = f"agy_analyst_{int(time.time()*1000)}"
-                a_ws = os.path.join(config.WORKSPACE_DIR, a_agent_id)
-                os.makedirs(a_ws, exist_ok=True)
-                t_a0 = time.perf_counter()
-                await spawn_subagent(
-                    agent_id=a_agent_id,
-                    name="Analyste",
-                    role="Critique & Logique",
-                    activity="thinking",
-                    task="Analyse critique & logique (pro/high)",
-                    model=MODEL_PRO,
-                )
-                try:
-                    await update_subagent(a_agent_id, activity="thinking", task="Analyse critique, détection de biais et triangulation...")
-                    out_a: AgentOutput = await run_agentic(
-                        role="critic",
-                        prompt=(
-                            f"Analyse critique et triangulation pour la consigne : {consigne}\n"
-                            f"Données brutes recueillies par le prospecteur :\n{out_p.conclusion}\n"
-                            f"Sources : {json.dumps(out_p.sources, ensure_ascii=False)}"
-                        ),
-                        model=MODEL_PRO,
-                        effort="high",
-                        timeout=300,
-                        session_id=session_id,
-                        task_id=a_agent_id,
-                        allow_paid_fallback=allow_paid,
-                        workspace=a_ws,
-                        worker_id="analyst",
-                    )
-                    dur_a = time.perf_counter() - t_a0
-                    await complete_subagent(a_agent_id, summary=f"{out_a.conclusion[:70]} (pro/high, durée: {dur_a:.1f}s)")
-                    if out_a.status != "success":
-                        err_msg = sanitize_error_text(out_a.error or out_a.conclusion or "analyst_phase_failed")
-                        l3_err = L3ErrorDetails(
-                            etape="analyst_phase",
-                            exception=err_msg,
-                            traceback_court="",
-                            cause_courte=f"Échec de l'analyse critique ({err_msg[:100]})",
-                            fallback_initiated=False,
-                        )
-                        set_last_l3_error(l3_err)
-                        logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] [Étape: analyst_phase] {l3_err.cause_courte}")
-                        return ToolResult.failed(
-                            user_message=f"Échec à l'étape 'analyst_phase' : {l3_err.cause_courte}.",
-                            error_hint=err_msg,
-                            verified=False,
-                            data={"l3_error": l3_err.to_dict()},
-                        )
-                except Exception as e:
-                    dur_a = time.perf_counter() - t_a0
-                    import traceback
-                    tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
-                    e_sanitized = sanitize_error_text(str(e))
-                    l3_err = L3ErrorDetails(
-                        etape="analyst_phase",
-                        exception=f"{e.__class__.__name__}: {e_sanitized}",
-                        traceback_court=tb_short,
-                        cause_courte=f"Erreur phase Analyste ({e_sanitized[:100]})",
-                        fallback_initiated=False,
-                    )
-                    set_last_l3_error(l3_err)
-                    logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] [Étape: analyst_phase] {l3_err.cause_courte}\n{tb_short}", exc_info=True)
-                    await complete_subagent(a_agent_id, summary=f"Erreur: {e_sanitized[:70]} (durée: {dur_a:.1f}s)")
-                    return ToolResult.failed(
-                        user_message=f"Échec à l'étape 'analyst_phase' : {l3_err.cause_courte}.",
-                        error_hint=e_sanitized,
-                        verified=False,
-                        data={"l3_error": l3_err.to_dict()},
-                    )
-
-                # ── Phase 3 : Synthèse (pro/medium) ──
-                s_agent_id = f"agy_synthesis_{int(time.time()*1000)}"
-                s_ws = os.path.join(config.WORKSPACE_DIR, s_agent_id)
-                os.makedirs(s_ws, exist_ok=True)
-                t_s0 = time.perf_counter()
-                await spawn_subagent(
-                    agent_id=s_agent_id,
-                    name="Synthèse",
-                    role="Rédaction & Artefact",
-                    activity="coding",
-                    task="Synthèse finale & livrable (pro/medium)",
-                    model=MODEL_PRO,
-                )
-                try:
-                    await update_subagent(s_agent_id, activity="coding", task="Rédaction du rapport de synthèse final...")
-                    out_s: AgentOutput = await run_agentic(
-                        role="synthesis",
-                        prompt=(
-                            f"Consigne initiale : {consigne}\n"
-                            f"Données vérifiées de l'analyste :\n{out_a.conclusion}\n"
-                            f"Questions ouvertes restantes : {json.dumps(out_a.open_questions, ensure_ascii=False)}\n"
-                            f"Rédige une synthèse exécutive structurée et percutante."
-                        ),
-                        model=MODEL_PRO,
-                        effort="medium",
-                        timeout=300,
-                        session_id=session_id,
-                        task_id=s_agent_id,
-                        allow_paid_fallback=allow_paid,
-                        workspace=s_ws,
-                        worker_id="synthesis",
-                    )
-                    dur_s = time.perf_counter() - t_s0
-                    await complete_subagent(s_agent_id, summary=f"{out_s.conclusion[:70]} (pro/medium, durée: {dur_s:.1f}s)")
-                    if out_s.status != "success":
-                        err_msg = sanitize_error_text(out_s.error or out_s.conclusion or "synthesis_phase_failed")
-                        l3_err = L3ErrorDetails(
-                            etape="synthesis_phase",
-                            exception=err_msg,
-                            traceback_court="",
-                            cause_courte=f"Échec de la synthèse finale ({err_msg[:100]})",
-                            fallback_initiated=False,
-                        )
-                        set_last_l3_error(l3_err)
-                        logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] [Étape: synthesis_phase] {l3_err.cause_courte}")
-                        return ToolResult.failed(
-                            user_message=f"Échec à l'étape 'synthesis_phase' : {l3_err.cause_courte}.",
-                            error_hint=err_msg,
-                            verified=False,
-                            data={"l3_error": l3_err.to_dict()},
-                        )
-                except Exception as e:
-                    dur_s = time.perf_counter() - t_s0
-                    import traceback
-                    tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
-                    e_sanitized = sanitize_error_text(str(e))
-                    l3_err = L3ErrorDetails(
-                        etape="synthesis_phase",
-                        exception=f"{e.__class__.__name__}: {e_sanitized}",
-                        traceback_court=tb_short,
-                        cause_courte=f"Erreur phase Synthèse ({e_sanitized[:100]})",
-                        fallback_initiated=False,
-                    )
-                    set_last_l3_error(l3_err)
-                    logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] [Étape: synthesis_phase] {l3_err.cause_courte}\n{tb_short}", exc_info=True)
-                    await complete_subagent(s_agent_id, summary=f"Erreur: {e_sanitized[:70]} (durée: {dur_s:.1f}s)")
-                    return ToolResult.failed(
-                        user_message=f"Échec à l'étape 'synthesis_phase' : {l3_err.cause_courte}.",
-                        error_hint=e_sanitized,
-                        verified=False,
-                        data={"l3_error": l3_err.to_dict()},
-                    )
-
-                total_duration = time.perf_counter() - t_total_0
-                all_sources = list(out_p.sources) + [s for s in out_a.sources if s not in out_p.sources]
-
-                pc_online = False
-                try:
-                    from services.local_agent_service import is_pc_connected_async
-                    pc_online = await is_pc_connected_async()
-                except Exception:
-                    pass
-
-                delivery_info: Dict[str, Any] = {
-                    "delivery_mode": "screen" if pc_online else "email",
-                    "status": "pending",
-                }
-
-                should_send_mail = envoyer_email or (not pc_online)
-                if should_send_mail:
-                    try:
-                        dest = destinataire_email or "pierrecassagnettes@gmail.com"
-                        await send_email_async(
-                            subject=f"[Deep Research] Synthèse : {consigne[:60]}",
-                            body=out_s.conclusion,
-                            to_email=dest,
-                            attachments=out_s.artifacts,
-                            session_id=session_id,
-                        )
-                        logger.info(f"[DeepResearch] Synthèse Map-Reduce livrée par e-mail à {dest} (pc_online={pc_online}, envoyer_email={envoyer_email})")
-                        delivery_info = {
-                            "delivery_mode": "email",
-                            "status": "sent",
-                            "to_email": dest,
-                            "attachments": out_s.artifacts,
-                        }
-                    except Exception as mail_err:
-                        logger.warning(f"[DeepResearch] [Échec envoi e-mail] {mail_err}")
-                        delivery_info = {
-                            "delivery_mode": "email",
-                            "status": "error",
-                            "error": str(mail_err),
-                        }
-                else:
-                    delivery_info = {
-                        "delivery_mode": "screen",
-                        "status": "success",
-                        "message": "Affiché sur la session et l'interface Jarvis.",
-                    }
-                    if _ws_dr:
-                        try:
-                            await _ws_dr.send_text(json.dumps({
-                                "type": "jarvis_announcement",
-                                "text": f"Synthèse Deep Research prête : {consigne[:60]}",
-                                "voice": False,
-                            }))
-                        except Exception:
-                            pass
-
-                return ToolResult.done(
-                    user_message=out_s.conclusion,
-                    evidence=f"3 phases (flash/medium -> pro/high -> pro/medium), Durée totale: {total_duration:.1f}s, Confiance: {out_s.confidence}",
-                    verified=True,
-                    data={
-                        "conclusion": out_s.conclusion,
-                        "confidence": out_s.confidence,
-                        "sources": all_sources,
-                        "artifacts": out_s.artifacts,
-                        "open_questions": out_s.open_questions,
-                        "delivery": delivery_info,
-                        "phases": {
-                            "prospector": {"model": MODEL_FLASH, "effort": "medium", "duration_s": round(dur_p, 2)},
-                            "analyst": {"model": MODEL_PRO, "effort": "high", "duration_s": round(dur_a, 2)},
-                            "synthesis": {"model": MODEL_PRO, "effort": "medium", "duration_s": round(dur_s, 2)},
-                        },
-                        "total_duration_s": round(total_duration, 2),
-                    },
+                return await _execute_cli_map_reduce_pipeline(
+                    consigne=consigne,
+                    envoyer_email=envoyer_email,
+                    destinataire_email=destinataire_email,
+                    session=_sess_dr,
+                    websocket=_ws_dr,
+                    is_cli_fallback=False,
                 )
             finally:
                 release_search_lock(consigne)
 
         if is_sync:
-            return (await _execute_deep_research_core()).to_dict()
+            return (await _execute_l2_cli_core()).to_dict()
 
         # Mode tâche de fond non-bloquante pour la voix Live : libère immédiatement le canal audio
         async def _run_deep_research_bg():
             try:
-                core_res: ToolResult = await _execute_deep_research_core()
+                core_res: ToolResult = await _execute_l2_cli_core()
                 status_str = "completed" if core_res.is_success else "error"
                 supervision_service.complete_action("deep_research", status=status_str, summary=core_res.user_message[:250])
                 await broadcast_supervision()
 
                 if core_res.is_success and core_res.user_message:
-                    final_oral_msg = f"Pierre, l'analyse approfondie de niveau 3 sur « {consigne} » est terminée : {core_res.user_message}"
+                    final_oral_msg = f"Pierre, l'analyse multi-agents L2 sur « {consigne} » est terminée : {core_res.user_message}"
                     try:
                         await voice_injection_queue.enqueue(
                             text=final_oral_msg,
@@ -1189,7 +1174,7 @@ async def _execute_dispatch_tool(
                     except Exception as inj_err:
                         logger.warning(f"[DeepResearch BG] Erreur injection vocale : {inj_err}")
                 else:
-                    err_step = "recherche"
+                    err_step = "analyse"
                     err_cause = "cause indéterminée"
                     if isinstance(core_res.data, dict) and "l3_error" in core_res.data:
                         l3_err_data = core_res.data["l3_error"]
@@ -1201,9 +1186,9 @@ async def _execute_dispatch_tool(
                         err_cause = core_res.user_message
 
                     err_detail = f"Échec à l'étape '{err_step}' : {err_cause}"
-                    logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] {err_detail}")
-                    supervision_service.record_event("L3_ERROR", err_detail)
-                    final_oral_msg = f"Pierre, la recherche approfondie de niveau 3 sur « {consigne} » n'a pas pu aboutir (étape '{err_step}') : {err_cause}"
+                    logger.error(f"[DeepResearch] [EXCEPTION ANALYSE L2] {err_detail}")
+                    supervision_service.record_event("L2_ERROR", err_detail)
+                    final_oral_msg = f"Pierre, l'analyse multi-agents L2 sur « {consigne} » n'a pas pu aboutir (étape '{err_step}') : {err_cause}"
                     try:
                         await voice_injection_queue.enqueue(
                             text=final_oral_msg,
@@ -1218,7 +1203,7 @@ async def _execute_dispatch_tool(
                         try:
                             await safe_send_live_client_content(
                                 _sess_dr,
-                                f"[EXCEPTION RECHERCHE L3] La recherche approfondie sur '{consigne}' a échoué à l'étape '{err_step}' ({err_cause}). Explique l'anomalie à Pierre avec ta voix Aoede."
+                                f"[EXCEPTION ANALYSE L2] L'analyse multi-agents sur '{consigne}' a échoué à l'étape '{err_step}' ({err_cause}). Explique l'anomalie à Pierre avec ta voix Aoede."
                             )
                         except Exception:
                             pass
@@ -1226,20 +1211,13 @@ async def _execute_dispatch_tool(
                 import traceback
                 tb_short = sanitize_error_text(traceback.format_exc(limit=3))[-500:]
                 bg_err_str = sanitize_error_text(str(bg_err))
-                l3_err = L3ErrorDetails(
-                    etape="background_execution",
-                    exception=f"{bg_err.__class__.__name__}: {bg_err_str}",
-                    traceback_court=tb_short,
-                    cause_courte=f"Erreur technique ({bg_err.__class__.__name__})",
-                )
-                set_last_l3_error(l3_err)
-                logger.error(f"[DeepResearch] [EXCEPTION RECHERCHE L3] Erreur d'exécution sur '{consigne}' : {bg_err_str}\n{tb_short}", exc_info=True)
+                logger.error(f"[DeepResearch] [EXCEPTION ANALYSE L2] Erreur d'exécution sur '{consigne}' : {bg_err_str}\n{tb_short}", exc_info=True)
                 supervision_service.complete_action("deep_research", status="error", summary=f"Échec étape background: {bg_err_str[:150]}")
-                supervision_service.record_event("L3_ERROR", f"Échec background: {bg_err_str[:150]}")
+                supervision_service.record_event("L2_ERROR", f"Échec background: {bg_err_str[:150]}")
                 await broadcast_supervision()
                 try:
                     await voice_injection_queue.enqueue(
-                        text=f"Pierre, la recherche approfondie de niveau 3 sur « {consigne} » n'a pas pu aboutir (étape 'background_execution') : {bg_err_str[:150]}",
+                        text=f"Pierre, l'analyse multi-agents L2 sur « {consigne} » n'a pas pu aboutir (étape 'background_execution') : {bg_err_str[:150]}",
                         priority=InjectionPriority.TOOL_RESPONSE,
                         session=_sess_dr,
                         action_key=f"deep_research_exc_{int(time.time())}",
@@ -1251,7 +1229,7 @@ async def _execute_dispatch_tool(
                     try:
                         await safe_send_live_client_content(
                             _sess_dr,
-                            f"[EXCEPTION RECHERCHE L3] Erreur technique à l'étape background sur '{consigne}' : {bg_err_str}. Détaille l'erreur à Pierre."
+                            f"[EXCEPTION ANALYSE L2] Erreur technique à l'étape background sur '{consigne}' : {bg_err_str}. Détaille l'erreur à Pierre."
                         )
                     except Exception:
                         pass
@@ -1262,7 +1240,7 @@ async def _execute_dispatch_tool(
         active_task_controller["deep_research_bg_task"] = dr_bg_task
 
         return ToolResult.started(
-            user_message=f"La recherche approfondie de niveau 3 sur « {consigne} » est lancée en tâche de fond sur le VPS. Je te préviens dès que l'analyse est terminée.",
+            user_message=f"L'analyse multi-agents de niveau 2 sur « {consigne} » est lancée en tâche de fond sur le VPS. Je te préviens dès que l'analyse est terminée.",
             evidence="launched_in_background",
             verified=True,
             data={"status": "started", "query": consigne},
@@ -1272,14 +1250,25 @@ async def _execute_dispatch_tool(
     # ─── search_web ────────────────────────────────────────────────────────────
     elif name in ("search_web", "web_search"):
         query = args.get("query", "").strip()
+        is_sync = bool(args.get("sync", False) or args.get("wait_completion", False))
 
-        # Redirection automatique vers launch_deep_research si intention L3 détectée
+        # Redirection automatique vers browser_task (L3) ou launch_deep_research (L2)
         routing_check = route_search_intent(query)
         if routing_check.level == "L3":
-            logger.info(f"[Dispatcher] Redirection automatique de search_web vers launch_deep_research pour requête L3 : '{query}'")
+            logger.info(f"[Dispatcher] Redirection automatique de search_web vers browser_task (gemini_deep_research) pour requête L3 : '{query}'")
+            return await dispatch_tool(
+                name="browser_task",
+                args={"goal": query, "recipe": "gemini_deep_research", "sync": is_sync},
+                websocket=websocket,
+                session=session,
+                is_paid_live=is_paid_live,
+                live_display_label=live_display_label,
+            )
+        elif routing_check.level == "L2":
+            logger.info(f"[Dispatcher] Redirection automatique de search_web vers launch_deep_research (multi-agent CLI L2) pour requête L2 : '{query}'")
             return await dispatch_tool(
                 name="launch_deep_research",
-                args={"consigne": query, "sync": args.get("sync", False)},
+                args={"consigne": query, "sync": is_sync},
                 websocket=websocket,
                 session=session,
                 is_paid_live=is_paid_live,
@@ -1353,13 +1342,13 @@ async def _execute_dispatch_tool(
         target_url = args.get("url") or ""
         execution_target = args.get("execution_target")
 
-        # Redirection automatique vers launch_deep_research si intention L3 détectée
+        # Redirection automatique vers browser_task si intention L3 détectée
         routing_check = route_search_intent(goal)
         if routing_check.level == "L3":
-            logger.info(f"[Dispatcher] Redirection automatique de run_browser_task vers launch_deep_research pour requête L3 : '{goal}'")
+            logger.info(f"[Dispatcher] Redirection automatique de run_browser_task vers browser_task (gemini_deep_research) pour requête L3 : '{goal}'")
             return await dispatch_tool(
-                name="launch_deep_research",
-                args={"consigne": goal, "sync": args.get("sync", False)},
+                name="browser_task",
+                args={"goal": goal, "recipe": "gemini_deep_research", "sync": True},
                 websocket=websocket,
                 session=session,
                 is_paid_live=is_paid_live,
@@ -1445,24 +1434,31 @@ async def _execute_dispatch_tool(
             )
         }
 
-    # ─── browser_task (Nouvel Agent Autonome S1/S2) ───────────────────────────
+    # ─── browser_task (Agent Web & Gemini Deep Research L3) ───────────────────
     elif name == "browser_task":
-        goal = args.get("goal") or ""
+        goal = args.get("goal") or args.get("consigne") or ""
         start_url = args.get("start_url") or args.get("url") or None
         recipe = args.get("recipe") or None
+        envoyer_email = bool(args.get("envoyer_email", False))
+        destinataire_email = args.get("destinataire_email")
+        is_sync = bool(args.get("sync", False) or args.get("wait_completion", False))
 
-        # Redirection automatique vers launch_deep_research si intention L3 détectée ou recette deep research
         routing_check = route_search_intent(goal)
-        if routing_check.level == "L3" or recipe == "gemini_deep_research":
-            logger.info(f"[Dispatcher] Redirection automatique de browser_task vers launch_deep_research pour requête L3 : '{goal}'")
+        # Redirection vers launch_deep_research si intention L2 sans recette web
+        if routing_check.level == "L2" and not recipe:
+            logger.info(f"[Dispatcher] Redirection automatique de browser_task vers launch_deep_research pour requête L2 : '{goal}'")
             return await dispatch_tool(
                 name="launch_deep_research",
-                args={"consigne": goal, "sync": args.get("sync", False)},
+                args={"consigne": goal, "sync": is_sync, "wait_completion": is_sync},
                 websocket=websocket,
                 session=session,
                 is_paid_live=is_paid_live,
                 live_display_label=live_display_label,
             )
+
+        # Si intention L3 détectée sans recette spécifiée, affecter gemini_deep_research
+        if routing_check.level == "L3" and not recipe:
+            recipe = "gemini_deep_research"
 
         task_id = f"bt_{int(time.time() * 1000)}"
         task = BrowserTask(
@@ -1473,31 +1469,34 @@ async def _execute_dispatch_tool(
         )
         BROWSER_TASKS[task_id] = task
 
+        is_l3_research = (recipe == "gemini_deep_research")
+
         supervision_service.start_action(
             "browser_task",
-            "Navigation Web Autonome",
+            "Gemini Deep Research L3" if is_l3_research else "Navigation Web Autonome",
             "browser_task",
             goal,
-            "Antigravity Browser Agent",
+            "Gemini Web Automator (Chrome VPS / CDP)" if is_l3_research else "Antigravity Browser Agent",
         )
         await broadcast_supervision()
 
         if websocket:
             try:
+                announcement_text = f"Recherche approfondie web Gemini (L3) : {goal}" if is_l3_research else f"Navigation autonome : {goal}"
                 await websocket.send_text(json.dumps({
                     "type": "jarvis_announcement",
-                    "text": f"Navigation autonome : {goal}",
+                    "text": announcement_text,
                     "voice": False,
                 }))
             except Exception:
                 pass
 
         _sess = session
+        _ws_b = websocket
         _tid = task_id
         _g = goal
 
         async def _notify(msg: str):
-            # notify = injection avec priorité PROGRESS_MILESTONE. Le handoff utilise INTERRUPTION.
             is_handoff = (
                 task.status in ("needs_user", "ready_for_user")
                 or any(k in msg.lower() for k in ["captcha", "login", "2fa", "intervention", "valider"])
@@ -1514,11 +1513,85 @@ async def _execute_dispatch_tool(
             except Exception as e:
                 logger.error(f"[BrowserAgent BG] Erreur notify: {e}")
 
+        async def _execute_l3_browser_with_fallback() -> ToolResult:
+            err_cause = "tâche web non aboutie"
+            try:
+                # 1. Tentative principale via Browser Agent (Chrome VPS ou Chrome CDP PC)
+                b_res: ToolResult = await run_browser_agent_task(task=task, notify=_notify)
+                if b_res and b_res.is_success and task.status != "failed":
+                    already_emailed = False
+                    if isinstance(b_res.data, dict):
+                        delivery = b_res.data.get("delivery")
+                        if isinstance(delivery, dict) and delivery.get("delivery_mode") in ("email", "email_fallback") and delivery.get("status") == "sent":
+                            already_emailed = True
+                    pc_online = False
+                    try:
+                        from services.local_agent_service import is_pc_connected_async
+                        pc_online = await is_pc_connected_async()
+                    except Exception:
+                        pass
+                    should_email = envoyer_email or (not pc_online)
+                    if should_email and not already_emailed and b_res.user_message:
+                        try:
+                            dest = destinataire_email or "pierrecassagnettes@gmail.com"
+                            md_path = b_res.data.get("markdown_path") if isinstance(b_res.data, dict) else None
+                            attachments = [md_path] if md_path and os.path.exists(md_path) else []
+                            await send_email_async(
+                                subject=f"[Deep Research] Synthèse : {_g[:60]}",
+                                body=b_res.user_message,
+                                to_email=dest,
+                                attachments=attachments,
+                                session_id=getattr(_sess, "id", None) if _sess else None,
+                            )
+                            if isinstance(b_res.data, dict):
+                                b_res.data["delivery"] = {
+                                    "delivery_mode": "email",
+                                    "status": "sent",
+                                    "to_email": dest,
+                                    "attachment": md_path,
+                                }
+                        except Exception as mail_err:
+                            logger.warning(f"[DeepResearch] [Échec envoi e-mail] {mail_err}")
+                    return b_res
+
+                if b_res and isinstance(b_res.data, dict) and "l3_error" in b_res.data:
+                    err_details = b_res.data["l3_error"]
+                    err_cause = err_details.get("cause_courte", err_details.get("exception", err_cause))
+                elif task and getattr(task, "last_error", None):
+                    err_details = task.last_error
+                    err_cause = err_details.get("cause_courte", err_details.get("exception", err_cause))
+                elif b_res and b_res.error_hint:
+                    err_cause = b_res.error_hint
+                logger.warning(f"[BrowserTask L3] Recherche web Gemini non aboutie ({err_cause}), déclenchement du repli multi-agents CLI.")
+            except Exception as b_err:
+                err_cause = sanitize_error_text(str(b_err))
+                logger.warning(f"[BrowserTask L3] Exception recherche web Gemini ({err_cause}), déclenchement du repli multi-agents CLI.")
+
+            # 2. Repli CLI Map-Reduce explicite
+            return await _execute_cli_map_reduce_pipeline(
+                consigne=_g,
+                envoyer_email=envoyer_email,
+                destinataire_email=destinataire_email,
+                session=_sess,
+                websocket=_ws_b,
+                is_cli_fallback=True,
+                fallback_cause=err_cause,
+            )
+
+        if is_sync:
+            if is_l3_research:
+                sync_res = await _execute_l3_browser_with_fallback()
+                return sync_res.to_dict()
+            sync_res = await run_browser_agent_task(task=task, notify=_notify)
+            return sync_res.to_dict()
+
         async def _run_browser_bg():
             try:
-                res: ToolResult = await run_browser_agent_task(task=task, notify=_notify)
+                if is_l3_research:
+                    res: ToolResult = await _execute_l3_browser_with_fallback()
+                else:
+                    res: ToolResult = await run_browser_agent_task(task=task, notify=_notify)
 
-                # Résultat final = injection avec priorité TOOL_RESPONSE et le user_message du ToolResult. Le handoff utilise INTERRUPTION.
                 is_handoff = (
                     res.status == "needs_user"
                     or task.status in ("needs_user", "ready_for_user")

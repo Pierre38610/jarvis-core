@@ -130,11 +130,9 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="launch_deep_research",
                     description=(
-                        "RECHERCHE APPROFONDIE MULTI-SOURCES NIVEAU 3 (L3 / TIER 3 / DEEP RESEARCH). "
-                        "Moteur de recherche approfondie multi-agents Antigravity sur le VPS (prospecteur, analyste, synthèse). "
-                        "À utiliser de ta propre initiative dès que Pierre demande une recherche de niveau 3, une recherche L3, "
-                        "une recherche approfondie, un rapport complet, une étude de fond, une cartographie de marché ou une analyse multi-sources. "
-                        "NE JAMAIS UTILISER 'browser_task' NI 'search_web' pour une demande explicite de niveau 3 (L3)."
+                        "RECHERCHE APPROFONDIE ET ANALYSE MULTI-AGENTS CLI NIVEAU 2 (L2 / TIER 2). "
+                        "Moteur de recherche et d'analyse multi-agents Antigravity sur le VPS (prospecteur, analyste, synthèse) pour analyses tactiques, études multi-sources et livrables complexes. "
+                        "Prends l'initiative d'utiliser cet outil dès que Pierre demande une analyse tactique, une recherche de niveau 2 (L2), un comparatif ou une orchestration multi-agents CLI."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -142,7 +140,7 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                         properties={
                             "consigne": types.Schema(
                                 type="STRING",
-                                description="La consigne ou le sujet de recherche approfondie L3 à explorer."
+                                description="La consigne ou le sujet de recherche approfondie ou analyse multi-agents à explorer."
                             ),
                             "consigne_utilisateur": types.Schema(
                                 type="STRING",
@@ -249,7 +247,7 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                         "RECHERCHE FACTUELLE RAPIDE NIVEAU 1 (L1 / TIER 1). "
                         "Recherche textuelle rapide sur Internet via DuckDuckGo (< 2 secondes) pour obtenir des informations factuelles récentes, définitions, cours ou liens. "
                         "À UTILISER QUAND : Pierre pose une question factuelle directe nécessitant une réponse immédiate. "
-                        "NE JAMAIS UTILISER POUR UNE RECHERCHE DE NIVEAU 3 (L3 / Deep Research) : utiliser 'launch_deep_research'."
+                        "NE JAMAIS UTILISER POUR UNE RECHERCHE DE NIVEAU 3 (L3 / Gemini Deep Research) : utiliser 'browser_task'."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
@@ -271,7 +269,7 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                         "À UTILISER QUAND : Une mission web dynamique requiert clics, interactions, navigation successive de page en page ou exploration visuelle d'un site. "
                         "NE JAMAIS UTILISER QUAND : Une recherche d'information textuelle simple suffit sans navigation complexe (utiliser 'search_web'), "
                         "ni pour une action ciblée sur une URL unique connue (utiliser 'interact_web_page'), "
-                        "ni pour une recherche de niveau 3 / L3 (utiliser 'launch_deep_research')."
+                        "ni pour une recherche approfondie web Gemini L3 (utiliser 'browser_task' avec recipe='gemini_deep_research')."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -299,13 +297,13 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                     )
                 ),
 
-                # ─── 6b. browser_task (Nouvel Agent Autonome S1/S2 - Niveau 2) ─────────
+                # ─── 6b. browser_task (Agent Web & Gemini Deep Research - Niveau 3) ───
                 types.FunctionDeclaration(
                     name="browser_task",
                     description=(
-                        "AGENT WEB AUTONOME NIVEAU 2 (L2 / TIER 2). "
-                        "Pour TOUTE interaction concrète sur un site web (remplir un panier d'achat, réserver un billet de train/vol, se connecter à un compte, remplir un formulaire). "
-                        "INTERDICTION FORMELLE D'UTILISER CET OUTIL POUR UNE RECHERCHE DE NIVEAU 3 (L3 / Deep Research / Recherche approfondie / Étude de fond) : pour toute recherche L3, analyse multi-sources ou étude de marché, utiliser obligatoirement et uniquement 'launch_deep_research'."
+                        "RECHERCHE APPROFONDIE WEB GEMINI NIVEAU 3 (L3 / TIER 3 / GEMINI DEEP RESEARCH) ET NAVIGATION WEB AUTONOME. "
+                        "Outil principal pour TOUTE recherche approfondie web de niveau 3 (L3 / Deep Research / étude de marché web / cartographie multi-sources via Gemini Deep Research web sur VPS ou Chrome CDP), "
+                        "ainsi que pour les interactions concrètes sur un site web (panier d'achat, réservation, formulaires)."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -321,8 +319,16 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                             ),
                             "recipe": types.Schema(
                                 type="STRING",
-                                enum=["cart", "train"],
-                                description="Recette optionnelle : cart (remplissage panier/achats) ou train (réservation SNCF/Trainline)."
+                                enum=["cart", "train", "gemini_deep_research"],
+                                description="Recette optionnelle : cart (remplissage panier/achats), train (réservation SNCF/Trainline) ou gemini_deep_research (recherche approfondie web Gemini L3)."
+                            ),
+                            "envoyer_email": types.Schema(
+                                type="BOOLEAN",
+                                description="Optionnel : True pour envoyer le rapport final par e-mail."
+                            ),
+                            "destinataire_email": types.Schema(
+                                type="STRING",
+                                description="Adresse e-mail optionnelle pour la réception du rapport."
                             ),
                         },
                         required=["goal"]

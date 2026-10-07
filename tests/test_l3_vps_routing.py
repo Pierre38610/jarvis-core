@@ -178,16 +178,18 @@ async def test_l3_routing_vps_and_local_offline_then_map_reduce_fallback():
          patch("core.tools.dispatcher.run_agentic", new_callable=AsyncMock, side_effect=[mock_p, mock_a, mock_s]):
 
         resp = await dispatch_tool(
-            name="launch_deep_research",
-            args={"consigne": "Recherche cybersécurité", "sync": True},
+            name="browser_task",
+            args={"goal": "Recherche cybersécurité", "recipe": "gemini_deep_research", "sync": True},
             websocket=None,
             session=None,
         )
 
         assert resp["status"] == "done"
         assert resp["verified"] is True
+        assert "[Repli CLI]" in resp["user_message"]
         assert "Synthèse Map-Reduce finale" in resp["user_message"]
-        assert len(resp.get("phases", [])) == 3
+        assert resp.get("fallback_used") is True
+        assert len(resp.get("phases", {})) == 3
 
 
 # ─── 4. Détection Propre et Rapide du PC Hors Ligne ───────────────────────────
@@ -280,9 +282,10 @@ async def test_l3_email_delivery_on_vps_success():
          patch("core.tools.dispatcher.send_email_async", new_callable=AsyncMock) as mock_email:
 
         resp = await dispatch_tool(
-            name="launch_deep_research",
+            name="browser_task",
             args={
-                "consigne": "Recherche robotique",
+                "goal": "Recherche robotique",
+                "recipe": "gemini_deep_research",
                 "envoyer_email": True,
                 "destinataire_email": "pierre@stark.com",
                 "sync": True,
