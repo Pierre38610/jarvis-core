@@ -51,3 +51,9 @@
 - **Logs Console** :
   - `logsContent.innerHTML` (formatage des lignes colorées de log ou messages d'erreur).
 - **Select Microphone** : `select.innerHTML` (`<option>Microphone par défaut (Système)</option>`).
+
+## 5. Résumé de Recette Finale (Prompt 10)
+- **Modifications réalisées** : Refonte complète du HUD vers le design system épuré Obsidian/Linear (tokens CSS `--bg`, `--surface`, `--accent`, etc.), sidebar rétractable / barre d'onglets mobile (< 768px), standardisation de toutes les modales, composants audio et supervision, accessibilité `:focus-visible` & `aria-label`, et alignement des tests.
+- **État des tests & stabilité** : 100% des tests passés au vert (`646 passed in 76.83s`), aucune erreur de syntaxe ou régression console/DOM.
+- **Reste à faire / Évolutions futures** : Tests E2E automatisés sur device physique mobile, enrichissement continu des graphiques de métriques de supervision avancée.
+
