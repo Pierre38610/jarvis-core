@@ -2752,6 +2752,23 @@ if (btnSendDirective && taskDirectiveInput) {
 
 let supervisionPollTimer = null;
 
+// Fonction utilitaire de rendu d'état vide réutilisable (Prompt 5)
+function renderEmpty(el, icon = 'inbox', text = 'Aucune donnée disponible', buttonHtml = '') {
+  const target = (typeof el === 'string') ? document.getElementById(el) : el;
+  if (!target) return;
+  target.innerHTML = `
+    <div class="empty-state">
+      <i data-lucide="${icon}" class="empty-state-icon"></i>
+      <span class="empty-state-text">${escapeHtml(text)}</span>
+      ${buttonHtml ? `<div class="empty-state-actions">${buttonHtml}</div>` : ''}
+    </div>
+  `;
+  if (window.lucide && typeof lucide.createIcons === 'function') {
+    lucide.createIcons();
+  }
+}
+window.renderEmpty = renderEmpty;
+
 async function fetchSupervisionOverview() {
   const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
 
@@ -2924,12 +2941,7 @@ function renderSupervisionOverview(data) {
 
   if (supActiveActionsContainer) {
     if (actionCount === 0) {
-      supActiveActionsContainer.innerHTML = `
-        <div class="sup-empty-state">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-          <span>Aucune tâche lourde en cours d'exécution. JARVIS est en veille active.</span>
-        </div>
-      `;
+      renderEmpty(supActiveActionsContainer, 'activity', "Aucune tâche lourde en cours d'exécution. JARVIS est en veille active.");
     } else {
       supActiveActionsContainer.innerHTML = activeActions.map(act => {
         const isPaid = act.is_paid || (act.key_type === 'paid') || (act.api_type === 'paid');
@@ -2961,63 +2973,69 @@ function renderSupervisionOverview(data) {
           </div>
         `;
       }).join('');
+      if (window.lucide) lucide.createIcons();
     }
   }
 
   // 3. OUTILS DU SYSTÈME & REGISTRE DES APIS
   if (supToolsTable && data.tools) {
     const tools = data.tools;
-    supToolsTable.innerHTML = `
-      <div class="sup-table-header">
-        <div>OUTIL</div>
-        <div>MODÈLE UTILISÉ</div>
-        <div>CLÉ / TARIFICATION</div>
-        <div style="text-align: right;">STATUT</div>
-      </div>
-      ${tools.map(tool => {
-        const isPaid = (tool.api_type === 'paid') || tool.is_paid;
-        const isHybrid = (tool.api_type === 'hybrid');
-        const isRunning = tool.active || tool.is_running || false;
-        let badgeClass = 'badge-key-free';
-        let badgeText = 'CLÉ GRATUITE';
-        if (isPaid) {
-          badgeClass = 'badge-key-paid';
-          badgeText = 'CLÉ PAYANTE';
-        } else if (isHybrid) {
-          badgeClass = 'badge-key-free';
-          badgeText = 'GRATUITE / PAYANTE';
-        } else if (tool.api_type === 'local') {
-          badgeClass = 'badge-key-free';
-          badgeText = 'LOCAL (0.00$)';
-        }
+    if (tools.length === 0) {
+      renderEmpty(supToolsTable, 'wrench', 'Aucun outil enregistré.');
+    } else {
+      supToolsTable.innerHTML = `
+        <div class="sup-table-header">
+          <div style="flex: 2;">OUTIL</div>
+          <div style="flex: 1.2;">MODÈLE UTILISÉ</div>
+          <div style="flex: 1.2;">CLÉ / TARIFICATION</div>
+          <div style="flex: 0.8; text-align: right;">STATUT</div>
+        </div>
+        ${tools.map(tool => {
+          const isPaid = (tool.api_type === 'paid') || tool.is_paid;
+          const isHybrid = (tool.api_type === 'hybrid');
+          const isRunning = tool.active || tool.is_running || false;
+          let badgeClass = 'badge-key-free';
+          let badgeText = 'CLÉ GRATUITE';
+          if (isPaid) {
+            badgeClass = 'badge-key-paid';
+            badgeText = 'CLÉ PAYANTE';
+          } else if (isHybrid) {
+            badgeClass = 'badge-key-free';
+            badgeText = 'GRATUITE / PAYANTE';
+          } else if (tool.api_type === 'local') {
+            badgeClass = 'badge-key-free';
+            badgeText = 'LOCAL (0.00$)';
+          }
 
-        return `
-          <div class="sup-tool-row ${isRunning ? 'tool-running' : ''}">
-            <div class="sup-tool-col-name">
-              <span class="sup-tool-icon"><i data-lucide="wrench"></i></span>
-              <div>
-                <div class="sup-tool-name">${escapeHtml(tool.name)}</div>
-                <div class="sup-tool-desc">${escapeHtml(tool.description)}</div>
+          return `
+            <div class="sup-tool-row ${isRunning ? 'tool-running' : ''}">
+              <div class="sup-tool-col-name">
+                <span class="sup-tool-icon"><i data-lucide="wrench"></i></span>
+                <div style="min-width: 0;">
+                  <div class="sup-tool-name">${escapeHtml(tool.name)}</div>
+                  <div class="sup-tool-desc">${escapeHtml(tool.description || '')}</div>
+                </div>
+              </div>
+              <div class="sup-tool-col-model">
+                <span class="sup-model-tag">${escapeHtml(tool.model || 'Standard')}</span>
+              </div>
+              <div class="sup-tool-col-key">
+                <span class="badge-key-pill ${badgeClass}">
+                  ${badgeText}
+                </span>
+                ${tool.cost_est || tool.cost_note ? `<span class="sup-tool-cost">${escapeHtml(tool.cost_est || tool.cost_note)}</span>` : ''}
+              </div>
+              <div class="sup-tool-col-status">
+                <span class="sup-status-pill ${isRunning ? 'status-active' : 'status-idle'}">
+                  ${isRunning ? '● EN COURS' : 'AU REPOS'}
+                </span>
               </div>
             </div>
-            <div class="sup-tool-col-model">
-              <span class="sup-model-tag">${escapeHtml(tool.model)}</span>
-            </div>
-            <div class="sup-tool-col-key">
-              <span class="badge-key-pill ${badgeClass}">
-                ${badgeText}
-              </span>
-              <span class="sup-tool-cost">${escapeHtml(tool.cost_est || tool.cost_note || '')}</span>
-            </div>
-            <div class="sup-tool-col-status">
-              <span class="sup-status-pill ${isRunning ? 'status-active' : 'status-idle'}">
-                ${isRunning ? '● EN COURS' : 'AU REPOS'}
-              </span>
-            </div>
-          </div>
-        `;
-      }).join('')}
-    `;
+          `;
+        }).join('')}
+      `;
+      if (window.lucide) lucide.createIcons();
+    }
   }
 
   // 4. FENÊTRES OUVERTES (SYSTÈME & NAVIGATEUR)
@@ -3029,11 +3047,7 @@ function renderSupervisionOverview(data) {
     }
 
     if (rawWindows.length === 0) {
-      supWindowsList.innerHTML = `
-        <div class="sup-empty-state">
-          <span>Aucune fenêtre active détectée.</span>
-        </div>
-      `;
+      renderEmpty(supWindowsList, 'app-window', "Aucune fenêtre active détectée.");
     } else {
       supWindowsList.innerHTML = rawWindows.map(win => {
         const isJarvis = win.is_jarvis || (win.opened_by && win.opened_by.toLowerCase().includes('jarvis'));
@@ -3065,6 +3079,7 @@ function renderSupervisionOverview(data) {
           </div>
         `;
       }).join('');
+      if (window.lucide) lucide.createIcons();
     }
   }
 
@@ -3211,7 +3226,7 @@ function renderSupervisionMetrics(data) {
   if (metTopToolsBars) {
     const topTools = data.top_tools || [];
     if (topTools.length === 0) {
-      metTopToolsBars.innerHTML = '<div class="sup-empty-metrics">Aucun appel d\'outil sur cette période.</div>';
+      renderEmpty(metTopToolsBars, 'bar-chart-2', "Aucun appel d'outil sur cette fenêtre temporelle.");
     } else {
       const maxCount = Math.max(...topTools.map(t => t.count), 1);
       metTopToolsBars.innerHTML = topTools.slice(0, 5).map(tool => {
@@ -3236,6 +3251,7 @@ function renderSupervisionMetrics(data) {
           </div>
         `;
       }).join('');
+      if (window.lucide) lucide.createIcons();
     }
   }
 
@@ -3277,25 +3293,26 @@ function renderSupervisionMetrics(data) {
   if (metToolsTableRows) {
     const tools = data.tools_summary || [];
     if (tools.length === 0) {
-      metToolsTableRows.innerHTML = '<div class="sup-empty-metrics">Aucune métrique enregistrée sur cette période.</div>';
+      renderEmpty(metToolsTableRows, 'wrench', 'Aucune métrique enregistrée sur cette période.');
     } else {
       metToolsTableRows.innerHTML = tools.map(t => {
-        const failColor = t.failures > 0 ? '#f87171' : '#64748b';
+        const failColor = t.failures > 0 ? 'var(--danger)' : 'var(--text-muted)';
         return `
           <div class="sup-metric-row">
-            <div style="flex: 2; font-family: monospace; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(t.tool_name)}">
+            <div style="flex: 2; font-family: var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(t.tool_name)}">
               ${escapeHtml(t.tool_name)}
             </div>
-            <div style="text-align: center; flex: 1; font-family: 'Orbitron', monospace; color: #38bdf8;">${t.count}</div>
-            <div style="text-align: center; flex: 1; font-weight: 700; color: ${failColor};">${t.failures}</div>
-            <div style="text-align: center; flex: 1; color: #94a3b8;">${t.avg_latency_ms} ms</div>
-            <div style="text-align: center; flex: 1; color: #64748b;">${t.p95_latency_ms} ms</div>
-            <div style="text-align: right; flex: 1; font-family: monospace; color: ${t.cost_est > 0 ? '#c084fc' : '#475569'};">
+            <div style="text-align: center; flex: 1; font-family: var(--mono); color: var(--accent); font-weight: 600;">${t.count}</div>
+            <div style="text-align: center; flex: 1; font-weight: 600; color: ${failColor};">${t.failures}</div>
+            <div style="text-align: center; flex: 1; color: var(--text-muted); font-family: var(--mono);">${t.avg_latency_ms} ms</div>
+            <div style="text-align: center; flex: 1; color: var(--text-muted); font-family: var(--mono);">${t.p95_latency_ms} ms</div>
+            <div style="text-align: right; flex: 1; font-family: var(--mono); color: ${t.cost_est > 0 ? 'var(--warning)' : 'var(--text-muted)'};">
               ${t.cost_est > 0 ? t.cost_est.toFixed(3) + ' $' : '0.00 $'}
             </div>
           </div>
         `;
       }).join('');
+      if (window.lucide) lucide.createIcons();
     }
   }
 }
@@ -3326,12 +3343,7 @@ function renderSupervisionPatches(data) {
   }
 
   if (patches.length === 0) {
-    container.innerHTML = `
-      <div class="sup-empty-state">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        <span>Aucun patch d'auto-guérison enregistré pour le moment. Système intègre.</span>
-      </div>
-    `;
+    renderEmpty(container, 'shield-check', "Aucun patch d'auto-guérison enregistré pour le moment. Système intègre.");
     return;
   }
 
@@ -4795,11 +4807,36 @@ if (logsModalEl) {
 
 
 
-// Initialisation des icônes Lucide au chargement
+// Initialisation du Segmented Control pour les sous-onglets Supervision (Prompt 5)
+function initSupervisionTabs() {
+  const tabs = document.querySelectorAll('.sup-nav-tab');
+  const panels = document.querySelectorAll('.sup-tab-panel');
+  if (!tabs.length || !panels.length) return;
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const targetTab = tab.getAttribute('data-sup-tab');
+      tabs.forEach(t => t.classList.toggle('active', t === tab));
+      panels.forEach(p => {
+        const isTarget = p.getAttribute('data-sup-panel') === targetTab;
+        p.classList.toggle('active', isTarget);
+        p.style.display = isTarget ? 'flex' : 'none';
+      });
+      if (window.lucide && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+      }
+    });
+  });
+}
+window.initSupervisionTabs = initSupervisionTabs;
+
+// Initialisation des icônes Lucide et des sous-onglets au chargement
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
+    initSupervisionTabs();
     if (window.lucide) lucide.createIcons();
   });
 } else {
+  initSupervisionTabs();
   if (window.lucide) lucide.createIcons();
 }

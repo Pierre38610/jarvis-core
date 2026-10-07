@@ -17,7 +17,7 @@
   <link rel="icon" type="image/svg+xml" href="/static/jarvis-icon.svg">
   <link rel="apple-touch-icon" href="/static/jarvis-icon.png">
   <link rel="shortcut icon" href="/static/jarvis-icon.png">
-  <link rel="stylesheet" href="/static/style.css?v=5.83.0">
+  <link rel="stylesheet" href="/static/style.css?v=5.84.0">
 </head>
 <body>
 
@@ -100,7 +100,7 @@
         </div>
 
         <div class="statusbar-right">
-          <span class="hud-version-tag statusbar-version" id="hudVersionTag" title="Version 5.83.0 Stark AI">v5.83.0</span>
+          <span class="hud-version-tag statusbar-version" id="hudVersionTag" title="Version 5.84.0 Stark AI">v5.84.0</span>
         </div>
       </header>
 
@@ -604,235 +604,268 @@
         </div>
       </div>
 
+      <!-- Segmented Control Sous-Onglets (Prompt 5) -->
+      <div class="sup-segmented-nav">
+        <button class="sup-nav-tab active" data-sup-tab="models">
+          <i data-lucide="cpu"></i>
+          <span>Modèles</span>
+        </button>
+        <button class="sup-nav-tab" data-sup-tab="keys">
+          <i data-lucide="key"></i>
+          <span>Clés API</span>
+        </button>
+        <button class="sup-nav-tab" data-sup-tab="metrics">
+          <i data-lucide="bar-chart-3"></i>
+          <span>Métriques</span>
+        </button>
+        <button class="sup-nav-tab" data-sup-tab="patches">
+          <i data-lucide="shield-check"></i>
+          <span>Patches</span>
+        </button>
+      </div>
+
       <!-- Corps défilant du modal -->
       <div class="supervision-body">
 
-        <!-- 1. MODÈLE VOCAL ACTIF & CLÉ API -->
-        <div class="supervision-section">
-          <div class="section-badge-header">
-            <span class="section-icon"><i data-lucide="mic"></i></span>
-            <span class="section-title">MODÈLE VOCAL EN COURS (PAROLE & ÉCOUTE)</span>
-            <span class="section-tag" id="supVoiceStatusTag">À L'ÉCOUTE</span>
-          </div>
-          <div class="sup-card-grid">
-            <div class="sup-info-box">
-              <div class="sup-label">MODÈLE UTILISÉ POUR PARLER</div>
-              <div class="sup-value-highlight" id="supVoiceModel">GEMINI 3.8 LIVE</div>
-              <div class="sup-detail" id="supVoiceDetail">Voix : Aoede (Féminine, Naturelle & Distinguée)</div>
+        <!-- SOUS-ONGLET 1 : MODÈLES, OUTILS, ACTIONS & FENÊTRES -->
+        <div class="sup-tab-panel active" id="supPanelModels" data-sup-panel="models">
+          <!-- 1. MODÈLE VOCAL ACTIF & CLÉ API -->
+          <div class="supervision-section">
+            <div class="section-badge-header">
+              <span class="section-icon"><i data-lucide="mic"></i></span>
+              <span class="section-title">MODÈLE VOCAL EN COURS (PAROLE & ÉCOUTE)</span>
+              <span class="section-tag" id="supVoiceStatusTag">À L'ÉCOUTE</span>
             </div>
-            <div class="sup-info-box">
-              <div class="sup-label">CLÉ API ASSOCIÉE</div>
-              <div class="sup-key-row">
-                <span class="badge-key-pill badge-key-free" id="supVoiceKeyPill">CLÉ GRATUITE</span>
-                <span class="sup-cost-text" id="supVoiceCost">0.00 $ (Inclus)</span>
+            <div class="sup-card-grid">
+              <div class="sup-info-box">
+                <div class="sup-label">MODÈLE UTILISÉ POUR PARLER</div>
+                <div class="sup-value-highlight" id="supVoiceModel">GEMINI 3.8 LIVE</div>
+                <div class="sup-detail" id="supVoiceDetail">Voix : Aoede (Féminine, Naturelle & Distinguée)</div>
               </div>
-              <div class="sup-key-masked" id="supVoiceKeyMasked">••••••••••••</div>
-            </div>
-          </div>
-          <!-- Sélecteur rapide de modèle vocal -->
-          <div class="sup-voice-switch-row">
-            <span class="sup-switch-label">BASCULER LE MODÈLE VOCAL :</span>
-            <div class="sup-switch-buttons">
-              <button class="sup-btn-model-choice active" id="btnSwitchLiveStd">Gemini 3.8 Live</button>
-              <button class="sup-btn-model-choice" id="btnSwitchLiveThinking">Gemini 3.8 Live (Extended Thinking)</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- 2. ACTIONS & PROCESSUS EN COURS -->
-        <div class="supervision-section">
-          <div class="section-badge-header">
-            <span class="section-icon"><i data-lucide="zap"></i></span>
-            <span class="section-title">ACTIONS EN COURS D'EXÉCUTION</span>
-            <span class="section-counter" id="supActionsCountBadge">0 ACTIVE</span>
-          </div>
-          <div id="supActiveActionsContainer" class="sup-actions-list">
-            <div class="sup-empty-state" id="supNoActiveActions">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-              <span>Aucune tâche lourde en cours d'exécution. JARVIS est en veille active.</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 3. OUTILS EN COURS D'UTILISATION & REGISTRE DES APIS -->
-        <div class="supervision-section">
-          <div class="section-badge-header">
-            <span class="section-icon"><i data-lucide="wrench"></i></span>
-            <span class="section-title">OUTILS DU SYSTÈME & APIS CORRESPONDANTES</span>
-          </div>
-          <div class="sup-tools-table" id="supToolsTable">
-            <!-- Dynamiquement généré via JS -->
-          </div>
-        </div>
-
-        <!-- 4. FENÊTRES OUVERTES (SYSTÈME & NAVIGATEUR) -->
-        <div class="supervision-section">
-          <div class="section-badge-header">
-            <span class="section-icon"><i data-lucide="app-window"></i></span>
-            <span class="section-title">FENÊTRES OUVERTES & SESSIONS NAVIGATEUR</span>
-            <span class="section-counter" id="supWindowsCountBadge">0 FENÊTRE</span>
-          </div>
-          <div class="sup-windows-list" id="supWindowsList">
-            <!-- Liste dynamique des fenêtres -->
-          </div>
-        </div>
-
-        <!-- 5. SYNTHÈSE DES CLÉS API CONFIGURÉES -->
-        <div class="supervision-section">
-          <div class="section-badge-header">
-            <span class="section-icon"><i data-lucide="credit-card"></i></span>
-            <span class="section-title">ÉTAT DES CLÉS API STARK INDUSTRIES</span>
-          </div>
-          <div class="sup-api-summary-grid">
-            <div class="sup-api-card free-api-card">
-              <div class="sup-api-card-header">
-                <span class="sup-api-title">CLÉ GRATUITE (GEMINI FREE)</span>
-                <span class="badge-key-pill badge-key-free" id="supSummaryFreeBadge">PAR DÉFAUT</span>
-              </div>
-              <div class="sup-api-role">Voix standard Gemini 3.8 Live (parole courante sans réflexion)</div>
-              <div class="sup-api-stat">Statut : <strong id="supSummaryFreeStatus" style="color:#38bdf8;">Active par défaut (0.00 $)</strong></div>
-              <div class="sup-api-mask" id="supSummaryFreeKey">••••••••</div>
-            </div>
-            <div class="sup-api-card paid-api-card">
-              <div class="sup-api-card-header">
-                <span class="sup-api-title">CLÉ PAYANTE (GEMINI PAID)</span>
-                <span class="badge-key-pill badge-key-paid" id="supSummaryPaidBadge">VERROUILLÉE</span>
-              </div>
-              <div class="sup-api-role">Live Thinking, Gemini 3.8 Flash, Agents Antigravity & Repli automatique</div>
-              <div class="sup-api-stat">Statut : <strong id="supSummaryPaidStatus" style="color:#a855f7;">Contrôlée par l'utilisateur</strong></div>
-              <div class="sup-api-mask" id="supSummaryPaidKey">••••••••</div>
-              <div class="sup-paid-toggle-row">
-                <label class="paid-toggle-container" for="supPaidKeyToggle" title="Autoriser ou bloquer les requêtes sur la clé payante">
-                  <span class="sup-toggle-desc">Autorisation d'accès :</span>
-                  <div class="stark-switch">
-                    <input type="checkbox" id="supPaidKeyToggle" class="stark-switch-input" aria-label="Autoriser la clé payante">
-                    <span class="stark-switch-track">
-                      <span class="stark-switch-thumb"></span>
-                    </span>
-                  </div>
-                  <span id="supPaidToggleBadge" class="paid-toggle-badge badge-locked"><i data-lucide="lock"></i> VERROUILLÉE</span>
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 6. MÉTRIQUES & HISTORIQUE D'INSTRUMENTATION DES OUTILS -->
-        <div class="supervision-section" id="supMetricsSection">
-          <div class="section-badge-header">
-            <span class="section-icon"><i data-lucide="bar-chart-3"></i></span>
-            <span class="section-title">MÉTRIQUES D'INSTRUMENTATION & OBSERVABILITÉ DES OUTILS</span>
-            <div class="sup-metrics-window-pills">
-              <button class="sup-metrics-pill active" id="btnMetrics24h" onclick="switchMetricsWindow('24h')">24H</button>
-              <button class="sup-metrics-pill" id="btnMetrics7j" onclick="switchMetricsWindow('7j')">7 JOURS</button>
-              <button class="sup-metrics-pill" id="btnMetrics30j" onclick="switchMetricsWindow('30j')">30 JOURS</button>
-            </div>
-          </div>
-
-          <!-- 4 Compteurs Clés -->
-          <div class="sup-metrics-counters-grid">
-            <div class="sup-metric-counter-card">
-              <div class="sup-metric-val" id="metTotalCalls">0</div>
-              <div class="sup-metric-lbl">APPELS D'OUTILS</div>
-              <div class="sup-metric-sub" id="metCallsSub">Fenêtre active</div>
-            </div>
-            <div class="sup-metric-counter-card">
-              <div class="sup-metric-val" id="metFailureRate">0.0%</div>
-              <div class="sup-metric-lbl">TAUX D'ÉCHEC</div>
-              <div class="sup-metric-sub" id="metFailureDetail">0 échec / 0 timeout</div>
-            </div>
-            <div class="sup-metric-counter-card">
-              <div class="sup-metric-val" id="metAvgLatency">0 ms</div>
-              <div class="sup-metric-lbl">LATENCE MOYENNE</div>
-              <div class="sup-metric-sub" id="metP95Latency">P95 : 0 ms</div>
-            </div>
-            <div class="sup-metric-counter-card">
-              <div class="sup-metric-val" id="metTotalCost">0.00 $</div>
-              <div class="sup-metric-lbl">DÉPENSE ESTIMÉE</div>
-              <div class="sup-metric-sub" id="metCostDetail">Clés payantes</div>
-            </div>
-          </div>
-
-          <!-- 2 Graphiques Simples et Visibles -->
-          <div class="sup-metrics-charts-grid">
-            <!-- Graphique 1 : Top Outils & Fréquence / Échecs -->
-            <div class="sup-metrics-chart-box">
-              <div class="sup-chart-title">TOP OUTILS LES PLUS UTILISÉS</div>
-              <div id="metTopToolsBars" class="sup-bars-container">
-                <div class="sup-empty-metrics">Aucun appel d'outil sur cette fenêtre temporelle.</div>
-              </div>
-            </div>
-
-            <!-- Graphique 2 : Répartition Tiers Cognitifs (1/2/3) -->
-            <div class="sup-metrics-chart-box">
-              <div class="sup-chart-title">RÉPARTITION DES TIERS COGNITIFS</div>
-              <div id="metTierDistribution" class="sup-tier-container">
-                <div class="sup-segmented-track" id="metTierTrack">
-                  <div class="sup-seg-bar seg-tier1" id="segTier1" style="width: 0%;" title="Tier 1"></div>
-                  <div class="sup-seg-bar seg-tier2" id="segTier2" style="width: 0%;" title="Tier 2"></div>
-                  <div class="sup-seg-bar seg-tier3" id="segTier3" style="width: 0%;" title="Tier 3"></div>
-                  <div class="sup-seg-bar seg-tier0" id="segTier0" style="width: 100%;" title="Direct"></div>
+              <div class="sup-info-box">
+                <div class="sup-label">CLÉ API ASSOCIÉE</div>
+                <div class="sup-key-row">
+                  <span class="badge-key-pill badge-key-free" id="supVoiceKeyPill">CLÉ GRATUITE</span>
+                  <span class="sup-cost-text" id="supVoiceCost">0.00 $ (Inclus)</span>
                 </div>
-                <div class="sup-tier-legend-grid">
-                  <div class="sup-tier-legend-item">
-                    <span class="tier-dot tier1-dot"></span>
-                    <span class="tier-name">Tier 1 (Flash / Réflexe) :</span>
-                    <strong id="metTier1Count">0</strong>
-                  </div>
-                  <div class="sup-tier-legend-item">
-                    <span class="tier-dot tier2-dot"></span>
-                    <span class="tier-name">Tier 2 (Tactique) :</span>
-                    <strong id="metTier2Count">0</strong>
-                  </div>
-                  <div class="sup-tier-legend-item">
-                    <span class="tier-dot tier3-dot"></span>
-                    <span class="tier-name">Tier 3 (Système 2 / Pro) :</span>
-                    <strong id="metTier3Count">0</strong>
-                  </div>
-                  <div class="sup-tier-legend-item">
-                    <span class="tier-dot tier0-dot"></span>
-                    <span class="tier-name">Direct / Local :</span>
-                    <strong id="metTier0Count">0</strong>
-                  </div>
+                <div class="sup-key-masked" id="supVoiceKeyMasked">••••••••••••</div>
+              </div>
+            </div>
+            <!-- Sélecteur rapide de modèle vocal -->
+            <div class="sup-voice-switch-row">
+              <span class="sup-switch-label">BASCULER LE MODÈLE VOCAL :</span>
+              <div class="sup-switch-buttons">
+                <button class="sup-btn-model-choice active" id="btnSwitchLiveStd">Gemini 3.8 Live</button>
+                <button class="sup-btn-model-choice" id="btnSwitchLiveThinking">Gemini 3.8 Live (Extended Thinking)</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. ACTIONS & PROCESSUS EN COURS -->
+          <div class="supervision-section">
+            <div class="section-badge-header">
+              <span class="section-icon"><i data-lucide="zap"></i></span>
+              <span class="section-title">ACTIONS EN COURS D'EXÉCUTION</span>
+              <span class="section-counter" id="supActionsCountBadge">0 ACTIVE</span>
+            </div>
+            <div id="supActiveActionsContainer" class="sup-actions-list">
+              <div class="empty-state" id="supNoActiveActions">
+                <i data-lucide="activity" class="empty-state-icon"></i>
+                <span class="empty-state-text">Aucune tâche lourde en cours d'exécution. JARVIS est en veille active.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. OUTILS EN COURS D'UTILISATION & REGISTRE DES APIS -->
+          <div class="supervision-section">
+            <div class="section-badge-header">
+              <span class="section-icon"><i data-lucide="wrench"></i></span>
+              <span class="section-title">OUTILS DU SYSTÈME & APIS CORRESPONDANTES</span>
+            </div>
+            <div class="sup-tools-table" id="supToolsTable">
+              <!-- Dynamiquement généré via JS -->
+            </div>
+          </div>
+
+          <!-- 4. FENÊTRES OUVERTES (SYSTÈME & NAVIGATEUR) -->
+          <div class="supervision-section">
+            <div class="section-badge-header">
+              <span class="section-icon"><i data-lucide="app-window"></i></span>
+              <span class="section-title">FENÊTRES OUVERTES & SESSIONS NAVIGATEUR</span>
+              <span class="section-counter" id="supWindowsCountBadge">0 FENÊTRE</span>
+            </div>
+            <div class="sup-windows-list" id="supWindowsList">
+              <!-- Liste dynamique des fenêtres -->
+            </div>
+          </div>
+        </div>
+
+        <!-- SOUS-ONGLET 2 : CLÉS API -->
+        <div class="sup-tab-panel" id="supPanelKeys" data-sup-panel="keys" style="display: none;">
+          <!-- 5. SYNTHÈSE DES CLÉS API CONFIGURÉES -->
+          <div class="supervision-section">
+            <div class="section-badge-header">
+              <span class="section-icon"><i data-lucide="credit-card"></i></span>
+              <span class="section-title">ÉTAT DES CLÉS API STARK INDUSTRIES</span>
+            </div>
+            <div class="sup-api-summary-grid">
+              <div class="sup-api-card free-api-card">
+                <div class="sup-api-card-header">
+                  <span class="sup-api-title">CLÉ GRATUITE (GEMINI FREE)</span>
+                  <span class="badge-key-pill badge-key-free" id="supSummaryFreeBadge">PAR DÉFAUT</span>
+                </div>
+                <div class="sup-api-role">Voix standard Gemini 3.8 Live (parole courante sans réflexion)</div>
+                <div class="sup-api-stat">Statut : <strong id="supSummaryFreeStatus" style="color:var(--accent);">Active par défaut (0.00 $)</strong></div>
+                <div class="sup-api-mask" id="supSummaryFreeKey">••••••••</div>
+              </div>
+              <div class="sup-api-card paid-api-card">
+                <div class="sup-api-card-header">
+                  <span class="sup-api-title">CLÉ PAYANTE (GEMINI PAID)</span>
+                  <span class="badge-key-pill badge-key-paid" id="supSummaryPaidBadge">VERROUILLÉE</span>
+                </div>
+                <div class="sup-api-role">Live Thinking, Gemini 3.8 Flash, Agents Antigravity & Repli automatique</div>
+                <div class="sup-api-stat">Statut : <strong id="supSummaryPaidStatus" style="color:var(--warning);">Contrôlée par l'utilisateur</strong></div>
+                <div class="sup-api-mask" id="supSummaryPaidKey">••••••••</div>
+                <div class="sup-paid-toggle-row">
+                  <label class="paid-toggle-container" for="supPaidKeyToggle" title="Autoriser ou bloquer les requêtes sur la clé payante">
+                    <span class="sup-toggle-desc">Autorisation d'accès :</span>
+                    <div class="stark-switch">
+                      <input type="checkbox" id="supPaidKeyToggle" class="stark-switch-input" aria-label="Autoriser la clé payante">
+                      <span class="stark-switch-track">
+                        <span class="stark-switch-thumb"></span>
+                      </span>
+                    </div>
+                    <span id="supPaidToggleBadge" class="paid-toggle-badge badge-locked"><i data-lucide="lock"></i> VERROUILLÉE</span>
+                  </label>
                 </div>
               </div>
             </div>
           </div>
+        </div>
 
-          <!-- Tableau récapitulatif détaillé -->
-          <div class="sup-metrics-table-wrapper">
-            <div class="sup-chart-title" style="margin-bottom: 8px;">DÉTAIL PAR OUTIL (LATENCES & FIABILITÉ)</div>
-            <div class="sup-metrics-table-head">
-              <div style="flex: 2;">OUTIL</div>
-              <div style="text-align: center; flex: 1;">APPELS</div>
-              <div style="text-align: center; flex: 1;">ÉCHECS</div>
-              <div style="text-align: center; flex: 1;">MOYENNE</div>
-              <div style="text-align: center; flex: 1;">P95</div>
-              <div style="text-align: right; flex: 1;">COÛT EST.</div>
+        <!-- SOUS-ONGLET 3 : MÉTRIQUES -->
+        <div class="sup-tab-panel" id="supPanelMetrics" data-sup-panel="metrics" style="display: none;">
+          <!-- 6. MÉTRIQUES & HISTORIQUE D'INSTRUMENTATION DES OUTILS -->
+          <div class="supervision-section" id="supMetricsSection">
+            <div class="section-badge-header">
+              <span class="section-icon"><i data-lucide="bar-chart-3"></i></span>
+              <span class="section-title">MÉTRIQUES D'INSTRUMENTATION & OBSERVABILITÉ DES OUTILS</span>
+              <div class="sup-metrics-window-pills">
+                <button class="sup-metrics-pill active" id="btnMetrics24h" onclick="switchMetricsWindow('24h')">24H</button>
+                <button class="sup-metrics-pill" id="btnMetrics7j" onclick="switchMetricsWindow('7j')">7 JOURS</button>
+                <button class="sup-metrics-pill" id="btnMetrics30j" onclick="switchMetricsWindow('30j')">30 JOURS</button>
+              </div>
             </div>
-            <div id="metToolsTableRows" class="sup-metrics-table-rows">
-              <!-- Rempli dynamiquement -->
+
+            <!-- 4 Compteurs Clés .stat-card -->
+            <div class="sup-metrics-counters-grid">
+              <div class="stat-card">
+                <div class="stat-card-val sup-metric-val" id="metTotalCalls">0</div>
+                <div class="stat-card-lbl sup-metric-lbl">APPELS D'OUTILS</div>
+                <div class="stat-card-sub sup-metric-sub" id="metCallsSub">Fenêtre active</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-card-val sup-metric-val" id="metFailureRate">0.0%</div>
+                <div class="stat-card-lbl sup-metric-lbl">TAUX D'ÉCHEC</div>
+                <div class="stat-card-sub sup-metric-sub" id="metFailureDetail">0 échec / 0 timeout</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-card-val sup-metric-val" id="metAvgLatency">0 ms</div>
+                <div class="stat-card-lbl sup-metric-lbl">LATENCE MOYENNE</div>
+                <div class="stat-card-sub sup-metric-sub" id="metP95Latency">P95 : 0 ms</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-card-val sup-metric-val" id="metTotalCost">0.00 $</div>
+                <div class="stat-card-lbl sup-metric-lbl">DÉPENSE ESTIMÉE</div>
+                <div class="stat-card-sub sup-metric-sub" id="metCostDetail">Clés payantes</div>
+              </div>
+            </div>
+
+            <!-- 2 Graphiques Simples et Visibles -->
+            <div class="sup-metrics-charts-grid">
+              <!-- Graphique 1 : Top Outils & Fréquence / Échecs -->
+              <div class="sup-metrics-chart-box">
+                <div class="sup-chart-title">TOP OUTILS LES PLUS UTILISÉS</div>
+                <div id="metTopToolsBars" class="sup-bars-container">
+                  <div class="empty-state">
+                    <i data-lucide="bar-chart-2" class="empty-state-icon"></i>
+                    <span class="empty-state-text">Aucun appel d'outil sur cette fenêtre temporelle.</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Graphique 2 : Répartition Tiers Cognitifs (1/2/3) -->
+              <div class="sup-metrics-chart-box">
+                <div class="sup-chart-title">RÉPARTITION DES TIERS COGNITIFS</div>
+                <div id="metTierDistribution" class="sup-tier-container">
+                  <div class="sup-segmented-track" id="metTierTrack">
+                    <div class="sup-seg-bar seg-tier1" id="segTier1" style="width: 0%;" title="Tier 1"></div>
+                    <div class="sup-seg-bar seg-tier2" id="segTier2" style="width: 0%;" title="Tier 2"></div>
+                    <div class="sup-seg-bar seg-tier3" id="segTier3" style="width: 0%;" title="Tier 3"></div>
+                    <div class="sup-seg-bar seg-tier0" id="segTier0" style="width: 100%;" title="Direct"></div>
+                  </div>
+                  <div class="sup-tier-legend-grid">
+                    <div class="sup-tier-legend-item">
+                      <span class="tier-dot tier1-dot"></span>
+                      <span class="tier-name">Tier 1 (Flash / Réflexe) :</span>
+                      <strong id="metTier1Count">0</strong>
+                    </div>
+                    <div class="sup-tier-legend-item">
+                      <span class="tier-dot tier2-dot"></span>
+                      <span class="tier-name">Tier 2 (Tactique) :</span>
+                      <strong id="metTier2Count">0</strong>
+                    </div>
+                    <div class="sup-tier-legend-item">
+                      <span class="tier-dot tier3-dot"></span>
+                      <span class="tier-name">Tier 3 (Système 2 / Pro) :</span>
+                      <strong id="metTier3Count">0</strong>
+                    </div>
+                    <div class="sup-tier-legend-item">
+                      <span class="tier-dot tier0-dot"></span>
+                      <span class="tier-name">Direct / Local :</span>
+                      <strong id="metTier0Count">0</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tableau récapitulatif détaillé -->
+            <div class="sup-metrics-table-wrapper">
+              <div class="sup-chart-title" style="padding: 10px 14px 4px 14px; margin: 0;">DÉTAIL PAR OUTIL (LATENCES & FIABILITÉ)</div>
+              <div class="sup-metrics-table-head">
+                <div style="flex: 2;">OUTIL</div>
+                <div style="text-align: center; flex: 1;">APPELS</div>
+                <div style="text-align: center; flex: 1;">ÉCHECS</div>
+                <div style="text-align: center; flex: 1;">MOYENNE</div>
+                <div style="text-align: center; flex: 1;">P95</div>
+                <div style="text-align: right; flex: 1;">COÛT EST.</div>
+              </div>
+              <div id="metToolsTableRows" class="sup-metrics-table-rows">
+                <!-- Rempli dynamiquement -->
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- 7. JOURNAL DES PATCHES D'AUTO-GUÉRISON & SRE (POSTGRESQL) -->
-        <div class="supervision-section" id="supPatchesSection">
-          <div class="section-badge-header">
-            <span class="section-icon"><i data-lucide="shield-check"></i></span>
-            <span class="section-title">JOURNAL DES PATCHES D'AUTO-GUÉRISON & RELEASES (POSTGRESQL)</span>
-            <span class="section-counter" id="supPatchesCountBadge">0 PATCH</span>
-          </div>
+        <!-- SOUS-ONGLET 4 : PATCHES -->
+        <div class="sup-tab-panel" id="supPanelPatches" data-sup-panel="patches" style="display: none;">
+          <!-- 7. JOURNAL DES PATCHES D'AUTO-GUÉRISON & SRE (POSTGRESQL) -->
+          <div class="supervision-section" id="supPatchesSection">
+            <div class="section-badge-header">
+              <span class="section-icon"><i data-lucide="shield-check"></i></span>
+              <span class="section-title">JOURNAL DES PATCHES D'AUTO-GUÉRISON & RELEASES (POSTGRESQL)</span>
+              <span class="section-counter" id="supPatchesCountBadge">0 PATCH</span>
+            </div>
 
-          <div id="supPatchesListContainer" class="sup-patches-list">
-            <div class="sup-empty-state" id="supNoPatches">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              <span>Aucun patch d'auto-guérison enregistré pour le moment. Système intègre.</span>
+            <div id="supPatchesListContainer" class="sup-patches-list">
+              <div class="empty-state" id="supNoPatches">
+                <i data-lucide="shield-check" class="empty-state-icon"></i>
+                <span class="empty-state-text">Aucun patch d'auto-guérison enregistré pour le moment. Système intègre.</span>
+              </div>
             </div>
           </div>
         </div>
-
-      </div>
 
       <!-- Pied du modal -->
       <div class="supervision-footer">
@@ -1097,6 +1130,6 @@
   </div>
 
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="/static/app.js?v=5.83.0"></script>
+  <script src="/static/app.js?v=5.84.0"></script>
 </body>
 </html>
