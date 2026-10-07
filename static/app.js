@@ -10,6 +10,43 @@ if (window.location.protocol === 'http:' && window.location.hostname !== 'localh
   window.location.replace(targetHttps);
 }
 
+// --- SYSTÈME DE TOASTS (PROMPT 8) ---
+function toast(message, type = 'info', ms = 3500) {
+  let container = document.getElementById('toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+
+  const el = document.createElement('div');
+  const normalizedType = (type === 'warn') ? 'warning' : ((type === 'error') ? 'danger' : type);
+  el.className = `toast-item toast-${normalizedType}`;
+  el.textContent = message;
+
+  container.appendChild(el);
+  requestAnimationFrame(() => {
+    el.classList.add('toast-show');
+  });
+
+  let timer = null;
+  const dismiss = () => {
+    if (timer) clearTimeout(timer);
+    el.classList.remove('toast-show');
+    el.classList.add('toast-hide');
+    setTimeout(() => {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }, 160);
+  };
+
+  el.onclick = dismiss;
+  if (ms > 0) {
+    timer = setTimeout(dismiss, ms);
+  }
+}
+window.toast = toast;
+
 // --- GESTION DE L'AUTHENTIFICATION & PERSISTANCE ---
 const authScreen = document.getElementById('authScreen');
 const mainScreen = document.getElementById('mainScreen');
@@ -76,7 +113,7 @@ async function checkExistingAuth() {
       authScreen.style.display = 'flex';
       authScreen.style.opacity = '1';
       authBtn.disabled = true;
-      authBtn.innerText = "VALIDATION DU SCAN QR...";
+      authBtn.innerText = "Validation du scan QR...";
       authFeedback.className = "feedback-success";
       authFeedback.innerText = "Scan QR détecté : enregistrement automatique du terminal...";
 
@@ -103,7 +140,7 @@ async function checkExistingAuth() {
         authFeedback.className = "feedback-error";
         authFeedback.innerText = "Ticket QR expiré ou invalide. Veuillez entrer le mot de passe.";
         authBtn.disabled = false;
-        authBtn.innerText = "AUTORISER L'APPAREIL";
+        authBtn.innerText = "Autoriser cet appareil";
       }
     } catch (e) {
       console.error("Erreur enregistrement QR:", e);
@@ -144,7 +181,7 @@ async function submitAuth() {
   }
 
   authBtn.disabled = true;
-  authBtn.innerText = "AUTHENTIFICATION...";
+  authBtn.innerText = "Authentification...";
   authFeedback.innerText = "";
 
   try {
@@ -166,7 +203,7 @@ async function submitAuth() {
       authFeedback.className = "feedback-error";
       authFeedback.innerText = "Mot de passe incorrect. Accès refusé.";
       authBtn.disabled = false;
-      authBtn.innerText = "AUTORISER L'APPAREIL";
+      authBtn.innerText = "Autoriser cet appareil";
       pwdInput.value = "";
       pwdInput.focus();
     }
@@ -174,7 +211,7 @@ async function submitAuth() {
     authFeedback.className = "feedback-error";
     authFeedback.innerText = "Erreur réseau avec le serveur.";
     authBtn.disabled = false;
-    authBtn.innerText = "AUTORISER L'APPAREIL";
+    authBtn.innerText = "Autoriser cet appareil";
   }
 }
 
@@ -378,16 +415,29 @@ window.openAntigravityView = openAntigravityView;
 
 function showPaidConsentModal(data) {
   pendingPaidAction = data.action || "general";
-  if (paidConsentTitle) paidConsentTitle.innerText = data.title || "AUTORISATION CLÉ PAYANTE REQUISE";
+  if (paidConsentTitle) paidConsentTitle.innerText = data.title || "Utiliser la clé payante ?";
   if (paidConsentReason) paidConsentReason.innerText = data.reason || "Mobilisation de l'API payante";
   if (paidConsentCost) paidConsentCost.innerText = data.estimated_cost || "~0.005 $";
-  if (paidConsentMessage) paidConsentMessage.innerText = data.message || "Votre accord est requis pour utiliser l'API payante.";
-  if (paidConsentModal) paidConsentModal.style.display = 'flex';
+  if (paidConsentMessage) paidConsentMessage.innerText = data.message || "Votre accord est requis pour continuer avec l'API payante.";
+  if (paidConsentModal) {
+    paidConsentModal.style.display = 'flex';
+    setTimeout(() => {
+      if (btnApprovePaid) btnApprovePaid.focus();
+    }, 50);
+  }
   playActionChime();
 }
 
 function hidePaidConsentModal() {
   if (paidConsentModal) paidConsentModal.style.display = 'none';
+}
+
+if (paidConsentModal) {
+  paidConsentModal.addEventListener('click', (e) => {
+    if (e.target === paidConsentModal) {
+      hidePaidConsentModal();
+    }
+  });
 }
 
 if (btnApprovePaid) {
@@ -2685,15 +2735,28 @@ btn.onclick = () => {
 btnViewBrowser.onclick = () => {
   browserScreenshotImg.src = "/static/latest_screenshot.jpg?t=" + Date.now();
   browserModal.style.display = 'flex';
+  setTimeout(() => {
+    const closeBtn = document.getElementById('btnCloseBrowserModal');
+    if (closeBtn) closeBtn.focus();
+  }, 50);
 };
+if (browserModal) {
+  browserModal.addEventListener('click', (e) => {
+    if (e.target === browserModal) {
+      browserModal.style.display = 'none';
+    }
+  });
+}
 btnOpenBrowser.onclick = () => {
   if (currentWebUrl) {
     window.open(currentWebUrl, '_blank');
+    toast("Page web ouverte dans votre navigateur", "info");
   }
 };
 btnModalOpenExternal.onclick = () => {
   if (currentWebUrl) {
     window.open(currentWebUrl, '_blank');
+    toast("Page web ouverte dans votre navigateur", "info");
   }
 };
 btnCloseBrowserModal.onclick = () => {
@@ -2801,6 +2864,9 @@ function openSupervisionModal() {
   fetchSupervisionOverview();
   fetchSupervisionMetrics();
   fetchSupervisionPatches();
+  setTimeout(() => {
+    if (btnCloseSupervision) btnCloseSupervision.focus();
+  }, 50);
   
   if (!supervisionPollTimer) {
     supervisionPollTimer = setInterval(() => {
@@ -3445,14 +3511,14 @@ async function rollbackPatch(patchId) {
     });
     const data = await res.json();
     if (res.ok && data.success) {
-      alert("✅ Rollback instantané effectué avec succès.");
+      toast("Rollback instantané effectué avec succès.", "success");
       fetchSupervisionPatches();
       fetchSupervisionOverview();
     } else {
-      alert("❌ Échec du rollback : " + (data.message || 'Erreur'));
+      toast("Échec du rollback : " + (data.message || 'Erreur'), "danger");
     }
   } catch (err) {
-    alert("❌ Erreur réseau lors du rollback : " + err);
+    toast("Erreur réseau lors du rollback : " + err, "danger");
   }
 }
 
@@ -3465,14 +3531,14 @@ async function approvePatch(patchId) {
     });
     const data = await res.json();
     if (res.ok && data.success) {
-      alert("✅ Patch critique validé et déployé avec succès.");
+      toast("Patch critique validé et déployé avec succès.", "success");
       fetchSupervisionPatches();
       fetchSupervisionOverview();
     } else {
-      alert("❌ Échec de la validation : " + (data.message || 'Erreur'));
+      toast("Échec de la validation : " + (data.message || 'Erreur'), "danger");
     }
   } catch (err) {
-    alert("❌ Erreur réseau lors de la validation : " + err);
+    toast("Erreur réseau lors de la validation : " + err, "danger");
   }
 }
 
@@ -3526,7 +3592,7 @@ if (btnSwitchLiveStd) {
 if (btnSwitchLiveThinking) {
   btnSwitchLiveThinking.onclick = () => {
     if (!window._isPaidKeyAuthorized) {
-      alert("La clé payante est verrouillée. Veuillez cocher l'encoche 'CLÉ PAYANTE' sur l'écran pour autoriser le mode Thinking.");
+      toast("La clé payante est verrouillée. Activez l'option Clé payante pour autoriser le mode Thinking.", "warning");
       return;
     }
     setLiveModel('gemini-3.8-live-extended-thinking');
@@ -3839,7 +3905,7 @@ function renderChatMessage(msg, scroll = true) {
 // Prévisualisation de l'image sélectionnée
 function setChatImageAttachment(file) {
   if (!file || !file.type.startsWith('image/')) {
-    alert("Veuillez sélectionner un fichier image valide (JPG, PNG, WebP).");
+    toast("Veuillez sélectionner un fichier image valide (JPG, PNG, WebP).", "warning");
     return;
   }
   selectedChatImageFile = file;
@@ -4063,7 +4129,7 @@ function speakChatMessage(text, btn) {
       text: `Lis-moi ce passage à voix haute avec ta voix Aoede : "${clean.substring(0, 300)}"`
     }));
   } else {
-    alert("Veuillez activer la connexion vocale J.A.R.V.I.S. pour écouter la réponse avec la voix native Aoede.");
+    toast("Activez la connexion vocale J.A.R.V.I.S. pour écouter la réponse avec la voix Aoede.", "info");
   }
 }
 window.speakChatMessage = speakChatMessage;
@@ -4197,15 +4263,26 @@ if (chatLightboxModal) {
   });
 }
 
-// Touche Échap pour fermer la messagerie ou la lightbox ou kindle
+// Touche Échap globale pour fermer les modales actives
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    if (chatLightboxModal && chatLightboxModal.style.display !== 'none') {
+    if (paidConsentModal && paidConsentModal.style.display !== 'none') {
+      hidePaidConsentModal();
+    } else if (browserModal && browserModal.style.display !== 'none') {
+      browserModal.style.display = 'none';
+    } else if (chatLightboxModal && chatLightboxModal.style.display !== 'none') {
       closeChatLightbox();
-    } else if (chatModal && chatModal.style.display !== 'none') {
-      closeChatDrawer();
     } else if (kindleModal && kindleModal.style.display !== 'none') {
       closeKindleModal();
+    } else if (supervisionModal && supervisionModal.style.display !== 'none') {
+      closeSupervisionModal();
+    } else if (chatModal && chatModal.style.display !== 'none') {
+      closeChatDrawer();
+    } else {
+      const logs = document.getElementById('logsModal');
+      if (logs && logs.style.display !== 'none') {
+        closeLogsModal();
+      }
     }
   }
 });
@@ -4222,6 +4299,10 @@ function openKindleModal() {
   fetchKindleStatus();
   loadKindleHistory();
   if (window.lucide && typeof lucide.createIcons === 'function') lucide.createIcons();
+  setTimeout(() => {
+    const closeBtn = document.getElementById('btnCloseKindleModal');
+    if (closeBtn) closeBtn.focus();
+  }, 50);
 }
 
 function closeKindleModal() {
@@ -4667,7 +4748,8 @@ window.spotifyControl = async function(action, query) {
 // Démarrer le polling Spotify au chargement
 setTimeout(pollSpotifyStatus, 1500);
 
-// ── GESTION DES ENTRÉES AUDIO & DÉTECTION BLUETOOTH HD ───────────────────
+// ── GESTION DES ENTRÉES AUDIO & DÉTECTION BLUETOOTH HD (PROMPT 8) ─────────────
+let btWarningShownThisSession = false;
 function isBluetoothDevice(label) {
   if (!label) return false;
   const l = label.toLowerCase();
@@ -4675,9 +4757,15 @@ function isBluetoothDevice(label) {
          l.includes('casque') || l.includes('headset') || l.includes('airpods') || l.includes('bt');
 }
 
+function checkBluetoothWarning(label) {
+  if (!btWarningShownThisSession && isBluetoothDevice(label)) {
+    btWarningShownThisSession = true;
+    toast("Microphone Bluetooth détecté : Windows peut dégrader le son stéréo (mode HFP). Préférez le micro intégré si possible.", "warning", 6000);
+  }
+}
+
 async function populateAudioInputDevices() {
   const select = document.getElementById('micSelect');
-  const warningBox = document.getElementById('btWarningBox');
   if (!select || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
 
   try {
@@ -4709,12 +4797,8 @@ async function populateAudioInputDevices() {
       select.value = '';
     }
 
-    if (warningBox) {
-      if (isBluetoothDevice(currentLabel)) {
-        warningBox.style.display = 'flex';
-      } else {
-        warningBox.style.display = 'none';
-      }
+    if (currentLabel) {
+      checkBluetoothWarning(currentLabel);
     }
   } catch (err) {
     console.warn('[Audio Devices] Erreur énumération périphériques :', err);
@@ -4767,13 +4851,8 @@ if (micSelectEl) {
     }
 
     const opt = e.target.options[e.target.selectedIndex];
-    const warningBox = document.getElementById('btWarningBox');
-    if (warningBox) {
-      if (opt && isBluetoothDevice(opt.text)) {
-        warningBox.style.display = 'flex';
-      } else {
-        warningBox.style.display = 'none';
-      }
+    if (opt && isBluetoothDevice(opt.text)) {
+      checkBluetoothWarning(opt.text);
     }
 
     if (isConnected && audioCtx) {
@@ -4816,6 +4895,10 @@ function openLogsModal(filter) {
   fetchJarvisLogs();
 
   if (window.lucide && typeof lucide.createIcons === 'function') lucide.createIcons();
+  setTimeout(() => {
+    const searchInput = document.getElementById('logsSearchInput');
+    if (searchInput) searchInput.focus();
+  }, 50);
 
   const toggle = document.getElementById('logsAutoRefreshToggle');
   if (toggle && toggle.checked && !logsPollTimer) {

@@ -17,20 +17,18 @@
   <link rel="icon" type="image/svg+xml" href="/static/jarvis-icon.svg">
   <link rel="apple-touch-icon" href="/static/jarvis-icon.png">
   <link rel="shortcut icon" href="/static/jarvis-icon.png">
-  <link rel="stylesheet" href="/static/style.css?v=5.86.0">
+  <link rel="stylesheet" href="/static/style.css?v=5.87.0">
 </head>
 <body>
 
   <!-- Écran de verrouillage / Enregistrement de l'appareil -->
   <div id="authScreen">
     <div class="auth-card">
-      <div class="security-badge auth-robot-badge">
-        <img src="/static/jarvis-icon.png" alt="Logo JARVIS" class="auth-robot-logo-img">
-      </div>
+      <img src="/static/jarvis-icon.png" alt="Logo JARVIS" class="auth-robot-logo-img">
       <div class="auth-title">J.A.R.V.I.S.</div>
-      <div class="auth-subtitle">Protocole de sécurité Stark Industries.<br>Identification requise pour autoriser ce terminal.</div>
+      <div class="auth-subtitle">Connectez-vous pour autoriser cet appareil.</div>
       <input type="password" id="pwdInput" class="auth-input" placeholder="Mot de passe" autocomplete="current-password">
-      <button id="authBtn" class="auth-btn">AUTORISER L'APPAREIL</button>
+      <button id="authBtn" class="auth-btn">Autoriser cet appareil</button>
       <div id="authFeedback"></div>
     </div>
   </div>
@@ -100,7 +98,7 @@
         </div>
 
         <div class="statusbar-right">
-          <span class="hud-version-tag statusbar-version" id="hudVersionTag" title="Version 5.85.0 Stark AI">v5.86.0</span>
+          <span class="hud-version-tag statusbar-version" id="hudVersionTag" title="Version 5.87.0 Stark AI">v5.87.0</span>
         </div>
       </header>
 
@@ -421,7 +419,7 @@
           </div>
         </div>
 
-        <!-- Sélecteur d'entrée audio & Avertissement Bluetooth HD -->
+        <!-- Sélecteur d'entrée audio -->
         <div class="hud-audio-device-bar" id="hudAudioDeviceBar">
           <div class="hud-audio-device-row">
             <label for="micSelect" class="hud-audio-device-label">
@@ -431,10 +429,6 @@
             <select id="micSelect" class="hud-audio-select" title="Choisir le microphone d'entrée">
               <option value="">Microphone par défaut (Système)</option>
             </select>
-          </div>
-          <div id="btWarningBox" class="hud-bt-warning-box" style="display: none;">
-            <span class="hud-bt-icon"><i data-lucide="alert-triangle"></i></span>
-            <span class="hud-bt-text"><strong>Microphone Bluetooth / Casque détecté</strong> : Windows peut forcer le mode HFP (son dégradé mono 8-16kHz sur Spotify). Pour préserver un son Spotify haute fidélité stéréo sur PC, sélectionnez le microphone intégré du PC ou de la webcam.</span>
           </div>
         </div>
 
@@ -539,44 +533,37 @@
 </div>
 
   <!-- Modal Aperçu d'écran navigateur -->
-  <div id="browserModal">
-    <div class="modal-card">
-      <div class="modal-header">
-        <div style="display:flex; align-items:center; gap:6px;">
-          <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#a855f7; box-shadow:0 0 8px #a855f7;"></span>
-          <span id="modalBrowserTitle">ÉCRAN DU NAVIGATEUR</span>
-        </div>
-        <span style="font-size:0.68rem; color:#94a3b8;">GOOGLE CHROME</span>
+  <div id="browserModal" class="supervision-modal-overlay modal-overlay" style="display: none;">
+    <div class="modal-card modal-card-dialog">
+      <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border);">
+        <span id="modalBrowserTitle" class="modal-title" style="font-size: 14px; font-weight: 600; color: var(--text);">Écran du navigateur</span>
+        <button class="supervision-icon-btn btn-close-modal" id="btnCloseBrowserModalHeader" onclick="document.getElementById('browserModal').style.display='none'" title="Fermer"><i data-lucide="x"></i></button>
       </div>
-      <img id="browserScreenshotImg" class="modal-img" src="/static/latest_screenshot.jpg" alt="Aperçu web">
-      <div style="display:flex; gap:8px;">
-        <button class="modal-btn" style="flex:1; background:#0284c7; color:#fff;" id="btnModalOpenExternal">OUVRIR SUR MON NAVIGATEUR</button>
-        <button class="modal-btn" style="flex:1; background:#334155; color:#cbd5e1;" id="btnCloseBrowserModal">FERMER</button>
+      <img id="browserScreenshotImg" class="modal-img" src="/static/latest_screenshot.jpg" alt="Aperçu web" style="max-height: 50vh; object-fit: contain; background: var(--bg);">
+      <div class="modal-actions" style="display: flex; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--border); justify-content: flex-end;">
+        <button class="btn-secondary modal-btn" id="btnCloseBrowserModal">Fermer</button>
+        <button class="btn-accent modal-btn" id="btnModalOpenExternal">Ouvrir dans le navigateur</button>
       </div>
     </div>
   </div>
 
-  <!-- Modal d'Autorisation de Clé Payante Stark Industries -->
-  <div id="paidConsentModal" class="paid-modal-overlay" style="display: none;">
-    <div class="paid-modal-card">
+  <!-- Modal d'Autorisation de Clé Payante -->
+  <div id="paidConsentModal" class="paid-modal-overlay modal-overlay" style="display: none;">
+    <div class="paid-modal-card modal-card-dialog">
       <div class="paid-modal-header">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span class="paid-modal-pulse"></span>
-          <span id="paidConsentTitle" class="paid-modal-title">AUTORISATION CLÉ PAYANTE REQUISE</span>
-        </div>
-        <span class="paid-modal-chip">STARK BILLING</span>
+        <h3 id="paidConsentTitle" class="paid-modal-title">Utiliser la clé payante ?</h3>
       </div>
       <div class="paid-modal-body">
         <p id="paidConsentReason" class="paid-modal-reason">Motif de la demande...</p>
         <div class="paid-modal-cost-box">
-          <span class="paid-cost-label">ESTIMATION DU COÛT :</span>
+          <span class="paid-cost-label">Coût estimé</span>
           <span id="paidConsentCost" class="paid-cost-value">~0.005 $</span>
         </div>
-        <p id="paidConsentMessage" class="paid-modal-message">Votre accord est requis pour utiliser l'API payante.</p>
+        <p id="paidConsentMessage" class="paid-modal-message">Votre accord est requis pour continuer avec l'API payante.</p>
       </div>
       <div class="paid-modal-actions">
-        <button id="btnApprovePaid" class="paid-btn-approve">ACCORDER L'ACCÈS PAYANT</button>
-        <button id="btnRejectPaid" class="paid-btn-reject">REFUSER</button>
+        <button id="btnRejectPaid" class="paid-btn-reject btn-secondary">Refuser</button>
+        <button id="btnApprovePaid" class="paid-btn-approve btn-accent">Autoriser</button>
       </div>
     </div>
   </div>
@@ -1140,6 +1127,6 @@
   </div>
 
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="/static/app.js?v=5.86.0"></script>
+  <script src="/static/app.js?v=5.87.0"></script>
 </body>
 </html>

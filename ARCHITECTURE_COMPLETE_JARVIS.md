@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.86.0 — Modernisation Kindle & Logs Terminal Pro : Zone de dépôt Kindle épurée (1px dashed var(--border), hover accent, icône upload), barre de progression fine (4px), tableau/liste d'historique des derniers envois persistée en local avec badges de statut. Terminal de logs refondu (fond #070708, monospace 12.5px, niveaux colorés INFO/WARN/ERROR), segmented control ergonomique (Tous/Info/Warn/Erreur), recherche client en temps réel et auto-scroll intelligent sauf si remontée utilisateur.*
+> *Dernière révision majeure : Version 5.87.0 — Modales, toasts, alerte Bluetooth en toast session unique, modale de consentement clé payante modernisée (coût grand format, boutons Refuser/Autoriser) et écran d'autorisation épuré.*
 
 
 ---
