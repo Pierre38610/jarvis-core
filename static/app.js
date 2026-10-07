@@ -3654,7 +3654,10 @@ async function loadChatHistory() {
 // Fait défiler le fil de discussion vers le bas
 function scrollChatToBottom() {
   if (!chatMessages) return;
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+  chatMessages.scrollTo({
+    top: chatMessages.scrollHeight,
+    behavior: 'smooth'
+  });
 }
 
 // Convertit Markdown simplifié en HTML sécurisé
@@ -3668,7 +3671,7 @@ function formatMarkdownText(rawText) {
   // Blocs de code ```lang ... ```
   escaped = escaped.replace(/```([a-zA-Z0-9_\-\+]*)\n?([\s\S]*?)```/g, (match, lang, code) => {
     const l = lang ? lang.trim() : 'code';
-    return `<pre><div class="code-header"><span class="code-lang">${l}</span><button class="chat-msg-btn-action" type="button" onclick="window.copyCodeBlock(this)">Copier</button></div><code>${code.trim()}</code></pre>`;
+    return `<pre><div class="code-header"><span class="code-lang">${l}</span><button class="chat-msg-btn-action" type="button" onclick="window.copyCodeBlock(this)"><i data-lucide="copy"></i> Copier</button></div><code>${code.trim()}</code></pre>`;
   });
 
   // Code inline `code`
@@ -3779,8 +3782,8 @@ function renderChatMessage(msg, scroll = true) {
     imgWrap.innerHTML = `
       <img src="${msg.image_url}" alt="Photo attachée" loading="lazy" />
       <div class="chat-msg-image-overlay">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-        <span>AGRANDIR</span>
+        <i data-lucide="maximize-2"></i>
+        <span>Agrandir</span>
       </div>
     `;
     imgWrap.onclick = () => {
@@ -3808,14 +3811,14 @@ function renderChatMessage(msg, scroll = true) {
     const btnCopy = document.createElement('button');
     btnCopy.className = 'chat-msg-btn-action';
     btnCopy.type = 'button';
-    btnCopy.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copier`;
+    btnCopy.innerHTML = `<i data-lucide="copy"></i> Copier`;
     btnCopy.onclick = () => copyChatMessage(msg.content, btnCopy);
     tools.appendChild(btnCopy);
 
     const btnSpeak = document.createElement('button');
     btnSpeak.className = 'chat-msg-btn-action';
     btnSpeak.type = 'button';
-    btnSpeak.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Écouter`;
+    btnSpeak.innerHTML = `<i data-lucide="volume-2"></i> Écouter`;
     btnSpeak.onclick = () => speakChatMessage(msg.content, btnSpeak);
     tools.appendChild(btnSpeak);
 
@@ -3823,6 +3826,10 @@ function renderChatMessage(msg, scroll = true) {
   }
 
   chatMessages.appendChild(row);
+
+  if (window.lucide && typeof lucide.createIcons === 'function') {
+    lucide.createIcons();
+  }
 
   if (scroll) {
     scrollChatToBottom();
@@ -3842,6 +3849,9 @@ function setChatImageAttachment(file) {
     if (chatPreviewImg) chatPreviewImg.src = e.target.result;
     if (chatPreviewName) chatPreviewName.innerText = file.name || "photo.jpg";
     if (chatImagePreviewBar) chatImagePreviewBar.style.display = 'flex';
+    if (window.lucide && typeof lucide.createIcons === 'function') {
+      lucide.createIcons();
+    }
   };
   reader.readAsDataURL(file);
 }
@@ -3941,6 +3951,9 @@ function applyChatPrompt(promptText) {
   if (chatTextInput) {
     chatTextInput.value = promptText;
     chatTextInput.focus();
+    chatTextInput.style.height = 'auto';
+    const newH = Math.min(chatTextInput.scrollHeight, 144);
+    chatTextInput.style.height = (newH > 24 ? newH : 24) + 'px';
   }
 }
 window.applyChatPrompt = applyChatPrompt;
@@ -3954,11 +3967,14 @@ async function clearChatHistory() {
     if (chatMessages) {
       chatMessages.innerHTML = '';
       if (chatWelcomeBanner) {
-        chatWelcomeBanner.style.display = 'flex';
+        chatWelcomeBanner.style.display = 'block';
         chatMessages.appendChild(chatWelcomeBanner);
       }
     }
     renderedMessageIds.clear();
+    if (window.lucide && typeof lucide.createIcons === 'function') {
+      lucide.createIcons();
+    }
   } catch (err) {
     console.warn("[Chat] Erreur clear:", err);
   }
@@ -3971,6 +3987,9 @@ function openChatLightbox(src, title) {
   lightboxImg.src = src;
   if (lightboxTitle) lightboxTitle.innerText = title || "PHOTO ANALYSÉE PAR J.A.R.V.I.S.";
   chatLightboxModal.style.display = 'flex';
+  if (window.lucide && typeof lucide.createIcons === 'function') {
+    lucide.createIcons();
+  }
 }
 window.openChatLightbox = openChatLightbox;
 
@@ -3988,9 +4007,17 @@ function copyCodeBlock(btn) {
   const code = pre.querySelector('code');
   if (!code) return;
   navigator.clipboard.writeText(code.innerText).then(() => {
-    const orig = btn.innerText;
-    btn.innerText = 'Copié !';
-    setTimeout(() => { btn.innerText = orig; }, 2000);
+    const orig = btn.innerHTML;
+    btn.innerHTML = `<i data-lucide="check"></i> Copié !`;
+    if (window.lucide && typeof lucide.createIcons === 'function') {
+      lucide.createIcons();
+    }
+    setTimeout(() => { 
+      btn.innerHTML = orig; 
+      if (window.lucide && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+      }
+    }, 2000);
   });
 }
 window.copyCodeBlock = copyCodeBlock;
@@ -4000,8 +4027,16 @@ function copyChatMessage(text, btn) {
   navigator.clipboard.writeText(text).then(() => {
     if (btn) {
       const orig = btn.innerHTML;
-      btn.innerHTML = `✓ Copié !`;
-      setTimeout(() => { btn.innerHTML = orig; }, 2000);
+      btn.innerHTML = `<i data-lucide="check"></i> Copié !`;
+      if (window.lucide && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+      }
+      setTimeout(() => { 
+        btn.innerHTML = orig; 
+        if (window.lucide && typeof lucide.createIcons === 'function') {
+          lucide.createIcons();
+        }
+      }, 2000);
     }
   });
 }
@@ -4011,9 +4046,15 @@ window.copyChatMessage = copyChatMessage;
 function speakChatMessage(text, btn) {
   if (window.liveWs && window.liveWs.readyState === WebSocket.OPEN) {
     if (btn) {
-      btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Aoede...`;
+      btn.innerHTML = `<i data-lucide="radio"></i> Aoede...`;
+      if (window.lucide && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+      }
       setTimeout(() => {
-        btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Écouter`;
+        btn.innerHTML = `<i data-lucide="volume-2"></i> Écouter`;
+        if (window.lucide && typeof lucide.createIcons === 'function') {
+          lucide.createIcons();
+        }
       }, 4000);
     }
     const clean = text.replace(/```[\s\S]*?```/g, " [code source omis] ").replace(/[*_#`]/g, '');
@@ -4082,12 +4123,14 @@ if (btnCloseLightbox) {
   btnCloseLightbox.onclick = closeChatLightbox;
 }
 
-// Auto-redimensionnement du textarea et envoi par Entrée
+// Auto-redimensionnement du textarea (max 6 lignes ~144px) et envoi par Entrée
 if (chatTextInput) {
-  chatTextInput.addEventListener('input', () => {
+  const autoResizeChatInput = () => {
     chatTextInput.style.height = 'auto';
-    chatTextInput.style.height = Math.min(chatTextInput.scrollHeight, 120) + 'px';
-  });
+    const newH = Math.min(chatTextInput.scrollHeight, 144);
+    chatTextInput.style.height = (newH > 24 ? newH : 24) + 'px';
+  };
+  chatTextInput.addEventListener('input', autoResizeChatInput);
   chatTextInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -4113,26 +4156,31 @@ document.addEventListener('paste', (e) => {
   }
 });
 
-// Support Glisser-Déposer d'image sur le volet de messagerie
-if (chatModal) {
-  chatModal.addEventListener('dragover', (e) => {
+// Support Glisser-Déposer d'image sur le volet de messagerie et la zone de saisie
+const chatInputDock = document.querySelector('.chat-input-dock');
+[chatModal, chatInputDock, chatTextInput].forEach(el => {
+  if (!el) return;
+  el.addEventListener('dragover', (e) => {
     e.preventDefault();
-    chatModal.style.borderColor = '#00f0ff';
+    if (chatInputDock) chatInputDock.classList.add('drag-over');
   });
-  chatModal.addEventListener('dragleave', (e) => {
+  el.addEventListener('dragleave', (e) => {
     e.preventDefault();
-    chatModal.style.borderColor = '';
+    if (chatInputDock) chatInputDock.classList.remove('drag-over');
   });
-  chatModal.addEventListener('drop', (e) => {
+  el.addEventListener('drop', (e) => {
     e.preventDefault();
-    chatModal.style.borderColor = '';
+    if (chatInputDock) chatInputDock.classList.remove('drag-over');
     if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      if (file.type.startsWith('image/')) {
+      if (file.type && file.type.startsWith('image/')) {
         setChatImageAttachment(file);
       }
     }
   });
+});
+
+if (chatModal) {
   // Fermeture par clic sur l'arrière-plan
   chatModal.addEventListener('click', (e) => {
     if (e.target === chatModal) {
