@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.75.0 — Intégration du moteur multilingue strict FR/EN (services/language_service.py) avec détection lexicale par tour de parole, héritage de contexte conversationnel, clarification 3e langue sans fuite, déblocage STT universel et routage vocal dynamique TTS (JARVIS_VOICE / JARVIS_VOICE_EN).*
+> *Dernière révision majeure : Version 5.76.0 — Résilience et fiabilisation intégrale du moteur de lecture et consultation e-mail IMAP (services/email_service.py, config.py, core/tools/dispatcher.py) : élimination de l'UnboundLocalError sur read_received_emails_async, support des variables d'environnement IMAP/Gmail avec repli, filtrage des requêtes génériques, requêtes UTF-8 sécurisées et déballage sans perte.*
 
 
 ---
@@ -1620,4 +1620,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.75.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.76.0.*

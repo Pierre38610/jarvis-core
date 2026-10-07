@@ -43,7 +43,7 @@ from services.browser_agent.loop import (
 from services.voice_injection_queue import voice_injection_queue, InjectionPriority
 from services.download_service import download_file, send_to_ereader, search_and_download_ebook
 from services.system_service import get_system_status, launch_application
-from services.email_service import send_email_async, read_received_emails_async
+from services.email_service import send_email_async, read_received_emails_async, analyser_et_preparer_brouillon_agent
 from services.console_monitor import console_monitor
 from services.supervision_service import supervision_service
 from services.media_service import play_on_stremio
@@ -2137,13 +2137,20 @@ async def _execute_dispatch_tool(
         query = args.get("query")
         unread_only = bool(args.get("unread_only", False))
         supervision_service.start_action("read_emails", "Lecture E-mails", "read_emails", f"Consultation Gmail ({count} messages)", "IMAP Stark Protocol", api_type="free", api_label="Service Local", cost_est="0.00 $")
-        await broadcast_supervision()
-        await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Consultation de votre boîte de réception Gmail en cours...", "voice": False}))
-        await websocket.send_text(json.dumps({"type": "status", "state": "emailing", "msg": "Lecture des e-mails en cours...", "task": f"Boîte de réception ({config.DEFAULT_RECIPIENT_EMAIL})", "engine": "Google API", "model": "Stark IMAP Protocol", "api_type": "free", "api_label": "Service Local"}))
+        if websocket:
+            try:
+                await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": "Consultation de votre boîte de réception Gmail en cours...", "voice": False}))
+                await websocket.send_text(json.dumps({"type": "status", "state": "emailing", "msg": "Lecture des e-mails en cours...", "task": f"Boîte de réception ({config.DEFAULT_RECIPIENT_EMAIL})", "engine": "Google API", "model": "Stark IMAP Protocol", "api_type": "free", "api_label": "Service Local"}))
+            except Exception:
+                pass
         res = await read_received_emails_async(max_count=count, query=query, unread_only=unread_only)
         supervision_service.complete_action("read_emails", status="completed" if res.get("status") == "ok" else "error", summary=f"{res.get('count', 0)} e-mail(s) relevé(s)")
         await broadcast_supervision()
-        await websocket.send_text(json.dumps({"type": "emails_received", "status": res.get("status"), "count": res.get("count", 0), "emails": res.get("emails", []), "message": res.get("message", "")}))
+        if websocket:
+            try:
+                await websocket.send_text(json.dumps({"type": "emails_received", "status": res.get("status"), "count": res.get("count", 0), "emails": res.get("emails", []), "message": res.get("message", "")}))
+            except Exception:
+                pass
         emails_summary_text = ""
         if res.get("status") == "ok" and res.get("emails"):
             items_desc = []
@@ -2152,9 +2159,39 @@ async def _execute_dispatch_tool(
                 if m.get("has_attachments"):
                     items_desc.append(f"  Pièces jointes : {', '.join(m.get('attachments', []))}")
             emails_summary_text = "\n".join(items_desc)
-        else:
+            instruction = f"Voici le résultat de la consultation des e-mails reçus sur {config.DEFAULT_RECIPIENT_EMAIL} :\n{emails_summary_text}\n\nPrésente directement à Pierre à l'oral avec ta voix Aoede un compte-rendu clair, concis et naturel de ses messages récents."
+            return ToolResult.done(
+                action="read_emails",
+                user_message=f"{len(res['emails'])} e-mail(s) relevé(s) dans votre boîte Gmail.",
+                evidence=f"imap_inbox_fetch count={len(res['emails'])}",
+                verified=True,
+                result=res,
+                instruction_to_jarvis=instruction,
+                emails=res.get("emails", [])
+            )
+        elif res.get("status") == "ok":
             emails_summary_text = res.get("message", "Aucun message trouvé.")
-        return {"status": "completed", "result": res, "instruction_to_jarvis": f"Voici le résultat de la consultation des e-mails reçus sur {config.DEFAULT_RECIPIENT_EMAIL} :\n{emails_summary_text}\n\nPrésente directement à Pierre à l'oral avec ta voix Aoede un compte-rendu clair, concis et naturel de ses messages récents."}
+            instruction = f"Résultat de la consultation de votre boîte de réception ({config.DEFAULT_RECIPIENT_EMAIL}) : {emails_summary_text}\n\nIndique directement à Pierre à l'oral avec ta voix Aoede qu'aucun message correspondant n'a été trouvé."
+            return ToolResult.done(
+                action="read_emails",
+                user_message=emails_summary_text,
+                evidence="imap_inbox_fetch count=0",
+                verified=True,
+                result=res,
+                instruction_to_jarvis=instruction,
+                emails=[]
+            )
+        else:
+            emails_summary_text = res.get("message", "Erreur lors de la connexion à la boîte de réception.")
+            instruction = f"La consultation de la boîte de réception a rencontré une difficulté : {emails_summary_text}\n\nExplique poliment la situation à Pierre à l'oral avec ta voix Aoede."
+            return ToolResult.failed(
+                action="read_emails",
+                user_message=emails_summary_text,
+                error_hint=emails_summary_text,
+                verified=False,
+                result=res,
+                instruction_to_jarvis=instruction
+            )
 
     # ─── check_console_errors ─────────────────────────────────────────────────
     elif name in ("check_console_errors", "console_errors"):
@@ -3583,7 +3620,6 @@ async def _execute_dispatch_tool(
         consigne = args.get("consigne") or ""
 
         # Récupération de l'e-mail ciblé
-        from services.email_service import read_received_emails_async, analyser_et_preparer_brouillon_agent
         read_res = await read_received_emails_async(max_count=3, query=query)
         emails = read_res.get("emails", [])
         target_email = emails[0] if emails else {"subject": query or "Dernier email", "from": "Expéditeur", "body": "Contenu du courriel", "attachments": []}

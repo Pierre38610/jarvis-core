@@ -212,8 +212,18 @@ if GEMINI_LIVE_MODEL not in ("gemini-3.8-live", "gemini-3.8-live-extended-thinki
 DEFAULT_RECIPIENT_EMAIL = os.environ.get("JARVIS_DEFAULT_EMAIL", "votre_email@gmail.com")
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
-SMTP_USER = os.environ.get("SMTP_USER", "")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_USER = (
+    os.environ.get("SMTP_USER", "").strip()
+    or os.environ.get("GMAIL_USER", "").strip()
+    or os.environ.get("EMAIL_USER", "").strip()
+    or (DEFAULT_RECIPIENT_EMAIL if DEFAULT_RECIPIENT_EMAIL != "votre_email@gmail.com" else "")
+)
+SMTP_PASSWORD = (
+    os.environ.get("SMTP_PASSWORD", "").strip()
+    or os.environ.get("GMAIL_APP_PASSWORD", "").strip()
+    or os.environ.get("GMAIL_PASSWORD", "").strip()
+    or os.environ.get("EMAIL_PASSWORD", "").strip()
+)
 SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")
 EMAIL_SENDER_NAME = os.environ.get("EMAIL_SENDER_NAME", "J.A.R.V.I.S. - Stark Industries")
 
@@ -221,6 +231,16 @@ EMAIL_SENDER_NAME = os.environ.get("EMAIL_SENDER_NAME", "J.A.R.V.I.S. - Stark In
 IMAP_HOST = os.environ.get("IMAP_HOST", "imap.gmail.com")
 IMAP_PORT = int(os.environ.get("IMAP_PORT", 993))
 IMAP_SSL = os.environ.get("IMAP_SSL", "true").lower() in ("true", "1", "yes")
+IMAP_USER = (
+    os.environ.get("IMAP_USER", "").strip()
+    or SMTP_USER
+    or (DEFAULT_RECIPIENT_EMAIL if DEFAULT_RECIPIENT_EMAIL != "votre_email@gmail.com" else "")
+)
+IMAP_PASSWORD = (
+    os.environ.get("IMAP_PASSWORD", "").strip()
+    or SMTP_PASSWORD
+)
+IMAP_TIMEOUT = float(os.environ.get("IMAP_TIMEOUT", "15.0"))
 
 # Dossier d'archivage local des e-mails envoyés
 EMAIL_OUTBOX_DIR = os.path.join(BASE_DIR, "outbox_emails")

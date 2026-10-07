@@ -38,7 +38,10 @@ from config import (
     STATIC_DIR,
     IMAP_HOST,
     IMAP_PORT,
-    IMAP_SSL
+    IMAP_SSL,
+    IMAP_USER,
+    IMAP_PASSWORD,
+    IMAP_TIMEOUT
 )
 
 # Enregistrement des types MIME enrichis (ePub, Office, etc.)
@@ -814,8 +817,8 @@ async def verify_email_in_sent_box(
         return False, default_evidence, "Échec simulé : courriel non trouvé dans les éléments envoyés après émission."
 
     # 2. Relecture IMAP best-effort (timeout court ≤ 3.0s)
-    imap_user = SMTP_USER or DEFAULT_RECIPIENT_EMAIL
-    imap_password = (SMTP_PASSWORD or "").replace(" ", "").strip()
+    imap_user = (IMAP_USER or SMTP_USER or DEFAULT_RECIPIENT_EMAIL or "").strip()
+    imap_password = (IMAP_PASSWORD or SMTP_PASSWORD or "").replace(" ", "").strip()
 
     def _sync_imap_check() -> bool:
         if not imap_user or not imap_password:
@@ -912,8 +915,46 @@ def _decode_mime_header(header_value: Optional[str]) -> str:
         return str(header_value)
 
 
+GENERIC_EMAIL_QUERIES = {
+    "", "dernier", "derniers", "derniere", "dernières", "latest", "recent", "récent",
+    "recents", "récents", "nouveau", "nouveaux", "nouvelle", "nouvelles", "new",
+    "last", "email", "emails", "mail", "mails", "courriel", "courriels",
+    "message", "messages", "inbox", "boite", "boîte", "boite de reception", "boîte de réception",
+    "dernier email", "derniers emails", "dernier mail", "derniers mails", "mes mails",
+    "mes emails", "mes messages", "tous", "all", "all emails", "all mails",
+}
+
+
+def _clean_email_query(query: Optional[str]) -> Tuple[Optional[str], bool]:
+    """Nettoie la requête de recherche e-mail pour éviter les faux négatifs IMAP.
+    
+    Returns:
+        (cleaned_query, force_unread_only)
+    """
+    if not query:
+        return None, False
+    q = str(query).strip()
+    q_low = q.lower()
+
+    # Détection si la requête indique expressément "non lu"
+    if q_low in ("non lu", "non lus", "unread", "nouveaux", "nouvelles", "nouveau", "nouvelle"):
+        return None, True
+
+    # Mots-clés temporels ou génériques
+    if q_low in GENERIC_EMAIL_QUERIES:
+        return None, False
+
+    # Nettoyage des préfixes conversationnels courants ("de Pierre", "from Google", "sujet réunion")
+    import re
+    cleaned = re.sub(r"^(de la part de|de|from|par|sujet|subject|objet|concernant|about)\s+", "", q, flags=re.IGNORECASE).strip()
+    if cleaned.lower() in GENERIC_EMAIL_QUERIES:
+        return None, False
+    return (cleaned or None), False
+
+
 def _extract_email_body_and_attachments(msg: email.message.Message) -> Dict[str, Any]:
     """Extrait le corps texte/html et la liste des pièces jointes d'un message email."""
+    import html as html_module
     text_content = ""
     html_content = ""
     attachments = []
@@ -967,8 +1008,13 @@ def _extract_email_body_and_attachments(msg: email.message.Message) -> Dict[str,
     clean_body = text_content.strip()
     if not clean_body and html_content:
         import re
-        clean_body = re.sub(r'<[^>]+>', ' ', html_content)
+        clean_body = re.sub(r'<style.*?</style>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+        clean_body = re.sub(r'<script.*?</script>', '', clean_body, flags=re.DOTALL | re.IGNORECASE)
+        clean_body = re.sub(r'<[^>]+>', ' ', clean_body)
+        clean_body = html_module.unescape(clean_body)
         clean_body = re.sub(r'\s+', ' ', clean_body).strip()
+    elif clean_body:
+        clean_body = html_module.unescape(clean_body)
 
     return {
         "body_text": clean_body,
@@ -983,58 +1029,89 @@ def read_received_emails(
     folder: str = "INBOX"
 ) -> Dict[str, Any]:
     """Interroge la boîte de réception Gmail via IMAP pour récupérer les derniers e-mails reçus."""
-    user = SMTP_USER or DEFAULT_RECIPIENT_EMAIL
-    pwd = (SMTP_PASSWORD or "").replace(" ", "").strip()
+    import html as html_module
 
-    if not user or not pwd:
+    user = (IMAP_USER or SMTP_USER or DEFAULT_RECIPIENT_EMAIL or "").strip()
+    pwd = (IMAP_PASSWORD or SMTP_PASSWORD or "").replace(" ", "").strip()
+
+    if not user or not pwd or user == "votre_email@gmail.com":
         return {
             "status": "error",
-            "message": "Identifiants Gmail (SMTP_USER / SMTP_PASSWORD) non configurés dans le fichier .env.",
+            "message": "Identifiants Gmail (SMTP_USER / SMTP_PASSWORD ou IMAP_USER / IMAP_PASSWORD) non configurés dans le fichier .env.",
             "emails": []
         }
 
+    cleaned_query, force_unread = _clean_email_query(query)
+    if force_unread:
+        unread_only = True
+
     try:
+        timeout_val = float(IMAP_TIMEOUT) if "IMAP_TIMEOUT" in globals() else 15.0
         if IMAP_SSL:
-            mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT, timeout=3.0)
+            mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT, timeout=timeout_val)
         else:
-            mail = imaplib.IMAP4(IMAP_HOST, IMAP_PORT, timeout=3.0)
+            mail = imaplib.IMAP4(IMAP_HOST, IMAP_PORT, timeout=timeout_val)
 
         mail.login(user, pwd)
-        status, _ = mail.select(folder, readonly=True)
+        
+        # Sélection du dossier avec repli sur INBOX
+        folder_target = (folder or "INBOX").strip()
+        if folder_target.upper() == "INBOX":
+            folder_target = "INBOX"
+        status, _ = mail.select(folder_target, readonly=True)
         if status != "OK":
-            mail.logout()
-            return {
-                "status": "error",
-                "message": f"Impossible d'accéder au dossier '{folder}'.",
-                "emails": []
-            }
+            status, _ = mail.select("INBOX", readonly=True)
+            folder_target = "INBOX"
+            if status != "OK":
+                try:
+                    mail.logout()
+                except Exception:
+                    pass
+                return {
+                    "status": "error",
+                    "message": f"Impossible d'accéder au dossier '{folder}' sur Gmail.",
+                    "emails": []
+                }
 
-        # Construction du critère de recherche
-        search_criteria = []
-        if unread_only:
-            search_criteria.append("UNSEEN")
-        else:
-            search_criteria.append("ALL")
+        # Construction du critère de recherche IMAP
+        search_data = None
+        server_search_ok = False
 
-        if query:
-            # Recherche par sujet ou expéditeur
-            q_clean = query.strip()
-            # Sous IMAP : (OR SUBJECT "terme" FROM "terme") ou texte général
-            search_criteria = [f'(OR SUBJECT "{q_clean}" FROM "{q_clean}")']
+        if cleaned_query:
+            # Tentative de recherche ciblée IMAP (standard RFC 3501 : OR FROM "q" SUBJECT "q")
+            try:
+                criteria = []
+                if unread_only:
+                    criteria.append("UNSEEN")
+                criteria.extend(["OR", "FROM", f'"{cleaned_query}"', "SUBJECT", f'"{cleaned_query}"'])
+                try:
+                    st_s, s_data = mail.search("UTF-8", *criteria)
+                    if st_s == "OK" and s_data and s_data[0]:
+                        search_data = s_data
+                        server_search_ok = True
+                except Exception:
+                    st_s, s_data = mail.search(None, *criteria)
+                    if st_s == "OK" and s_data and s_data[0]:
+                        search_data = s_data
+                        server_search_ok = True
+            except Exception as s_err:
+                logger.warning(f"[EmailService] Recherche ciblée IMAP échouée ({s_err}), bascule en recherche globale et filtrage Python.")
 
-        status, search_data = mail.search(None, *search_criteria)
-        if status != "OK":
-            mail.logout()
-            return {
-                "status": "error",
-                "message": "Erreur lors de la recherche des e-mails.",
-                "emails": []
-            }
+        # Si pas de query ou si recherche serveur non concluante
+        if not server_search_ok or search_data is None or not search_data[0]:
+            base_crit = ["UNSEEN"] if unread_only else ["ALL"]
+            try:
+                st_b, s_data = mail.search(None, *base_crit)
+                if st_b == "OK":
+                    search_data = s_data
+            except Exception as e_base:
+                logger.error(f"[EmailService] Échec recherche de base IMAP: {e_base}")
 
-        msg_ids = search_data[0].split()
-        total_found = len(msg_ids)
-        if total_found == 0:
-            mail.logout()
+        if not search_data or not search_data[0]:
+            try:
+                mail.logout()
+            except Exception:
+                pass
             return {
                 "status": "ok",
                 "count": 0,
@@ -1042,25 +1119,55 @@ def read_received_emails(
                 "emails": []
             }
 
-        # Récupérer les 'max_count' plus récents (ils sont en fin de liste)
-        selected_ids = msg_ids[-max_count:]
-        selected_ids.reverse()  # Le plus récent d'abord
+        msg_ids = search_data[0].split()
+        total_found = len(msg_ids)
+        if total_found == 0:
+            try:
+                mail.logout()
+            except Exception:
+                pass
+            return {
+                "status": "ok",
+                "count": 0,
+                "message": f"Aucun e-mail trouvé avec les critères demandés ({'non lus uniquement' if unread_only else 'tous'}).",
+                "emails": []
+            }
+
+        # Déterminer la plage de messages à inspecter (plus large si filtrage Python requis)
+        fetch_limit = max_count if (server_search_ok or not cleaned_query) else min(total_found, max(max_count * 4, 25))
+        selected_ids = msg_ids[-fetch_limit:]
+        selected_ids.reverse()  # Les plus récents d'abord
 
         email_list = []
+        q_lower = cleaned_query.lower() if cleaned_query else ""
+
         for msg_id in selected_ids:
             try:
-                res, data = mail.fetch(msg_id, "(RFC822)")
-                if res != "OK" or not data or not data[0]:
+                # Utilisation de BODY.PEEK[] pour préserver l'état 'non lu' dans Gmail
+                try:
+                    res, data = mail.fetch(msg_id, "(BODY.PEEK[])")
+                except Exception:
+                    res, data = mail.fetch(msg_id, "(RFC822)")
+
+                if res != "OK" or not data:
                     continue
 
-                raw_email = data[0][1]
+                raw_email = None
+                for part in data:
+                    if isinstance(part, tuple) and len(part) >= 2 and isinstance(part[1], (bytes, bytearray)):
+                        raw_email = part[1]
+                        break
+
+                if not raw_email:
+                    continue
+
                 msg = email.message_from_bytes(raw_email)
 
                 raw_subject = msg.get("Subject", "(Sans sujet)")
-                subject = _decode_mime_header(raw_subject)
+                subject = _decode_mime_header(raw_subject) or "(Sans sujet)"
 
                 raw_from = msg.get("From", "Inconnu")
-                sender = _decode_mime_header(raw_from)
+                sender = _decode_mime_header(raw_from) or "Inconnu"
 
                 date_str = msg.get("Date", "")
                 formatted_date = date_str
@@ -1071,30 +1178,47 @@ def read_received_emails(
                     pass
 
                 content_info = _extract_email_body_and_attachments(msg)
-                body_snippet = content_info["body_text"][:350]
-                if len(content_info["body_text"]) > 350:
+                body_clean = html_module.unescape(content_info["body_text"])
+
+                # Filtrage Python si nécessaire
+                if q_lower and not server_search_ok:
+                    match_subject = q_lower in subject.lower()
+                    match_from = q_lower in sender.lower()
+                    match_body = q_lower in body_clean.lower()
+                    if not (match_subject or match_from or match_body):
+                        continue
+
+                body_snippet = body_clean[:350]
+                if len(body_clean) > 350:
                     body_snippet += "..."
 
                 email_list.append({
                     "id": msg_id.decode("utf-8", errors="ignore"),
-                    "subject": subject or "(Sans sujet)",
+                    "subject": subject,
                     "from": sender,
                     "date": formatted_date,
                     "snippet": body_snippet,
-                    "body": content_info["body_text"],
+                    "body": body_clean,
                     "attachments": content_info["attachments"],
                     "has_attachments": len(content_info["attachments"]) > 0
                 })
+
+                if len(email_list) >= max_count:
+                    break
+
             except Exception as item_err:
-                print(f"[Email Service] Erreur lors de la lecture d'un message : {item_err}")
+                logger.warning(f"[Email Service] Erreur lors de la lecture du message {msg_id} : {item_err}")
                 continue
 
-        mail.logout()
+        try:
+            mail.logout()
+        except Exception:
+            pass
 
         return {
             "status": "ok",
             "account": user,
-            "folder": folder,
+            "folder": folder_target,
             "total_matches": total_found,
             "count": len(email_list),
             "emails": email_list
@@ -1102,10 +1226,16 @@ def read_received_emails(
 
     except Exception as exc:
         err_msg = str(exc)
-        print(f"[Email Service] Erreur IMAP : {err_msg}")
+        logger.error(f"[Email Service] Erreur IMAP : {err_msg}", exc_info=True)
+        if "AUTHENTICATIONFAILED" in err_msg or "Invalid credentials" in err_msg:
+            hint = "Échec d'authentification Gmail IMAP. Vérifiez l'adresse ou le mot de passe d'application Google (SMTP_PASSWORD/IMAP_PASSWORD dans .env)."
+        elif "timed out" in err_msg.lower() or "timeout" in err_msg.lower():
+            hint = "Délai de connexion dépassé lors de l'accès à votre boîte Gmail (timeout)."
+        else:
+            hint = f"Erreur lors de la connexion IMAP à Gmail : {err_msg}"
         return {
             "status": "error",
-            "message": f"Erreur lors de la connexion IMAP à Gmail : {err_msg}",
+            "message": hint,
             "emails": []
         }
 
