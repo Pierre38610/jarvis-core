@@ -11,15 +11,18 @@
 - **Classes dynamiques d'état** : `.active`, `.state-listening`, `.state-speaking`, `.state-thinking`, `.state-browsing`, `.state-coding`, `.state-music`, `.state-offline`, `.badge-*`, `.is-speaking`, `.has-active-subagents`.
 
 ## 2. Liste des Vues / Onglets et Modales (Id racine)
-- **Vues principales** :
+- **Vues principales (Onglets de navigation via .hud-tab-container & .hud-tab-pane)** :
   - Écran d'authentification : `#authScreen`
-  - Écran principal (HUD / Assistant orbe + docks) : `#mainScreen`
-- **Modales & Tiroirs** :
-  - Messagerie Chat : `#chatModal` (avec `#chatLightboxModal` pour prévisualisation d'image)
-  - Supervision & Métriques : `#supervisionModal` (avec `#supMetricsSection`, `#supPatchesSection`)
-  - Envoi Kindle : `#kindleModal`
-  - Terminal de Logs : `#logsModal`
-  - Navigateur / Live Browser : `#browserModal`
+  - Écran principal (App Shell) : `#mainScreen`
+  - Onglet 1 - Assistant (Cockpit Avatar, Micro, Docks & Audio) : `#tabViewAssistant`
+  - Onglet 2 - Messages (Discussion instantanée, Vision & Chat) : `#chatModal`
+  - Onglet 3 - Kindle (Amazon Send to Kindle & Historique) : `#kindleModal`
+  - Onglet 4 - Supervision (Supervision Stark AI, Modèles, Clés, Métriques, Patches) : `#supervisionModal`
+  - Onglet 5 - Logs (Terminal Journalctl, Filtres & Recherche en direct) : `#logsModal`
+  - Onglet 6 - Antigravity (Constellation d'agents CLI, Pilotage & Directives) : `#tabViewAntigravity`
+- **Modales & Tiroirs Diagonaux (Dialogues flottants réels)** :
+  - Visualiseur plein écran de photos (Lightbox) : `#chatLightboxModal`
+  - Aperçu d'écran navigateur : `#browserModal`
   - Autorisation Clé Payante : `#paidConsentModal`
 
 ## 3. Variables CSS Existantes (:root) & Couleurs Principales
@@ -48,12 +51,12 @@
   - `meta.innerHTML` (en-tête auteur VOUS / J.A.R.V.I.S. + timestamp).
   - `textDiv.innerHTML` (rendu Markdown via `formatMarkdownText`).
   - `btnCopy.innerHTML` (`Copier` / `✓ Copié !` avec SVG), `btnSpeak.innerHTML` (`Écouter` / `Aoede...` avec SVG).
-- **Logs Console** :
-  - `logsContent.innerHTML` (formatage des lignes colorées de log ou messages d'erreur).
+- **Logs Console & Antigravity** :
+  - `logsContent.innerHTML`, `agyLogsContent.innerHTML` (formatage des lignes colorées de log ou messages d'erreur).
 - **Select Microphone** : `select.innerHTML` (`<option>Microphone par défaut (Système)</option>`).
 
-## 5. Résumé de Recette Finale (Prompt 10)
-- **Modifications réalisées** : Refonte complète du HUD vers le design system épuré Obsidian/Linear (tokens CSS `--bg`, `--surface`, `--accent`, etc.), sidebar rétractable / barre d'onglets mobile (< 768px), standardisation de toutes les modales, composants audio et supervision, accessibilité `:focus-visible` & `aria-label`, et alignement des tests.
-- **État des tests & stabilité** : 100% des tests passés au vert (`646 passed in 76.83s`), aucune erreur de syntaxe ou régression console/DOM.
-- **Reste à faire / Évolutions futures** : Tests E2E automatisés sur device physique mobile, enrichissement continu des graphiques de métriques de supervision avancée.
+## 5. Résumé de Recette & Architecture Multi-Onglets (v5.89.0)
+- **Modifications réalisées** : Remplacement des popups modales par un système complet de navigation multi-onglets intégrée dans l'App Shell (`.hud-tab-container` / `.hud-tab-pane`). Tous les 6 onglets de la barre latérale (Assistant, Messages, Kindle, Supervision, Logs, Antigravity) sont désormais connectés et fonctionnels sans aucune superposition bloquante. Seuls les dialogues réels (Lightbox, Consentement Clé Payante, Capture Navigateur) restent des modales.
+- **État des tests & stabilité** : 100% des tests passés au vert (`646 passed`), conformité totale avec le contrat DOM (`UI_MAP.md`).
+- **Reste à faire / Évolutions futures** : Continuer l'enrichissement visuel des graphiques de télémétrie et des flux d'exécution d'agents Antigravity multi-tâches.
 

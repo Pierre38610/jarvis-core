@@ -17,7 +17,7 @@
   <link rel="icon" type="image/svg+xml" href="/static/jarvis-icon.svg">
   <link rel="apple-touch-icon" href="/static/jarvis-icon.png">
   <link rel="shortcut icon" href="/static/jarvis-icon.png">
-  <link rel="stylesheet" href="/static/style.css?v=5.88.0">
+  <link rel="stylesheet" href="/static/style.css?v=5.89.0">
 </head>
 <body>
 
@@ -86,7 +86,7 @@
           </div>
 
           <!-- Nom du modèle actif & badge clé -->
-          <div class="active-engine-chip statusbar-chip" id="engineChip" role="button" tabindex="0" title="Cliquer pour afficher la supervision" aria-label="Supervision du modèle et des clés">
+          <div class="active-engine-chip statusbar-chip" id="engineChip" role="button" tabindex="0" title="Cliquer pour afficher la supervision" aria-label="Supervision du modèle et des clés" onclick="switchNavTab('supervision')">
             <span class="engine-badge badge-google" id="engineSourceBadge">GOOGLE API</span>
             <span class="engine-model-text" id="engineModelText">GEMINI 3.8 LIVE</span>
             <span class="engine-key-badge badge-key-free" id="engineKeyBadge">CLÉ GRATUITE</span>
@@ -98,439 +98,1084 @@
         </div>
 
         <div class="statusbar-right">
-          <span class="hud-version-tag statusbar-version" id="hudVersionTag" title="Version 5.88.0 Stark AI">v5.88.0</span>
+          <span class="hud-version-tag statusbar-version" id="hudVersionTag" title="Version 5.89.0 Stark AI">v5.89.0</span>
         </div>
       </header>
 
-      <!-- Scène Centrale Scrollable (Cockpit Stage) -->
-      <div class="hud-content-stage">
-        <div class="hud-stage-inner">
+      <!-- CONTENEUR DES ONGLETS PRINCIPAUX -->
+      <div class="hud-tab-container">
 
-        <!-- Barre de contrôle rapide Stark : Encoches Micro & Clé Payante -->
-        <div class="hud-quick-bar">
-          <!-- Encoche Micro -->
-          <label class="stark-quick-toggle" for="micToggle" id="micToggleContainer" title="Activer ou couper votre microphone (Raccourci clavier: M)">
-            <span class="quick-toggle-icon" id="micToggleIcon"><i data-lucide="mic"></i></span>
-            <span class="quick-toggle-label">MICRO</span>
-            <div class="stark-switch">
-              <input type="checkbox" id="micToggle" class="stark-switch-input" checked aria-label="Activer ou couper le microphone">
-              <span class="stark-switch-track">
-                <span class="stark-switch-thumb"></span>
-              </span>
+        <!-- ============================================================ -->
+        <!-- ONGLET 1 : ASSISTANT (Cockpit Avatar, Micro, Docks & Audio)  -->
+        <!-- ============================================================ -->
+        <section id="tabViewAssistant" class="hud-tab-pane active" aria-label="Onglet Assistant">
+          <div class="hud-content-stage">
+            <div class="hud-stage-inner">
+
+              <!-- Barre de contrôle rapide Stark : Encoches Micro & Clé Payante -->
+              <div class="hud-quick-bar">
+                <!-- Encoche Micro -->
+                <label class="stark-quick-toggle" for="micToggle" id="micToggleContainer" title="Activer ou couper votre microphone (Raccourci clavier: M)">
+                  <span class="quick-toggle-icon" id="micToggleIcon"><i data-lucide="mic"></i></span>
+                  <span class="quick-toggle-label">MICRO</span>
+                  <div class="stark-switch">
+                    <input type="checkbox" id="micToggle" class="stark-switch-input" checked aria-label="Activer ou couper le microphone">
+                    <span class="stark-switch-track">
+                      <span class="stark-switch-thumb"></span>
+                    </span>
+                  </div>
+                  <span id="micToggleBadge" class="quick-toggle-badge badge-mic-on">ACTIF</span>
+                </label>
+
+                <!-- Encoche Clé Payante -->
+                <label class="stark-quick-toggle" for="paidKeyToggle" id="paidToggleContainer" title="Cochez pour autoriser le modèle à utiliser la clé payante. Si décoché, toute requête sur la clé payante est physiquement bloquée.">
+                  <span class="quick-toggle-icon"><i data-lucide="zap"></i></span>
+                  <span class="quick-toggle-label">CLÉ PAYANTE</span>
+                  <div class="stark-switch">
+                    <input type="checkbox" id="paidKeyToggle" class="stark-switch-input" aria-label="Autoriser la clé payante au modèle">
+                    <span class="stark-switch-track">
+                      <span class="stark-switch-thumb"></span>
+                    </span>
+                  </div>
+                  <span id="paidToggleBadge" class="quick-toggle-badge badge-locked"><i data-lucide="lock"></i> VERROUILLÉE</span>
+                </label>
+              </div>
+
+              <!-- Centre Avatar Féminin Futuriste avec halo réactif au son -->
+              <div class="reactor-container avatar-pod-container">
+                <div class="reactor-halo" id="reactorHalo"></div>
+                <!-- Satellites Orbitaux Holographiques (Sous-agents Antigravity CLI) -->
+                <div class="subagents-orbital-container" id="subagentsContainer" aria-label="Constellation sous-agents Antigravity"></div>
+                <div class="jarvis-avatar-pod arc-reactor" id="toggleBtn" title="Touchez JARVIS pour interagir">
+                  <svg class="jarvis-avatar-svg" viewBox="0 0 200 210" aria-label="Avatar Jarvis">
+                    <defs>
+                      <linearGradient id="avatarHairGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#070d1e"/>
+                        <stop offset="50%" stop-color="#0f172a"/>
+                        <stop offset="100%" stop-color="#1e1b4b"/>
+                      </linearGradient>
+                      <linearGradient id="avatarFaceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#0d1b2a"/>
+                        <stop offset="60%" stop-color="#112240"/>
+                        <stop offset="100%" stop-color="#0a192f"/>
+                      </linearGradient>
+                      <linearGradient id="avatarVisorGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="rgba(147, 51, 234, 0.45)"/>
+                        <stop offset="100%" stop-color="rgba(79, 70, 229, 0.5)"/>
+                      </linearGradient>
+                      <filter id="avatarGlowCyan" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                      </filter>
+                      <filter id="avatarGlowPurple" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="3" result="blur"/>
+                        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                      </filter>
+                      <filter id="avatarGlowAmber" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                      </filter>
+                      <filter id="avatarGlowPink" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                      </filter>
+                      <filter id="avatarGlowRed" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                      </filter>
+                      <filter id="avatarGlowGreen" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                      </filter>
+                      <filter id="avatarGlowIndigo" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                      </filter>
+                      <clipPath id="avatarVisorClip">
+                        <path d="M 68 83 Q 100 87 132 83 L 134 104 Q 100 110 66 104 Z"/>
+                      </clipPath>
+                    </defs>
+
+                    <!-- ANNEAUX HOLOGRAPHIQUES EXTÉRIEURS -->
+                    <circle cx="100" cy="105" r="95" fill="none" stroke="#0284c7" stroke-width="0.8" stroke-dasharray="4 6" opacity="0.35" class="avatar-rings-outer"/>
+                    <circle cx="100" cy="105" r="91" fill="none" stroke="#38bdf8" stroke-width="0.6" stroke-dasharray="20 4 4 4" opacity="0.4" class="avatar-rings-inner"/>
+                    <circle cx="100" cy="105" r="88" fill="none" stroke="rgba(56, 189, 248, 0.2)" stroke-width="0.5"/>
+
+                    <g class="avatar-head-group">
+                      <!-- BASE HOLOGRAPHIQUE ÉMETTEUR -->
+                      <ellipse cx="100" cy="204" rx="55" ry="5" fill="none" stroke="#38bdf8" stroke-width="1.2" opacity="0.4" filter="url(#avatarGlowCyan)"/>
+                      <path d="M 45 198 C 60 180 80 174 100 174 C 120 174 140 180 155 198 L 164 210 L 36 210 Z" fill="#070c18" stroke="#0284c7" stroke-width="1" opacity="0.9"/>
+                      <path d="M 65 184 Q 100 198 135 184" fill="none" stroke="#38bdf8" stroke-width="1.5" filter="url(#avatarGlowCyan)" opacity="0.8"/>
+
+                      <!-- ROBOT BLEU JARVIS (Avatar & Emblème Officiel) -->
+                      <g class="jarvis-robot-core">
+                        <image href="/static/jarvis-robot-transparent.png" x="18" y="23" width="164" height="164" class="jarvis-robot-img" preserveAspectRatio="xMidYMid meet" />
+                      </g>
+                      <!-- Éléments de rétrocompatibilité masqués pour le moteur audio/sync -->
+                      <g id="avatarEyesGroup" style="display:none;"></g>
+                      <g id="avatarMouthGroup" style="display:none;">
+                        <span class="avatar-lip-lower"></span>
+                        <ellipse class="avatar-mouth-cavity"></ellipse>
+                      </g>
+                    </g>
+
+                    <!-- COUCHE MIME 1 : PAROLE (Ondes vocales holographiques) -->
+                    <g class="mime-layer mime-speaking-layer" style="display: none;">
+                      <path d="M 96 135 Q 100 138 104 135" fill="none" stroke="#00f0ff" stroke-width="1.5" class="vocal-wave-1 vocal-wave" filter="url(#avatarGlowCyan)"/>
+                      <path d="M 92 140 Q 100 145 108 140" fill="none" stroke="#00f0ff" stroke-width="1.5" class="vocal-wave-2 vocal-wave" filter="url(#avatarGlowCyan)"/>
+                      <path d="M 88 145 Q 100 152 112 145" fill="none" stroke="#38bdf8" stroke-width="1.2" class="vocal-wave-3 vocal-wave" filter="url(#avatarGlowCyan)"/>
+                    </g>
+
+                    <!-- COUCHE MIME 2 : PROGRAMMATION / CODING (Visière cybernétique) -->
+                    <g class="mime-layer mime-coding-layer" style="display: none;">
+                      <path d="M 68 83 Q 100 87 132 83 L 134 104 Q 100 110 66 104 Z" fill="url(#avatarVisorGrad)" stroke="#c084fc" stroke-width="1.8" filter="url(#avatarGlowPurple)"/>
+                      <path d="M 97 85 Q 100 84 103 85" fill="none" stroke="#e9d5ff" stroke-width="2"/>
+                      <line x1="68" y1="85" x2="60" y2="88" stroke="#c084fc" stroke-width="1.5"/>
+                      <line x1="132" y1="85" x2="140" y2="88" stroke="#c084fc" stroke-width="1.5"/>
+                    </g>
+
+                    <!-- COUCHE MIME 3 : RECHERCHE / BROWSING (Réticule & Radar) -->
+                    <g class="mime-layer mime-browsing-layer" style="display: none;">
+                      <g class="radar-reticle">
+                        <circle cx="114" cy="92" r="16" fill="none" stroke="#38bdf8" stroke-width="1" stroke-dasharray="3 3"/>
+                        <circle cx="114" cy="92" r="10" fill="none" stroke="#00f0ff" stroke-width="1.2" filter="url(#avatarGlowCyan)"/>
+                        <line x1="114" y1="78" x2="114" y2="82" stroke="#38bdf8" stroke-width="1.5"/>
+                        <line x1="114" y1="102" x2="114" y2="106" stroke="#38bdf8" stroke-width="1.5"/>
+                        <line x1="100" y1="92" x2="104" y2="92" stroke="#38bdf8" stroke-width="1.5"/>
+                        <line x1="124" y1="92" x2="128" y2="92" stroke="#38bdf8" stroke-width="1.5"/>
+                      </g>
+                      <path d="M 114 92 L 126 80 A 16 16 0 0 1 130 92 Z" fill="rgba(56, 189, 248, 0.25)" class="radar-sweep-beam"/>
+                    </g>
+
+                    <!-- COUCHE MIME 4 : RÉFLEXION / THINKING (Orbites quantiques & halo neural) -->
+                    <g class="mime-layer mime-thinking-layer" style="display: none;">
+                      <ellipse cx="100" cy="62" rx="36" ry="12" fill="none" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="4 4" class="quantum-orbit-1" filter="url(#avatarGlowCyan)"/>
+                      <ellipse cx="100" cy="62" rx="36" ry="12" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="2 4" class="quantum-orbit-2"/>
+                      <circle cx="68" cy="60" r="2" fill="#fbbf24" filter="url(#avatarGlowCyan)"/>
+                      <circle cx="132" cy="64" r="2" fill="#fbbf24" filter="url(#avatarGlowCyan)"/>
+                    </g>
+
+                    <!-- COUCHE MIME 5 : EMAIL (Transmission de données) -->
+                    <g class="mime-layer mime-emailing-layer" style="display: none;">
+                      <g class="email-beam">
+                        <rect x="91" y="44" width="18" height="13" rx="2" fill="rgba(16, 185, 129, 0.2)" stroke="#10b981" stroke-width="1.2"/>
+                        <path d="M 91 46 L 100 52 L 109 46" fill="none" stroke="#10b981" stroke-width="1.2"/>
+                      </g>
+                    </g>
+
+                    <!-- COUCHE MIME 6 : KINDLE & LIVRES NUMÉRIQUES (Liseuse & Faisceau) -->
+                    <g class="mime-layer mime-kindle-layer" style="display: none;">
+                      <line x1="72" y1="92" x2="128" y2="92" stroke="#f59e0b" stroke-width="1.2" class="kindle-read-scan" filter="url(#avatarGlowAmber)"/>
+                      <g class="kindle-beam-group">
+                        <path d="M 94 152 Q 100 146 106 152" fill="none" stroke="#fbbf24" stroke-width="1.5" class="kindle-wave-1" filter="url(#avatarGlowAmber)"/>
+                        <path d="M 90 144 Q 100 136 110 144" fill="none" stroke="#f59e0b" stroke-width="1.5" class="kindle-wave-2" filter="url(#avatarGlowAmber)"/>
+                        <path d="M 86 136 Q 100 126 114 136" fill="none" stroke="#d97706" stroke-width="1.2" class="kindle-wave-3" filter="url(#avatarGlowAmber)"/>
+                      </g>
+                      <g class="kindle-book-holo">
+                        <path d="M 100 186 C 88 183 76 182 70 184 L 70 165 C 76 163 88 164 100 167 Z" fill="rgba(15, 23, 42, 0.92)" stroke="#f59e0b" stroke-width="1.2"/>
+                        <line x1="74" y1="169" x2="94" y2="171" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
+                        <line x1="74" y1="174" x2="92" y2="176" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="3 1.5"/>
+                        <line x1="74" y1="179" x2="90" y2="181" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
+                        <path d="M 100 186 C 112 183 124 182 130 184 L 130 165 C 124 163 112 164 100 167 Z" fill="rgba(15, 23, 42, 0.92)" stroke="#f59e0b" stroke-width="1.2"/>
+                        <line x1="106" y1="171" x2="126" y2="169" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="3 1.5"/>
+                        <line x1="108" y1="176" x2="126" y2="174" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
+                        <line x1="110" y1="181" x2="124" y2="179" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2.5 1"/>
+                        <line x1="100" y1="167" x2="100" y2="186" stroke="#fde047" stroke-width="1.6"/>
+                        <path d="M 100 186 C 104 178 108 170 114 164 L 100 167 Z" fill="rgba(245, 158, 11, 0.35)" stroke="#fbbf24" stroke-width="0.8" class="kindle-page-turn"/>
+                        <path d="M 86 195 Q 100 203 114 195" fill="none" stroke="#f59e0b" stroke-width="1.6" stroke-linecap="round"/>
+                        <path d="M 111 192 L 115 195 L 112 198" fill="none" stroke="#f59e0b" stroke-width="1.4" stroke-linecap="round"/>
+                      </g>
+                    </g>
+
+                    <!-- COUCHE MIME 7 : MUSIQUE & STREAMING AUDIO (Spotify Connect, Égaliseurs, Vinyle) -->
+                    <g class="mime-layer mime-music-layer" style="display: none;">
+                      <circle cx="100" cy="105" r="76" fill="none" stroke="#1db954" stroke-width="1.2" stroke-dasharray="10 6 3 6" opacity="0.7" class="music-disc-spin" filter="url(#avatarGlowGreen)"/>
+                      <g class="eq-left-ear">
+                        <line x1="53" y1="99" x2="53" y2="91" stroke="#1db954" stroke-width="1.8" stroke-linecap="round" class="music-bar-1"/>
+                        <line x1="56" y1="102" x2="56" y2="88" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" class="music-bar-2"/>
+                        <line x1="59" y1="100" x2="59" y2="93" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" class="music-bar-3"/>
+                      </g>
+                      <g class="eq-right-ear">
+                        <line x1="141" y1="100" x2="141" y2="93" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" class="music-bar-3"/>
+                        <line x1="144" y1="102" x2="144" y2="88" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" class="music-bar-2"/>
+                        <line x1="147" y1="99" x2="147" y2="91" stroke="#1db954" stroke-width="1.8" stroke-linecap="round" class="music-bar-1"/>
+                      </g>
+                      <text x="44" y="78" fill="#1db954" font-family="sans-serif" font-size="14" class="music-note-float-1" filter="url(#avatarGlowGreen)">♪</text>
+                      <text x="146" y="72" fill="#10b981" font-family="sans-serif" font-size="16" class="music-note-float-2">♫</text>
+                      <text x="135" y="52" fill="#00f0ff" font-family="sans-serif" font-size="11" class="music-note-float-3">♪</text>
+                    </g>
+
+                    <!-- COUCHE MIME 8 : CINÉMA & STREAMING VIDÉO (Stremio, Visière 4K, Bobine) -->
+                    <g class="mime-layer mime-media-layer" style="display: none;">
+                      <rect x="64" y="82" width="72" height="22" rx="2" fill="rgba(15, 23, 42, 0.75)" stroke="#ef4444" stroke-width="1.3" filter="url(#avatarGlowRed)"/>
+                      <path d="M 67 86 L 67 84 L 71 84" fill="none" stroke="#fca5a5" stroke-width="1"/>
+                      <path d="M 133 86 L 133 84 L 129 84" fill="none" stroke="#fca5a5" stroke-width="1"/>
+                      <path d="M 67 100 L 67 102 L 71 102" fill="none" stroke="#fca5a5" stroke-width="1"/>
+                      <path d="M 133 100 L 133 102 L 129 102" fill="none" stroke="#fca5a5" stroke-width="1"/>
+                      <polygon points="98,87 106,93 98,99" fill="#ef4444" stroke="#ffffff" stroke-width="0.6" class="cinema-play-pulse" filter="url(#avatarGlowRed)"/>
+                      <circle cx="152" cy="74" r="10" fill="rgba(15, 23, 42, 0.85)" stroke="#ef4444" stroke-width="1" stroke-dasharray="4 3" class="film-reel-spin"/>
+                      <circle cx="152" cy="74" r="4" fill="#030712" stroke="#ef4444" stroke-width="0.8"/>
+                    </g>
+
+                    <!-- COUCHE MIME 9 : TÉLÉCHARGEMENT SÉCURISÉ (Transfert de flux, Flèche vortex) -->
+                    <g class="mime-layer mime-downloading-layer" style="display: none;">
+                      <g class="download-stream-arrows">
+                        <path d="M 100 44 L 100 64 M 95 59 L 100 64 L 105 59" fill="none" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="dl-arrow-1" filter="url(#avatarGlowCyan)"/>
+                        <path d="M 100 60 L 100 80 M 95 75 L 100 80 L 105 75" fill="none" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="dl-arrow-2" filter="url(#avatarGlowCyan)"/>
+                      </g>
+                      <circle cx="100" cy="180" r="18" fill="none" stroke="rgba(56, 189, 248, 0.3)" stroke-width="2"/>
+                      <circle cx="100" cy="180" r="18" fill="none" stroke="#00f0ff" stroke-width="2" stroke-dasharray="35 75" class="dl-circle-progress" filter="url(#avatarGlowCyan)"/>
+                    </g>
+
+                    <!-- COUCHE MIME 10 : DIAGNOSTIC SYSTÈME & MAINTENANCE (Télémétrie, ECG, Auto-réparation) -->
+                    <g class="mime-layer mime-system-layer" style="display: none;">
+                      <polygon points="56,76 62,72 68,76 68,84 62,88 56,84" fill="none" stroke="#84cc16" stroke-width="0.8" opacity="0.7" class="sys-hex-pulse"/>
+                      <polygon points="132,76 138,72 144,76 144,84 138,88 132,84" fill="none" stroke="#84cc16" stroke-width="0.8" opacity="0.7" class="sys-hex-pulse"/>
+                      <path d="M 68 148 L 86 148 L 90 141 L 94 155 L 98 144 L 102 151 L 106 148 L 132 148" fill="none" stroke="#84cc16" stroke-width="1.4" class="sys-ecg-pulse" filter="url(#avatarGlowGreen)"/>
+                    </g>
+
+                    <!-- COUCHE MIME 11 : MÉMOIRE DURABLE & SOUVENIRS (Constellation synaptique, Cristal) -->
+                    <g class="mime-layer mime-memory-layer" style="display: none;">
+                      <g class="memory-crystal" filter="url(#avatarGlowIndigo)">
+                        <polygon points="100,38 107,48 100,58 93,48" fill="rgba(99, 102, 241, 0.4)" stroke="#818cf8" stroke-width="1.2"/>
+                        <line x1="93" y1="48" x2="107" y2="48" stroke="#c7d2fe" stroke-width="0.8"/>
+                        <line x1="100" y1="38" x2="100" y2="58" stroke="#c7d2fe" stroke-width="0.8"/>
+                      </g>
+                      <ellipse cx="100" cy="48" rx="20" ry="7" fill="none" stroke="#6366f1" stroke-width="0.9" stroke-dasharray="3 3" class="memory-wave-1"/>
+                      <ellipse cx="100" cy="48" rx="32" ry="11" fill="none" stroke="#818cf8" stroke-width="0.7" stroke-dasharray="4 4" class="memory-wave-2"/>
+                    </g>
+
+                    <!-- COUCHE MIME 12 : ACHATS & PANIER E-COMMERCE (Panier, Bouclier de validation) -->
+                    <g class="mime-layer mime-shopping-layer" style="display: none;">
+                      <g class="shopping-cart-group">
+                        <path d="M 88 172 L 91 172 L 95 183 L 109 183 L 113 175 L 94 175" fill="none" stroke="#10b981" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" filter="url(#avatarGlowGreen)"/>
+                        <circle cx="96" cy="186" r="1.5" fill="#10b981"/>
+                        <circle cx="107" cy="186" r="1.5" fill="#10b981"/>
+                      </g>
+                      <polygon points="100,160 106,163 106,169 100,172 94,169 94,163" fill="rgba(16, 185, 129, 0.3)" stroke="#34d399" stroke-width="1"/>
+                      <path d="M 97 166 L 99 168 L 103 164" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </g>
+                  </svg>
+
+                  <!-- Pastille de Statut et d'Action Intégrée -->
+                  <div class="avatar-status-pill core-text" id="btnLabel">CONNECT</div>
+                </div>
+              </div>
+
+              <!-- Message d'état intelligent de JARVIS et bouton d'interruption -->
+              <div class="state-control-group">
+                <div id="statusMessage">Touchez JARVIS pour activer l'assistance</div>
+                <!-- Bouton d'interruption instantanée visible pendant la parole -->
+                <button id="btnInterrupt" class="interrupt-btn" style="display: none;" title="Interrompre immédiatement la parole pour parler">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                  INTERROMPRE LA PAROLE
+                </button>
+              </div>
+
+              <!-- Bandeau d'activité live : visible dès qu'un outil est en cours -->
+              <div id="liveActivityBand" class="live-activity-band" style="display:none;">
+                <div class="live-band-header">
+                  <span class="live-band-pulse"></span>
+                  <span id="liveActivityTitle" class="live-band-title">OUTIL EN COURS</span>
+                  <span id="liveKeyBadge" class="live-band-key-badge badge-key-free">CLÉ GRATUITE</span>
+                  <span id="liveModelTag" class="live-band-model">Gemini</span>
+                </div>
+                <div id="liveActivityDetail" class="live-band-detail">Initialisation...</div>
+                <div id="liveActivityStep" class="live-band-step"></div>
+                <div class="live-band-footer">
+                  <span id="liveBandTimestamp" class="live-band-ts">—</span>
+                  <button class="live-band-sup-btn" onclick="switchNavTab('supervision')" title="Voir la supervision complète">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                    SUPERVISION COMPLÈTE
+                  </button>
+                </div>
+              </div>
+
+              <!-- Panneau de Contrôle du Volume Stark -->
+              <div class="hud-volume-panel">
+                <button class="vol-btn" id="muteBtn" title="Couper/Rétablir le son" aria-label="Couper ou rétablir le son">
+                  <svg id="volIcon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                </button>
+                <div class="vol-slider-container">
+                  <input type="range" id="volumeSlider" min="0" max="100" value="85" class="hud-slider" aria-label="Niveau du volume">
+                </div>
+                <span class="vol-label" id="volPercent">85%</span>
+              </div>
+
+              <!-- Indicateur de micro réactif (VU-mètre) -->
+              <div class="mic-monitor">
+                <div class="mic-header">
+                  <span class="mic-status-text">
+                    <span class="mic-active-dot" id="micDot"></span>
+                    <span id="micText">MICROPHONE EN ATTENTE</span>
+                  </span>
+                  <span id="micDb">- INF dB</span>
+                </div>
+                <div class="mic-bars-container" id="micBarsContainer">
+                  <!-- 9 barres d'égaliseur dynamique -->
+                  <div class="eq-bar"></div>
+                  <div class="eq-bar"></div>
+                  <div class="eq-bar"></div>
+                  <div class="eq-bar"></div>
+                  <div class="eq-bar"></div>
+                  <div class="eq-bar"></div>
+                  <div class="eq-bar"></div>
+                  <div class="eq-bar"></div>
+                  <div class="eq-bar"></div>
+                </div>
+              </div>
+
+              <!-- Sélecteur d'entrée audio -->
+              <div class="hud-audio-device-bar" id="hudAudioDeviceBar">
+                <div class="hud-audio-device-row">
+                  <label for="micSelect" class="hud-audio-device-label">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                    MICROPHONE :
+                  </label>
+                  <select id="micSelect" class="hud-audio-select" title="Choisir le microphone d'entrée">
+                    <option value="">Microphone par défaut (Système)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Panneau Notification E-mail Jarvis (Stark Transmission Dock) -->
+              <div id="emailDock" class="email-dock" style="display: none;">
+                <div class="email-dock-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                </div>
+                <div class="email-dock-info">
+                  <div class="email-dock-header">
+                    <span class="email-dock-dot"></span>
+                    <span id="emailDockStatus" class="email-dock-badge">TRANSMISSION RÉUSSIE</span>
+                  </div>
+                  <div id="emailDockSubject" class="email-dock-subject">Rapport J.A.R.V.I.S.</div>
+                  <div id="emailDockRecipient" class="email-dock-recipient">pierrecassagnettes@gmail.com</div>
+                </div>
+              </div>
+
+              <!-- Panneau Exécution de Tâche Active Jarvis (Stark Task Dock) -->
+              <div id="taskDock" class="task-dock" style="display: none;">
+                <div class="task-dock-header">
+                  <span class="task-dock-dot"></span>
+                  <span id="taskDockStatus" class="task-dock-badge">ANTIGRAVITY CLI EN COURS</span>
+                  <span id="taskDockModel" class="task-dock-model">Antigravity CLI (VPS)</span>
+                </div>
+                <div id="taskDockInstruction" class="task-dock-instruction">Développement du projet...</div>
+                <div id="taskDockProgress" class="task-dock-progress">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" class="task-spin"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                  <span id="taskDockProgressText">J'analyse les fichiers du projet...</span>
+                </div>
+                <div class="task-dock-guide">
+                  <input type="text" id="taskDirectiveInput" placeholder="Consigne ou adaptation en direct (ex: utilise plutôt FastAPI)..." class="task-guide-input" />
+                  <button id="btnSendDirective" class="task-guide-btn" title="Adapter le code en cours">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    ADAPTER
+                  </button>
+                  <button id="btnStopTask" class="task-stop-btn" title="Interrompre et arrêter immédiatement l'action en cours">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+                    ARRÊTER
+                  </button>
+                </div>
+              </div>
+
+              <!-- Panneau Navigation Web Jarvis (Stark Browser Dock) -->
+              <div id="browserDock" class="browser-dock">
+                <div class="browser-dock-info">
+                  <span class="browser-dock-dot"></span>
+                  <span id="browserDockTitle" class="browser-dock-title">Page web ouverte</span>
+                </div>
+                <div class="browser-dock-actions">
+                  <button id="btnViewBrowser" class="browser-action-btn btn-preview">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="3"/></svg>
+                    VOIR LA PAGE
+                  </button>
+                  <button id="btnOpenBrowser" class="browser-action-btn btn-open">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    OUVRIR LE LIEN
+                  </button>
+                </div>
+              </div>
+
+              <!-- Fallback pour transcription vocale -->
+              <div id="transcriptBox" style="display: none;"></div>
+
+              <!-- Footer statut terminal -->
+              <div class="device-info">
+                <div class="device-dot"></div> TERMINAL AUTORISÉ & SÉCURISÉ
+              </div>
+
             </div>
-            <span id="micToggleBadge" class="quick-toggle-badge badge-mic-on">ACTIF</span>
-          </label>
+          </div>
+        </section>
 
-          <!-- Encoche Clé Payante -->
-          <label class="stark-quick-toggle" for="paidKeyToggle" id="paidToggleContainer" title="Cochez pour autoriser le modèle à utiliser la clé payante. Si décoché, toute requête sur la clé payante est physiquement bloquée.">
-            <span class="quick-toggle-icon"><i data-lucide="zap"></i></span>
-            <span class="quick-toggle-label">CLÉ PAYANTE</span>
-            <div class="stark-switch">
-              <input type="checkbox" id="paidKeyToggle" class="stark-switch-input" aria-label="Autoriser la clé payante au modèle">
-              <span class="stark-switch-track">
-                <span class="stark-switch-thumb"></span>
-              </span>
+        <!-- ============================================================ -->
+        <!-- ONGLET 2 : MESSAGES (Chat Multimodal, Vision & Discussion)   -->
+        <!-- ============================================================ -->
+        <section id="chatModal" class="hud-tab-pane hud-chat-pane" aria-label="Onglet Messages" style="display: none;">
+          <div class="tab-pane-header chat-header">
+            <div class="chat-header-title-group">
+              <span class="chat-pulse-orb"></span>
+              <div>
+                <div class="chat-title">Messagerie</div>
+                <div class="chat-subtitle">Discussion instantanée & analyse visuelle</div>
+              </div>
             </div>
-            <span id="paidToggleBadge" class="quick-toggle-badge badge-locked"><i data-lucide="lock"></i> VERROUILLÉE</span>
-          </label>
-        </div>
-
-        <!-- Centre Avatar Féminin Futuriste avec halo réactif au son -->
-        <div class="reactor-container avatar-pod-container">
-          <div class="reactor-halo" id="reactorHalo"></div>
-          <!-- Satellites Orbitaux Holographiques (Sous-agents Antigravity CLI) -->
-          <div class="subagents-orbital-container" id="subagentsContainer" aria-label="Constellation sous-agents Antigravity"></div>
-          <div class="jarvis-avatar-pod arc-reactor" id="toggleBtn" title="Touchez JARVIS pour interagir">
-            <svg class="jarvis-avatar-svg" viewBox="0 0 200 210" aria-label="Avatar Jarvis">
-              <defs>
-                <linearGradient id="avatarHairGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stop-color="#070d1e"/>
-                  <stop offset="50%" stop-color="#0f172a"/>
-                  <stop offset="100%" stop-color="#1e1b4b"/>
-                </linearGradient>
-                <linearGradient id="avatarFaceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stop-color="#0d1b2a"/>
-                  <stop offset="60%" stop-color="#112240"/>
-                  <stop offset="100%" stop-color="#0a192f"/>
-                </linearGradient>
-                <linearGradient id="avatarVisorGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stop-color="rgba(147, 51, 234, 0.45)"/>
-                  <stop offset="100%" stop-color="rgba(79, 70, 229, 0.5)"/>
-                </linearGradient>
-                <filter id="avatarGlowCyan" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="2.5" result="blur"/>
-                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
-                <filter id="avatarGlowPurple" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="3" result="blur"/>
-                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
-                <filter id="avatarGlowAmber" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="2.5" result="blur"/>
-                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
-                <filter id="avatarGlowPink" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="2.5" result="blur"/>
-                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
-                <filter id="avatarGlowRed" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="2.5" result="blur"/>
-                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
-                <filter id="avatarGlowGreen" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="2.5" result="blur"/>
-                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
-                <filter id="avatarGlowIndigo" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="2.5" result="blur"/>
-                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
-                <clipPath id="avatarVisorClip">
-                  <path d="M 68 83 Q 100 87 132 83 L 134 104 Q 100 110 66 104 Z"/>
-                </clipPath>
-              </defs>
-
-              <!-- ANNEAUX HOLOGRAPHIQUES EXTÉRIEURS -->
-              <circle cx="100" cy="105" r="95" fill="none" stroke="#0284c7" stroke-width="0.8" stroke-dasharray="4 6" opacity="0.35" class="avatar-rings-outer"/>
-              <circle cx="100" cy="105" r="91" fill="none" stroke="#38bdf8" stroke-width="0.6" stroke-dasharray="20 4 4 4" opacity="0.4" class="avatar-rings-inner"/>
-              <circle cx="100" cy="105" r="88" fill="none" stroke="rgba(56, 189, 248, 0.2)" stroke-width="0.5"/>
-
-              <g class="avatar-head-group">
-                <!-- BASE HOLOGRAPHIQUE ÉMETTEUR -->
-                <ellipse cx="100" cy="204" rx="55" ry="5" fill="none" stroke="#38bdf8" stroke-width="1.2" opacity="0.4" filter="url(#avatarGlowCyan)"/>
-                <path d="M 45 198 C 60 180 80 174 100 174 C 120 174 140 180 155 198 L 164 210 L 36 210 Z" fill="#070c18" stroke="#0284c7" stroke-width="1" opacity="0.9"/>
-                <path d="M 65 184 Q 100 198 135 184" fill="none" stroke="#38bdf8" stroke-width="1.5" filter="url(#avatarGlowCyan)" opacity="0.8"/>
-
-                <!-- ROBOT BLEU JARVIS (Avatar & Emblème Officiel) -->
-                <g class="jarvis-robot-core">
-                  <image href="/static/jarvis-robot-transparent.png" x="18" y="23" width="164" height="164" class="jarvis-robot-img" preserveAspectRatio="xMidYMid meet" />
-                </g>
-                <!-- Éléments de rétrocompatibilité masqués pour le moteur audio/sync -->
-                <g id="avatarEyesGroup" style="display:none;"></g>
-                <g id="avatarMouthGroup" style="display:none;">
-                  <span class="avatar-lip-lower"></span>
-                  <ellipse class="avatar-mouth-cavity"></ellipse>
-                </g>
-              </g>
-
-              <!-- COUCHE MIME 1 : PAROLE (Ondes vocales holographiques) -->
-              <g class="mime-layer mime-speaking-layer" style="display: none;">
-                <path d="M 96 135 Q 100 138 104 135" fill="none" stroke="#00f0ff" stroke-width="1.5" class="vocal-wave-1 vocal-wave" filter="url(#avatarGlowCyan)"/>
-                <path d="M 92 140 Q 100 145 108 140" fill="none" stroke="#00f0ff" stroke-width="1.5" class="vocal-wave-2 vocal-wave" filter="url(#avatarGlowCyan)"/>
-                <path d="M 88 145 Q 100 152 112 145" fill="none" stroke="#38bdf8" stroke-width="1.2" class="vocal-wave-3 vocal-wave" filter="url(#avatarGlowCyan)"/>
-              </g>
-
-              <!-- COUCHE MIME 2 : PROGRAMMATION / CODING (Visière cybernétique) -->
-              <g class="mime-layer mime-coding-layer" style="display: none;">
-                <path d="M 68 83 Q 100 87 132 83 L 134 104 Q 100 110 66 104 Z" fill="url(#avatarVisorGrad)" stroke="#c084fc" stroke-width="1.8" filter="url(#avatarGlowPurple)"/>
-                <path d="M 97 85 Q 100 84 103 85" fill="none" stroke="#e9d5ff" stroke-width="2"/>
-                <line x1="68" y1="85" x2="60" y2="88" stroke="#c084fc" stroke-width="1.5"/>
-                <line x1="132" y1="85" x2="140" y2="88" stroke="#c084fc" stroke-width="1.5"/>
-              </g>
-
-              <!-- COUCHE MIME 3 : RECHERCHE / BROWSING (Réticule & Radar) -->
-              <g class="mime-layer mime-browsing-layer" style="display: none;">
-                <g class="radar-reticle">
-                  <circle cx="114" cy="92" r="16" fill="none" stroke="#38bdf8" stroke-width="1" stroke-dasharray="3 3"/>
-                  <circle cx="114" cy="92" r="10" fill="none" stroke="#00f0ff" stroke-width="1.2" filter="url(#avatarGlowCyan)"/>
-                  <line x1="114" y1="78" x2="114" y2="82" stroke="#38bdf8" stroke-width="1.5"/>
-                  <line x1="114" y1="102" x2="114" y2="106" stroke="#38bdf8" stroke-width="1.5"/>
-                  <line x1="100" y1="92" x2="104" y2="92" stroke="#38bdf8" stroke-width="1.5"/>
-                  <line x1="124" y1="92" x2="128" y2="92" stroke="#38bdf8" stroke-width="1.5"/>
-                </g>
-                <path d="M 114 92 L 126 80 A 16 16 0 0 1 130 92 Z" fill="rgba(56, 189, 248, 0.25)" class="radar-sweep-beam"/>
-              </g>
-
-              <!-- COUCHE MIME 4 : RÉFLEXION / THINKING (Orbites quantiques & halo neural) -->
-              <g class="mime-layer mime-thinking-layer" style="display: none;">
-                <ellipse cx="100" cy="62" rx="36" ry="12" fill="none" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="4 4" class="quantum-orbit-1" filter="url(#avatarGlowCyan)"/>
-                <ellipse cx="100" cy="62" rx="36" ry="12" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="2 4" class="quantum-orbit-2"/>
-                <circle cx="68" cy="60" r="2" fill="#fbbf24" filter="url(#avatarGlowCyan)"/>
-                <circle cx="132" cy="64" r="2" fill="#fbbf24" filter="url(#avatarGlowCyan)"/>
-              </g>
-
-              <!-- COUCHE MIME 5 : EMAIL (Transmission de données) -->
-              <g class="mime-layer mime-emailing-layer" style="display: none;">
-                <g class="email-beam">
-                  <rect x="91" y="44" width="18" height="13" rx="2" fill="rgba(16, 185, 129, 0.2)" stroke="#10b981" stroke-width="1.2"/>
-                  <path d="M 91 46 L 100 52 L 109 46" fill="none" stroke="#10b981" stroke-width="1.2"/>
-                </g>
-              </g>
-
-              <!-- COUCHE MIME 6 : KINDLE & LIVRES NUMÉRIQUES (Liseuse & Faisceau) -->
-              <g class="mime-layer mime-kindle-layer" style="display: none;">
-                <line x1="72" y1="92" x2="128" y2="92" stroke="#f59e0b" stroke-width="1.2" class="kindle-read-scan" filter="url(#avatarGlowAmber)"/>
-                <g class="kindle-beam-group">
-                  <path d="M 94 152 Q 100 146 106 152" fill="none" stroke="#fbbf24" stroke-width="1.5" class="kindle-wave-1" filter="url(#avatarGlowAmber)"/>
-                  <path d="M 90 144 Q 100 136 110 144" fill="none" stroke="#f59e0b" stroke-width="1.5" class="kindle-wave-2" filter="url(#avatarGlowAmber)"/>
-                  <path d="M 86 136 Q 100 126 114 136" fill="none" stroke="#d97706" stroke-width="1.2" class="kindle-wave-3" filter="url(#avatarGlowAmber)"/>
-                </g>
-                <g class="kindle-book-holo">
-                  <path d="M 100 186 C 88 183 76 182 70 184 L 70 165 C 76 163 88 164 100 167 Z" fill="rgba(15, 23, 42, 0.92)" stroke="#f59e0b" stroke-width="1.2"/>
-                  <line x1="74" y1="169" x2="94" y2="171" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
-                  <line x1="74" y1="174" x2="92" y2="176" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="3 1.5"/>
-                  <line x1="74" y1="179" x2="90" y2="181" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
-                  <path d="M 100 186 C 112 183 124 182 130 184 L 130 165 C 124 163 112 164 100 167 Z" fill="rgba(15, 23, 42, 0.92)" stroke="#f59e0b" stroke-width="1.2"/>
-                  <line x1="106" y1="171" x2="126" y2="169" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="3 1.5"/>
-                  <line x1="108" y1="176" x2="126" y2="174" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2 1"/>
-                  <line x1="110" y1="181" x2="124" y2="179" stroke="rgba(251, 191, 36, 0.7)" stroke-width="0.8" stroke-dasharray="2.5 1"/>
-                  <line x1="100" y1="167" x2="100" y2="186" stroke="#fde047" stroke-width="1.6"/>
-                  <path d="M 100 186 C 104 178 108 170 114 164 L 100 167 Z" fill="rgba(245, 158, 11, 0.35)" stroke="#fbbf24" stroke-width="0.8" class="kindle-page-turn"/>
-                  <path d="M 86 195 Q 100 203 114 195" fill="none" stroke="#f59e0b" stroke-width="1.6" stroke-linecap="round"/>
-                  <path d="M 111 192 L 115 195 L 112 198" fill="none" stroke="#f59e0b" stroke-width="1.4" stroke-linecap="round"/>
-                </g>
-              </g>
-
-              <!-- COUCHE MIME 7 : MUSIQUE & STREAMING AUDIO (Spotify Connect, Égaliseurs, Vinyle) -->
-              <g class="mime-layer mime-music-layer" style="display: none;">
-                <circle cx="100" cy="105" r="76" fill="none" stroke="#1db954" stroke-width="1.2" stroke-dasharray="10 6 3 6" opacity="0.7" class="music-disc-spin" filter="url(#avatarGlowGreen)"/>
-                <g class="eq-left-ear">
-                  <line x1="53" y1="99" x2="53" y2="91" stroke="#1db954" stroke-width="1.8" stroke-linecap="round" class="music-bar-1"/>
-                  <line x1="56" y1="102" x2="56" y2="88" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" class="music-bar-2"/>
-                  <line x1="59" y1="100" x2="59" y2="93" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" class="music-bar-3"/>
-                </g>
-                <g class="eq-right-ear">
-                  <line x1="141" y1="100" x2="141" y2="93" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" class="music-bar-3"/>
-                  <line x1="144" y1="102" x2="144" y2="88" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" class="music-bar-2"/>
-                  <line x1="147" y1="99" x2="147" y2="91" stroke="#1db954" stroke-width="1.8" stroke-linecap="round" class="music-bar-1"/>
-                </g>
-                <text x="44" y="78" fill="#1db954" font-family="sans-serif" font-size="14" class="music-note-float-1" filter="url(#avatarGlowGreen)">♪</text>
-                <text x="146" y="72" fill="#10b981" font-family="sans-serif" font-size="16" class="music-note-float-2">♫</text>
-                <text x="135" y="52" fill="#00f0ff" font-family="sans-serif" font-size="11" class="music-note-float-3">♪</text>
-              </g>
-
-              <!-- COUCHE MIME 8 : CINÉMA & STREAMING VIDÉO (Stremio, Visière 4K, Bobine) -->
-              <g class="mime-layer mime-media-layer" style="display: none;">
-                <rect x="64" y="82" width="72" height="22" rx="2" fill="rgba(15, 23, 42, 0.75)" stroke="#ef4444" stroke-width="1.3" filter="url(#avatarGlowRed)"/>
-                <path d="M 67 86 L 67 84 L 71 84" fill="none" stroke="#fca5a5" stroke-width="1"/>
-                <path d="M 133 86 L 133 84 L 129 84" fill="none" stroke="#fca5a5" stroke-width="1"/>
-                <path d="M 67 100 L 67 102 L 71 102" fill="none" stroke="#fca5a5" stroke-width="1"/>
-                <path d="M 133 100 L 133 102 L 129 102" fill="none" stroke="#fca5a5" stroke-width="1"/>
-                <polygon points="98,87 106,93 98,99" fill="#ef4444" stroke="#ffffff" stroke-width="0.6" class="cinema-play-pulse" filter="url(#avatarGlowRed)"/>
-                <circle cx="152" cy="74" r="10" fill="rgba(15, 23, 42, 0.85)" stroke="#ef4444" stroke-width="1" stroke-dasharray="4 3" class="film-reel-spin"/>
-                <circle cx="152" cy="74" r="4" fill="#030712" stroke="#ef4444" stroke-width="0.8"/>
-              </g>
-
-              <!-- COUCHE MIME 9 : TÉLÉCHARGEMENT SÉCURISÉ (Transfert de flux, Flèche vortex) -->
-              <g class="mime-layer mime-downloading-layer" style="display: none;">
-                <g class="download-stream-arrows">
-                  <path d="M 100 44 L 100 64 M 95 59 L 100 64 L 105 59" fill="none" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="dl-arrow-1" filter="url(#avatarGlowCyan)"/>
-                  <path d="M 100 60 L 100 80 M 95 75 L 100 80 L 105 75" fill="none" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="dl-arrow-2" filter="url(#avatarGlowCyan)"/>
-                </g>
-                <circle cx="100" cy="180" r="18" fill="none" stroke="rgba(56, 189, 248, 0.3)" stroke-width="2"/>
-                <circle cx="100" cy="180" r="18" fill="none" stroke="#00f0ff" stroke-width="2" stroke-dasharray="35 75" class="dl-circle-progress" filter="url(#avatarGlowCyan)"/>
-              </g>
-
-              <!-- COUCHE MIME 10 : DIAGNOSTIC SYSTÈME & MAINTENANCE (Télémétrie, ECG, Auto-réparation) -->
-              <g class="mime-layer mime-system-layer" style="display: none;">
-                <polygon points="56,76 62,72 68,76 68,84 62,88 56,84" fill="none" stroke="#84cc16" stroke-width="0.8" opacity="0.7" class="sys-hex-pulse"/>
-                <polygon points="132,76 138,72 144,76 144,84 138,88 132,84" fill="none" stroke="#84cc16" stroke-width="0.8" opacity="0.7" class="sys-hex-pulse"/>
-                <path d="M 68 148 L 86 148 L 90 141 L 94 155 L 98 144 L 102 151 L 106 148 L 132 148" fill="none" stroke="#84cc16" stroke-width="1.4" class="sys-ecg-pulse" filter="url(#avatarGlowGreen)"/>
-              </g>
-
-              <!-- COUCHE MIME 11 : MÉMOIRE DURABLE & SOUVENIRS (Constellation synaptique, Cristal) -->
-              <g class="mime-layer mime-memory-layer" style="display: none;">
-                <g class="memory-crystal" filter="url(#avatarGlowIndigo)">
-                  <polygon points="100,38 107,48 100,58 93,48" fill="rgba(99, 102, 241, 0.4)" stroke="#818cf8" stroke-width="1.2"/>
-                  <line x1="93" y1="48" x2="107" y2="48" stroke="#c7d2fe" stroke-width="0.8"/>
-                  <line x1="100" y1="38" x2="100" y2="58" stroke="#c7d2fe" stroke-width="0.8"/>
-                </g>
-                <ellipse cx="100" cy="48" rx="20" ry="7" fill="none" stroke="#6366f1" stroke-width="0.9" stroke-dasharray="3 3" class="memory-wave-1"/>
-                <ellipse cx="100" cy="48" rx="32" ry="11" fill="none" stroke="#818cf8" stroke-width="0.7" stroke-dasharray="4 4" class="memory-wave-2"/>
-              </g>
-
-              <!-- COUCHE MIME 12 : ACHATS & PANIER E-COMMERCE (Panier, Bouclier de validation) -->
-              <g class="mime-layer mime-shopping-layer" style="display: none;">
-                <g class="shopping-cart-group">
-                  <path d="M 88 172 L 91 172 L 95 183 L 109 183 L 113 175 L 94 175" fill="none" stroke="#10b981" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" filter="url(#avatarGlowGreen)"/>
-                  <circle cx="96" cy="186" r="1.5" fill="#10b981"/>
-                  <circle cx="107" cy="186" r="1.5" fill="#10b981"/>
-                </g>
-                <polygon points="100,160 106,163 106,169 100,172 94,169 94,163" fill="rgba(16, 185, 129, 0.3)" stroke="#34d399" stroke-width="1"/>
-                <path d="M 97 166 L 99 168 L 103 164" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-              </g>
-            </svg>
-
-            <!-- Pastille de Statut et d'Action Intégrée -->
-            <div class="avatar-status-pill core-text" id="btnLabel">CONNECT</div>
+            <div class="chat-header-actions">
+              <button id="btnChatClear" class="chat-icon-btn" title="Vider l'historique de discussion" aria-label="Vider l'historique de discussion">
+                <i data-lucide="trash-2"></i>
+              </button>
+              <button id="btnCloseChat" class="chat-icon-btn btn-close-modal" onclick="switchNavTab('assistant')" title="Retour à l'assistant" aria-label="Retour à l'assistant"><i data-lucide="x"></i></button>
+            </div>
           </div>
-        </div>
 
-        <!-- Message d'état intelligent de JARVIS et bouton d'interruption -->
-        <div class="state-control-group">
-          <div id="statusMessage">Touchez JARVIS pour activer l'assistance</div>
-          <!-- Bouton d'interruption instantanée visible pendant la parole -->
-          <button id="btnInterrupt" class="interrupt-btn" style="display: none;" title="Interrompre immédiatement la parole pour parler">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-            INTERROMPRE LA PAROLE
-          </button>
-        </div>
-
-        <!-- Bandeau d'activité live : visible dès qu'un outil est en cours -->
-        <div id="liveActivityBand" class="live-activity-band" style="display:none;">
-          <div class="live-band-header">
-            <span class="live-band-pulse"></span>
-            <span id="liveActivityTitle" class="live-band-title">OUTIL EN COURS</span>
-            <span id="liveKeyBadge" class="live-band-key-badge badge-key-free">CLÉ GRATUITE</span>
-            <span id="liveModelTag" class="live-band-model">Gemini</span>
+          <!-- Fil de conversation défilant -->
+          <div id="chatMessages" class="chat-messages-container">
+            <!-- Message de bienvenue -->
+            <div class="chat-welcome-banner" id="chatWelcomeBanner">
+              <div class="chat-welcome-icon">
+                <i data-lucide="sparkles" class="chat-welcome-sparkle"></i>
+              </div>
+              <div class="chat-welcome-title">Comment puis-je vous aider ?</div>
+              <div class="chat-welcome-desc">
+                Posez une question par écrit ou joignez une image / capture d'écran pour que J.A.R.V.I.S. l'analyse minutieusement.
+              </div>
+              <div class="chat-suggestion-chips">
+                <button class="chat-chip" onclick="applyChatPrompt('Analyse cette capture d\'écran en détail')"><i data-lucide="image"></i> Analyser une capture</button>
+                <button class="chat-chip" onclick="applyChatPrompt('Résume-moi l\'état actuel du système')"><i data-lucide="activity"></i> État du système</button>
+                <button class="chat-chip" onclick="applyChatPrompt('Aide-moi à résoudre ce problème technique')"><i data-lucide="wrench"></i> Résolution technique</button>
+              </div>
+            </div>
           </div>
-          <div id="liveActivityDetail" class="live-band-detail">Initialisation...</div>
-          <div id="liveActivityStep" class="live-band-step"></div>
-          <div class="live-band-footer">
-            <span id="liveBandTimestamp" class="live-band-ts">—</span>
-            <button class="live-band-sup-btn" onclick="openSupervisionModal()" title="Voir la supervision complète">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-              SUPERVISION COMPLÈTE
-            </button>
-          </div>
-        </div>
 
-        <!-- Panneau de Contrôle du Volume Stark -->
-        <div class="hud-volume-panel">
-          <button class="vol-btn" id="muteBtn" title="Couper/Rétablir le son" aria-label="Couper ou rétablir le son">
-            <svg id="volIcon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
-          </button>
-          <div class="vol-slider-container">
-            <input type="range" id="volumeSlider" min="0" max="100" value="85" class="hud-slider" aria-label="Niveau du volume">
-          </div>
-          <span class="vol-label" id="volPercent">85%</span>
-        </div>
-
-        <!-- Indicateur de micro réactif (VU-mètre) -->
-        <div class="mic-monitor">
-          <div class="mic-header">
-            <span class="mic-status-text">
-              <span class="mic-active-dot" id="micDot"></span>
-              <span id="micText">MICROPHONE EN ATTENTE</span>
+          <!-- Indicateur d'analyse / écriture en cours -->
+          <div id="chatTypingIndicator" class="chat-typing-indicator" style="display: none;">
+            <span class="chat-typing-dots">
+              <span></span><span></span><span></span>
             </span>
-            <span id="micDb">- INF dB</span>
+            <span id="chatTypingText">JARVIS analyse les données...</span>
           </div>
-          <div class="mic-bars-container" id="micBarsContainer">
-            <!-- 9 barres d'égaliseur dynamique -->
-            <div class="eq-bar"></div>
-            <div class="eq-bar"></div>
-            <div class="eq-bar"></div>
-            <div class="eq-bar"></div>
-            <div class="eq-bar"></div>
-            <div class="eq-bar"></div>
-            <div class="eq-bar"></div>
-            <div class="eq-bar"></div>
-            <div class="eq-bar"></div>
-          </div>
-        </div>
 
-        <!-- Sélecteur d'entrée audio -->
-        <div class="hud-audio-device-bar" id="hudAudioDeviceBar">
-          <div class="hud-audio-device-row">
-            <label for="micSelect" class="hud-audio-device-label">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-              MICROPHONE :
-            </label>
-            <select id="micSelect" class="hud-audio-select" title="Choisir le microphone d'entrée">
-              <option value="">Microphone par défaut (Système)</option>
-            </select>
-          </div>
-        </div>
-
-
-
-        <!-- Panneau Notification E-mail Jarvis (Stark Transmission Dock) -->
-        <div id="emailDock" class="email-dock" style="display: none;">
-          <div class="email-dock-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          </div>
-          <div class="email-dock-info">
-            <div class="email-dock-header">
-              <span class="email-dock-dot"></span>
-              <span id="emailDockStatus" class="email-dock-badge">TRANSMISSION RÉUSSIE</span>
+          <!-- Barre de prévisualisation de photo jointe -->
+          <div id="chatImagePreviewBar" class="chat-preview-bar" style="display: none;">
+            <div class="chat-preview-thumb-box">
+              <img id="chatPreviewImg" src="" alt="Aperçu pièce jointe" />
             </div>
-            <div id="emailDockSubject" class="email-dock-subject">Rapport J.A.R.V.I.S.</div>
-            <div id="emailDockRecipient" class="email-dock-recipient">pierrecassagnettes@gmail.com</div>
+            <div class="chat-preview-info">
+              <div id="chatPreviewName" class="chat-preview-name">photo.jpg</div>
+              <div id="chatPreviewMeta" class="chat-preview-meta">Image prête pour analyse</div>
+            </div>
+            <button id="btnRemoveChatImage" class="chat-preview-remove" title="Supprimer la photo" aria-label="Supprimer la photo jointe"><i data-lucide="x"></i></button>
           </div>
-        </div>
 
-        <!-- Panneau Exécution de Tâche Active Jarvis (Stark Task Dock) -->
-        <div id="taskDock" class="task-dock" style="display: none;">
-          <div class="task-dock-header">
-            <span class="task-dock-dot"></span>
-            <span id="taskDockStatus" class="task-dock-badge">ANTIGRAVITY CLI EN COURS</span>
-            <span id="taskDockModel" class="task-dock-model">Antigravity CLI (VPS)</span>
+          <!-- Zone de saisie et envoi -->
+          <div class="chat-input-dock">
+            <!-- Input de fichier caché pour la sélection photo / caméra -->
+            <input type="file" id="chatFileInput" accept="image/*" style="display: none;" />
+            
+            <div class="chat-input-inner">
+              <button id="btnChatAttach" class="chat-tool-btn" type="button" title="Joindre une photo ou capture d'écran" aria-label="Joindre une photo ou capture d'écran">
+                <i data-lucide="paperclip"></i>
+              </button>
+
+              <textarea 
+                id="chatTextInput" 
+                class="chat-text-input" 
+                rows="1" 
+                placeholder="Envoyer un message à JARVIS (Maj+Entrée pour saut de ligne)..."
+              ></textarea>
+
+              <button id="btnChatSend" class="chat-send-btn" type="button" title="Envoyer le message" aria-label="Envoyer le message">
+                <i data-lucide="arrow-up"></i>
+              </button>
+            </div>
           </div>
-          <div id="taskDockInstruction" class="task-dock-instruction">Développement du projet...</div>
-          <div id="taskDockProgress" class="task-dock-progress">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" class="task-spin"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            <span id="taskDockProgressText">J'analyse les fichiers du projet...</span>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- ONGLET 3 : KINDLE (Amazon Send to Kindle & Transferts)       -->
+        <!-- ============================================================ -->
+        <section id="kindleModal" class="hud-tab-pane hud-kindle-pane" aria-label="Onglet Kindle" style="display: none;">
+          <!-- En-tête -->
+          <div class="tab-pane-header supervision-header">
+            <div class="supervision-title-group">
+              <span class="supervision-pulse-orb" style="background: #f59e0b; box-shadow: 0 0 10px #f59e0b;"></span>
+              <div>
+                <div class="supervision-title">AMAZON SEND TO KINDLE // LISEUSE</div>
+                <div class="supervision-subtitle">Transfert direct de livres &amp; documents vers votre Kindle</div>
+              </div>
+            </div>
+            <div class="supervision-header-actions">
+              <button id="btnRefreshKindleStatus" class="supervision-icon-btn" onclick="fetchKindleStatus()" title="Actualiser le statut" aria-label="Actualiser le statut Kindle">
+                <i data-lucide="refresh-cw"></i>
+              </button>
+              <button id="btnCloseKindleModal" class="supervision-icon-btn btn-close-modal" onclick="switchNavTab('assistant')" title="Retour à l'assistant" aria-label="Retour à l'assistant"><i data-lucide="x"></i></button>
+            </div>
           </div>
-          <div class="task-dock-guide">
-            <input type="text" id="taskDirectiveInput" placeholder="Consigne ou adaptation en direct (ex: utilise plutôt FastAPI)..." class="task-guide-input" />
-            <button id="btnSendDirective" class="task-guide-btn" title="Adapter le code en cours">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-              ADAPTER
+
+          <!-- Corps défilant -->
+          <div class="tab-pane-scroll-body supervision-body" style="padding: 20px;">
+            <!-- Statut du compte Amazon -->
+            <div class="supervision-section" style="margin-bottom: 16px;">
+              <div class="section-badge-header">
+                <span class="section-icon"><i data-lucide="book"></i></span>
+                <span class="section-title">COMPTE AMAZON CONNECTÉ</span>
+                <span class="section-tag" id="kindleAccountStatusTag">VÉRIFICATION...</span>
+              </div>
+              <div class="sup-card-grid" style="grid-template-columns: 1fr auto; align-items: center; gap: 12px;">
+                <div>
+                  <div class="sup-label">UTILISATEUR AMAZON</div>
+                  <div class="sup-value-highlight" id="kindleUserName">Pierre</div>
+                  <div class="sup-detail" id="kindleStatusDesc">Vérification de la session en cours...</div>
+                </div>
+                <div>
+                  <button id="btnOpenAmazonLogin" class="auth-btn" style="padding: 8px 14px; font-size: 11px; margin: 0; background: #ea580c;" onclick="openAmazonKindleLogin()">OUVRIR AMAZON</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Zone de Dépôt de fichier -->
+            <div class="supervision-section" style="margin-bottom: 16px;">
+              <div class="section-badge-header">
+                <span class="section-icon"><i data-lucide="upload"></i></span>
+                <span class="section-title">DÉPOSER UN FICHIER POUR LA KINDLE</span>
+              </div>
+              <div id="kindleDropzone" class="kindle-dropzone" onclick="document.getElementById('kindleFileInput').click()">
+                <input type="file" id="kindleFileInput" accept=".pdf,.doc,.docx,.txt,.rtf,.htm,.html,.png,.gif,.jpg,.jpeg,.bmp,.epub" style="display: none;" onchange="handleKindleFileSelected(event)" />
+                <div class="kindle-dropzone-icon"><i data-lucide="upload-cloud"></i></div>
+                <div class="kindle-dropzone-title">Glissez un fichier ici ou cliquez pour parcourir</div>
+                <div class="kindle-dropzone-hint">Formats acceptés : EPUB, PDF, DOCX, TXT, DOC (jusqu'à 200 Mo)</div>
+              </div>
+            </div>
+
+            <!-- État / Progression d'envoi -->
+            <div id="kindleUploadCard" class="kindle-upload-card" style="display: none;">
+              <div class="kindle-upload-header">
+                <span id="kindleUploadFileName" class="kindle-upload-file-name">document.epub</span>
+                <span id="kindleUploadStatusTag" class="section-tag">ENVOI EN COURS</span>
+              </div>
+              <!-- Barre de progression fine (4px) -->
+              <div class="kindle-progress-track">
+                <div id="kindleProgressBar" class="kindle-progress-bar" style="width: 0%;"></div>
+              </div>
+              <div id="kindleUploadMessage" class="kindle-upload-message">Téléversement sur Amazon Send to Kindle en cours...</div>
+            </div>
+
+            <!-- Envoi d'article Web par URL -->
+            <div class="supervision-section" style="margin-bottom: 16px;">
+              <div class="section-badge-header">
+                <span class="section-icon"><i data-lucide="globe"></i></span>
+                <span class="section-title">ENVOYER UN ARTICLE WEB DIRECT</span>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <input type="url" id="kindleWebArticleUrl" class="auth-input" style="margin: 0; padding: 8px 12px; font-size: 12px; flex: 1;" placeholder="https://exemple.com/article..." />
+                <button class="auth-btn" style="margin: 0; padding: 8px 16px; font-size: 11px; white-space: nowrap;" onclick="sendWebArticleToKindle()">ENVOYER</button>
+              </div>
+            </div>
+
+            <!-- Derniers envois -->
+            <div class="supervision-section">
+              <div class="section-badge-header">
+                <span class="section-icon"><i data-lucide="history"></i></span>
+                <span class="section-title">DERNIERS ENVOIS</span>
+              </div>
+              <div id="kindleHistoryContainer" class="kindle-history-container">
+                <div id="kindleHistoryEmpty" class="kindle-history-empty">Aucun envoi récent enregistré.</div>
+                <div id="kindleHistoryList" class="kindle-history-list" style="display: none;"></div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- ONGLET 4 : SUPERVISION (Stark AI Supervision Globale)        -->
+        <!-- ============================================================ -->
+        <section id="supervisionModal" class="hud-tab-pane hud-supervision-pane" aria-label="Onglet Supervision" style="display: none;">
+          <!-- En-tête de supervision -->
+          <div class="tab-pane-header supervision-header">
+            <div class="supervision-title-group">
+              <span class="supervision-pulse-orb"></span>
+              <div>
+                <div class="supervision-title">SUPERVISION GLOBALE // STARK AI</div>
+                <div class="supervision-subtitle">Modèles, Clés API, Actions en direct & Fenêtres système</div>
+              </div>
+            </div>
+            <div class="supervision-header-actions">
+              <button id="btnSupervisionOpenLogs" class="supervision-icon-btn" onclick="switchNavTab('logs')" title="Ouvrir le terminal des logs" aria-label="Ouvrir les logs">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              </button>
+              <button id="btnRefreshSupervision" class="supervision-icon-btn" title="Rafraîchir les données en direct" aria-label="Rafraîchir les données de supervision">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              </button>
+              <button id="btnCloseSupervision" class="supervision-icon-btn btn-close-modal" onclick="switchNavTab('assistant')" title="Retour à l'assistant" aria-label="Retour à l'assistant"><i data-lucide="x"></i></button>
+            </div>
+          </div>
+
+          <!-- Segmented Control Sous-Onglets (Prompt 5) -->
+          <div class="sup-segmented-nav">
+            <button class="sup-nav-tab active" data-sup-tab="models">
+              <i data-lucide="cpu"></i>
+              <span>Modèles</span>
             </button>
-            <button id="btnStopTask" class="task-stop-btn" title="Interrompre et arrêter immédiatement l'action en cours">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
-              ARRÊTER
+            <button class="sup-nav-tab" data-sup-tab="keys">
+              <i data-lucide="key"></i>
+              <span>Clés API</span>
+            </button>
+            <button class="sup-nav-tab" data-sup-tab="metrics">
+              <i data-lucide="bar-chart-3"></i>
+              <span>Métriques</span>
+            </button>
+            <button class="sup-nav-tab" data-sup-tab="patches">
+              <i data-lucide="shield-check"></i>
+              <span>Patches</span>
             </button>
           </div>
-        </div>
 
-        <!-- Panneau Navigation Web Jarvis (Stark Browser Dock) -->
-        <div id="browserDock" class="browser-dock">
-          <div class="browser-dock-info">
-            <span class="browser-dock-dot"></span>
-            <span id="browserDockTitle" class="browser-dock-title">Page web ouverte</span>
+          <!-- Corps défilant du panneau -->
+          <div class="tab-pane-scroll-body supervision-body">
+
+            <!-- SOUS-ONGLET 1 : MODÈLES, OUTILS, ACTIONS & FENÊTRES -->
+            <div class="sup-tab-panel active" id="supPanelModels" data-sup-panel="models">
+              <!-- 1. MODÈLE VOCAL ACTIF & CLÉ API -->
+              <div class="supervision-section">
+                <div class="section-badge-header">
+                  <span class="section-icon"><i data-lucide="mic"></i></span>
+                  <span class="section-title">MODÈLE VOCAL EN COURS (PAROLE & ÉCOUTE)</span>
+                  <span class="section-tag" id="supVoiceStatusTag">À L'ÉCOUTE</span>
+                </div>
+                <div class="sup-card-grid">
+                  <div class="sup-info-box">
+                    <div class="sup-label">MODÈLE UTILISÉ POUR PARLER</div>
+                    <div class="sup-value-highlight" id="supVoiceModel">GEMINI 3.8 LIVE</div>
+                    <div class="sup-detail" id="supVoiceDetail">Voix : Aoede (Féminine, Naturelle & Distinguée)</div>
+                  </div>
+                  <div class="sup-info-box">
+                    <div class="sup-label">CLÉ API ASSOCIÉE</div>
+                    <div class="sup-key-row">
+                      <span class="badge-key-pill badge-key-free" id="supVoiceKeyPill">CLÉ GRATUITE</span>
+                      <span class="sup-cost-text" id="supVoiceCost">0.00 $ (Inclus)</span>
+                    </div>
+                    <div class="sup-key-masked" id="supVoiceKeyMasked">••••••••••••</div>
+                  </div>
+                </div>
+                <!-- Sélecteur rapide de modèle vocal -->
+                <div class="sup-voice-switch-row">
+                  <span class="sup-switch-label">BASCULER LE MODÈLE VOCAL :</span>
+                  <div class="sup-switch-buttons">
+                    <button class="sup-btn-model-choice active" id="btnSwitchLiveStd">Gemini 3.8 Live</button>
+                    <button class="sup-btn-model-choice" id="btnSwitchLiveThinking">Gemini 3.8 Live (Extended Thinking)</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. ACTIONS & PROCESSUS EN COURS -->
+              <div class="supervision-section">
+                <div class="section-badge-header">
+                  <span class="section-icon"><i data-lucide="zap"></i></span>
+                  <span class="section-title">ACTIONS EN COURS D'EXÉCUTION</span>
+                  <span class="section-counter" id="supActionsCountBadge">0 ACTIVE</span>
+                </div>
+                <div id="supActiveActionsContainer" class="sup-actions-list">
+                  <div class="empty-state" id="supNoActiveActions">
+                    <i data-lucide="activity" class="empty-state-icon"></i>
+                    <span class="empty-state-text">Aucune tâche lourde en cours d'exécution. JARVIS est en veille active.</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3. OUTILS EN COURS D'UTILISATION & REGISTRE DES APIS -->
+              <div class="supervision-section">
+                <div class="section-badge-header">
+                  <span class="section-icon"><i data-lucide="wrench"></i></span>
+                  <span class="section-title">OUTILS DU SYSTÈME & APIS CORRESPONDANTES</span>
+                </div>
+                <div class="sup-tools-table" id="supToolsTable">
+                  <!-- Dynamiquement généré via JS -->
+                </div>
+              </div>
+
+              <!-- 4. FENÊTRES OUVERTES (SYSTÈME & NAVIGATEUR) -->
+              <div class="supervision-section">
+                <div class="section-badge-header">
+                  <span class="section-icon"><i data-lucide="app-window"></i></span>
+                  <span class="section-title">FENÊTRES OUVERTES & SESSIONS NAVIGATEUR</span>
+                  <span class="section-counter" id="supWindowsCountBadge">0 FENÊTRE</span>
+                </div>
+                <div class="sup-windows-list" id="supWindowsList">
+                  <!-- Liste dynamique des fenêtres -->
+                </div>
+              </div>
+            </div>
+
+            <!-- SOUS-ONGLET 2 : CLÉS API -->
+            <div class="sup-tab-panel" id="supPanelKeys" data-sup-panel="keys" style="display: none;">
+              <!-- 5. SYNTHÈSE DES CLÉS API CONFIGURÉES -->
+              <div class="supervision-section">
+                <div class="section-badge-header">
+                  <span class="section-icon"><i data-lucide="credit-card"></i></span>
+                  <span class="section-title">ÉTAT DES CLÉS API STARK INDUSTRIES</span>
+                </div>
+                <div class="sup-api-summary-grid">
+                  <div class="sup-api-card free-api-card">
+                    <div class="sup-api-card-header">
+                      <span class="sup-api-title">CLÉ GRATUITE (GEMINI FREE)</span>
+                      <span class="badge-key-pill badge-key-free" id="supSummaryFreeBadge">PAR DÉFAUT</span>
+                    </div>
+                    <div class="sup-api-role">Voix standard Gemini 3.8 Live (parole courante sans réflexion)</div>
+                    <div class="sup-api-stat">Statut : <strong id="supSummaryFreeStatus" style="color:var(--accent);">Active par défaut (0.00 $)</strong></div>
+                    <div class="sup-api-mask" id="supSummaryFreeKey">••••••••</div>
+                  </div>
+                  <div class="sup-api-card paid-api-card">
+                    <div class="sup-api-card-header">
+                      <span class="sup-api-title">CLÉ PAYANTE (GEMINI PAID)</span>
+                      <span class="badge-key-pill badge-key-paid" id="supSummaryPaidBadge">VERROUILLÉE</span>
+                    </div>
+                    <div class="sup-api-role">Live Thinking, Gemini 3.8 Flash, Agents Antigravity & Repli automatique</div>
+                    <div class="sup-api-stat">Statut : <strong id="supSummaryPaidStatus" style="color:var(--warning);">Contrôlée par l'utilisateur</strong></div>
+                    <div class="sup-api-mask" id="supSummaryPaidKey">••••••••</div>
+                    <div class="sup-paid-toggle-row">
+                      <label class="paid-toggle-container" for="supPaidKeyToggle" title="Autoriser ou bloquer les requêtes sur la clé payante">
+                        <span class="sup-toggle-desc">Autorisation d'accès :</span>
+                        <div class="stark-switch">
+                          <input type="checkbox" id="supPaidKeyToggle" class="stark-switch-input" aria-label="Autoriser la clé payante">
+                          <span class="stark-switch-track">
+                            <span class="stark-switch-thumb"></span>
+                          </span>
+                        </div>
+                        <span id="supPaidToggleBadge" class="paid-toggle-badge badge-locked"><i data-lucide="lock"></i> VERROUILLÉE</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- SOUS-ONGLET 3 : MÉTRIQUES -->
+            <div class="sup-tab-panel" id="supPanelMetrics" data-sup-panel="metrics" style="display: none;">
+              <!-- 6. MÉTRIQUES & HISTORIQUE D'INSTRUMENTATION DES OUTILS -->
+              <div class="supervision-section" id="supMetricsSection">
+                <div class="section-badge-header">
+                  <span class="section-icon"><i data-lucide="bar-chart-3"></i></span>
+                  <span class="section-title">MÉTRIQUES D'INSTRUMENTATION & OBSERVABILITÉ DES OUTILS</span>
+                  <div class="sup-metrics-window-pills">
+                    <button class="sup-metrics-pill active" id="btnMetrics24h" onclick="switchMetricsWindow('24h')">24H</button>
+                    <button class="sup-metrics-pill" id="btnMetrics7j" onclick="switchMetricsWindow('7j')">7 JOURS</button>
+                    <button class="sup-metrics-pill" id="btnMetrics30j" onclick="switchMetricsWindow('30j')">30 JOURS</button>
+                  </div>
+                </div>
+
+                <!-- 4 Compteurs Clés .stat-card -->
+                <div class="sup-metrics-counters-grid">
+                  <div class="stat-card">
+                    <div class="stat-card-val sup-metric-val" id="metTotalCalls">0</div>
+                    <div class="stat-card-lbl sup-metric-lbl">APPELS D'OUTILS</div>
+                    <div class="stat-card-sub sup-metric-sub" id="metCallsSub">Fenêtre active</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-card-val sup-metric-val" id="metFailureRate">0.0%</div>
+                    <div class="stat-card-lbl sup-metric-lbl">TAUX D'ÉCHEC</div>
+                    <div class="stat-card-sub sup-metric-sub" id="metFailureDetail">0 échec / 0 timeout</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-card-val sup-metric-val" id="metAvgLatency">0 ms</div>
+                    <div class="stat-card-lbl sup-metric-lbl">LATENCE MOYENNE</div>
+                    <div class="stat-card-sub sup-metric-sub" id="metP95Latency">P95 : 0 ms</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-card-val sup-metric-val" id="metTotalCost">0.00 $</div>
+                    <div class="stat-card-lbl sup-metric-lbl">DÉPENSE ESTIMÉE</div>
+                    <div class="stat-card-sub sup-metric-sub" id="metCostDetail">Clés payantes</div>
+                  </div>
+                </div>
+
+                <!-- 2 Graphiques Simples et Visibles -->
+                <div class="sup-metrics-charts-grid">
+                  <!-- Graphique 1 : Top Outils & Fréquence / Échecs -->
+                  <div class="sup-metrics-chart-box">
+                    <div class="sup-chart-title">TOP OUTILS LES PLUS UTILISÉS</div>
+                    <div id="metTopToolsBars" class="sup-bars-container">
+                      <div class="empty-state">
+                        <i data-lucide="bar-chart-2" class="empty-state-icon"></i>
+                        <span class="empty-state-text">Aucun appel d'outil sur cette fenêtre temporelle.</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Graphique 2 : Répartition Tiers Cognitifs (1/2/3) -->
+                  <div class="sup-metrics-chart-box">
+                    <div class="sup-chart-title">RÉPARTITION DES TIERS COGNITIFS</div>
+                    <div id="metTierDistribution" class="sup-tier-container">
+                      <div class="sup-segmented-track" id="metTierTrack">
+                        <div class="sup-seg-bar seg-tier1" id="segTier1" style="width: 0%;" title="Tier 1"></div>
+                        <div class="sup-seg-bar seg-tier2" id="segTier2" style="width: 0%;" title="Tier 2"></div>
+                        <div class="sup-seg-bar seg-tier3" id="segTier3" style="width: 0%;" title="Tier 3"></div>
+                        <div class="sup-seg-bar seg-tier0" id="segTier0" style="width: 100%;" title="Direct"></div>
+                      </div>
+                      <div class="sup-tier-legend-grid">
+                        <div class="sup-tier-legend-item">
+                          <span class="tier-dot tier1-dot"></span>
+                          <span class="tier-name">Tier 1 (Flash / Réflexe) :</span>
+                          <strong id="metTier1Count">0</strong>
+                        </div>
+                        <div class="sup-tier-legend-item">
+                          <span class="tier-dot tier2-dot"></span>
+                          <span class="tier-name">Tier 2 (Tactique) :</span>
+                          <strong id="metTier2Count">0</strong>
+                        </div>
+                        <div class="sup-tier-legend-item">
+                          <span class="tier-dot tier3-dot"></span>
+                          <span class="tier-name">Tier 3 (Système 2 / Pro) :</span>
+                          <strong id="metTier3Count">0</strong>
+                        </div>
+                        <div class="sup-tier-legend-item">
+                          <span class="tier-dot tier0-dot"></span>
+                          <span class="tier-name">Direct / Local :</span>
+                          <strong id="metTier0Count">0</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Tableau récapitulatif détaillé -->
+                <div class="sup-metrics-table-wrapper">
+                  <div class="sup-chart-title" style="padding: 10px 14px 4px 14px; margin: 0;">DÉTAIL PAR OUTIL (LATENCES & FIABILITÉ)</div>
+                  <div class="sup-metrics-table-head">
+                    <div style="flex: 2;">OUTIL</div>
+                    <div style="text-align: center; flex: 1;">APPELS</div>
+                    <div style="text-align: center; flex: 1;">ÉCHECS</div>
+                    <div style="text-align: center; flex: 1;">MOYENNE</div>
+                    <div style="text-align: center; flex: 1;">P95</div>
+                    <div style="text-align: right; flex: 1;">COÛT EST.</div>
+                  </div>
+                  <div id="metToolsTableRows" class="sup-metrics-table-rows">
+                    <!-- Rempli dynamiquement -->
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- SOUS-ONGLET 4 : PATCHES -->
+            <div class="sup-tab-panel" id="supPanelPatches" data-sup-panel="patches" style="display: none;">
+              <!-- 7. JOURNAL DES PATCHES D'AUTO-GUÉRISON & SRE (POSTGRESQL) -->
+              <div class="supervision-section" id="supPatchesSection">
+                <div class="section-badge-header">
+                  <span class="section-icon"><i data-lucide="shield-check"></i></span>
+                  <span class="section-title">JOURNAL DES PATCHES D'AUTO-GUÉRISON & RELEASES (POSTGRESQL)</span>
+                  <span class="section-counter" id="supPatchesCountBadge">0 PATCH</span>
+                </div>
+
+                <div id="supPatchesListContainer" class="sup-patches-list">
+                  <div class="empty-state" id="supNoPatches">
+                    <i data-lucide="shield-check" class="empty-state-icon"></i>
+                    <span class="empty-state-text">Aucun patch d'auto-guérison enregistré pour le moment. Système intègre.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </div>
-          <div class="browser-dock-actions">
-            <button id="btnViewBrowser" class="browser-action-btn btn-preview">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              VOIR LA PAGE
-            </button>
-            <button id="btnOpenBrowser" class="browser-action-btn btn-open">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-              OUVRIR LE LIEN
-            </button>
+
+          <!-- Pied du panneau -->
+          <div class="supervision-footer">
+            <span class="sup-footer-info">Mise à jour en temps réel via WebSocket</span>
+            <button id="btnCloseSupervisionFooter" class="modal-btn" style="background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); padding: 8px 16px;" onclick="switchNavTab('assistant')">RETOUR À L'ASSISTANT</button>
           </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- ONGLET 5 : LOGS (Terminal Système Journalctl & Antigravity)  -->
+        <!-- ============================================================ -->
+        <section id="logsModal" class="hud-tab-pane hud-logs-pane" aria-label="Onglet Logs" style="display: none;">
+          <!-- En-tête -->
+          <div class="tab-pane-header supervision-header">
+            <div class="supervision-title-group">
+              <span class="supervision-pulse-orb" style="background: var(--accent); box-shadow: 0 0 10px var(--accent);"></span>
+              <div>
+                <div class="supervision-title">JOURNAL SYSTÈME // TERMINAL LOGS</div>
+                <div class="supervision-subtitle">Flux d'exécution VPS journalctl, Antigravity CLI &amp; Deep Research</div>
+              </div>
+            </div>
+            <div class="supervision-header-actions">
+              <label class="logs-auto-refresh-label" title="Actualisation automatique toutes les 3s">
+                <input type="checkbox" id="logsAutoRefreshToggle" checked onchange="toggleLogsAutoRefresh(this.checked)">
+                <span class="logs-auto-refresh-text">AUTO (3s)</span>
+              </label>
+              <button id="btnRefreshLogs" class="supervision-icon-btn" onclick="fetchJarvisLogs()" title="Rafraîchir les logs" aria-label="Rafraîchir les logs">
+                <i data-lucide="refresh-cw"></i>
+              </button>
+              <button id="btnCopyLogs" class="supervision-icon-btn" onclick="copyJarvisLogs()" title="Copier les logs" aria-label="Copier les logs">
+                <i data-lucide="copy"></i>
+              </button>
+              <button id="btnCloseLogsModal" class="supervision-icon-btn btn-close-modal" onclick="switchNavTab('assistant')" title="Retour à l'assistant" aria-label="Retour à l'assistant"><i data-lucide="x"></i></button>
+            </div>
+          </div>
+
+          <!-- Barre de filtres rapides & recherche (Segmented Control + Search input) -->
+          <div class="logs-filter-bar">
+            <div class="logs-segmented-control">
+              <button class="logs-filter-btn active" id="btnFilterAll" data-filter="all" onclick="setLogsFilter('all')">Tous</button>
+              <button class="logs-filter-btn" id="btnFilterInfo" data-filter="info" onclick="setLogsFilter('info')">Info</button>
+              <button class="logs-filter-btn" id="btnFilterWarning" data-filter="warn" onclick="setLogsFilter('warn')">Warn</button>
+              <button class="logs-filter-btn" id="btnFilterError" data-filter="error" onclick="setLogsFilter('error')">Erreur</button>
+              <button class="logs-filter-btn" id="btnFilterAgy" data-filter="agy" onclick="setLogsFilter('agy')">Antigravity</button>
+              <button class="logs-filter-btn" id="btnFilterDr" data-filter="dr" onclick="setLogsFilter('dr')">Research</button>
+            </div>
+            <div class="logs-search-wrapper">
+              <i data-lucide="search" class="logs-search-icon"></i>
+              <input type="search" id="logsSearchInput" class="logs-search-input" placeholder="Filtrer les logs..." oninput="handleLogsSearch(this.value)" autocomplete="off" />
+            </div>
+            <span id="logsCountBadge" class="logs-count-badge">0 LIGNES</span>
+          </div>
+
+          <!-- Console Terminal Défilante -->
+          <div class="tab-pane-scroll-body logs-terminal-body" id="logsTerminalBody">
+            <pre id="logsContent" class="logs-console-content">Chargement des logs système...</pre>
+          </div>
+
+          <!-- Pied -->
+          <div class="supervision-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <span id="logsLastUpdate" style="font-size: 11px; color: var(--text-muted);">Dernière synchronisation : --:--:--</span>
+            <div style="display: flex; gap: 8px;">
+              <button class="modal-btn" style="background: var(--surface-2); color: var(--accent); border: 1px solid var(--border); padding: 6px 14px; font-size: 11px;" onclick="scrollToLogsBottom()">EN BAS ↓</button>
+              <button class="modal-btn" style="background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); padding: 6px 14px; font-size: 11px;" onclick="switchNavTab('assistant')">RETOUR</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- ONGLET 6 : ANTIGRAVITY (Constellation d'Agents & Pilotage)   -->
+        <!-- ============================================================ -->
+        <section id="tabViewAntigravity" class="hud-tab-pane hud-antigravity-pane" aria-label="Onglet Antigravity" style="display: none;">
+          <!-- En-tête Antigravity -->
+          <div class="tab-pane-header supervision-header">
+            <div class="supervision-title-group">
+              <span class="supervision-pulse-orb" style="background: #a855f7; box-shadow: 0 0 10px #a855f7;"></span>
+              <div>
+                <div class="supervision-title">ANTIGRAVITY CLI // CONSTELLATION D'AGENTS</div>
+                <div class="supervision-subtitle">Supervision, sous-agents autonomes L2/L3 &amp; pilotage en temps réel</div>
+              </div>
+            </div>
+            <div class="supervision-header-actions">
+              <button class="supervision-icon-btn" onclick="fetchAntigravityDashboard()" title="Actualiser les agents" aria-label="Actualiser les agents">
+                <i data-lucide="refresh-cw"></i>
+              </button>
+              <button class="supervision-icon-btn btn-close-modal" onclick="switchNavTab('assistant')" title="Retour à l'assistant" aria-label="Retour à l'assistant"><i data-lucide="x"></i></button>
+            </div>
+          </div>
+
+          <!-- Corps défilant Antigravity -->
+          <div class="tab-pane-scroll-body supervision-body" style="padding: 20px;">
+            <!-- 4 Cartes d'état Antigravity -->
+            <div class="sup-metrics-counters-grid" style="margin-bottom: 16px;">
+              <div class="stat-card">
+                <div class="stat-card-val sup-metric-val" style="color: #a855f7;">AUTONOME</div>
+                <div class="stat-card-lbl sup-metric-lbl">MOTEUR CLI</div>
+                <div class="stat-card-sub sup-metric-sub">Antigravity 2.0</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-card-val sup-metric-val" id="agyActiveCountVal" style="color: #38bdf8;">0 ACTIF</div>
+                <div class="stat-card-lbl sup-metric-lbl">SOUS-AGENTS L2/L3</div>
+                <div class="stat-card-sub sup-metric-sub">Constellation orbitale</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-card-val sup-metric-val" style="color: #10b981;">VPS ORACLE</div>
+                <div class="stat-card-lbl sup-metric-lbl">ENVIRONNEMENT</div>
+                <div class="stat-card-sub sup-metric-sub">158.178.206.213</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-card-val sup-metric-val" style="color: #f59e0b;">SYNC MAIN</div>
+                <div class="stat-card-lbl sup-metric-lbl">ESPACE DE TRAVAIL</div>
+                <div class="stat-card-sub sup-metric-sub">jarvis-core (GitHub)</div>
+              </div>
+            </div>
+
+            <!-- Pilotage en Direct & Directives Antigravity -->
+            <div class="supervision-section" style="margin-bottom: 16px;">
+              <div class="section-badge-header">
+                <span class="section-icon"><i data-lucide="compass"></i></span>
+                <span class="section-title">PILOTAGE &amp; CONSIGNES EN DIRECT</span>
+                <span class="section-tag" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);">CONTRÔLE BIDIRECTIONNEL</span>
+              </div>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+                <input type="text" id="agyDirectiveInput" class="auth-input" style="margin: 0; padding: 10px 14px; font-size: 13px; flex: 1; min-width: 260px;" placeholder="Directive pour Antigravity (ex: optimise la latence, refactorise le routeur...)" onkeydown="if(event.key==='Enter') sendAgyDirective();" />
+                <button id="btnSendAgyDirective" class="auth-btn" style="margin: 0; padding: 10px 20px; font-size: 12px; background: #9333ea;" onclick="sendAgyDirective()">
+                  <i data-lucide="send" style="width: 14px; height: 14px; vertical-align: -2px; margin-right: 4px;"></i> PILOTER
+                </button>
+              </div>
+              <!-- Raccourcis rapides d'actions agentiques -->
+              <div class="chat-suggestion-chips" style="justify-content: flex-start;">
+                <button class="chat-chip" onclick="applyAgyPrompt('Lance un audit d\'architecture et de conformité du projet')"><i data-lucide="shield-check"></i> Audit d'architecture</button>
+                <button class="chat-chip" onclick="applyAgyPrompt('Vérifie l\'intégralité de la suite de tests unitaires et e2e')"><i data-lucide="check-circle-2"></i> Exécuter les tests</button>
+                <button class="chat-chip" onclick="applyAgyPrompt('Inspecte la télémétrie et les métriques de fiabilité')"><i data-lucide="activity"></i> Télémétrie SRE</button>
+              </div>
+            </div>
+
+            <!-- Tâches Actives & Constellation en Temps Réel -->
+            <div class="supervision-section" style="margin-bottom: 16px;">
+              <div class="section-badge-header">
+                <span class="section-icon"><i data-lucide="zap"></i></span>
+                <span class="section-title">SOUS-AGENTS &amp; TÂCHES EN COURS</span>
+                <span class="section-counter" id="agyTasksCountBadge">0 TÂCHE</span>
+              </div>
+              <div id="agyActiveTasksContainer" class="sup-actions-list">
+                <div class="empty-state" id="agyNoActiveTasks">
+                  <i data-lucide="zap-off" class="empty-state-icon"></i>
+                  <span class="empty-state-text">Aucun sous-agent Antigravity en cours d'exécution. Les agents sont en veille orbitale.</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Flux d'Exécution Antigravity CLI en Direct (Logs [AGY]) -->
+            <div class="supervision-section">
+              <div class="section-badge-header">
+                <span class="section-icon"><i data-lucide="terminal"></i></span>
+                <span class="section-title">FLUX D'EXÉCUTION LIVE [AGY]</span>
+                <button class="supervision-icon-btn" onclick="fetchAntigravityLogs()" title="Rafraîchir" style="width: 24px; height: 24px; padding: 2px;">
+                  <i data-lucide="refresh-cw"></i>
+                </button>
+              </div>
+              <div class="logs-terminal-body" style="max-height: 280px; min-height: 180px;">
+                <pre id="agyLogsContent" class="logs-console-content">Chargement du journal Antigravity CLI...</pre>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+      </div>
+
+      <!-- Mini-Lecteur Spotify Connect (Fixé en bas de .app-main : 56px) -->
+      <div id="spotifyDock" class="spotify-dock" style="display: none;">
+        <div class="spotify-dock-progress-bar">
+          <div id="spotifyDockProgress" class="spotify-dock-progress-fill" style="width: 0%;"></div>
         </div>
-
-        <!-- Footer statut terminal -->
-        <div class="device-info">
-          <div class="device-dot"></div> TERMINAL AUTORISÉ & SÉCURISÉ
+        <div class="spotify-dock-cover-wrapper">
+          <img id="spotifyDockCover" class="spotify-dock-cover" src="/static/jarvis-icon.png" alt="Pochette" />
+          <span class="spotify-dock-live-dot" id="spotifyDockLiveDot"></span>
         </div>
-
+        <div class="spotify-dock-info">
+          <div id="spotifyDockTrack" class="spotify-dock-track">Titre du morceau</div>
+          <div id="spotifyDockArtist" class="spotify-dock-artist">Artiste</div>
+          <span id="spotifyDockDevice" class="spotify-dock-device" style="display: none;">SPOTIFY CONNECT</span>
+        </div>
+        <div class="spotify-dock-controls">
+          <button id="spotifyBtnPrev" class="spotify-ctrl-btn" title="Morceau précédent" aria-label="Morceau précédent" onclick="spotifyControl('previous')">
+            <i data-lucide="skip-back"></i>
+          </button>
+          <button id="spotifyBtnPlayPause" class="spotify-ctrl-btn spotify-play-btn" title="Lecture / Pause" aria-label="Lecture ou pause" onclick="spotifyControl('playpause')">
+            <svg id="spotifyPlayIcon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <button id="spotifyBtnNext" class="spotify-ctrl-btn" title="Morceau suivant" aria-label="Morceau suivant" onclick="spotifyControl('next')">
+            <i data-lucide="skip-forward"></i>
+          </button>
+          <button id="spotifyBtnLike" class="spotify-ctrl-btn" title="J'aime ce titre" aria-label="Aimer ce morceau" onclick="spotifyControl('like')">
+            <i data-lucide="heart"></i>
+          </button>
+        </div>
       </div>
-    </div>
-
-    <!-- Mini-Lecteur Spotify Connect (Fixé en bas de .app-main : 56px) -->
-    <div id="spotifyDock" class="spotify-dock" style="display: none;">
-      <div class="spotify-dock-progress-bar">
-        <div id="spotifyDockProgress" class="spotify-dock-progress-fill" style="width: 0%;"></div>
-      </div>
-      <div class="spotify-dock-cover-wrapper">
-        <img id="spotifyDockCover" class="spotify-dock-cover" src="/static/jarvis-icon.png" alt="Pochette" />
-        <span class="spotify-dock-live-dot" id="spotifyDockLiveDot"></span>
-      </div>
-      <div class="spotify-dock-info">
-        <div id="spotifyDockTrack" class="spotify-dock-track">Titre du morceau</div>
-        <div id="spotifyDockArtist" class="spotify-dock-artist">Artiste</div>
-        <span id="spotifyDockDevice" class="spotify-dock-device" style="display: none;">SPOTIFY CONNECT</span>
-      </div>
-      <div class="spotify-dock-controls">
-        <button id="spotifyBtnPrev" class="spotify-ctrl-btn" title="Morceau précédent" aria-label="Morceau précédent" onclick="spotifyControl('previous')">
-          <i data-lucide="skip-back"></i>
-        </button>
-        <button id="spotifyBtnPlayPause" class="spotify-ctrl-btn spotify-play-btn" title="Lecture / Pause" aria-label="Lecture ou pause" onclick="spotifyControl('playpause')">
-          <svg id="spotifyPlayIcon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        </button>
-        <button id="spotifyBtnNext" class="spotify-ctrl-btn" title="Morceau suivant" aria-label="Morceau suivant" onclick="spotifyControl('next')">
-          <i data-lucide="skip-forward"></i>
-        </button>
-        <button id="spotifyBtnLike" class="spotify-ctrl-btn" title="J'aime ce titre" aria-label="Aimer ce morceau" onclick="spotifyControl('like')">
-          <i data-lucide="heart"></i>
-        </button>
-      </div>
-    </div>
-  </main>
-</div>
+    </main>
+  </div>
 
   <!-- Modal Aperçu d'écran navigateur -->
   <div id="browserModal" class="supervision-modal-overlay modal-overlay" style="display: none;">
@@ -568,386 +1213,6 @@
     </div>
   </div>
 
-  <!-- Modal Supervision Globale Stark Industries -->
-  <div id="supervisionModal" class="supervision-modal-overlay" style="display: none;">
-    <div class="supervision-modal-card">
-      <!-- En-tête de supervision -->
-      <div class="supervision-header">
-        <div class="supervision-title-group">
-          <span class="supervision-pulse-orb"></span>
-          <div>
-            <div class="supervision-title">SUPERVISION GLOBALE // STARK AI</div>
-            <div class="supervision-subtitle">Modèles, Clés API, Actions en direct & Fenêtres système</div>
-          </div>
-        </div>
-        <div class="supervision-header-actions">
-          <button id="btnSupervisionOpenLogs" class="supervision-icon-btn" onclick="openLogsModal()" title="Ouvrir le terminal des logs" aria-label="Ouvrir les logs">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-          </button>
-          <button id="btnRefreshSupervision" class="supervision-icon-btn" title="Rafraîchir les données en direct" aria-label="Rafraîchir les données de supervision">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-          </button>
-          <button id="btnCloseSupervision" class="supervision-icon-btn btn-close-modal" title="Fermer la vue" aria-label="Fermer la supervision"><i data-lucide="x"></i></button>
-        </div>
-      </div>
-
-      <!-- Segmented Control Sous-Onglets (Prompt 5) -->
-      <div class="sup-segmented-nav">
-        <button class="sup-nav-tab active" data-sup-tab="models">
-          <i data-lucide="cpu"></i>
-          <span>Modèles</span>
-        </button>
-        <button class="sup-nav-tab" data-sup-tab="keys">
-          <i data-lucide="key"></i>
-          <span>Clés API</span>
-        </button>
-        <button class="sup-nav-tab" data-sup-tab="metrics">
-          <i data-lucide="bar-chart-3"></i>
-          <span>Métriques</span>
-        </button>
-        <button class="sup-nav-tab" data-sup-tab="patches">
-          <i data-lucide="shield-check"></i>
-          <span>Patches</span>
-        </button>
-      </div>
-
-      <!-- Corps défilant du modal -->
-      <div class="supervision-body">
-
-        <!-- SOUS-ONGLET 1 : MODÈLES, OUTILS, ACTIONS & FENÊTRES -->
-        <div class="sup-tab-panel active" id="supPanelModels" data-sup-panel="models">
-          <!-- 1. MODÈLE VOCAL ACTIF & CLÉ API -->
-          <div class="supervision-section">
-            <div class="section-badge-header">
-              <span class="section-icon"><i data-lucide="mic"></i></span>
-              <span class="section-title">MODÈLE VOCAL EN COURS (PAROLE & ÉCOUTE)</span>
-              <span class="section-tag" id="supVoiceStatusTag">À L'ÉCOUTE</span>
-            </div>
-            <div class="sup-card-grid">
-              <div class="sup-info-box">
-                <div class="sup-label">MODÈLE UTILISÉ POUR PARLER</div>
-                <div class="sup-value-highlight" id="supVoiceModel">GEMINI 3.8 LIVE</div>
-                <div class="sup-detail" id="supVoiceDetail">Voix : Aoede (Féminine, Naturelle & Distinguée)</div>
-              </div>
-              <div class="sup-info-box">
-                <div class="sup-label">CLÉ API ASSOCIÉE</div>
-                <div class="sup-key-row">
-                  <span class="badge-key-pill badge-key-free" id="supVoiceKeyPill">CLÉ GRATUITE</span>
-                  <span class="sup-cost-text" id="supVoiceCost">0.00 $ (Inclus)</span>
-                </div>
-                <div class="sup-key-masked" id="supVoiceKeyMasked">••••••••••••</div>
-              </div>
-            </div>
-            <!-- Sélecteur rapide de modèle vocal -->
-            <div class="sup-voice-switch-row">
-              <span class="sup-switch-label">BASCULER LE MODÈLE VOCAL :</span>
-              <div class="sup-switch-buttons">
-                <button class="sup-btn-model-choice active" id="btnSwitchLiveStd">Gemini 3.8 Live</button>
-                <button class="sup-btn-model-choice" id="btnSwitchLiveThinking">Gemini 3.8 Live (Extended Thinking)</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- 2. ACTIONS & PROCESSUS EN COURS -->
-          <div class="supervision-section">
-            <div class="section-badge-header">
-              <span class="section-icon"><i data-lucide="zap"></i></span>
-              <span class="section-title">ACTIONS EN COURS D'EXÉCUTION</span>
-              <span class="section-counter" id="supActionsCountBadge">0 ACTIVE</span>
-            </div>
-            <div id="supActiveActionsContainer" class="sup-actions-list">
-              <div class="empty-state" id="supNoActiveActions">
-                <i data-lucide="activity" class="empty-state-icon"></i>
-                <span class="empty-state-text">Aucune tâche lourde en cours d'exécution. JARVIS est en veille active.</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- 3. OUTILS EN COURS D'UTILISATION & REGISTRE DES APIS -->
-          <div class="supervision-section">
-            <div class="section-badge-header">
-              <span class="section-icon"><i data-lucide="wrench"></i></span>
-              <span class="section-title">OUTILS DU SYSTÈME & APIS CORRESPONDANTES</span>
-            </div>
-            <div class="sup-tools-table" id="supToolsTable">
-              <!-- Dynamiquement généré via JS -->
-            </div>
-          </div>
-
-          <!-- 4. FENÊTRES OUVERTES (SYSTÈME & NAVIGATEUR) -->
-          <div class="supervision-section">
-            <div class="section-badge-header">
-              <span class="section-icon"><i data-lucide="app-window"></i></span>
-              <span class="section-title">FENÊTRES OUVERTES & SESSIONS NAVIGATEUR</span>
-              <span class="section-counter" id="supWindowsCountBadge">0 FENÊTRE</span>
-            </div>
-            <div class="sup-windows-list" id="supWindowsList">
-              <!-- Liste dynamique des fenêtres -->
-            </div>
-          </div>
-        </div>
-
-        <!-- SOUS-ONGLET 2 : CLÉS API -->
-        <div class="sup-tab-panel" id="supPanelKeys" data-sup-panel="keys" style="display: none;">
-          <!-- 5. SYNTHÈSE DES CLÉS API CONFIGURÉES -->
-          <div class="supervision-section">
-            <div class="section-badge-header">
-              <span class="section-icon"><i data-lucide="credit-card"></i></span>
-              <span class="section-title">ÉTAT DES CLÉS API STARK INDUSTRIES</span>
-            </div>
-            <div class="sup-api-summary-grid">
-              <div class="sup-api-card free-api-card">
-                <div class="sup-api-card-header">
-                  <span class="sup-api-title">CLÉ GRATUITE (GEMINI FREE)</span>
-                  <span class="badge-key-pill badge-key-free" id="supSummaryFreeBadge">PAR DÉFAUT</span>
-                </div>
-                <div class="sup-api-role">Voix standard Gemini 3.8 Live (parole courante sans réflexion)</div>
-                <div class="sup-api-stat">Statut : <strong id="supSummaryFreeStatus" style="color:var(--accent);">Active par défaut (0.00 $)</strong></div>
-                <div class="sup-api-mask" id="supSummaryFreeKey">••••••••</div>
-              </div>
-              <div class="sup-api-card paid-api-card">
-                <div class="sup-api-card-header">
-                  <span class="sup-api-title">CLÉ PAYANTE (GEMINI PAID)</span>
-                  <span class="badge-key-pill badge-key-paid" id="supSummaryPaidBadge">VERROUILLÉE</span>
-                </div>
-                <div class="sup-api-role">Live Thinking, Gemini 3.8 Flash, Agents Antigravity & Repli automatique</div>
-                <div class="sup-api-stat">Statut : <strong id="supSummaryPaidStatus" style="color:var(--warning);">Contrôlée par l'utilisateur</strong></div>
-                <div class="sup-api-mask" id="supSummaryPaidKey">••••••••</div>
-                <div class="sup-paid-toggle-row">
-                  <label class="paid-toggle-container" for="supPaidKeyToggle" title="Autoriser ou bloquer les requêtes sur la clé payante">
-                    <span class="sup-toggle-desc">Autorisation d'accès :</span>
-                    <div class="stark-switch">
-                      <input type="checkbox" id="supPaidKeyToggle" class="stark-switch-input" aria-label="Autoriser la clé payante">
-                      <span class="stark-switch-track">
-                        <span class="stark-switch-thumb"></span>
-                      </span>
-                    </div>
-                    <span id="supPaidToggleBadge" class="paid-toggle-badge badge-locked"><i data-lucide="lock"></i> VERROUILLÉE</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- SOUS-ONGLET 3 : MÉTRIQUES -->
-        <div class="sup-tab-panel" id="supPanelMetrics" data-sup-panel="metrics" style="display: none;">
-          <!-- 6. MÉTRIQUES & HISTORIQUE D'INSTRUMENTATION DES OUTILS -->
-          <div class="supervision-section" id="supMetricsSection">
-            <div class="section-badge-header">
-              <span class="section-icon"><i data-lucide="bar-chart-3"></i></span>
-              <span class="section-title">MÉTRIQUES D'INSTRUMENTATION & OBSERVABILITÉ DES OUTILS</span>
-              <div class="sup-metrics-window-pills">
-                <button class="sup-metrics-pill active" id="btnMetrics24h" onclick="switchMetricsWindow('24h')">24H</button>
-                <button class="sup-metrics-pill" id="btnMetrics7j" onclick="switchMetricsWindow('7j')">7 JOURS</button>
-                <button class="sup-metrics-pill" id="btnMetrics30j" onclick="switchMetricsWindow('30j')">30 JOURS</button>
-              </div>
-            </div>
-
-            <!-- 4 Compteurs Clés .stat-card -->
-            <div class="sup-metrics-counters-grid">
-              <div class="stat-card">
-                <div class="stat-card-val sup-metric-val" id="metTotalCalls">0</div>
-                <div class="stat-card-lbl sup-metric-lbl">APPELS D'OUTILS</div>
-                <div class="stat-card-sub sup-metric-sub" id="metCallsSub">Fenêtre active</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-card-val sup-metric-val" id="metFailureRate">0.0%</div>
-                <div class="stat-card-lbl sup-metric-lbl">TAUX D'ÉCHEC</div>
-                <div class="stat-card-sub sup-metric-sub" id="metFailureDetail">0 échec / 0 timeout</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-card-val sup-metric-val" id="metAvgLatency">0 ms</div>
-                <div class="stat-card-lbl sup-metric-lbl">LATENCE MOYENNE</div>
-                <div class="stat-card-sub sup-metric-sub" id="metP95Latency">P95 : 0 ms</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-card-val sup-metric-val" id="metTotalCost">0.00 $</div>
-                <div class="stat-card-lbl sup-metric-lbl">DÉPENSE ESTIMÉE</div>
-                <div class="stat-card-sub sup-metric-sub" id="metCostDetail">Clés payantes</div>
-              </div>
-            </div>
-
-            <!-- 2 Graphiques Simples et Visibles -->
-            <div class="sup-metrics-charts-grid">
-              <!-- Graphique 1 : Top Outils & Fréquence / Échecs -->
-              <div class="sup-metrics-chart-box">
-                <div class="sup-chart-title">TOP OUTILS LES PLUS UTILISÉS</div>
-                <div id="metTopToolsBars" class="sup-bars-container">
-                  <div class="empty-state">
-                    <i data-lucide="bar-chart-2" class="empty-state-icon"></i>
-                    <span class="empty-state-text">Aucun appel d'outil sur cette fenêtre temporelle.</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Graphique 2 : Répartition Tiers Cognitifs (1/2/3) -->
-              <div class="sup-metrics-chart-box">
-                <div class="sup-chart-title">RÉPARTITION DES TIERS COGNITIFS</div>
-                <div id="metTierDistribution" class="sup-tier-container">
-                  <div class="sup-segmented-track" id="metTierTrack">
-                    <div class="sup-seg-bar seg-tier1" id="segTier1" style="width: 0%;" title="Tier 1"></div>
-                    <div class="sup-seg-bar seg-tier2" id="segTier2" style="width: 0%;" title="Tier 2"></div>
-                    <div class="sup-seg-bar seg-tier3" id="segTier3" style="width: 0%;" title="Tier 3"></div>
-                    <div class="sup-seg-bar seg-tier0" id="segTier0" style="width: 100%;" title="Direct"></div>
-                  </div>
-                  <div class="sup-tier-legend-grid">
-                    <div class="sup-tier-legend-item">
-                      <span class="tier-dot tier1-dot"></span>
-                      <span class="tier-name">Tier 1 (Flash / Réflexe) :</span>
-                      <strong id="metTier1Count">0</strong>
-                    </div>
-                    <div class="sup-tier-legend-item">
-                      <span class="tier-dot tier2-dot"></span>
-                      <span class="tier-name">Tier 2 (Tactique) :</span>
-                      <strong id="metTier2Count">0</strong>
-                    </div>
-                    <div class="sup-tier-legend-item">
-                      <span class="tier-dot tier3-dot"></span>
-                      <span class="tier-name">Tier 3 (Système 2 / Pro) :</span>
-                      <strong id="metTier3Count">0</strong>
-                    </div>
-                    <div class="sup-tier-legend-item">
-                      <span class="tier-dot tier0-dot"></span>
-                      <span class="tier-name">Direct / Local :</span>
-                      <strong id="metTier0Count">0</strong>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Tableau récapitulatif détaillé -->
-            <div class="sup-metrics-table-wrapper">
-              <div class="sup-chart-title" style="padding: 10px 14px 4px 14px; margin: 0;">DÉTAIL PAR OUTIL (LATENCES & FIABILITÉ)</div>
-              <div class="sup-metrics-table-head">
-                <div style="flex: 2;">OUTIL</div>
-                <div style="text-align: center; flex: 1;">APPELS</div>
-                <div style="text-align: center; flex: 1;">ÉCHECS</div>
-                <div style="text-align: center; flex: 1;">MOYENNE</div>
-                <div style="text-align: center; flex: 1;">P95</div>
-                <div style="text-align: right; flex: 1;">COÛT EST.</div>
-              </div>
-              <div id="metToolsTableRows" class="sup-metrics-table-rows">
-                <!-- Rempli dynamiquement -->
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- SOUS-ONGLET 4 : PATCHES -->
-        <div class="sup-tab-panel" id="supPanelPatches" data-sup-panel="patches" style="display: none;">
-          <!-- 7. JOURNAL DES PATCHES D'AUTO-GUÉRISON & SRE (POSTGRESQL) -->
-          <div class="supervision-section" id="supPatchesSection">
-            <div class="section-badge-header">
-              <span class="section-icon"><i data-lucide="shield-check"></i></span>
-              <span class="section-title">JOURNAL DES PATCHES D'AUTO-GUÉRISON & RELEASES (POSTGRESQL)</span>
-              <span class="section-counter" id="supPatchesCountBadge">0 PATCH</span>
-            </div>
-
-            <div id="supPatchesListContainer" class="sup-patches-list">
-              <div class="empty-state" id="supNoPatches">
-                <i data-lucide="shield-check" class="empty-state-icon"></i>
-                <span class="empty-state-text">Aucun patch d'auto-guérison enregistré pour le moment. Système intègre.</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      <!-- Pied du modal -->
-      <div class="supervision-footer">
-        <span class="sup-footer-info">Mise à jour en temps réel via WebSocket</span>
-        <button id="btnCloseSupervisionFooter" class="modal-btn" style="background:#1e293b; color:#cbd5e1; padding:8px 16px;">FERMER LA VUE</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal Messagerie & Analyse Visuelle Multimodale J.A.R.V.I.S. -->
-  <div id="chatModal" class="chat-modal-overlay" style="display: none;">
-    <div class="chat-modal-card">
-      
-      <!-- En-tête de la Messagerie -->
-      <div class="chat-header">
-        <div class="chat-header-title-group">
-          <span class="chat-pulse-orb"></span>
-          <div>
-            <div class="chat-title">Messagerie</div>
-            <div class="chat-subtitle">Discussion instantanée & vision</div>
-          </div>
-        </div>
-        <div class="chat-header-actions">
-          <button id="btnChatClear" class="chat-icon-btn" title="Vider l'historique de discussion" aria-label="Vider l'historique de discussion">
-            <i data-lucide="trash-2"></i>
-          </button>
-          <button id="btnCloseChat" class="chat-icon-btn btn-close-modal" onclick="closeChatDrawer()" title="Fermer la messagerie" aria-label="Fermer la messagerie"><i data-lucide="x"></i></button>
-        </div>
-      </div>
-
-      <!-- Fil de conversation défilant -->
-      <div id="chatMessages" class="chat-messages-container">
-        <!-- Message de bienvenue -->
-        <div class="chat-welcome-banner" id="chatWelcomeBanner">
-          <div class="chat-welcome-icon">
-            <i data-lucide="sparkles" class="chat-welcome-sparkle"></i>
-          </div>
-          <div class="chat-welcome-title">Comment puis-je vous aider ?</div>
-          <div class="chat-welcome-desc">
-            Posez une question par écrit ou joignez une image / capture d'écran pour que J.A.R.V.I.S. l'analyse minutieusement.
-          </div>
-          <div class="chat-suggestion-chips">
-            <button class="chat-chip" onclick="applyChatPrompt('Analyse cette capture d\'écran en détail')"><i data-lucide="image"></i> Analyser une capture</button>
-            <button class="chat-chip" onclick="applyChatPrompt('Résume-moi l\'état actuel du système')"><i data-lucide="activity"></i> État du système</button>
-            <button class="chat-chip" onclick="applyChatPrompt('Aide-moi à résoudre ce problème technique')"><i data-lucide="wrench"></i> Résolution technique</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Indicateur d'analyse / écriture en cours -->
-      <div id="chatTypingIndicator" class="chat-typing-indicator" style="display: none;">
-        <span class="chat-typing-dots">
-          <span></span><span></span><span></span>
-        </span>
-        <span id="chatTypingText">JARVIS analyse les données...</span>
-      </div>
-
-      <!-- Barre de prévisualisation de photo jointe -->
-      <div id="chatImagePreviewBar" class="chat-preview-bar" style="display: none;">
-        <div class="chat-preview-thumb-box">
-          <img id="chatPreviewImg" src="" alt="Aperçu pièce jointe" />
-        </div>
-        <div class="chat-preview-info">
-          <div id="chatPreviewName" class="chat-preview-name">photo.jpg</div>
-          <div id="chatPreviewMeta" class="chat-preview-meta">Image prête pour analyse</div>
-        </div>
-        <button id="btnRemoveChatImage" class="chat-preview-remove" title="Supprimer la photo" aria-label="Supprimer la photo jointe"><i data-lucide="x"></i></button>
-      </div>
-
-      <!-- Zone de saisie et envoi -->
-      <div class="chat-input-dock">
-        <!-- Input de fichier caché pour la sélection photo / caméra -->
-        <input type="file" id="chatFileInput" accept="image/*" style="display: none;" />
-        
-        <div class="chat-input-inner">
-          <button id="btnChatAttach" class="chat-tool-btn" type="button" title="Joindre une photo ou capture d'écran" aria-label="Joindre une photo ou capture d'écran">
-            <i data-lucide="paperclip"></i>
-          </button>
-
-          <textarea 
-            id="chatTextInput" 
-            class="chat-text-input" 
-            rows="1" 
-            placeholder="Envoyer un message à JARVIS (Maj+Entrée pour saut de ligne)..."
-          ></textarea>
-
-          <button id="btnChatSend" class="chat-send-btn" type="button" title="Envoyer le message" aria-label="Envoyer le message">
-            <i data-lucide="arrow-up"></i>
-          </button>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
   <!-- Modal Visualiseur plein écran de photos (Lightbox) -->
   <div id="chatLightboxModal" class="chat-lightbox-overlay" style="display: none;">
     <div class="chat-lightbox-card">
@@ -961,172 +1226,7 @@
     </div>
   </div>
 
-  <!-- Modal Amazon Send to Kindle -->
-  <div id="kindleModal" class="supervision-modal-overlay" style="display: none;">
-    <div class="supervision-modal-card" style="max-width: 580px;">
-      
-      <!-- En-tête -->
-      <div class="supervision-header">
-        <div class="supervision-title-group">
-          <span class="supervision-pulse-orb" style="background: #f59e0b; box-shadow: 0 0 10px #f59e0b;"></span>
-          <div>
-            <div class="supervision-title">AMAZON SEND TO KINDLE // LISEUSE</div>
-            <div class="supervision-subtitle">Transfert direct de livres &amp; documents vers votre Kindle</div>
-          </div>
-        </div>
-        <div class="supervision-header-actions">
-          <button id="btnRefreshKindleStatus" class="supervision-icon-btn" onclick="fetchKindleStatus()" title="Actualiser le statut" aria-label="Actualiser le statut Kindle">
-            <i data-lucide="refresh-cw"></i>
-          </button>
-          <button id="btnCloseKindleModal" class="supervision-icon-btn btn-close-modal" onclick="closeKindleModal()" title="Fermer" aria-label="Fermer la fenêtre Kindle"><i data-lucide="x"></i></button>
-        </div>
-      </div>
-
-      <!-- Corps -->
-      <div class="supervision-body" style="padding: 16px;">
-        <!-- Statut du compte Amazon -->
-        <div class="supervision-section" style="margin-bottom: 16px;">
-          <div class="section-badge-header">
-            <span class="section-icon"><i data-lucide="book"></i></span>
-            <span class="section-title">COMPTE AMAZON CONNECTÉ</span>
-            <span class="section-tag" id="kindleAccountStatusTag">VÉRIFICATION...</span>
-          </div>
-          <div class="sup-card-grid" style="grid-template-columns: 1fr auto; align-items: center; gap: 12px;">
-            <div>
-              <div class="sup-label">UTILISATEUR AMAZON</div>
-              <div class="sup-value-highlight" id="kindleUserName">Pierre</div>
-              <div class="sup-detail" id="kindleStatusDesc">Vérification de la session en cours...</div>
-            </div>
-            <div>
-              <button id="btnOpenAmazonLogin" class="auth-btn" style="padding: 8px 14px; font-size: 11px; margin: 0; background: #ea580c;" onclick="openAmazonKindleLogin()">OUVRIR AMAZON</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Zone de Dépôt de fichier -->
-        <div class="supervision-section" style="margin-bottom: 16px;">
-          <div class="section-badge-header">
-            <span class="section-icon"><i data-lucide="upload"></i></span>
-            <span class="section-title">DÉPOSER UN FICHIER POUR LA KINDLE</span>
-          </div>
-          <div id="kindleDropzone" class="kindle-dropzone" onclick="document.getElementById('kindleFileInput').click()">
-            <input type="file" id="kindleFileInput" accept=".pdf,.doc,.docx,.txt,.rtf,.htm,.html,.png,.gif,.jpg,.jpeg,.bmp,.epub" style="display: none;" onchange="handleKindleFileSelected(event)" />
-            <div class="kindle-dropzone-icon"><i data-lucide="upload-cloud"></i></div>
-            <div class="kindle-dropzone-title">Glissez un fichier ici ou cliquez pour parcourir</div>
-            <div class="kindle-dropzone-hint">Formats acceptés : EPUB, PDF, DOCX, TXT, DOC (jusqu'à 200 Mo)</div>
-          </div>
-        </div>
-
-        <!-- État / Progression d'envoi -->
-        <div id="kindleUploadCard" class="kindle-upload-card" style="display: none;">
-          <div class="kindle-upload-header">
-            <span id="kindleUploadFileName" class="kindle-upload-file-name">document.epub</span>
-            <span id="kindleUploadStatusTag" class="section-tag">ENVOI EN COURS</span>
-          </div>
-          <!-- Barre de progression fine (4px) -->
-          <div class="kindle-progress-track">
-            <div id="kindleProgressBar" class="kindle-progress-bar" style="width: 0%;"></div>
-          </div>
-          <div id="kindleUploadMessage" class="kindle-upload-message">Téléversement sur Amazon Send to Kindle en cours...</div>
-        </div>
-
-        <!-- Envoi d'article Web par URL -->
-        <div class="supervision-section" style="margin-bottom: 16px;">
-          <div class="section-badge-header">
-            <span class="section-icon"><i data-lucide="globe"></i></span>
-            <span class="section-title">ENVOYER UN ARTICLE WEB DIRECT</span>
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <input type="url" id="kindleWebArticleUrl" class="auth-input" style="margin: 0; padding: 8px 12px; font-size: 12px; flex: 1;" placeholder="https://exemple.com/article..." />
-            <button class="auth-btn" style="margin: 0; padding: 8px 16px; font-size: 11px; white-space: nowrap;" onclick="sendWebArticleToKindle()">ENVOYER</button>
-          </div>
-        </div>
-
-        <!-- Derniers envois -->
-        <div class="supervision-section">
-          <div class="section-badge-header">
-            <span class="section-icon"><i data-lucide="history"></i></span>
-            <span class="section-title">DERNIERS ENVOIS</span>
-          </div>
-          <div id="kindleHistoryContainer" class="kindle-history-container">
-            <div id="kindleHistoryEmpty" class="kindle-history-empty">Aucun envoi récent enregistré.</div>
-            <div id="kindleHistoryList" class="kindle-history-list" style="display: none;"></div>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- Pied -->
-      <div class="supervision-footer">
-        <button class="modal-btn" style="background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); padding: 8px 16px;" onclick="closeKindleModal()">FERMER</button>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- Modal Logs Système en direct Stark Terminal -->
-  <div id="logsModal" class="supervision-modal-overlay" style="display: none;">
-    <div class="supervision-modal-card logs-modal-card">
-      
-      <!-- En-tête -->
-      <div class="supervision-header">
-        <div class="supervision-title-group">
-          <span class="supervision-pulse-orb" style="background: var(--accent); box-shadow: 0 0 10px var(--accent);"></span>
-          <div>
-            <div class="supervision-title">JOURNAL SYSTÈME // TERMINAL LOGS</div>
-            <div class="supervision-subtitle">Flux d'exécution VPS journalctl, Antigravity CLI &amp; Deep Research</div>
-          </div>
-        </div>
-        <div class="supervision-header-actions">
-          <label class="logs-auto-refresh-label" title="Actualisation automatique toutes les 3s">
-            <input type="checkbox" id="logsAutoRefreshToggle" checked onchange="toggleLogsAutoRefresh(this.checked)">
-            <span class="logs-auto-refresh-text">AUTO (3s)</span>
-          </label>
-          <button id="btnRefreshLogs" class="supervision-icon-btn" onclick="fetchJarvisLogs()" title="Rafraîchir les logs" aria-label="Rafraîchir les logs">
-            <i data-lucide="refresh-cw"></i>
-          </button>
-          <button id="btnCopyLogs" class="supervision-icon-btn" onclick="copyJarvisLogs()" title="Copier les logs" aria-label="Copier les logs">
-            <i data-lucide="copy"></i>
-          </button>
-          <button id="btnCloseLogsModal" class="supervision-icon-btn btn-close-modal" onclick="closeLogsModal()" title="Fermer" aria-label="Fermer la fenêtre des logs"><i data-lucide="x"></i></button>
-        </div>
-      </div>
-
-      <!-- Barre de filtres rapides & recherche (Segmented Control + Search input) -->
-      <div class="logs-filter-bar">
-        <div class="logs-segmented-control">
-          <button class="logs-filter-btn active" id="btnFilterAll" data-filter="all" onclick="setLogsFilter('all')">Tous</button>
-          <button class="logs-filter-btn" id="btnFilterInfo" data-filter="info" onclick="setLogsFilter('info')">Info</button>
-          <button class="logs-filter-btn" id="btnFilterWarning" data-filter="warn" onclick="setLogsFilter('warn')">Warn</button>
-          <button class="logs-filter-btn" id="btnFilterError" data-filter="error" onclick="setLogsFilter('error')">Erreur</button>
-          <button class="logs-filter-btn" id="btnFilterAgy" data-filter="agy" onclick="setLogsFilter('agy')">Antigravity</button>
-          <button class="logs-filter-btn" id="btnFilterDr" data-filter="dr" onclick="setLogsFilter('dr')">Research</button>
-        </div>
-        <div class="logs-search-wrapper">
-          <i data-lucide="search" class="logs-search-icon"></i>
-          <input type="search" id="logsSearchInput" class="logs-search-input" placeholder="Filtrer les logs..." oninput="handleLogsSearch(this.value)" autocomplete="off" />
-        </div>
-        <span id="logsCountBadge" class="logs-count-badge">0 LIGNES</span>
-      </div>
-
-      <!-- Console Terminal -->
-      <div class="logs-terminal-body" id="logsTerminalBody">
-        <pre id="logsContent" class="logs-console-content">Chargement des logs système...</pre>
-      </div>
-
-      <!-- Pied -->
-      <div class="supervision-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-        <span id="logsLastUpdate" style="font-size: 11px; color: var(--text-muted);">Dernière synchronisation : --:--:--</span>
-        <div style="display: flex; gap: 8px;">
-          <button class="modal-btn" style="background: var(--surface-2); color: var(--accent); border: 1px solid var(--border); padding: 6px 14px; font-size: 11px;" onclick="scrollToLogsBottom()">EN BAS ↓</button>
-          <button class="modal-btn" style="background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); padding: 6px 14px; font-size: 11px;" onclick="closeLogsModal()">FERMER</button>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="/static/app.js?v=5.88.0"></script>
+  <script src="/static/app.js?v=5.89.0"></script>
 </body>
 </html>

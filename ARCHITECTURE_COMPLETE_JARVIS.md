@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.88.0 — Responsive mobile (< 768px avec sidebar transformée en barre d'onglets fixée en bas, statusbar compacte modèle+pastille, mini-lecteur au-dessus des onglets), accessibilité WCAG AA (contraste text-muted, focus-visible outline, aria-labels exhaustifs sur les boutons icônes) et purge intégrale du CSS mort.*
+> *Dernière révision majeure : Version 5.89.0 — Architecture multi-onglets native intégrée (.hud-tab-container / .hud-tab-pane) reliant l'intégralité des 6 onglets latéraux (Assistant, Messages, Kindle, Supervision, Logs, Antigravity) sans superposition modale intrusive, avec pilotage agentique bidirectionnel.*
 
 
 ---
@@ -1413,7 +1413,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre minérale et raffinée (`#05070D`, `#0B0F19`, `#0D1321`), verre dépoli avec bordures ultra-fines (`backdrop-filter: blur(24px)`), hiérarchie chromatique équilibrée (cyan glace, émeraude, ambre, violet, rose alerte) sans saturation agressive.
 - **Typographie** : Polices modernes géométriques sans-serif (`Inter`, `Plus Jakarta Sans`) et code monospace technique (`JetBrains Mono`).
 - **Responsive Fluid Architecture** : Expérience fluide optimisée sur smartphone (< 768px : barre d'onglets fixée en bas, statusbar compacte, mini-lecteur au-dessus des onglets, `100dvh`) et cockpit glassmorphic centré sur grand écran desktop PC.
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `v5.88.0`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `v5.89.0`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
@@ -1431,12 +1431,14 @@ L'avatar adapte ses filtres de lueur SVG et ses anneaux rotatifs selon l'état s
 - `music` : Ambre doré vibrant (Spotify Connect actif).
 - `media` : Pourpre profond (lecture cinéma Stremio).
 
-### 12.4. Tiroirs, Modals Interactifs & Vues Dédiées
-1. **Modal de Supervision Globale** : Vue synoptique affichant les actions en cours, les sous-agents actifs, la télémétrie matérielle physique du PC Windows, les enceintes et périphériques connectés et la consommation des clés API.
-2. **Drawer Messagerie Multimodale (Chat Drawer)** : Tiroir coulissant permettant d'échanger par écrit, de glisser-déposer des captures d'écran ou de photographier une panne avec la caméra du smartphone pour analyse visuelle immédiate par Gemini 3.8 Flash.
-3. **Modal Send to Kindle Dédié** : Zone de glisser-déposer pour téléversement direct de fichiers EPUB/PDF vers la liseuse de Pierre avec statut de connexion Amazon en direct.
-4. **Modal d'Arbitrage Économique** : Fenêtre d'alerte s'ouvrant automatiquement dès qu'une action payante requiert un consentement explicite.
-5. **Modal de Pairage QR Code** : Affichage du QR code à usage unique pour enrôlement instantané d'un nouveau terminal mobile.
+### 12.4. Architecture Multi-Onglets Native & Modales Dédiées
+1. **Onglet 1 — Assistant Cockpit (`#tabViewAssistant`)** : Scène centrale avec Avatar POD, réacteur arc réactif, commandes rapides de micro et clé payante, égaliseur VU-mètre, mini-docks pour e-mails, tâches et sessions de navigation.
+2. **Onglet 2 — Messages Multimodaux (`#chatModal`)** : Vue plein panneau intégrée pour échanger par écrit, déposer des captures d'écran, poser des questions avec suggestion de chips et synthèse vocale Aoede.
+3. **Onglet 3 — Amazon Send to Kindle (`#kindleModal`)** : Espace dédié pour le transfert glisser-déposer de livres EPUB/PDF, l'envoi direct d'articles web par URL et l'historique des transferts.
+4. **Onglet 4 — Supervision Globale Stark AI (`#supervisionModal`)** : Tableau de bord de supervision en 4 sous-onglets (Modèles vocaux, Clés API, Métriques & Observabilité des outils, Patches d'auto-guérison PostgreSQL).
+5. **Onglet 5 — Journal Système & Logs (`#logsModal`)** : Console terminal intégrée en temps réel avec filtres segmentés (Tous, Info, Warn, Erreur, Antigravity, Research) et recherche client instantanée.
+6. **Onglet 6 — Antigravity CLI Constellation (`#tabViewAntigravity`)** : Cockpit de supervision et pilotage bidirectionnel des sous-agents autonomes, tâches d'ingénierie et flux live `[AGY]`.
+7. **Modales Réelles (Dialogues)** : Lightbox plein écran (`#chatLightboxModal`), confirmation d'autorisation de clé payante (`#paidConsentModal`), et prévisualisation d'écran navigateur (`#browserModal`).
 
 ---
 

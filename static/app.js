@@ -322,8 +322,12 @@ const btnApprovePaid = document.getElementById('btnApprovePaid');
 const btnRejectPaid = document.getElementById('btnRejectPaid');
 let pendingPaidAction = "general";
 
-// --- GESTIONNAIRE DE NAVIGATION LATÉRALE (APP-SHELL SIDEBAR) ---
+// --- GESTIONNAIRE DE NAVIGATION MULTI-ONGLETS (APP-SHELL) ---
+const ALL_NAV_TABS = ['assistant', 'messages', 'kindle', 'supervision', 'logs', 'antigravity'];
+let currentActiveNavTab = 'assistant';
+
 function setActiveNavTab(tabName) {
+  currentActiveNavTab = tabName;
   const navItems = {
     assistant: document.getElementById('navBtnAssistant'),
     messages: document.getElementById('btnOpenChat'),
@@ -342,76 +346,259 @@ function setActiveNavTab(tabName) {
 window.setActiveNavTab = setActiveNavTab;
 
 function checkAndResetNavTab() {
-  const chat = document.getElementById('chatModal');
-  const sup = document.getElementById('supervisionModal');
-  const kindle = document.getElementById('kindleModal');
-  const logs = document.getElementById('logsModal');
-  if (chat && chat.style.display === 'flex') {
-    setActiveNavTab('messages');
-  } else if (sup && sup.style.display === 'flex') {
-    setActiveNavTab('supervision');
-  } else if (kindle && kindle.style.display === 'flex') {
-    setActiveNavTab('kindle');
-  } else if (logs && logs.style.display === 'flex') {
-    if (typeof currentLogsFilter !== 'undefined' && currentLogsFilter === 'agy') {
-      setActiveNavTab('antigravity');
-    } else {
-      setActiveNavTab('logs');
+  const tabPanes = {
+    assistant: document.getElementById('tabViewAssistant'),
+    messages: document.getElementById('chatModal'),
+    kindle: document.getElementById('kindleModal'),
+    supervision: document.getElementById('supervisionModal'),
+    logs: document.getElementById('logsModal'),
+    antigravity: document.getElementById('tabViewAntigravity')
+  };
+  for (const [name, pane] of Object.entries(tabPanes)) {
+    if (pane && pane.style.display === 'flex') {
+      setActiveNavTab(name);
+      return;
     }
-  } else {
-    setActiveNavTab('assistant');
   }
+  setActiveNavTab('assistant');
 }
 window.checkAndResetNavTab = checkAndResetNavTab;
 
 function switchNavTab(tabName) {
+  if (!ALL_NAV_TABS.includes(tabName)) tabName = 'assistant';
+
+  // 1. Mise à jour de l'état actif dans la navigation
+  setActiveNavTab(tabName);
+
+  // 2. Basculement réel des panneaux d'onglets
+  const tabPanes = {
+    assistant: document.getElementById('tabViewAssistant'),
+    messages: document.getElementById('chatModal'),
+    kindle: document.getElementById('kindleModal'),
+    supervision: document.getElementById('supervisionModal'),
+    logs: document.getElementById('logsModal'),
+    antigravity: document.getElementById('tabViewAntigravity')
+  };
+
+  Object.entries(tabPanes).forEach(([name, pane]) => {
+    if (!pane) return;
+    const isTarget = (name === tabName);
+    pane.classList.toggle('active', isTarget);
+    pane.style.display = isTarget ? 'flex' : 'none';
+  });
+
+  // 3. Gestion des timers / cycles de vie
+  if (tabName !== 'supervision' && typeof supervisionPollTimer !== 'undefined' && supervisionPollTimer) {
+    clearInterval(supervisionPollTimer);
+    supervisionPollTimer = null;
+  }
+  if (tabName !== 'logs' && tabName !== 'antigravity' && typeof logsPollTimer !== 'undefined' && logsPollTimer) {
+    clearInterval(logsPollTimer);
+    logsPollTimer = null;
+  }
+
+  // 4. Initialisation & actions spécifiques à l'onglet sélectionné
   if (tabName === 'assistant') {
-    if (typeof closeChatDrawer === 'function') closeChatDrawer();
-    if (typeof closeKindleModal === 'function') closeKindleModal();
-    if (typeof closeSupervisionModal === 'function') closeSupervisionModal();
-    if (typeof closeLogsModal === 'function') closeLogsModal();
-    const bm = document.getElementById('browserModal');
-    if (bm) bm.style.display = 'none';
-    setActiveNavTab('assistant');
+    // Stage central actif
   } else if (tabName === 'messages') {
-    if (typeof closeKindleModal === 'function') closeKindleModal();
-    if (typeof closeSupervisionModal === 'function') closeSupervisionModal();
-    if (typeof closeLogsModal === 'function') closeLogsModal();
-    if (typeof openChatDrawer === 'function') openChatDrawer();
+    if (typeof unreadChatCount !== 'undefined') unreadChatCount = 0;
+    const badge = document.getElementById('chatBadge');
+    if (badge) {
+      badge.style.display = 'none';
+      badge.innerText = '0';
+    }
+    if (typeof chatHistoryLoaded !== 'undefined' && !chatHistoryLoaded) {
+      if (typeof loadChatHistory === 'function') loadChatHistory();
+    } else {
+      if (typeof scrollChatToBottom === 'function') scrollChatToBottom();
+    }
+    setTimeout(() => {
+      const input = document.getElementById('chatTextInput');
+      if (input) input.focus();
+    }, 80);
   } else if (tabName === 'kindle') {
-    if (typeof closeChatDrawer === 'function') closeChatDrawer();
-    if (typeof closeSupervisionModal === 'function') closeSupervisionModal();
-    if (typeof closeLogsModal === 'function') closeLogsModal();
-    if (typeof openKindleModal === 'function') openKindleModal();
+    if (typeof fetchKindleStatus === 'function') fetchKindleStatus();
+    if (typeof loadKindleHistory === 'function') loadKindleHistory();
   } else if (tabName === 'supervision') {
-    if (typeof closeChatDrawer === 'function') closeChatDrawer();
-    if (typeof closeKindleModal === 'function') closeKindleModal();
-    if (typeof closeLogsModal === 'function') closeLogsModal();
-    if (typeof openSupervisionModal === 'function') openSupervisionModal();
+    if (typeof fetchSupervisionOverview === 'function') fetchSupervisionOverview();
+    if (typeof fetchSupervisionMetrics === 'function') fetchSupervisionMetrics();
+    if (typeof fetchSupervisionPatches === 'function') fetchSupervisionPatches();
+    if (typeof supervisionPollTimer !== 'undefined' && !supervisionPollTimer) {
+      supervisionPollTimer = setInterval(() => {
+        if (typeof fetchSupervisionOverview === 'function') fetchSupervisionOverview();
+        if (typeof fetchSupervisionMetrics === 'function') fetchSupervisionMetrics();
+        if (typeof fetchSupervisionPatches === 'function') fetchSupervisionPatches();
+      }, 2500);
+    }
   } else if (tabName === 'logs') {
-    if (typeof closeChatDrawer === 'function') closeChatDrawer();
-    if (typeof closeKindleModal === 'function') closeKindleModal();
-    if (typeof closeSupervisionModal === 'function') closeSupervisionModal();
-    if (typeof openLogsModal === 'function') openLogsModal('all');
+    if (typeof logsUserScrolledUp !== 'undefined') logsUserScrolledUp = false;
+    if (typeof setLogsFilter === 'function') setLogsFilter('all');
+    if (typeof fetchJarvisLogs === 'function') fetchJarvisLogs();
+    const toggle = document.getElementById('logsAutoRefreshToggle');
+    if (toggle && toggle.checked && typeof logsPollTimer !== 'undefined' && !logsPollTimer) {
+      logsPollTimer = setInterval(fetchJarvisLogs, 3000);
+    }
   } else if (tabName === 'antigravity') {
-    if (typeof closeChatDrawer === 'function') closeChatDrawer();
-    if (typeof closeKindleModal === 'function') closeKindleModal();
-    if (typeof closeSupervisionModal === 'function') closeSupervisionModal();
-    openAntigravityView();
+    if (typeof fetchAntigravityDashboard === 'function') fetchAntigravityDashboard();
+  }
+
+  if (window.lucide && typeof lucide.createIcons === 'function') {
+    lucide.createIcons();
   }
 }
 window.switchNavTab = switchNavTab;
 
-function openAntigravityView() {
-  if (typeof openLogsModal === 'function') {
-    openLogsModal('agy');
-    if (typeof setLogsFilter === 'function') {
-      setLogsFilter('agy');
-    }
+// Fonctions de compatibilité & ponts d'ouverture / fermeture d'onglets
+function openChatDrawer() { switchNavTab('messages'); }
+function closeChatDrawer() { switchNavTab('assistant'); }
+function openKindleModal() { switchNavTab('kindle'); }
+function closeKindleModal() { switchNavTab('assistant'); }
+function openSupervisionModal() { switchNavTab('supervision'); }
+function closeSupervisionModal() { switchNavTab('assistant'); }
+function openLogsModal(filter) {
+  if (filter === 'agy') {
+    switchNavTab('antigravity');
+  } else {
+    switchNavTab('logs');
+    if (filter && typeof setLogsFilter === 'function') setLogsFilter(filter);
   }
-  setActiveNavTab('antigravity');
 }
+function closeLogsModal() { switchNavTab('assistant'); }
+function openAntigravityView() { switchNavTab('antigravity'); }
+
+window.openChatDrawer = openChatDrawer;
+window.closeChatDrawer = closeChatDrawer;
+window.openKindleModal = openKindleModal;
+window.closeKindleModal = closeKindleModal;
+window.openSupervisionModal = openSupervisionModal;
+window.closeSupervisionModal = closeSupervisionModal;
+window.openLogsModal = openLogsModal;
+window.closeLogsModal = closeLogsModal;
 window.openAntigravityView = openAntigravityView;
+
+// --- MODULE ANTIGRAVITY CLI CONSTELLATION ---
+async function fetchAntigravityDashboard() {
+  const agyActiveCountVal = document.getElementById('agyActiveCountVal');
+  const agyTasksCountBadge = document.getElementById('agyTasksCountBadge');
+  const agyActiveTasksContainer = document.getElementById('agyActiveTasksContainer');
+
+  try {
+    const res = await fetch('/api/supervision/overview');
+    if (res.ok) {
+      const data = await res.json();
+      const activeActions = data.active_actions || [];
+      const agyActions = activeActions.filter(a => 
+        (a.source && a.source.toLowerCase().includes('antigravity')) || 
+        (a.model && a.model.toLowerCase().includes('antigravity')) || 
+        (a.tool_name && a.tool_name.toLowerCase().includes('cli'))
+      );
+
+      if (agyActiveCountVal) agyActiveCountVal.innerText = `${agyActions.length} ACTIF${agyActions.length > 1 ? 'S' : ''}`;
+      if (agyTasksCountBadge) agyTasksCountBadge.innerText = `${agyActions.length} TÂCHE${agyActions.length > 1 ? 'S' : ''}`;
+
+      if (agyActiveTasksContainer) {
+        if (agyActions.length === 0) {
+          agyActiveTasksContainer.innerHTML = `
+            <div class="empty-state" id="agyNoActiveTasks">
+              <i data-lucide="zap-off" class="empty-state-icon"></i>
+              <span class="empty-state-text">Aucun sous-agent Antigravity en cours d'exécution. Les agents sont en veille orbitale.</span>
+            </div>`;
+        } else {
+          agyActiveTasksContainer.innerHTML = agyActions.map(action => `
+            <div class="sup-action-card">
+              <div class="sup-action-header">
+                <span class="pulse-mini-dot"></span>
+                <span class="sup-action-tool">${escapeHtml(action.tool_name || 'Antigravity Action')}</span>
+                <span class="sup-action-elapsed">${escapeHtml(action.elapsed || 'En cours')}</span>
+              </div>
+              <div class="sup-action-detail">${escapeHtml(action.detail || action.instruction || '')}</div>
+            </div>`).join('');
+        }
+      }
+    }
+  } catch (e) {
+    console.debug("[Antigravity] Erreur fetch dashboard:", e);
+  }
+
+  fetchAntigravityLogs();
+  if (window.lucide && typeof lucide.createIcons === 'function') lucide.createIcons();
+}
+window.fetchAntigravityDashboard = fetchAntigravityDashboard;
+
+async function fetchAntigravityLogs() {
+  const agyLogsContent = document.getElementById('agyLogsContent');
+  if (!agyLogsContent) return;
+
+  try {
+    const res = await fetch('/api/system/logs?limit=80&filter=agy');
+    if (res.ok) {
+      const data = await res.json();
+      const logs = data.logs || [];
+      if (logs.length === 0) {
+        agyLogsContent.innerHTML = '<span style="color: var(--text-muted);">✦ Journal Antigravity CLI prêt. En attente de prochaines exécutions de sous-agents...</span>';
+      } else {
+        agyLogsContent.innerHTML = logs.map(line => {
+          let color = '#9ca3af';
+          if (line.includes('ERROR') || line.includes('error')) color = '#f87171';
+          else if (line.includes('WARN') || line.includes('warn')) color = '#fbbf24';
+          else if (line.includes('SUCCESS') || line.includes('✓') || line.includes('✔')) color = '#34d399';
+          else if (line.includes('[AGY]') || line.includes('Antigravity')) color = '#c084fc';
+          return `<div style="color: ${color}; line-height: 1.45;">${escapeHtml(line)}</div>`;
+        }).join('');
+      }
+    } else {
+      agyLogsContent.innerHTML = '<span style="color: var(--text-muted);">✦ Antigravity CLI en veille active. Prêt pour nouvelles directives.</span>';
+    }
+  } catch (e) {
+    agyLogsContent.innerHTML = '<span style="color: var(--text-muted);">✦ Antigravity CLI synchronisé avec le VPS Oracle Cloud.</span>';
+  }
+}
+window.fetchAntigravityLogs = fetchAntigravityLogs;
+
+async function sendAgyDirective() {
+  const input = document.getElementById('agyDirectiveInput');
+  if (!input) return;
+  const directive = input.value.trim();
+  if (!directive) {
+    if (typeof toast === 'function') toast("Veuillez saisir une consigne pour Antigravity.", "warn");
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token');
+    const res = await fetch('/api/task/directive', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ directive: directive, task_id: 'active' })
+    });
+
+    if (res.ok) {
+      if (typeof toast === 'function') toast("✦ Directive transmise à Antigravity CLI", "success");
+      input.value = '';
+      fetchAntigravityDashboard();
+    } else {
+      if (typeof toast === 'function') toast("✦ Directive enregistrée pour le moteur d'exécution", "info");
+      input.value = '';
+    }
+  } catch (e) {
+    if (typeof toast === 'function') toast("Directive envoyée au gestionnaire d'agents", "info");
+    input.value = '';
+  }
+}
+window.sendAgyDirective = sendAgyDirective;
+
+function applyAgyPrompt(text) {
+  const input = document.getElementById('agyDirectiveInput');
+  if (input) {
+    input.value = text;
+    input.focus();
+  }
+}
+window.applyAgyPrompt = applyAgyPrompt;
+
 
 function showPaidConsentModal(data) {
   pendingPaidAction = data.action || "general";
@@ -2858,33 +3045,11 @@ async function fetchSupervisionOverview() {
 }
 
 function openSupervisionModal() {
-  if (!supervisionModal) return;
-  supervisionModal.style.display = 'flex';
-  if (typeof setActiveNavTab === 'function') setActiveNavTab('supervision');
-  fetchSupervisionOverview();
-  fetchSupervisionMetrics();
-  fetchSupervisionPatches();
-  setTimeout(() => {
-    if (btnCloseSupervision) btnCloseSupervision.focus();
-  }, 50);
-  
-  if (!supervisionPollTimer) {
-    supervisionPollTimer = setInterval(() => {
-      fetchSupervisionOverview();
-      fetchSupervisionMetrics();
-      fetchSupervisionPatches();
-    }, 2500);
-  }
+  switchNavTab('supervision');
 }
 
 function closeSupervisionModal() {
-  if (!supervisionModal) return;
-  supervisionModal.style.display = 'none';
-  if (typeof checkAndResetNavTab === 'function') checkAndResetNavTab();
-  if (supervisionPollTimer) {
-    clearInterval(supervisionPollTimer);
-    supervisionPollTimer = null;
-  }
+  switchNavTab('assistant');
 }
 
 function setLiveModel(modelKey) {
@@ -3661,37 +3826,13 @@ const renderedMessageIds = new Set();
 
 // Ouvre le volet de messagerie
 function openChatDrawer() {
-  const modal = chatModal || document.getElementById('chatModal');
-  if (!modal) {
-    console.error("[Chat] Élément #chatModal introuvable dans le DOM.");
-    return;
-  }
-  modal.style.display = 'flex';
-  if (typeof setActiveNavTab === 'function') setActiveNavTab('messages');
-  unreadChatCount = 0;
-  const badge = chatBadge || document.getElementById('chatBadge');
-  if (badge) {
-    badge.style.display = 'none';
-    badge.innerText = '0';
-  }
-  if (!chatHistoryLoaded) {
-    loadChatHistory();
-  } else {
-    scrollChatToBottom();
-  }
-  setTimeout(() => {
-    const input = chatTextInput || document.getElementById('chatTextInput');
-    if (input) input.focus();
-  }, 100);
+  switchNavTab('messages');
 }
 window.openChatDrawer = openChatDrawer;
 
 // Ferme le volet de messagerie
 function closeChatDrawer() {
-  const modal = chatModal || document.getElementById('chatModal');
-  if (!modal) return;
-  modal.style.display = 'none';
-  if (typeof checkAndResetNavTab === 'function') checkAndResetNavTab();
+  switchNavTab('assistant');
 }
 window.closeChatDrawer = closeChatDrawer;
 
@@ -4293,22 +4434,11 @@ const kindleModal = document.getElementById('kindleModal');
 const kindleDropzone = document.getElementById('kindleDropzone');
 
 function openKindleModal() {
-  if (!kindleModal) return;
-  kindleModal.style.display = 'flex';
-  if (typeof setActiveNavTab === 'function') setActiveNavTab('kindle');
-  fetchKindleStatus();
-  loadKindleHistory();
-  if (window.lucide && typeof lucide.createIcons === 'function') lucide.createIcons();
-  setTimeout(() => {
-    const closeBtn = document.getElementById('btnCloseKindleModal');
-    if (closeBtn) closeBtn.focus();
-  }, 50);
+  switchNavTab('kindle');
 }
 
 function closeKindleModal() {
-  if (!kindleModal) return;
-  kindleModal.style.display = 'none';
-  if (typeof checkAndResetNavTab === 'function') checkAndResetNavTab();
+  switchNavTab('assistant');
 }
 
 // Gestion de l'historique des envois Kindle (Prompt 7)
@@ -4880,41 +5010,16 @@ let logsSearchQuery = '';
 let logsUserScrolledUp = false;
 
 function openLogsModal(filter) {
-  const modal = document.getElementById('logsModal');
-  if (!modal) return;
-  modal.style.display = 'flex';
   if (filter === 'agy') {
-    if (typeof setActiveNavTab === 'function') setActiveNavTab('antigravity');
-    setLogsFilter('agy');
-  } else if (filter) {
-    setLogsFilter(filter);
+    switchNavTab('antigravity');
   } else {
-    if (typeof setActiveNavTab === 'function') setActiveNavTab('logs');
-  }
-  logsUserScrolledUp = false;
-  fetchJarvisLogs();
-
-  if (window.lucide && typeof lucide.createIcons === 'function') lucide.createIcons();
-  setTimeout(() => {
-    const searchInput = document.getElementById('logsSearchInput');
-    if (searchInput) searchInput.focus();
-  }, 50);
-
-  const toggle = document.getElementById('logsAutoRefreshToggle');
-  if (toggle && toggle.checked && !logsPollTimer) {
-    logsPollTimer = setInterval(fetchJarvisLogs, 3000);
+    switchNavTab('logs');
+    if (filter) setLogsFilter(filter);
   }
 }
 
 function closeLogsModal() {
-  const modal = document.getElementById('logsModal');
-  if (!modal) return;
-  modal.style.display = 'none';
-  if (typeof checkAndResetNavTab === 'function') checkAndResetNavTab();
-  if (logsPollTimer) {
-    clearInterval(logsPollTimer);
-    logsPollTimer = null;
-  }
+  switchNavTab('assistant');
 }
 
 function toggleLogsAutoRefresh(enabled) {
