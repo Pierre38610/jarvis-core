@@ -430,6 +430,110 @@ async function fetchPaidKeyAuthorization() {
   }
 }
 
+const micToggle = document.getElementById('micToggle');
+const micToggleBadge = document.getElementById('micToggleBadge');
+const micToggleIcon = document.getElementById('micToggleIcon');
+const micToggleContainer = document.getElementById('micToggleContainer');
+let isMicMuted = localStorage.getItem('jarvis_mic_muted') === 'true';
+
+function updateMicToggleUI() {
+  if (micToggle) {
+    micToggle.checked = !isMicMuted;
+  }
+  if (micToggleBadge) {
+    if (isMicMuted) {
+      micToggleBadge.className = 'quick-toggle-badge badge-mic-off';
+      micToggleBadge.innerText = 'COUPÉ';
+    } else {
+      micToggleBadge.className = 'quick-toggle-badge badge-mic-on';
+      micToggleBadge.innerText = 'ACTIF';
+    }
+  }
+  if (micToggleIcon) {
+    micToggleIcon.innerText = isMicMuted ? '🔇' : '🎙️';
+  }
+}
+
+function setMicMuted(muted) {
+  isMicMuted = !!muted;
+  localStorage.setItem('jarvis_mic_muted', isMicMuted ? 'true' : 'false');
+  updateMicToggleUI();
+
+  // Mute / Unmute physical mediaStream tracks
+  if (mediaStream) {
+    try {
+      mediaStream.getAudioTracks().forEach(track => {
+        track.enabled = !isMicMuted;
+      });
+    } catch (e) {
+      console.warn("[MicToggle] Erreur mise à jour audioTracks:", e);
+    }
+  }
+
+  // Update VU-meter and indicator text
+  if (isMicMuted) {
+    if (micText) {
+      micText.innerText = "MICROPHONE COUPÉ (MUET)";
+      micText.style.color = "#f43f5e";
+    }
+    if (micDot) {
+      micDot.style.background = "#f43f5e";
+      micDot.style.boxShadow = "0 0 8px rgba(244, 63, 94, 0.6)";
+    }
+    if (micDb) {
+      micDb.innerText = "MUTED";
+      micDb.style.color = "#f43f5e";
+    }
+    if (micBars) {
+      micBars.forEach(b => {
+        b.style.height = '4px';
+        b.style.background = '#1e293b';
+        b.style.boxShadow = 'none';
+      });
+    }
+  } else if (isConnected) {
+    if (micText) {
+      micText.innerText = "MICRO ACTIF";
+      micText.style.color = "#10b981";
+    }
+    if (micDot) {
+      micDot.style.background = "#10b981";
+      micDot.style.boxShadow = "0 0 8px rgba(16, 185, 129, 0.6)";
+    }
+  }
+
+  // Broadcast state to backend if connected
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify({
+        type: 'client_mic_state',
+        muted: isMicMuted
+      }));
+    } catch (e) {}
+  }
+}
+
+if (micToggle) {
+  micToggle.addEventListener('change', (e) => {
+    setMicMuted(!e.target.checked);
+  });
+}
+
+// Initialisation immédiate de l'état UI du micro
+updateMicToggleUI();
+
+// Raccourci clavier 'M' pour basculer le microphone
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'm' || e.key === 'M') {
+    const tag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'textarea' || document.activeElement?.isContentEditable) {
+      return;
+    }
+    e.preventDefault();
+    setMicMuted(!isMicMuted);
+  }
+});
+
 let currentWebUrl = "https://www.google.com";
 let currentWebTitle = "Page Web";
 
@@ -1873,6 +1977,22 @@ function startMicMonitoring() {
     const volumePercent = Math.min(100, Math.round((avg / 128) * 100));
     const approxDb = peak > 1 ? Math.round(20 * Math.log10(peak / 255)) : -60;
 
+    if (isMicMuted) {
+      animateAvatarSpeech(0);
+      for (let i = 0; i < micBars.length; i++) {
+        micBars[i].style.height = '4px';
+        micBars[i].style.background = '#1e293b';
+        micBars[i].style.boxShadow = 'none';
+      }
+      micDot.style.background = '#f43f5e';
+      micDot.style.boxShadow = '0 0 8px rgba(244, 63, 94, 0.6)';
+      micText.innerText = "MICROPHONE COUPÉ (MUET)";
+      micText.style.color = '#f43f5e';
+      micDb.innerText = "MUTED";
+      micDb.style.color = '#f43f5e';
+      return;
+    }
+
     // Mise à jour visuelle des 9 barres d'égaliseur
     const step = Math.floor(dataArray.length / micBars.length);
     for (let i = 0; i < micBars.length; i++) {
@@ -2080,6 +2200,13 @@ async function startJarvis() {
       });
     }
 
+    // Appliquer le statut muet initial si activé
+    if (mediaStream && isMicMuted) {
+      try {
+        mediaStream.getAudioTracks().forEach(t => t.enabled = false);
+      } catch (e) {}
+    }
+
     // Actualiser les labels des micros dans le sélecteur
     populateAudioInputDevices();
 
@@ -2113,6 +2240,9 @@ async function startJarvis() {
     window._jarvisProcessor = processor;
 
     processor.onaudioprocess = (e) => {
+      if (isMicMuted) {
+        return;
+      }
       if (ws && ws.readyState === WebSocket.OPEN) {
         if (audioCtx.state === 'suspended') {
           audioCtx.resume();

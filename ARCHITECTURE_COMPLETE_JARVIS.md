@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.79.0 — Robustification critique Deep Research L3 (Prompt 1) : ouverture systématique d'un chat neuf, activation prioritaire par sélecteurs ARIA/DOM (bouton/chip aria-pressed, aria-selected, test-id, text) avec polling borné d'état actif, validation stricte de saisie du prompt avec auto-correction, confirmation active du plan de recherche (clic bouton réel + vérification des signaux de progression), normalisation textuelle et détection exhaustive des refus automatiques FR/EN, et protocole de retry (nouvelle session) avec remontée explicite d'erreur 'Deep Research non activé'.*
+> *Dernière révision majeure : Version 5.80.0 — Modernisation intégrale du HUD Stark (PC & Mobile) : Design System Obsidian & Titanium épuré et fluide, suppression des surcharges visuelles et des textes parasites, encapsulation responsive de haute précision, nouvelle encoche physique d'activation/désactivation du microphone (avec raccourci clavier 'M' et synchronisation audio/VU-mètre temps réel), et harmonisation des badges et modals.*
 
 
 ---
@@ -1409,11 +1409,11 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 
 ## 12. INTERFACE UTILISATEUR, PWA & HUD MOBILE STARK INDUSTRIES
 
-### 12.1. Principes Ergonomiques & Design System Cyberpunk
-- **Identité Visuelle** : Palette sombre profonde (`#070B14`, `#0B0F19`), cyan électrique Stark (`#38bdf8`, `#0284c7`), accents ambre et violet néon.
-- **Typographie** : Polices modernes géométriques sans-serif d'inspiration high-tech.
-- **Responsive PWA** : Conçue pour une expérience native sur smartphone (iOS Safari / Android Chrome) et desktop avec support PWA (`manifest.json`, installation sur écran d'accueil).
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `V 5.72.0 L3 REPORT DELIVERY (PC/EMAIL)`.
+### 12.1. Principes Ergonomiques & Design System Obsidian & Titanium
+- **Identité Visuelle** : Palette sombre minérale et raffinée (`#05070D`, `#0B0F19`, `#0D1321`), verre dépoli avec bordures ultra-fines (`backdrop-filter: blur(24px)`), hiérarchie chromatique équilibrée (cyan glace, émeraude, ambre, violet, rose alerte) sans saturation agressive.
+- **Typographie** : Polices modernes géométriques sans-serif (`Inter`, `Plus Jakarta Sans`) et code monospace technique (`JetBrains Mono`).
+- **Responsive Fluid Architecture** : Expérience fluide optimisée sur smartphone (`100dvh`, iOS Safari / Android Chrome) et cockpit glassmorphic centré sur grand écran desktop PC.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `v5.80.0`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
