@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.77.0 — Résolution intégrale du mode Deep Research L3 Google Web : sélection robuste dans le menu 'Plus d'outils' (bouton +, sélecteur more-tools-button, case Deep Research), détection de session sans faux-positif de déconnexion, confirmation déterministe du plan de recherche, extraction et génération de page web autonome HTML5/Canvas, persistance sécurisée, et expédition systématique par e-mail avec affichage miroir sur écran.*
+> *Dernière révision majeure : Version 5.78.0 — Sécurisation avancée et robustesse de Deep Research L3 Google Web : maintien non-destructif du badge outil lors de la saisie (insertion JS/paragraphe au lieu de locator.fill()), vérification stricte de l'état actif Deep Research, sanitisation préventive des filtres de sécurité/PII (contacts clés -> portails de contact et laboratoires), confirmation robuste du plan de recherche avec détection et rejet immédiat des refus automatiques ('Je ne suis qu'un modèle de langage').*
 
 
 ---
@@ -1620,4 +1620,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.77.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.78.0.*

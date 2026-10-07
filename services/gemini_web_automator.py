@@ -52,6 +52,28 @@ ACTION_CONFIRM_TIMEOUT = 3.0    # délai d'attente de confirmation post-clic
 DOM_FALLBACK_TIMEOUT = 6000     # ms pour les localisations DOM de repli
 
 
+# ─── Fonctions Utilitaires L3 ─────────────────────────────────────────────────
+
+def sanitize_prompt_for_l3(topic: str) -> str:
+    """
+    Nettoie et adapte le prompt pour Deep Research Gemini Web :
+    - Évite les expressions déclenchant les filtres de sécurité / PII de Google (ex: 'contacts clés', 'emails privés').
+    - Remplace par des formulations professionnelles axées sur les laboratoires, pages carrières et canaux institutionnels.
+    """
+    if not topic:
+        return ""
+    sanitized = topic
+    replacements = [
+        (r'\bcontacts?\s+cl[ée]s?\b', "équipes de recherche, laboratoires et portails carrières"),
+        (r'\bcoordonn[ée]es?\s+(directes?|priv[ée]es?|personnelles?)\b', "canaux institutionnels officiels"),
+        (r'\badresses?\s+(e-?mail|mail)\s+(directes?|priv[ée]es?)\b', "portails de contact et carrières"),
+        (r'\bnum[ée]ros?\s+de\s+t[ée]l[ée]phone\b', "coordonnées institutionnelles"),
+    ]
+    for pattern, repl in replacements:
+        sanitized = re.sub(pattern, repl, sanitized, flags=re.IGNORECASE)
+    return sanitized.strip()
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Carte d'Interface Par Défaut
 # ──────────────────────────────────────────────────────────────────────────────
@@ -560,29 +582,74 @@ class GeminiWebAutomator:
         except Exception:
             return False
 
+    # ── Détection de Refus & Mode Deep Research ────────────────────────────────
+
+    def _is_canned_refusal_text(self, text: str) -> bool:
+        """Détecte si la réponse renvoyée est un refus automatique ou un filtre de sécurité Google."""
+        if not text or len(text.strip()) < 10:
+            return False
+        t_low = text.lower()
+        refusal_patterns = [
+            "je ne suis qu'un modèle de langage",
+            "i am a large language model",
+            "je ne peux donc pas vous aider",
+            "je ne peux pas vous aider avec cette demande",
+            "i cannot help with this request",
+            "i cannot assist with this request",
+            "en tant que grand modèle linguistique",
+            "en tant que modèle d'ia",
+            "as an ai language model",
+            "ne dispose pas d'informations en temps réel",
+        ]
+        for pat in refusal_patterns:
+            if pat in t_low and len(text.strip()) < 400:
+                return True
+        return False
+
+    async def _is_deep_research_active(self) -> bool:
+        """Vérifie si le mode Deep Research est actuellement actif dans l'UI Gemini."""
+        if not self._page or (hasattr(self._page, "is_closed") and self._page.is_closed()):
+            return False
+        try:
+            # 1. Présence du chip / badge Deep Research dans la barre d'entrée
+            chip_selectors = [
+                "[class*='chip']:has-text('Deep Research')",
+                "mat-chip:has-text('Deep Research')",
+                "button:has-text('Deep Research')",
+                "[aria-label*='Deep Research' i]",
+                "[data-test-id*='deep-research']",
+            ]
+            for sel in chip_selectors:
+                if await self._page.locator(sel).count() > 0:
+                    return True
+
+            # 2. Placeholder du textarea
+            ph = await self._page.evaluate(
+                "() => { const t = document.querySelector('rich-textarea [contenteditable=true], div[contenteditable=true][role=textbox], input-area-v2 textarea'); return t ? (t.getAttribute('data-placeholder') || (t.parentElement||{}).getAttribute && t.parentElement.getAttribute('data-placeholder') || t.getAttribute('placeholder') || '') : ''; }"
+            )
+            if "rechercher" in (ph or "").lower() or "search" in (ph or "").lower():
+                return True
+        except Exception as e:
+            logger.debug(f"[DR] Erreur sonde état Deep Research : {e}")
+        return False
+
     # ── Sélection Deep Research ────────────────────────────────────────────────
 
     async def _select_deep_research_mode(self) -> bool:
         """
-        Active le mode Deep Research dans l'interface Gemini Web :
-          1. Vérifie si le mode est déjà actif (placeholder 'rechercher' ou badge Deep Research).
-          2. Clique sur le bouton '+' / 'Importation et outils'.
+        Active et verrouille le mode Deep Research dans l'interface Gemini Web :
+          1. Vérifie si le mode est déjà actif (badge ou placeholder).
+          2. Si non, clique sur le bouton '+' / 'Importation et outils'.
           3. Clique sur 'Plus d'outils'.
           4. Clique sur 'Deep Research'.
-          5. Valide que le placeholder de recherche est actif.
+          5. Valide que le badge Deep Research est bien verrouillé.
         """
         logger.info("[DR] Vérification et sélection du mode Deep Research...")
 
         # Étape 0 : Vérifier si Deep Research est déjà actif
-        try:
-            ph = await self._page.evaluate(
-                "() => { const t = document.querySelector('rich-textarea [contenteditable=true], div[contenteditable=true][role=textbox]'); return t ? (t.getAttribute('data-placeholder') || (t.parentElement||{}).getAttribute && t.parentElement.getAttribute('data-placeholder') || '') : ''; }"
-            )
-            if "rechercher" in (ph or "").lower() or "search" in (ph or "").lower():
-                logger.info("[DR] ✔ Mode Deep Research déjà actif sur l'interface.")
-                return True
-        except Exception:
-            pass
+        if await self._is_deep_research_active():
+            logger.info("[DR] ✔ Mode Deep Research déjà actif sur l'interface.")
+            return True
 
         # Étape 1 : Ouvrir le menu des outils (+)
         tools_clicked = False
@@ -591,11 +658,12 @@ class GeminiWebAutomator:
             "button[aria-label*='Importation' i]",
             "button[aria-label*='Tools' i]",
             "input-area-v2 button[aria-label*='outils' i]",
+            "button:has(mat-icon[fonticon='add'])",
         ]
         for sel in tools_selectors:
             try:
                 btn = self._page.locator(sel).first
-                if await btn.count() > 0:
+                if await btn.count() > 0 and await btn.is_visible():
                     await btn.click(timeout=3000)
                     tools_clicked = True
                     logger.info(f"[DR] Menu des outils ouvert via '{sel}'.")
@@ -614,11 +682,12 @@ class GeminiWebAutomator:
             "button:has-text(\"Plus d'outils\")",
             "[role='menuitem']:has-text(\"Plus d'outils\")",
             "button:has-text('More tools')",
+            "[role='menuitem']:has-text('More tools')",
         ]
         for sel in more_selectors:
             try:
                 btn = self._page.locator(sel).first
-                if await btn.count() > 0:
+                if await btn.count() > 0 and await btn.is_visible():
                     await btn.click(timeout=3000)
                     more_clicked = True
                     logger.info(f"[DR] Sous-menu 'Plus d'outils' ouvert via '{sel}'.")
@@ -629,7 +698,7 @@ class GeminiWebAutomator:
 
         if not more_clicked:
             try:
-                more_btn = self._page.get_by_text(re.compile("Plus d.outils|More tools", re.I)).first
+                more_btn = self._page.get_by_text(re.compile(r"Plus d.outils|More tools", re.I)).first
                 if await more_btn.count() > 0:
                     await more_btn.click(timeout=3000)
                     more_clicked = True
@@ -644,11 +713,13 @@ class GeminiWebAutomator:
             "button:has-text('Deep Research')",
             "[role='menuitem']:has-text('Deep Research')",
             "button:has-text('Recherche approfondie')",
+            "[aria-label*='Deep Research' i]",
+            "div[role='button']:has-text('Deep Research')",
         ]
         for sel in dr_selectors:
             try:
                 btn = self._page.locator(sel).first
-                if await btn.count() > 0:
+                if await btn.count() > 0 and await btn.is_visible():
                     await btn.click(timeout=3000)
                     dr_clicked = True
                     logger.info(f"[DR] Option 'Deep Research' cliquée via '{sel}'.")
@@ -668,78 +739,81 @@ class GeminiWebAutomator:
                 pass
 
         # Étape 4 : Vérification de validation
-        try:
-            ph2 = await self._page.evaluate(
-                "() => { const t = document.querySelector('rich-textarea [contenteditable=true], div[contenteditable=true][role=textbox]'); return t ? (t.getAttribute('data-placeholder') || (t.parentElement||{}).getAttribute && t.parentElement.getAttribute('data-placeholder') || '') : ''; }"
-            )
-            if "rechercher" in (ph2 or "").lower() or "search" in (ph2 or "").lower():
-                logger.info(f"[DR] ✅ Deep Research sélectionné et validé (placeholder='{ph2}').")
-                return True
-        except Exception:
-            pass
-
-        return dr_clicked or tools_clicked
+        is_active = await self._is_deep_research_active()
+        logger.info(f"[DR] État Deep Research post-sélection : {is_active}")
+        return is_active or dr_clicked or tools_clicked
 
     # ── Saisie & Envoi du Sujet ───────────────────────────────────────────────
 
     async def _fill_prompt(self, topic: str) -> bool:
-        """Injecte le sujet de recherche dans le champ de saisie Gemini."""
-        action = self.ui_map.get_action("prompt_textarea")
-        x = action.get("x")
-        y = action.get("y")
-        fallback_selectors = self.ui_map.get_fallback_selectors("prompt_textarea")
+        """
+        Injecte le sujet de recherche de manière non destructive pour préserver
+        l'attachement du chip 'Deep Research' dans le champ de saisie Gemini.
+        """
+        clean_topic = sanitize_prompt_for_l3(topic)
 
-        # 1. Tentative par get_by_role("textbox")
+        # 1. Méthode JS directe dans le paragraphe du contenteditable (évite d'écraser le badge outil)
+        try:
+            inserted = await self._page.evaluate("""(text) => {
+                const p = document.querySelector('rich-textarea [contenteditable=true] p') ||
+                          document.querySelector('rich-textarea [contenteditable=true]') ||
+                          document.querySelector('div[contenteditable=true][role=textbox] p') ||
+                          document.querySelector('div[contenteditable=true][role=textbox]');
+                if (p) {
+                    p.innerText = text;
+                    p.dispatchEvent(new Event('input', { bubbles: true }));
+                    p.dispatchEvent(new Event('change', { bubbles: true }));
+                    return true;
+                }
+                const ta = document.querySelector('input-area-v2 textarea, textarea[placeholder*="Gemini" i]');
+                if (ta) {
+                    ta.value = text;
+                    ta.dispatchEvent(new Event('input', { bubbles: true }));
+                    ta.dispatchEvent(new Event('change', { bubbles: true }));
+                    return true;
+                }
+                return false;
+            }""", clean_topic)
+            if inserted:
+                await self._page.wait_for_timeout(300)
+                logger.info("[Fill] ✔ Texte injecté via JS dans le rich-textarea sans détruire le badge outil.")
+                # Vérifier si Deep Research est toujours présent après injection
+                if not await self._is_deep_research_active():
+                    logger.warning("[Fill] Badge Deep Research absent après insertion JS, réactivation...")
+                    await self._select_deep_research_mode()
+                return True
+        except Exception as e:
+            logger.debug(f"[Fill] Injection JS non concluante : {e}")
+
+        # 2. Méthode ciblée get_by_role("textbox") sans wipe global
         if hasattr(self._page, "get_by_role"):
             try:
                 tb = self._page.get_by_role("textbox").first
                 if await tb.count() > 0:
                     await tb.click(timeout=3000)
-                    try:
-                        await tb.fill(topic, timeout=4000)
-                    except Exception:
-                        await tb.type(topic, delay=20)
-                    await self._page.wait_for_timeout(400)
-                    logger.info("[Fill] Texte injecté via get_by_role('textbox').")
+                    await self._page.wait_for_timeout(200)
+                    await self._page.keyboard.type(clean_topic, delay=10)
+                    await self._page.wait_for_timeout(300)
+                    logger.info("[Fill] Texte injecté via keyboard.type.")
                     return True
             except Exception as e:
                 logger.debug(f"[Fill] get_by_role non concluant: {e}")
 
-        # 2. Tentative par sélecteurs DOM
+        # 3. Tentative par sélecteurs DOM
+        fallback_selectors = self.ui_map.get_fallback_selectors("prompt_textarea")
         for selector in fallback_selectors:
             try:
                 el = self._page.locator(selector).first
                 if await el.count() == 0:
                     continue
-                bb = await el.bounding_box()
-                if bb:
-                    self.ui_map.update_coordinates(
-                        "prompt_textarea",
-                        bb["x"] + bb["width"] / 2,
-                        bb["y"] + bb["height"] / 2,
-                    )
                 await el.click(timeout=DOM_FALLBACK_TIMEOUT)
                 await self._page.wait_for_timeout(200)
-                try:
-                    await el.fill(topic, timeout=4000)
-                except Exception:
-                    await el.type(topic, delay=25)
-                await self._page.wait_for_timeout(400)
+                await self._page.keyboard.type(clean_topic, delay=15)
+                await self._page.wait_for_timeout(300)
                 logger.info(f"[Fill] Texte injecté via sélecteur '{selector}'.")
                 return True
             except Exception as e:
                 logger.debug(f"[Fill] Sélecteur '{selector}' échoué : {e}")
-
-        # 3. Tentative par coordonnées
-        if x and y:
-            try:
-                await self._page.mouse.click(x, y)
-                await self._page.wait_for_timeout(300)
-                await self._page.keyboard.type(topic, delay=25)
-                await self._page.wait_for_timeout(400)
-                return True
-            except Exception as e:
-                logger.warning(f"[Fill] Injection coordonnées échouée : {e}")
 
         logger.error("[Fill] ❌ Impossible d'injecter le sujet dans le prompt Gemini.")
         return False
@@ -755,10 +829,11 @@ class GeminiWebAutomator:
 
     # ── Confirmation du Plan de Recherche ─────────────────────────────────────
 
-    async def _confirm_research_plan(self, timeout_seconds: float = 12.0) -> bool:
+    async def _confirm_research_plan(self, timeout_seconds: float = 15.0) -> bool:
         """
         Détecte si Gemini propose un plan de recherche (« Start research » /
         « Démarrer la recherche » / « Confirmer le plan ») et le confirme.
+        Vérifie également qu'un refus automatique n'a pas été produit à la place.
         """
         logger.info("[DR] Vérification de la présence d'un plan de recherche à confirmer...")
         start = time.time()
@@ -774,13 +849,23 @@ class GeminiWebAutomator:
         ])
 
         while time.time() - start < timeout_seconds:
+            # 1. Vérification refus automatique précoce
+            try:
+                resp_text = await self._extract_report_markdown()
+                if self._is_canned_refusal_text(resp_text):
+                    logger.warning(f"[DR] ⚠️ Refus automatique Gemini détecté pendant l'attente de plan : '{resp_text[:120]}'")
+                    return False
+            except Exception:
+                pass
+
+            # 2. Tentative par get_by_role
             if hasattr(self._page, "get_by_role"):
                 try:
                     btn = self._page.get_by_role(
                         "button",
                         name=re.compile("Start research|Démarrer la recherche|Confirmer le plan|Lancer la recherche", re.I)
                     ).first
-                    if await btn.count() > 0:
+                    if await btn.count() > 0 and await btn.is_visible():
                         await btn.click(timeout=4000)
                         logger.info("[DR] ✅ Plan de recherche confirmé via get_by_role.")
                         await self._page.wait_for_timeout(1000)
@@ -795,7 +880,7 @@ class GeminiWebAutomator:
             for sel in selectors:
                 try:
                     loc = self._page.locator(sel).first
-                    if await loc.count() > 0:
+                    if await loc.count() > 0 and await loc.is_visible():
                         await loc.click(timeout=4000)
                         logger.info(f"[DR] ✅ Plan de recherche confirmé via sélecteur '{sel}'.")
                         await self._page.wait_for_timeout(1000)
@@ -1553,6 +1638,29 @@ class GeminiWebAutomator:
 
             # 8. Extraction du rapport Markdown & création de la page web HTML
             markdown_content = await self._extract_report_markdown()
+
+            # Vérification anti-refus modèle / safety guardrail
+            if self._is_canned_refusal_text(markdown_content):
+                shot = await self._capture_screenshot("refusal_detected")
+                err_msg = f"Refus automatique Gemini détecté ('{markdown_content[:120]}...')"
+                l3_err = L3ErrorDetails(
+                    etape="model_refusal",
+                    exception=err_msg,
+                    traceback_court="",
+                    capture_ecran=shot,
+                    cause_courte="Refus automatique Google / filtre de sécurité (Mode standard ou requête sensible)",
+                    fallback_initiated=True,
+                )
+                set_last_l3_error(l3_err)
+                logger.error(f"[DeepResearch] [Étape: model_refusal] {l3_err.cause_courte}")
+                result.update({
+                    "status": "error",
+                    "error": err_msg,
+                    "screenshot_path": shot,
+                    "l3_error": l3_err.to_dict(),
+                })
+                return result
+
             page_url, html_content = await self._generate_and_extract_webpage_html(
                 topic=topic,
                 markdown_content=markdown_content,

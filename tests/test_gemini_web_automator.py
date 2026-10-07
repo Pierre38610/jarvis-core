@@ -729,6 +729,62 @@ class TestL3DeepResearchAutomatorFlow(unittest.IsolatedAsyncioTestCase):
                 pass
 
 
+    def test_sanitize_prompt_for_l3_replaces_pii_keywords(self):
+        """sanitize_prompt_for_l3 remplace les expressions sensibles (contacts clés, emails directs) par des termes pro sûrs."""
+        from services.gemini_web_automator import sanitize_prompt_for_l3
+        raw_prompt = "Cartographie R&D pour stage. Identifier les entreprises cibles, contacts clés et coordonnées directes."
+        cleaned = sanitize_prompt_for_l3(raw_prompt)
+        self.assertNotIn("contacts clés", cleaned.lower())
+        self.assertNotIn("coordonnées directes", cleaned.lower())
+        self.assertIn("équipes de recherche", cleaned)
+        self.assertIn("canaux institutionnels", cleaned)
+
+    def test_is_canned_refusal_text_detection(self):
+        """_is_canned_refusal_text identifie avec exactitude les refus types de Gemini."""
+        automator = self._make_automator()
+        refusal_sample = "Je ne suis qu'un modèle de langage, je ne peux donc pas vous aider avec cette demande."
+        self.assertTrue(automator._is_canned_refusal_text(refusal_sample))
+        self.assertTrue(automator._is_canned_refusal_text("I am a large language model, so I cannot help with this request."))
+        self.assertFalse(automator._is_canned_refusal_text("# Rapport Deep Research L3\n\nCartographie détaillée des entreprises..."))
+
+    async def test_is_deep_research_active_detects_chip(self):
+        """_is_deep_research_active détecte le badge ou chip Deep Research dans le DOM."""
+        automator = self._make_automator()
+        page = make_page_mock(selector_counts={"[class*='chip']:has-text('Deep Research')": 1})
+        automator._page = page
+        is_active = await automator._is_deep_research_active()
+        self.assertTrue(is_active)
+
+    async def test_run_deep_research_fails_on_canned_refusal(self):
+        """run_deep_research détecte le refus modèle et ne produit pas de fausse complétion."""
+        automator = self._make_automator()
+        page = make_page_mock(
+            selector_counts={
+                "[aria-label*='Deep Research' i]": 1,
+                "[contenteditable='true']": 1,
+                "button[aria-label*='Send' i]": 1,
+                "model-response": 1,
+            }
+        )
+        # Gemini renvoie le refus automatique
+        page.evaluate = AsyncMock(return_value="Je ne suis qu'un modèle de langage, je ne peux donc pas vous aider avec cette demande.")
+        automator._page = page
+
+        with patch.object(automator, "_connect", new_callable=AsyncMock, return_value=True), \
+             patch.object(automator, "_navigate_to_gemini", new_callable=AsyncMock, return_value=True):
+
+            res = await automator.run_deep_research(
+                topic="Recherche sensible contacts",
+                task_id="task_refusal_test",
+                poll_interval=0.01,
+                max_wait_seconds=0.5,
+            )
+
+        self.assertEqual(res["status"], "error")
+        self.assertIn("model_refusal", res["l3_error"]["etape"])
+        self.assertIn("Refus automatique", res["l3_error"]["exception"])
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
