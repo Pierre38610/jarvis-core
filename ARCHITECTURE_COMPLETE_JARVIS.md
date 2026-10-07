@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.82.0 — Migration intégrale des icônes UI vers la bibliothèque vectorielle Lucide (icônes standardisées 16px, stroke-width 1.75, currentColor dans la sidebar, les tiroirs de supervision, filtres de logs, actions et statuts).*
+> *Dernière révision majeure : Version 5.83.0 — Accueil Assistant : Orbe holographique 160px avec dégradé radial accentué, animation de pulsation douce scale(1.04) restreinte à l'état écoute, ligne de statut épurée 14px, mini-lecteur Spotify 56px fixé en bas de l'application et support prefers-reduced-motion.*
 
 
 ---
