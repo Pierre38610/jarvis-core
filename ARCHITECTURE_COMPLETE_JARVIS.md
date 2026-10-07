@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.87.0 — Modales, toasts, alerte Bluetooth en toast session unique, modale de consentement clé payante modernisée (coût grand format, boutons Refuser/Autoriser) et écran d'autorisation épuré.*
+> *Dernière révision majeure : Version 5.88.0 — Responsive mobile (< 768px avec sidebar transformée en barre d'onglets fixée en bas, statusbar compacte modèle+pastille, mini-lecteur au-dessus des onglets), accessibilité WCAG AA (contraste text-muted, focus-visible outline, aria-labels exhaustifs sur les boutons icônes) et purge intégrale du CSS mort.*
 
 
 ---
@@ -1412,8 +1412,8 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 ### 12.1. Principes Ergonomiques & Design System Obsidian & Titanium
 - **Identité Visuelle** : Palette sombre minérale et raffinée (`#05070D`, `#0B0F19`, `#0D1321`), verre dépoli avec bordures ultra-fines (`backdrop-filter: blur(24px)`), hiérarchie chromatique équilibrée (cyan glace, émeraude, ambre, violet, rose alerte) sans saturation agressive.
 - **Typographie** : Polices modernes géométriques sans-serif (`Inter`, `Plus Jakarta Sans`) et code monospace technique (`JetBrains Mono`).
-- **Responsive Fluid Architecture** : Expérience fluide optimisée sur smartphone (`100dvh`, iOS Safari / Android Chrome) et cockpit glassmorphic centré sur grand écran desktop PC.
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `v5.86.0`.
+- **Responsive Fluid Architecture** : Expérience fluide optimisée sur smartphone (< 768px : barre d'onglets fixée en bas, statusbar compacte, mini-lecteur au-dessus des onglets, `100dvh`) et cockpit glassmorphic centré sur grand écran desktop PC.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `v5.88.0`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.

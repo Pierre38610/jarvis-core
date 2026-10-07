@@ -1,6 +1,6 @@
 /* ==========================================================================
    J.A.R.V.I.S. - STARK INDUSTRIES HUD DESIGN SYSTEM
-   Version 5.87.0 | High-End Obsidian & Titanium Glassmorphic Architecture
+   Version 5.88.0 | High-End Obsidian & Titanium Glassmorphic Architecture
    ========================================================================== */
 
 /* --- ROOT VARIABLES & DESIGN TOKENS --- */
@@ -11,7 +11,7 @@
   --surface-2: #18181B;
   --border: #1F1F23;
   --text: #EDEDEF;
-  --text-muted: #8B8B93;
+  --text-muted: #9CA3AF;
   --accent: #3B82F6;
   --success: #22C55E;
   --warning: #F59E0B;
@@ -91,6 +91,16 @@ html, body {
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* Focus-Visible Accessibility (Prompt 9) */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button, input, select, textarea, [role="button"], a {
+  transition: color var(--t), background var(--t), border-color var(--t), box-shadow var(--t), transform var(--t), opacity var(--t);
 }
 
 /* Custom Scrollbars */
@@ -487,11 +497,6 @@ html, body {
   width: 100%;
 }
 
-.header-sup-label {
-  font-size: 0.68rem;
-  font-weight: 700;
-}
-
 .header-action-dot-idle {
   width: 7px;
   height: 7px;
@@ -576,18 +581,18 @@ html, body {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.stark-quick-toggle:hover, .paid-toggle-container:hover {
+.stark-quick-toggle:hover {
   background: var(--bg-card-hover);
   border-color: var(--border-highlight);
   transform: translateY(-1px);
 }
 
-.quick-toggle-icon, .paid-toggle-icon {
+.quick-toggle-icon {
   font-size: 0.82rem;
   line-height: 1;
 }
 
-.quick-toggle-label, .paid-toggle-title {
+.quick-toggle-label {
   font-size: 0.66rem;
   font-weight: 700;
   color: var(--text-secondary);
@@ -2872,8 +2877,7 @@ html, body {
   }
 }
 
-.stat-card,
-.sup-metric-counter-card {
+.stat-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -2884,8 +2888,7 @@ html, body {
   transition: var(--t);
 }
 
-.stat-card:hover,
-.sup-metric-counter-card:hover {
+.stat-card:hover {
   background: var(--surface-2);
   border-color: rgba(255, 255, 255, 0.12);
 }
@@ -2916,9 +2919,7 @@ html, body {
 }
 
 /* États Vides (.empty-state) */
-.empty-state,
-.sup-empty-state,
-.sup-empty-metrics {
+.empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2950,39 +2951,6 @@ html, body {
 
 .empty-state-actions {
   margin-top: 6px;
-}
-
-/* Skeletons CSS Shimmer (.skeleton) */
-.skeleton {
-  background: linear-gradient(90deg, var(--surface-2) 25%, rgba(255, 255, 255, 0.08) 50%, var(--surface-2) 75%);
-  background-size: 200% 100%;
-  animation: skeletonShimmer 1.5s infinite ease-in-out;
-  border-radius: var(--radius-sm);
-  display: inline-block;
-}
-
-@keyframes skeletonShimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-.skeleton-text {
-  height: 13px;
-  width: 100%;
-  margin-bottom: 4px;
-}
-
-.skeleton-card {
-  height: 64px;
-  width: 100%;
-  border-radius: var(--radius);
-}
-
-.skeleton-row {
-  height: 40px;
-  width: 100%;
-  border-radius: var(--radius-sm);
-  margin-bottom: 6px;
 }
 
 /* Tables : lignes de 40px, header 12px muted, hover surface-2, sans bordures verticales */
@@ -3387,14 +3355,6 @@ html, body {
   overflow-y: auto;
 }
 
-/* Kindle Modal specific styles */
-.kindle-dropzone-box:hover {
-  border-color: var(--cyan-core) !important;
-  background: rgba(56, 189, 248, 0.05) !important;
-}
-
-
-
 /* Lucide Icons Base Style (Prompt 3) */
 [data-lucide], .lucide {
   width: 16px;
@@ -3594,6 +3554,266 @@ html, body {
 
 .paid-btn-reject:hover, .btn-secondary:hover {
   background: var(--border);
+}
+
+/* ==========================================================================
+   RESPONSIVE MOBILE ARCHITECTURE (< 768px) - PROMPT 9
+   ========================================================================== */
+@media (max-width: 768px) {
+  /* Shell & Main Container */
+  .app-shell, #mainScreen {
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .app-main {
+    width: 100%;
+    height: 100%;
+    padding-bottom: 56px; /* Espace pour la barre d'onglets fixée en bas */
+  }
+
+  /* Sidebar devient une barre d'onglets fixée en bas (icônes + label 10px) */
+  .sidebar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-width: 100%;
+    min-width: 100%;
+    height: 56px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    border-right: none;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0;
+    z-index: 90;
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .sidebar-brand {
+    display: none;
+  }
+
+  .sidebar-nav {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0 4px;
+    gap: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  .sidebar-nav-item {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 2px;
+    height: 100%;
+    flex: 1;
+    border-radius: var(--radius-sm);
+    position: relative;
+    text-align: center;
+  }
+
+  .sidebar-nav-item:hover,
+  .sidebar-nav-item.active {
+    background: var(--surface-2);
+  }
+
+  .sidebar-nav-icon {
+    font-size: 16px;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .sidebar-nav-label {
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.1;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Badges sur la barre d'onglets mobile */
+  .sidebar-nav-item .chat-badge,
+  .sidebar-nav-item .supervision-badge-count {
+    position: absolute;
+    top: 3px;
+    right: calc(50% - 18px);
+    margin-left: 0;
+    font-size: 9px;
+    padding: 1px 4px;
+    min-width: 14px;
+    height: 14px;
+    line-height: 12px;
+    box-sizing: border-box;
+  }
+
+  /* Statusbar réduite (modèle + pastille) */
+  .statusbar {
+    height: 44px;
+    min-height: 44px;
+    padding: 0 10px;
+    gap: 8px;
+  }
+
+  .statusbar-left {
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .statusbar-right {
+    display: none; /* Masque le tag de version sur mobile */
+  }
+
+  .statusbar-connection {
+    gap: 4px;
+  }
+
+  .statusbar-connection .state-badge {
+    padding: 2px 6px;
+    font-size: 10px;
+  }
+
+  .active-engine-chip {
+    padding: 2px 6px;
+    gap: 4px;
+    max-width: 65%;
+    overflow: hidden;
+  }
+
+  .engine-badge {
+    display: none;
+  }
+
+  .engine-model-text {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .engine-key-badge {
+    font-size: 9px;
+    padding: 1px 4px;
+  }
+
+  .engine-actions-badge {
+    display: none !important;
+  }
+
+  /* Mini-lecteur Spotify au-dessus de la barre d'onglets */
+  .spotify-dock {
+    height: 50px;
+    min-height: 50px;
+    max-height: 50px;
+    padding: 0 10px;
+    gap: 8px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+  }
+
+  .spotify-dock-cover-wrapper {
+    width: 34px;
+    height: 34px;
+  }
+
+  .spotify-dock-cover {
+    width: 34px;
+    height: 34px;
+  }
+
+  .spotify-dock-track {
+    font-size: 12px;
+    max-width: 140px;
+  }
+
+  .spotify-dock-artist {
+    font-size: 10px;
+    max-width: 140px;
+  }
+
+  .spotify-ctrl-btn {
+    width: 30px;
+    height: 30px;
+  }
+
+  /* Stage central & avatar responsive */
+  .hud-content-stage {
+    padding: 10px 12px;
+  }
+
+  .hud-quick-bar {
+    gap: 6px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .stark-quick-toggle {
+    padding: 6px 10px;
+    gap: 6px;
+    flex: 1 1 calc(50% - 6px);
+    min-width: 140px;
+  }
+
+  .avatar-pod-container {
+    max-height: 36vh;
+    min-height: 180px;
+  }
+
+  .reactor-halo {
+    width: 200px;
+    height: 200px;
+  }
+
+  .jarvis-avatar-pod {
+    width: 140px;
+    height: 140px;
+  }
+
+  .jarvis-avatar-svg {
+    width: 120px;
+    height: 120px;
+  }
+
+  /* Toast stack sur mobile */
+  .toast-container {
+    bottom: 66px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
+  }
+
+  /* Modales et Drawers adaptés sur mobile */
+  .chat-modal-card,
+  .supervision-modal-card {
+    width: calc(100% - 16px) !important;
+    max-height: calc(100vh - 72px) !important;
+    border-radius: var(--radius) !important;
+  }
+
+  .modal-card-dialog {
+    width: calc(100% - 20px) !important;
+    max-width: calc(100% - 20px) !important;
+  }
 }
 
 

@@ -17,7 +17,7 @@
   <link rel="icon" type="image/svg+xml" href="/static/jarvis-icon.svg">
   <link rel="apple-touch-icon" href="/static/jarvis-icon.png">
   <link rel="shortcut icon" href="/static/jarvis-icon.png">
-  <link rel="stylesheet" href="/static/style.css?v=5.87.0">
+  <link rel="stylesheet" href="/static/style.css?v=5.88.0">
 </head>
 <body>
 
@@ -86,7 +86,7 @@
           </div>
 
           <!-- Nom du modèle actif & badge clé -->
-          <div class="active-engine-chip statusbar-chip" id="engineChip" role="button" tabindex="0" title="Cliquer pour afficher la supervision">
+          <div class="active-engine-chip statusbar-chip" id="engineChip" role="button" tabindex="0" title="Cliquer pour afficher la supervision" aria-label="Supervision du modèle et des clés">
             <span class="engine-badge badge-google" id="engineSourceBadge">GOOGLE API</span>
             <span class="engine-model-text" id="engineModelText">GEMINI 3.8 LIVE</span>
             <span class="engine-key-badge badge-key-free" id="engineKeyBadge">CLÉ GRATUITE</span>
@@ -98,7 +98,7 @@
         </div>
 
         <div class="statusbar-right">
-          <span class="hud-version-tag statusbar-version" id="hudVersionTag" title="Version 5.87.0 Stark AI">v5.87.0</span>
+          <span class="hud-version-tag statusbar-version" id="hudVersionTag" title="Version 5.88.0 Stark AI">v5.88.0</span>
         </div>
       </header>
 
@@ -387,11 +387,11 @@
 
         <!-- Panneau de Contrôle du Volume Stark -->
         <div class="hud-volume-panel">
-          <button class="vol-btn" id="muteBtn" title="Couper/Rétablir le son">
+          <button class="vol-btn" id="muteBtn" title="Couper/Rétablir le son" aria-label="Couper ou rétablir le son">
             <svg id="volIcon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
           </button>
           <div class="vol-slider-container">
-            <input type="range" id="volumeSlider" min="0" max="100" value="85" class="hud-slider">
+            <input type="range" id="volumeSlider" min="0" max="100" value="85" class="hud-slider" aria-label="Niveau du volume">
           </div>
           <span class="vol-label" id="volPercent">85%</span>
         </div>
@@ -515,16 +515,16 @@
         <span id="spotifyDockDevice" class="spotify-dock-device" style="display: none;">SPOTIFY CONNECT</span>
       </div>
       <div class="spotify-dock-controls">
-        <button id="spotifyBtnPrev" class="spotify-ctrl-btn" title="Morceau précédent" onclick="spotifyControl('previous')">
+        <button id="spotifyBtnPrev" class="spotify-ctrl-btn" title="Morceau précédent" aria-label="Morceau précédent" onclick="spotifyControl('previous')">
           <i data-lucide="skip-back"></i>
         </button>
-        <button id="spotifyBtnPlayPause" class="spotify-ctrl-btn spotify-play-btn" title="Lecture / Pause" onclick="spotifyControl('playpause')">
+        <button id="spotifyBtnPlayPause" class="spotify-ctrl-btn spotify-play-btn" title="Lecture / Pause" aria-label="Lecture ou pause" onclick="spotifyControl('playpause')">
           <svg id="spotifyPlayIcon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         </button>
-        <button id="spotifyBtnNext" class="spotify-ctrl-btn" title="Morceau suivant" onclick="spotifyControl('next')">
+        <button id="spotifyBtnNext" class="spotify-ctrl-btn" title="Morceau suivant" aria-label="Morceau suivant" onclick="spotifyControl('next')">
           <i data-lucide="skip-forward"></i>
         </button>
-        <button id="spotifyBtnLike" class="spotify-ctrl-btn" title="J'aime ce titre" onclick="spotifyControl('like')">
+        <button id="spotifyBtnLike" class="spotify-ctrl-btn" title="J'aime ce titre" aria-label="Aimer ce morceau" onclick="spotifyControl('like')">
           <i data-lucide="heart"></i>
         </button>
       </div>
@@ -537,7 +537,7 @@
     <div class="modal-card modal-card-dialog">
       <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border);">
         <span id="modalBrowserTitle" class="modal-title" style="font-size: 14px; font-weight: 600; color: var(--text);">Écran du navigateur</span>
-        <button class="supervision-icon-btn btn-close-modal" id="btnCloseBrowserModalHeader" onclick="document.getElementById('browserModal').style.display='none'" title="Fermer"><i data-lucide="x"></i></button>
+        <button class="supervision-icon-btn btn-close-modal" id="btnCloseBrowserModalHeader" onclick="document.getElementById('browserModal').style.display='none'" title="Fermer" aria-label="Fermer la modal"><i data-lucide="x"></i></button>
       </div>
       <img id="browserScreenshotImg" class="modal-img" src="/static/latest_screenshot.jpg" alt="Aperçu web" style="max-height: 50vh; object-fit: contain; background: var(--bg);">
       <div class="modal-actions" style="display: flex; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--border); justify-content: flex-end;">
@@ -581,13 +581,13 @@
           </div>
         </div>
         <div class="supervision-header-actions">
-          <button id="btnSupervisionOpenLogs" class="supervision-icon-btn" onclick="openLogsModal()" title="Ouvrir le terminal des logs">
+          <button id="btnSupervisionOpenLogs" class="supervision-icon-btn" onclick="openLogsModal()" title="Ouvrir le terminal des logs" aria-label="Ouvrir les logs">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
           </button>
-          <button id="btnRefreshSupervision" class="supervision-icon-btn" title="Rafraîchir les données en direct">
+          <button id="btnRefreshSupervision" class="supervision-icon-btn" title="Rafraîchir les données en direct" aria-label="Rafraîchir les données de supervision">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           </button>
-          <button id="btnCloseSupervision" class="supervision-icon-btn btn-close-modal" title="Fermer la vue"><i data-lucide="x"></i></button>
+          <button id="btnCloseSupervision" class="supervision-icon-btn btn-close-modal" title="Fermer la vue" aria-label="Fermer la supervision"><i data-lucide="x"></i></button>
         </div>
       </div>
 
@@ -876,10 +876,10 @@
           </div>
         </div>
         <div class="chat-header-actions">
-          <button id="btnChatClear" class="chat-icon-btn" title="Vider l'historique de discussion">
+          <button id="btnChatClear" class="chat-icon-btn" title="Vider l'historique de discussion" aria-label="Vider l'historique de discussion">
             <i data-lucide="trash-2"></i>
           </button>
-          <button id="btnCloseChat" class="chat-icon-btn btn-close-modal" onclick="closeChatDrawer()" title="Fermer la messagerie"><i data-lucide="x"></i></button>
+          <button id="btnCloseChat" class="chat-icon-btn btn-close-modal" onclick="closeChatDrawer()" title="Fermer la messagerie" aria-label="Fermer la messagerie"><i data-lucide="x"></i></button>
         </div>
       </div>
 
@@ -919,7 +919,7 @@
           <div id="chatPreviewName" class="chat-preview-name">photo.jpg</div>
           <div id="chatPreviewMeta" class="chat-preview-meta">Image prête pour analyse</div>
         </div>
-        <button id="btnRemoveChatImage" class="chat-preview-remove" title="Supprimer la photo"><i data-lucide="x"></i></button>
+        <button id="btnRemoveChatImage" class="chat-preview-remove" title="Supprimer la photo" aria-label="Supprimer la photo jointe"><i data-lucide="x"></i></button>
       </div>
 
       <!-- Zone de saisie et envoi -->
@@ -928,7 +928,7 @@
         <input type="file" id="chatFileInput" accept="image/*" style="display: none;" />
         
         <div class="chat-input-inner">
-          <button id="btnChatAttach" class="chat-tool-btn" type="button" title="Joindre une photo ou capture d'écran">
+          <button id="btnChatAttach" class="chat-tool-btn" type="button" title="Joindre une photo ou capture d'écran" aria-label="Joindre une photo ou capture d'écran">
             <i data-lucide="paperclip"></i>
           </button>
 
@@ -939,7 +939,7 @@
             placeholder="Envoyer un message à JARVIS (Maj+Entrée pour saut de ligne)..."
           ></textarea>
 
-          <button id="btnChatSend" class="chat-send-btn" type="button" title="Envoyer le message">
+          <button id="btnChatSend" class="chat-send-btn" type="button" title="Envoyer le message" aria-label="Envoyer le message">
             <i data-lucide="arrow-up"></i>
           </button>
         </div>
@@ -953,7 +953,7 @@
     <div class="chat-lightbox-card">
       <div class="chat-lightbox-header">
         <span id="lightboxTitle">PHOTO ANALYSÉE PAR J.A.R.V.I.S.</span>
-        <button id="btnCloseLightbox" class="chat-icon-btn btn-close-modal"><i data-lucide="x"></i></button>
+        <button id="btnCloseLightbox" class="chat-icon-btn btn-close-modal" title="Fermer" aria-label="Fermer l'aperçu"><i data-lucide="x"></i></button>
       </div>
       <div class="chat-lightbox-body">
         <img id="lightboxImg" src="" alt="Agrandissement photo" />
@@ -975,10 +975,10 @@
           </div>
         </div>
         <div class="supervision-header-actions">
-          <button id="btnRefreshKindleStatus" class="supervision-icon-btn" onclick="fetchKindleStatus()" title="Actualiser le statut">
+          <button id="btnRefreshKindleStatus" class="supervision-icon-btn" onclick="fetchKindleStatus()" title="Actualiser le statut" aria-label="Actualiser le statut Kindle">
             <i data-lucide="refresh-cw"></i>
           </button>
-          <button id="btnCloseKindleModal" class="supervision-icon-btn btn-close-modal" onclick="closeKindleModal()" title="Fermer"><i data-lucide="x"></i></button>
+          <button id="btnCloseKindleModal" class="supervision-icon-btn btn-close-modal" onclick="closeKindleModal()" title="Fermer" aria-label="Fermer la fenêtre Kindle"><i data-lucide="x"></i></button>
         </div>
       </div>
 
@@ -1082,13 +1082,13 @@
             <input type="checkbox" id="logsAutoRefreshToggle" checked onchange="toggleLogsAutoRefresh(this.checked)">
             <span class="logs-auto-refresh-text">AUTO (3s)</span>
           </label>
-          <button id="btnRefreshLogs" class="supervision-icon-btn" onclick="fetchJarvisLogs()" title="Rafraîchir les logs">
+          <button id="btnRefreshLogs" class="supervision-icon-btn" onclick="fetchJarvisLogs()" title="Rafraîchir les logs" aria-label="Rafraîchir les logs">
             <i data-lucide="refresh-cw"></i>
           </button>
-          <button id="btnCopyLogs" class="supervision-icon-btn" onclick="copyJarvisLogs()" title="Copier les logs">
+          <button id="btnCopyLogs" class="supervision-icon-btn" onclick="copyJarvisLogs()" title="Copier les logs" aria-label="Copier les logs">
             <i data-lucide="copy"></i>
           </button>
-          <button id="btnCloseLogsModal" class="supervision-icon-btn btn-close-modal" onclick="closeLogsModal()" title="Fermer"><i data-lucide="x"></i></button>
+          <button id="btnCloseLogsModal" class="supervision-icon-btn btn-close-modal" onclick="closeLogsModal()" title="Fermer" aria-label="Fermer la fenêtre des logs"><i data-lucide="x"></i></button>
         </div>
       </div>
 
@@ -1127,6 +1127,6 @@
   </div>
 
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="/static/app.js?v=5.87.0"></script>
+  <script src="/static/app.js?v=5.88.0"></script>
 </body>
 </html>
