@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.74.3 — Authentification & Validation Complète de Google Gemini sur le VPS Cloud pour Deep Research L3 : Session Chrome Cloud autonome active et validée sur gemini.google.com/app (CDP 9222), outillage de connexion 1-clic noVNC (connect_gemini_vps_browser.py) et script de vérification à distance instantané (verifier_session_gemini_vps.bat), documentation mise à jour (docs/VPS_L3_ACTIONS_RESTANTES.md), suite de tests 100% verte.*
+> *Dernière révision majeure : Version 5.74.4 — Intégration du service de génération et compilation de rapports LaTeX pour les analyses multi-agents L2 (services/latex_report_service.py) avec template professionnel, échappement strict, compilation isolée latexmk, repli Markdown résilient et expédition par email.*
 
 
 ---
@@ -244,6 +244,7 @@ jarvis-core/
 │   ├── browser_service.py               # Navigation Playwright headless VPS et local Chrome CDP, recherche DuckDuckGo, Send to Kindle
 │   ├── download_service.py              # Téléchargement fichiers/ebooks (Anna's Archive), validation EPUB, détection liseuses USB
 │   ├── email_service.py                 # Envoi SMTP Stark HTML et réception IMAP Gmail avec résolution floue des pièces jointes
+│   ├── latex_report_service.py          # Génération et compilation de rapports LaTeX/Markdown (latexmk, template Stark, repli MD)
 │   ├── slides_service.py                # Générateur & modificateur de présentations Google Slides (7 layouts 16:9, conformité API v1)
 │   ├── transport_service.py             # Calcul d'itinéraires ferroviaires France/Suède, découpage multi-segments, deep links Omio
 │   ├── mobile_bridge_service.py         # Pont MacroDroid Samsung S24 (GPS maps, wake Spotify, BridgeResult, retry unique)

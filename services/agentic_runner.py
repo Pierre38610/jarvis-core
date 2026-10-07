@@ -742,6 +742,10 @@ async def run_l2_parallel_agents(
                 goal=goal,
                 findings=findings_data,
                 contradictions=cross_check.contradictions,
+            ) + (
+                "\n\nCONSIGNE DE RÉDACTION : Rédige le rapport en texte structuré prêt pour mise en page LaTeX "
+                "(titre clair, résumé exécutif, sections thématiques bien délimitées avec sous-titres, et sources citées si présentes). "
+                "Ne jamais inventer de sources ni de résultats non vérifiés."
             )
             synthesis_output = await run_agentic(
                 role="synthesis",
@@ -757,6 +761,28 @@ async def run_l2_parallel_agents(
                 workspace=synth_ws,
                 worker_id="synthesis_lead",
             )
+
+            # Génération du rapport LaTeX (PDF / repli Markdown)
+            if synthesis_output and synthesis_output.status == "success":
+                try:
+                    from services.latex_report_service import generate_and_compile_l2_report
+                    all_collected_sources = []
+                    for a in successful_agents:
+                        all_collected_sources.extend(a.sources or [])
+                    latex_res = generate_and_compile_l2_report(
+                        title=f"Rapport L2 : {goal[:60]}",
+                        content=synthesis_output.conclusion,
+                        sources=all_collected_sources,
+                        output_dir=synth_ws,
+                    )
+                    if latex_res.success and latex_res.pdf_path:
+                        if latex_res.pdf_path not in synthesis_output.artifacts:
+                            synthesis_output.artifacts.append(latex_res.pdf_path)
+                    elif latex_res.md_path:
+                        if latex_res.md_path not in synthesis_output.artifacts:
+                            synthesis_output.artifacts.append(latex_res.md_path)
+                except Exception as latex_err:
+                    logger.warning(f"[L2 Parallel Runner] Erreur génération rapport LaTeX : {latex_err}")
 
         # Quality Gate indépendant
         all_workers_succeeded = len(successful_agents) == len(missions)

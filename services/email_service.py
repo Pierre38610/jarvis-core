@@ -436,7 +436,7 @@ def resolve_attachment_path(att_input: Any) -> Optional[str]:
             pass
 
     # 7. Correspondance avec ajout d'extensions courantes si omise
-    common_exts = (".pdf", ".epub", ".xlsx", ".docx", ".pptx", ".txt", ".csv", ".json", ".png", ".jpg", ".jpeg", ".html", ".zip")
+    common_exts = (".pdf", ".epub", ".xlsx", ".docx", ".pptx", ".txt", ".csv", ".json", ".png", ".jpg", ".jpeg", ".html", ".zip", ".md", ".tex")
     if not any(target_clean.endswith(ext) for ext in common_exts):
         for sdir in search_dirs:
             if not os.path.exists(sdir):

@@ -131,8 +131,8 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                     name="launch_deep_research",
                     description=(
                         "RECHERCHE APPROFONDIE ET ANALYSE MULTI-AGENTS CLI NIVEAU 2 (L2 / TIER 2). "
-                        "Moteur de recherche et d'analyse multi-agents Antigravity sur le VPS (prospecteur, analyste, synthèse) pour analyses tactiques, études multi-sources et livrables complexes. "
-                        "Prends l'initiative d'utiliser cet outil dès que Pierre demande une analyse tactique, une recherche de niveau 2 (L2), un comparatif ou une orchestration multi-agents CLI."
+                        "Moteur de recherche et d'analyse multi-agents Antigravity sur le VPS (prospecteur, analyste, synthèse) pour analyses tactiques, études multi-sources, génération de rapports structurés LaTeX (PDF/Markdown) et expédition par e-mail. "
+                        "Prends l'initiative d'utiliser cet outil dès que Pierre demande une analyse tactique, une recherche de niveau 2 (L2), un rapport LaTeX, un comparatif ou une orchestration multi-agents CLI."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -148,7 +148,7 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                             ),
                             "envoyer_email": types.Schema(
                                 type="BOOLEAN",
-                                description="True pour envoyer les conclusions par e-mail à l'issue de l'exploration."
+                                description="True pour envoyer les conclusions et le rapport PDF/Markdown par e-mail à l'issue de l'exploration."
                             ),
                             "destinataire_email": types.Schema(
                                 type="STRING",

@@ -413,7 +413,8 @@ async def _execute_cli_map_reduce_pipeline(
                 f"Consigne initiale : {consigne}\n"
                 f"Données vérifiées de l'analyste :\n{out_a.conclusion}\n"
                 f"Questions ouvertes restantes : {json.dumps(out_a.open_questions, ensure_ascii=False)}\n"
-                f"Rédige une synthèse exécutive structurée et percutante."
+                f"Rédige une synthèse exécutive structurée et percutante prête pour un rapport LaTeX structuré "
+                f"(titre, résumé, sections détaillées, sources si présentes), sans inventer de sources ni de résultats."
             ),
             model=MODEL_PRO,
             effort="medium",
@@ -468,6 +469,28 @@ async def _execute_cli_map_reduce_pipeline(
     total_duration = time.perf_counter() - t_total_0
     all_sources = list(out_p.sources) + [s for s in out_a.sources if s not in out_p.sources]
 
+    # Génération et compilation du rapport LaTeX / Repli Markdown
+    from services.latex_report_service import generate_and_compile_l2_report
+    latex_res = await asyncio.to_thread(
+        generate_and_compile_l2_report,
+        title=f"Rapport d'Analyse L2 : {consigne[:60]}",
+        content=out_s.conclusion,
+        sources=all_sources,
+        output_dir=s_ws,
+    )
+
+    report_attachments = list(out_s.artifacts or [])
+    if latex_res.success and latex_res.pdf_path:
+        if latex_res.pdf_path not in report_attachments:
+            report_attachments.insert(0, latex_res.pdf_path)
+        pdf_status_msg = "Rapport PDF compilé avec succès et joint."
+    else:
+        if latex_res.md_path and latex_res.md_path not in report_attachments:
+            report_attachments.insert(0, latex_res.md_path)
+        err_detail = latex_res.error_extract or "erreur de compilation TeX"
+        pdf_status_msg = f"La compilation du rapport en PDF LaTeX a échoué ({err_detail}). Le rapport Markdown a été joint en repli."
+        logger.warning(f"[CLI Map-Reduce] {pdf_status_msg} Log: {latex_res.log_path}")
+
     pc_online = False
     try:
         from services.local_agent_service import is_pc_connected_async
@@ -479,6 +502,7 @@ async def _execute_cli_map_reduce_pipeline(
     delivery_info: Dict[str, Any] = {
         "delivery_mode": "screen" if pc_online else "email",
         "status": "pending",
+        "pdf_compiled": latex_res.success,
     }
 
     should_send_mail = envoyer_email or (not pc_online)
@@ -489,15 +513,17 @@ async def _execute_cli_map_reduce_pipeline(
                 subject=f"{subject_tag} Synthèse : {consigne[:60]}",
                 body=out_s.conclusion,
                 to_email=dest,
-                attachments=out_s.artifacts,
+                attachments=report_attachments,
                 session_id=session_id,
             )
-            logger.info(f"[CLI Map-Reduce] Synthèse livrée par e-mail à {dest} (pc_online={pc_online}, envoyer_email={envoyer_email})")
+            logger.info(f"[CLI Map-Reduce] Synthèse livrée par e-mail à {dest} (pc_online={pc_online}, envoyer_email={envoyer_email}, pièces={report_attachments})")
             delivery_info = {
                 "delivery_mode": "email",
                 "status": "sent",
                 "to_email": dest,
-                "attachments": out_s.artifacts,
+                "attachments": report_attachments,
+                "pdf_compiled": latex_res.success,
+                "latex_log": latex_res.log_path,
             }
         except Exception as mail_err:
             logger.warning(f"[CLI Map-Reduce] [Échec envoi e-mail] {mail_err}")
@@ -505,12 +531,15 @@ async def _execute_cli_map_reduce_pipeline(
                 "delivery_mode": "email",
                 "status": "error",
                 "error": str(mail_err),
+                "pdf_compiled": latex_res.success,
             }
     else:
         delivery_info = {
             "delivery_mode": "screen",
             "status": "success",
             "message": "Affiché sur la session et l'interface Jarvis.",
+            "attachments": report_attachments,
+            "pdf_compiled": latex_res.success,
         }
         if websocket:
             try:
@@ -532,6 +561,9 @@ async def _execute_cli_map_reduce_pipeline(
     else:
         final_user_message = out_s.conclusion
 
+    if not latex_res.success:
+        final_user_message += f"\n\n[Note J.A.R.V.I.S. : {pdf_status_msg}]"
+
     evidence_text = f"3 phases (flash/medium -> pro/high -> pro/medium), Durée totale: {total_duration:.1f}s, Confiance: {out_s.confidence}"
     if is_cli_fallback:
         evidence_text += " [Repli CLI]"
@@ -544,9 +576,10 @@ async def _execute_cli_map_reduce_pipeline(
             "conclusion": out_s.conclusion,
             "confidence": out_s.confidence,
             "sources": all_sources,
-            "artifacts": out_s.artifacts,
+            "artifacts": report_attachments,
             "open_questions": out_s.open_questions,
             "delivery": delivery_info,
+            "latex_report": latex_res.to_dict(),
             "phases": {
                 "prospector": {"model": MODEL_FLASH, "effort": "medium", "duration_s": round(dur_p, 2)},
                 "analyst": {"model": MODEL_PRO, "effort": "high", "duration_s": round(dur_a, 2)},
