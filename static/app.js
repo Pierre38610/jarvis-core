@@ -47,6 +47,30 @@ function toast(message, type = 'info', ms = 3500) {
 }
 window.toast = toast;
 
+// --- SYNCHRONISATION DYNAMIQUE DE LA VERSION DU HUD ---
+async function initHudVersion() {
+  try {
+    const res = await fetch('/api/version');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.version) {
+        const tag = document.getElementById('hudVersionTag');
+        if (tag) {
+          tag.textContent = 'v' + data.version;
+          tag.title = `Version ${data.version} Stark AI`;
+        }
+      }
+    }
+  } catch (e) {
+    // Silencieux si hors ligne
+  }
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initHudVersion);
+} else {
+  initHudVersion();
+}
+
 // --- GESTION DE L'AUTHENTIFICATION & PERSISTANCE ---
 const authScreen = document.getElementById('authScreen');
 const mainScreen = document.getElementById('mainScreen');

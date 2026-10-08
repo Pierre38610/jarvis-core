@@ -4,6 +4,9 @@ import sys
 os.environ["NO_PROXY"] = "127.0.0.1,localhost,::1,0.0.0.0"
 os.environ["no_proxy"] = "127.0.0.1,localhost,::1,0.0.0.0"
 
+# Version applicative centrale
+APP_VERSION = "5.93.0"
+
 # Répertoires de base
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")

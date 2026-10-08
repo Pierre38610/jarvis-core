@@ -34,6 +34,15 @@ class PaidConsentRequest(BaseModel):
     approved: bool
 
 
+@router.get("/api/version")
+async def get_version():
+    """Retourne la version applicative centrale de J.A.R.V.I.S. Core."""
+    return {
+        "version": getattr(config, "APP_VERSION", "5.93.0"),
+        "app": "J.A.R.V.I.S. - Stark Industries",
+    }
+
+
 @router.get("/api/live-model")
 async def get_live_model():
     """Retourne le modèle Gemini Live configuré pour la voix de Jarvis."""

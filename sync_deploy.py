@@ -61,10 +61,122 @@ def get_candidate_keys() -> list[str]:
     return found
 
 
+def sync_and_verify_versions(target_version: Optional[str] = None) -> str:
+    """Synchronise et valide automatiquement la version centrale sur tous les fichiers clés."""
+    import re
+
+    config_path = os.path.join(BASE_DIR, "config.py")
+    index_path = os.path.join(BASE_DIR, "static", "index.html")
+    style_path = os.path.join(BASE_DIR, "static", "style.css")
+    arch_path = os.path.join(BASE_DIR, "ARCHITECTURE_COMPLETE_JARVIS.md")
+
+    version = target_version
+    if not version and os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg_txt = f.read()
+                m = re.search(r'APP_VERSION\s*=\s*["\']([^"\']+)["\']', cfg_txt)
+                if m:
+                    version = m.group(1).strip()
+        except Exception:
+            pass
+
+    if not version and os.path.exists(index_path):
+        try:
+            with open(index_path, "r", encoding="utf-8") as f:
+                idx_txt = f.read()
+                m = re.search(r'id=["\']hudVersionTag["\'][^>]*>v?([0-9]+\.[0-9]+\.[0-9]+)', idx_txt)
+                if m:
+                    version = m.group(1).strip()
+        except Exception:
+            pass
+
+    if not version:
+        version = "5.93.0"
+
+    print(f"\n[0/3] Vérification & synchronisation des versions applicatives (v{version})...", flush=True)
+    synced_files = []
+
+    # 1. config.py
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                c_txt = f.read()
+            if "APP_VERSION =" in c_txt:
+                new_c = re.sub(r'APP_VERSION\s*=\s*["\'][^"\']+["\']', f'APP_VERSION = "{version}"', c_txt)
+            else:
+                new_c = f'APP_VERSION = "{version}"\n' + c_txt
+            if new_c != c_txt:
+                with open(config_path, "w", encoding="utf-8") as f:
+                    f.write(new_c)
+                synced_files.append("config.py")
+        except Exception as e:
+            print(f"  [!] Avertissement sync config.py: {e}", flush=True)
+
+    # 2. static/index.html
+    if os.path.exists(index_path):
+        try:
+            with open(index_path, "r", encoding="utf-8") as f:
+                i_txt = f.read()
+            new_i = i_txt
+            new_i = re.sub(
+                r'<span[^>]*id=["\']hudVersionTag["\'][^>]*>.*?</span>',
+                f'<span class="hud-version-tag statusbar-version" id="hudVersionTag" title="Version {version} Stark AI">v{version}</span>',
+                new_i,
+                flags=re.DOTALL
+            )
+            new_i = re.sub(r'href=["\']/static/style\.css\?v=[^"\']+["\']', f'href="/static/style.css?v={version}"', new_i)
+            new_i = re.sub(r'src=["\']/static/app\.js\?v=[^"\']+["\']', f'src="/static/app.js?v={version}"', new_i)
+            if new_i != i_txt:
+                with open(index_path, "w", encoding="utf-8") as f:
+                    f.write(new_i)
+                synced_files.append("static/index.html")
+        except Exception as e:
+            print(f"  [!] Avertissement sync index.html: {e}", flush=True)
+
+    # 3. static/style.css
+    if os.path.exists(style_path):
+        try:
+            with open(style_path, "r", encoding="utf-8") as f:
+                s_txt = f.read()
+            new_s = re.sub(r'Version\s+[0-9]+\.[0-9]+\.[0-9]+', f'Version {version}', s_txt, count=1)
+            if new_s != s_txt:
+                with open(style_path, "w", encoding="utf-8") as f:
+                    f.write(new_s)
+                synced_files.append("static/style.css")
+        except Exception as e:
+            print(f"  [!] Avertissement sync style.css: {e}", flush=True)
+
+    # 4. ARCHITECTURE_COMPLETE_JARVIS.md
+    if os.path.exists(arch_path):
+        try:
+            with open(arch_path, "r", encoding="utf-8") as f:
+                a_txt = f.read()
+            new_a = re.sub(r'Dernière révision majeure : Version\s+[0-9]+\.[0-9]+\.[0-9]+', f'Dernière révision majeure : Version {version}', a_txt)
+            new_a = re.sub(r'Système J\.A\.R\.V\.I\.S\. Core V\s+[0-9]+\.[0-9]+\.[0-9]+', f'Système J.A.R.V.I.S. Core V {version}', new_a)
+            if new_a != a_txt:
+                with open(arch_path, "w", encoding="utf-8") as f:
+                    f.write(new_a)
+                synced_files.append("ARCHITECTURE_COMPLETE_JARVIS.md")
+        except Exception as e:
+            print(f"  [!] Avertissement sync ARCHITECTURE_COMPLETE_JARVIS.md: {e}", flush=True)
+
+    if synced_files:
+        print(f"  [✔] Fichiers harmonisés vers v{version} : {', '.join(synced_files)}", flush=True)
+    else:
+        print(f"  [✔] Toutes les balises de version sont 100% alignées sur v{version}.", flush=True)
+
+    return version
+
+
 def git_commit_and_push(commit_msg: str):
     print("=" * 70, flush=True)
     print("       ✦  J . A . R . V . I . S .   S Y N C   &   D E P L O Y  ✦", flush=True)
     print("=" * 70, flush=True)
+    
+    # Auto-synchronisation des versions
+    sync_and_verify_versions()
+
     print(f"\n[1/3] Synchronisation Git GitHub...", flush=True)
 
     # Git add
