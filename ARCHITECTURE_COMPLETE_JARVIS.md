@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.89.0 — Architecture multi-onglets native intégrée (.hud-tab-container / .hud-tab-pane) reliant l'intégralité des 6 onglets latéraux (Assistant, Messages, Kindle, Supervision, Logs, Antigravity) sans superposition modale intrusive, avec pilotage agentique bidirectionnel.*
+> *Dernière révision majeure : Version 5.90.0 — Constellation orbitale de sous-agents animée en dynamique fluide (lévitation, anneau HUD 360°, halos et icônes d'activité) avec support du multi-agents parallèle L2 simultané, et bouton d'interruption immédiate (Arrêter) avec feedback visuel, arrêt physique des sous-processus et notification directe à la session Live de Jarvis.*
 
 
 ---

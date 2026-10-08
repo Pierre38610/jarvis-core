@@ -657,23 +657,62 @@ async def run_l2_parallel_agents(
                     "workers_count": len(current_missions),
                 })
 
+            # Spawning des sous-agents orbitaux en constellation simultanée
+            role_meta_map = {
+                "prospector": ("Prospecteur", "Recherche & Faits", "browsing"),
+                "critic": ("Critique", "Analyse & Logique", "thinking"),
+                "architect": ("Architecte", "Structure & Synthèse", "coding"),
+                "writer": ("Rédacteur", "Rédaction & Rapport", "coding"),
+                "researcher": ("Chercheur", "Prospection Multi-Sources", "browsing"),
+                "decider": ("Décideur", "Arbitrage & Stratégie", "thinking"),
+                "synthesis": ("Synthèse", "Synthèse & Livrable", "coding"),
+            }
+
+            try:
+                from core.shared_state import spawn_subagent, complete_subagent, update_subagent
+                for m_item in current_missions:
+                    sub_id = f"{tid}_{m_item.worker_id}"
+                    meta = role_meta_map.get(m_item.role.lower(), (m_item.role.capitalize(), "Sous-agent L2", "thinking"))
+                    await spawn_subagent(
+                        agent_id=sub_id,
+                        name=meta[0],
+                        role=meta[1],
+                        activity=meta[2],
+                        task=m_item.mission[:65],
+                        model=m_item.model,
+                    )
+            except Exception as spawn_err:
+                logger.debug(f"[L2 Parallel] spawn_subagent non-bloquant: {spawn_err}")
+
             # Exécution parallèle des agents via asyncio.gather
             async def _run_single_worker(wm: L2WorkerMission) -> AgentOutput:
+                sub_id = f"{tid}_{wm.worker_id}"
+                t0_w = time.perf_counter()
                 p_text = build_l2_agentic_prompt(wm.role, wm.mission, context=f"Mission L2 : {goal}")
-                return await run_agentic(
+                res = await run_agentic(
                     role=wm.role,
                     prompt=p_text,
                     model=wm.model,
                     effort=wm.effort,
                     timeout=int(wm.timeout),
                     session_id=session_id,
-                    task_id=f"{tid}_{wm.worker_id}",
+                    task_id=sub_id,
                     allow_paid_fallback=allow_paid_fallback,
                     execute_paid_api_fn=execute_paid_api_fn,
                     custom_exec_fn=custom_exec_fn,
                     workspace=wm.workspace,
                     worker_id=wm.worker_id,
                 )
+                dur_w = time.perf_counter() - t0_w
+                try:
+                    from core.shared_state import complete_subagent
+                    if isinstance(res, AgentOutput) and res.status == "success":
+                        await complete_subagent(sub_id, summary=f"{res.conclusion[:60]} ({wm.model}/{wm.effort}, {dur_w:.1f}s)")
+                    else:
+                        await complete_subagent(sub_id, summary=f"Terminé ({dur_w:.1f}s)")
+                except Exception:
+                    pass
+                return res
 
             worker_tasks = [_run_single_worker(m) for m in current_missions]
             gathered_results = await asyncio.gather(*worker_tasks, return_exceptions=True)
@@ -747,6 +786,21 @@ async def run_l2_parallel_agents(
                 "(titre clair, résumé exécutif, sections thématiques bien délimitées avec sous-titres, et sources citées si présentes). "
                 "Ne jamais inventer de sources ni de résultats non vérifiés."
             )
+            synth_id = f"{tid}_synthesis"
+            try:
+                from core.shared_state import spawn_subagent, complete_subagent
+                await spawn_subagent(
+                    agent_id=synth_id,
+                    name="Synthèse",
+                    role="Rédaction & Artefact",
+                    activity="coding",
+                    task=f"Rédaction de la synthèse finale : {goal[:50]}",
+                    model=MODEL_PRO,
+                )
+            except Exception:
+                pass
+
+            t0_s = time.perf_counter()
             synthesis_output = await run_agentic(
                 role="synthesis",
                 prompt=synth_prompt,
@@ -754,13 +808,19 @@ async def run_l2_parallel_agents(
                 effort="medium",
                 timeout=int(agent_timeout),
                 session_id=session_id,
-                task_id=f"{tid}_synthesis",
+                task_id=synth_id,
                 allow_paid_fallback=allow_paid_fallback,
                 execute_paid_api_fn=execute_paid_api_fn,
                 custom_exec_fn=custom_exec_fn,
                 workspace=synth_ws,
                 worker_id="synthesis_lead",
             )
+            dur_s = time.perf_counter() - t0_s
+            try:
+                from core.shared_state import complete_subagent
+                await complete_subagent(synth_id, summary=f"{synthesis_output.conclusion[:60]} (durée: {dur_s:.1f}s)")
+            except Exception:
+                pass
 
             # Génération du rapport LaTeX (PDF / repli Markdown)
             if synthesis_output and synthesis_output.status == "success":

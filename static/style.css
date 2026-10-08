@@ -1,6 +1,6 @@
 /* ==========================================================================
    J.A.R.V.I.S. - STARK INDUSTRIES HUD DESIGN SYSTEM
-   Version 5.89.0 | High-End Obsidian & Titanium Glassmorphic Architecture
+   Version 5.90.0 | High-End Obsidian & Titanium Glassmorphic Architecture
    ========================================================================== */
 
 /* --- ROOT VARIABLES & DESIGN TOKENS --- */
@@ -926,7 +926,7 @@ button, input, select, textarea, [role="button"], a {
   cursor: pointer;
   transform: translate(var(--target-x, 0px), var(--target-y, 0px));
   transition: transform 0.65s cubic-bezier(0.34, 1.4, 0.64, 1), opacity 0.4s ease;
-  animation: satelliteSpawn 0.4s ease-out forwards;
+  animation: satelliteSpawn 0.45s cubic-bezier(0.34, 1.5, 0.64, 1) forwards;
 }
 
 @keyframes satelliteSpawn {
@@ -935,7 +935,8 @@ button, input, select, textarea, [role="button"], a {
 }
 
 .subagent-satellite:hover {
-  transform: translate(var(--target-x, 0px), var(--target-y, 0px)) scale(1.12) !important;
+  transform: translate(var(--target-x, 0px), var(--target-y, 0px)) scale(1.15) !important;
+  z-index: 25;
 }
 
 .satellite-orb-inner {
@@ -945,14 +946,28 @@ button, input, select, textarea, [role="button"], a {
   display: flex;
   align-items: center;
   justify-content: center;
+  animation: satelliteFloating 3.6s ease-in-out infinite alternate;
+  animation-delay: calc(var(--agent-idx, 0) * 0.6s);
+}
+
+@keyframes satelliteFloating {
+  0% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-5px) rotate(2deg); }
+  100% { transform: translateY(2px) rotate(-1.5deg); }
 }
 
 .satellite-halo {
   position: absolute;
-  inset: -4px;
+  inset: -5px;
   border-radius: 50%;
-  opacity: 0.6;
-  filter: blur(5px);
+  opacity: 0.65;
+  filter: blur(6px);
+  animation: satelliteHaloPulse 2.4s ease-in-out infinite alternate;
+}
+
+@keyframes satelliteHaloPulse {
+  0% { opacity: 0.45; transform: scale(0.95); }
+  100% { opacity: 0.85; transform: scale(1.2); }
 }
 
 .satellite-orb-body {
@@ -965,6 +980,22 @@ button, input, select, textarea, [role="button"], a {
   align-items: center;
   justify-content: center;
   backdrop-filter: blur(8px);
+  box-shadow: 0 0 14px rgba(0, 0, 0, 0.6);
+}
+
+.satellite-ring-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  animation: satelliteRingSpin 9s linear infinite;
+  transform-origin: center center;
+}
+
+@keyframes satelliteRingSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .satellite-core-icon {
@@ -973,16 +1004,64 @@ button, input, select, textarea, [role="button"], a {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+  z-index: 2;
 }
 
 .satellite-live-led {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 3px;
+  right: 3px;
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  box-shadow: none;
+  background-color: #4ade80;
+  box-shadow: 0 0 6px #4ade80;
+  animation: satelliteLedBlink 1.8s ease-in-out infinite;
+}
+
+@keyframes satelliteLedBlink {
+  0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 6px currentColor; }
+  50% { opacity: 0.35; transform: scale(0.75); box-shadow: none; }
+}
+
+/* Animations d'activité sous-agents */
+.radar-sweep-beam {
+  transform-origin: 12px 12px;
+  animation: radarSweep 2.2s linear infinite;
+}
+
+@keyframes radarSweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.quantum-orbit-spin {
+  transform-origin: 12px 12px;
+  animation: quantumSpin 3s linear infinite;
+}
+
+@keyframes quantumSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.code-bracket-pulse {
+  animation: bracketPulse 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes bracketPulse {
+  0% { opacity: 0.6; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1.08); filter: drop-shadow(0 0 3px #a855f7); }
+}
+
+.doc-beam-anim {
+  animation: docBeamScan 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes docBeamScan {
+  0% { stroke: #38bdf8; opacity: 0.4; }
+  100% { stroke: #67e8f9; opacity: 1; filter: drop-shadow(0 0 3px #38bdf8); }
 }
 
 .satellite-label-pill {
@@ -999,6 +1078,7 @@ button, input, select, textarea, [role="button"], a {
   background: rgba(8, 12, 22, 0.94);
   border: 1px solid rgba(56, 189, 248, 0.3);
   color: var(--text-secondary);
+  transition: all 0.3s ease;
 }
 
 .subagent-satellite.activity-coding .satellite-orb-body { border: 1.5px solid var(--purple-code); }
@@ -1015,7 +1095,7 @@ button, input, select, textarea, [role="button"], a {
 
 .subagent-satellite.satellite-done {
   opacity: 0;
-  transform: scale(0.1);
+  transform: scale(0.1) !important;
   transition: all 0.4s ease;
 }
 
@@ -1452,10 +1532,15 @@ button, input, select, textarea, [role="button"], a {
 .task-guide-btn, .task-stop-btn {
   font-size: 0.64rem;
   font-weight: 700;
-  padding: 5px 8px;
+  padding: 5px 9px;
   border-radius: var(--radius-xs);
   cursor: pointer;
   border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .task-guide-btn {
@@ -1463,10 +1548,49 @@ button, input, select, textarea, [role="button"], a {
   color: #fff;
 }
 
+.task-guide-btn:hover {
+  background: var(--cyan-core);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+}
+
 .task-stop-btn {
-  background: rgba(244, 63, 94, 0.25);
+  background: rgba(244, 63, 94, 0.22);
   color: var(--rose-glow);
-  border: 1px solid rgba(244, 63, 94, 0.4);
+  border: 1px solid rgba(244, 63, 94, 0.45);
+}
+
+.task-stop-btn:hover {
+  background: rgba(244, 63, 94, 0.38);
+  border-color: rgba(244, 63, 94, 0.7);
+  box-shadow: 0 0 10px rgba(244, 63, 94, 0.4);
+  transform: translateY(-1px);
+}
+
+.task-stop-btn:active, .task-stop-btn.stopping {
+  background: rgba(244, 63, 94, 0.65);
+  color: #fff;
+  border-color: #f43f5e;
+  box-shadow: 0 0 14px rgba(244, 63, 94, 0.7);
+  transform: scale(0.96);
+}
+
+.task-stop-btn.stopping svg {
+  animation: taskStopPulse 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes taskStopPulse {
+  0% { transform: scale(0.8); opacity: 0.6; }
+  100% { transform: scale(1.2); opacity: 1; filter: drop-shadow(0 0 4px #f43f5e); }
+}
+
+.task-dock.dock-stopping {
+  border-color: rgba(244, 63, 94, 0.7) !important;
+  animation: taskDockStoppingAnim 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes taskDockStoppingAnim {
+  0% { box-shadow: 0 0 10px rgba(244, 63, 94, 0.2); }
+  100% { box-shadow: 0 0 20px rgba(244, 63, 94, 0.5); }
 }
 
 /* Browser dock */

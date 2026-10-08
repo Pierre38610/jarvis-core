@@ -718,6 +718,17 @@ async def stop_active_task(source: str = "user", reason: str = "Arrêt demandé 
         except Exception as e:
             print(f"[Task Stop] Erreur cancel agent: {e}")
 
+    # 2.b Interruption des tâches de navigation de fond Browser-Use / CDP
+    try:
+        from services.browser_task import BROWSER_TASKS
+        for b_task in list(BROWSER_TASKS.values()):
+            if getattr(b_task, "status", None) == "running" or (hasattr(b_task, "cancel_event") and not b_task.cancel_event.is_set()):
+                b_task.cancel_event.set()
+                b_task.status = "cancelled"
+                was_running = True
+    except Exception as b_err:
+        print(f"[Task Stop] Erreur cancel BrowserTask: {b_err}")
+
     # 3. Annulation des tâches asyncio de fond
     for task_key in ["bg_task", "browser_bg_task", "search_bg_task", "reasoning_bg_task", "deep_research_task"]:
         task = active_task_controller.get(task_key)
@@ -758,6 +769,25 @@ async def stop_active_task(source: str = "user", reason: str = "Arrêt demandé 
         "engine": "Google API Live",
         "model": config.GEMINI_LIVE_MODEL
     })
+
+    # 7. Information explicite injectée à Jarvis pour compréhension contextuelle
+    live_sess = active_task_controller.get("live_session")
+    if live_sess:
+        stop_prompt = (
+            f"[ARRÊT MANUEL INTERFACE] Pierre a cliqué sur le bouton 'ARRÊTER' pour interrompre immédiatement toutes les tâches d'agents et le développement en cours ({reason}). "
+            f"Toutes les missions Antigravity CLI, recherches et sous-agents ont été physiquement arrêtés.\n"
+            f"Consigne pour Aoede : Confirme brièvement et calmement à Pierre avec ta voix Aoede que tout est bien stoppé."
+        )
+        try:
+            await safe_send_live_client_content(
+                live_sess,
+                stop_prompt,
+                action_key=f"task_stop_{int(time.time())}",
+                priority=1,
+                wait_if_speaking=False
+            )
+        except Exception as e:
+            print(f"[Task Stop] Erreur information Live Jarvis: {e}")
 
     print(f"[Task Controller] Stop exécuté (source: {source}, was_running: {was_running}, tasks: {cancelled_tasks})")
     return {"status": "ok", "stopped": was_running, "cancelled_tasks": cancelled_tasks}

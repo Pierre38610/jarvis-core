@@ -304,6 +304,7 @@ const taskDockInstruction = document.getElementById('taskDockInstruction');
 const taskDockProgressText = document.getElementById('taskDockProgressText');
 const taskDirectiveInput = document.getElementById('taskDirectiveInput');
 const btnSendDirective = document.getElementById('btnSendDirective');
+const btnStopTask = document.getElementById('btnStopTask');
 
 // Panneau Notification E-mail
 const emailDock = document.getElementById('emailDock');
@@ -1065,6 +1066,7 @@ class SubagentOrbManager {
       if (agent.el && !agent.el.classList.contains('satellite-done')) {
         agent.el.style.setProperty('--target-x', `${coords.x}px`);
         agent.el.style.setProperty('--target-y', `${coords.y}px`);
+        agent.el.style.setProperty('--agent-idx', `${idx}`);
       }
     });
   }
@@ -2993,6 +2995,102 @@ if (btnSendDirective && taskDirectiveInput) {
         taskDirectiveInput.value = '';
       }
     }
+  };
+}
+
+function triggerStopActiveTask() {
+  if (btnStopTask) {
+    btnStopTask.classList.add('stopping');
+    btnStopTask.disabled = true;
+    btnStopTask.innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="task-spin"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      ARRÊT...
+    `;
+  }
+  if (taskDock) {
+    taskDock.classList.add('dock-stopping');
+  }
+  if (taskDockStatus) {
+    taskDockStatus.innerText = "ARRÊT EN COURS...";
+    taskDockStatus.style.color = "#f87171";
+  }
+  if (taskDockProgressText) {
+    taskDockProgressText.innerText = "Interruption immédiate de tous les agents Antigravity CLI...";
+  }
+
+  // 1. Dissolution visuelle immédiate des bulles sous-agents
+  if (window.subagentOrbManager) {
+    window.subagentOrbManager.clearAll();
+  }
+
+  // 2. Notification prioritaire par canal WebSocket
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify({ type: 'cancel_active_task' }));
+      console.log("[Task Stop]: Commande cancel_active_task émise via WebSocket");
+    } catch (e) {
+      console.warn("[Task Stop]: Erreur envoi WebSocket:", e);
+    }
+  }
+
+  // 3. Appel redondant REST /api/task/stop pour garantie d'arrêt
+  const token = localStorage.getItem('jarvis_device_token') || getCookie('jarvis_device_token') || '';
+  fetch('/api/task/stop', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Device-Token': token
+    }
+  })
+  .then(r => r.json())
+  .then(data => {
+    console.log("[Task Stop REST]:", data);
+    if (taskDockStatus) {
+      taskDockStatus.innerText = "AGENTS ARRÊTÉS";
+      taskDockStatus.style.color = "#ef4444";
+    }
+    if (taskDockProgressText) {
+      taskDockProgressText.innerText = "Toutes les actions et agents ont été arrêtés avec succès.";
+    }
+    setTimeout(() => {
+      if (taskDock) {
+        taskDock.style.display = 'none';
+        taskDock.classList.remove('dock-stopping');
+        taskDock.style.borderColor = '';
+      }
+      if (btnStopTask) {
+        btnStopTask.classList.remove('stopping');
+        btnStopTask.disabled = false;
+        btnStopTask.innerHTML = `
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+          ARRÊTER
+        `;
+      }
+      if (taskDockStatus) taskDockStatus.style.color = '';
+    }, 1600);
+  })
+  .catch(err => {
+    console.error("[Task Stop REST] Erreur:", err);
+    setTimeout(() => {
+      if (taskDock) {
+        taskDock.style.display = 'none';
+        taskDock.classList.remove('dock-stopping');
+      }
+      if (btnStopTask) {
+        btnStopTask.classList.remove('stopping');
+        btnStopTask.disabled = false;
+        btnStopTask.innerHTML = `
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+          ARRÊTER
+        `;
+      }
+    }, 1600);
+  });
+}
+
+if (btnStopTask) {
+  btnStopTask.onclick = () => {
+    triggerStopActiveTask();
   };
 }
 
