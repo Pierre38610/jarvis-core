@@ -531,3 +531,61 @@ async def test_dispatcher_browser_task_l3_fallback_announces_repli_cli():
         assert resp.get("web_search_failed") is True
 
 
+def test_search_router_extracts_target_pages():
+    """Vérifie que route_search_intent extrait correctement le nombre de pages demandé."""
+    cases = [
+        ("Fais un rapport L2 de 5 pages sur l'IA générative", 5),
+        ("Rédige une analyse tactique de 10 pages sur l'énergie", 10),
+        ("Rapport pdf de 3 pages comparant AWS et GCP", 3),
+        ("Document latex de 4 pages sur la cybersécurité", 4),
+        ("Analyse de 1 page sur le marché", 1),
+    ]
+    for query, expected_pages in cases:
+        decision = route_search_intent(query)
+        assert decision.level == "L2", f"Query '{query}' did not route to L2"
+        assert decision.tool == "launch_deep_research"
+        assert decision.target_pages == expected_pages, f"Query '{query}' expected {expected_pages} pages, got {decision.target_pages}"
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_launch_deep_research_handles_target_pages():
+    """Vérifie que launch_deep_research transmet target_pages au pipeline L2."""
+    from core.tools.dispatcher import dispatch_tool
+    from services.latex_report_service import LatexReportResult
+
+    fake_latex_res = LatexReportResult(
+        success=True,
+        pdf_path="/tmp/workspace/reports/rapport_l2.pdf",
+        md_path="/tmp/workspace/reports/rapport_l2.md",
+        tex_path="/tmp/workspace/reports/rapport_l2.tex",
+        user_notice="Rapport PDF généré avec succès.",
+    )
+
+    with patch("core.tools.dispatcher.verify_antigravity_cli_ready", new_callable=AsyncMock, return_value=(True, "", None)), \
+         patch("core.tools.dispatcher._execute_cli_map_reduce_pipeline", new_callable=AsyncMock) as mock_pipeline:
+        
+        from core.tools.result import ToolResult
+        mock_pipeline.return_value = ToolResult.done(
+            user_message="Rapport L2 5 pages généré.",
+            verified=True,
+            evidence="Rapport PDF compilé",
+        )
+
+        resp = await dispatch_tool(
+            name="launch_deep_research",
+            args={
+                "consigne": "Étude tactique sur les semi-conducteurs",
+                "target_pages": 5,
+                "sync": True,
+            },
+            websocket=None,
+            session=None,
+        )
+
+        assert resp["status"] == "done"
+        mock_pipeline.assert_awaited_once()
+        _, kwargs = mock_pipeline.call_args
+        assert kwargs.get("target_pages") == 5
+
+
+

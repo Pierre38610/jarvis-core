@@ -600,6 +600,7 @@ async def run_l2_parallel_agents(
     custom_exec_fn: Optional[Callable] = None,
     execute_paid_api_fn: Optional[Callable] = None,
     on_progress: Optional[Callable[[Dict[str, Any]], Coroutine[Any, Any, None]]] = None,
+    target_pages: int = 3,
 ) -> L2ExecutionResult:
     """Orchestre l'exécution parallèle d'agents L2 Flash/Pro bornés (défaut 3) avec asyncio.gather,
     isolation stricte des workspaces, phase de cross-check (contradictions, sources, JSON),
@@ -686,9 +687,9 @@ async def run_l2_parallel_agents(
 
             # Exécution parallèle des agents via asyncio.gather
             async def _run_single_worker(wm: L2WorkerMission) -> AgentOutput:
-                sub_id = f"{tid}_{wm.worker_id}"
                 t0_w = time.perf_counter()
-                p_text = build_l2_agentic_prompt(wm.role, wm.mission, context=f"Mission L2 : {goal}")
+                sub_id = f"{tid}_{wm.worker_id}"
+                p_text = build_l2_agentic_prompt(wm.role, wm.mission, context=f"Mission L2 : {goal}", target_pages=target_pages)
                 res = await run_agentic(
                     role=wm.role,
                     prompt=p_text,
@@ -781,10 +782,7 @@ async def run_l2_parallel_agents(
                 goal=goal,
                 findings=findings_data,
                 contradictions=cross_check.contradictions,
-            ) + (
-                "\n\nCONSIGNE DE RÉDACTION : Rédige le rapport en texte structuré prêt pour mise en page LaTeX "
-                "(titre clair, résumé exécutif, sections thématiques bien délimitées avec sous-titres, et sources citées si présentes). "
-                "Ne jamais inventer de sources ni de résultats non vérifiés."
+                target_pages=target_pages,
             )
             synth_id = f"{tid}_synthesis"
             try:
@@ -834,6 +832,7 @@ async def run_l2_parallel_agents(
                         content=synthesis_output.conclusion,
                         sources=all_collected_sources,
                         output_dir=synth_ws,
+                        target_pages=target_pages,
                     )
                     if latex_res.success and latex_res.pdf_path:
                         if latex_res.pdf_path not in synthesis_output.artifacts:

@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.91.0 — Discrimination sémantique et exécution multitâche transparente lors de l'activité des agents CLI en tâche de fond (interdiction des transmissions aveugles d'actions indépendantes vers guide_active_task, clarification stricte des instructions Live et guard anti-confusion).*
+> *Dernière révision majeure : Version 5.92.0 — Rédaction systématique des rapports d'analyse tactique multi-agents L2 en LaTeX et compilation PDF par Antigravity CLI, enrichissement substantiel du contenu et calibration personnalisable de la longueur du document en nombre de pages (target_pages / nb_pages).*
 
 
 ---
@@ -927,7 +927,7 @@ L'implémentation respecte le standard d'échange bidirectionnel temps réel pou
 | **1** | `stop_current_action` | `stop` | Bloquant | `reason: str` (opt) | `{"status": "stopped", "message": str, "instruction_to_jarvis": str}` | `core/shared_state.py` |
 | **2** | `guide_active_task` | `guide` | Non-bloquant | `directive: str` (req) | `ToolResult` (`done`\|`failed`, guard anti-confusion) | `core/shared_state.py` |
 | **3** | `ask_deep_reasoning` | `deep_reasoning` | Non-bloquant | `question: str` (req), `model: str`, `intensite_reflexion: str`, `confirmed_by_user: bool` | `{"status": "launched_in_background"|"success", "summary": str}` | `services/reasoning_service.py` |
-| **4** | `launch_deep_research` | `lancer_mission_deep_research`, `deep_research` | Non-bloquant | `consigne: str`, `consigne_utilisateur: str` (alias ASR), `envoyer_email: bool`, `destinataire_email: str` — *aucun champ marqué requis* (le dispatcher accepte `consigne` / `consigne_utilisateur` / `sujet`) | `ToolResult` (`done`\|`failed`) | `services/browser_agent` (recette `gemini_deep_research`, résultat attendu en direct) avec repli `services/deep_research_service.py` |
+| **4** | `launch_deep_research` | `lancer_mission_deep_research`, `deep_research` | Non-bloquant | `consigne: str`, `consigne_utilisateur: str` (alias ASR), `target_pages: int` (opt, défaut 3), `nb_pages: int`, `envoyer_email: bool`, `destinataire_email: str` — *aucun champ marqué requis* (le dispatcher accepte `consigne` / `consigne_utilisateur` / `sujet`, extrait la longueur en pages et génère systématiquement un rapport LaTeX compilé en PDF avec repli Markdown) | `ToolResult` (`done`\|`failed`) | `services/browser_agent` (recette `gemini_deep_research` pour L3) ou `_execute_cli_map_reduce_pipeline` (Map-Reduce L2 LaTeX PDF) |
 | **5** | `search_web` | `web_search` | Bloquant | `query: str` (req) | `{"status": "success", "results": list[dict], "summary": str}` | `services/browser_service.py` |
 | **6** | `browser_task` | `run_browser_task` (déclaration jumelle) | Non-bloquant | `goal: str` (req), `start_url: str`, `recipe: str` (`cart`\|`train`\|`gemini_deep_research`) | `{"status": "launched_in_background", "task_id": str}` | `services/browser_agent/loop.py` & `local_browser_actions.py` |
 | **7** | `open_user_browser` | `open_browser` | Bloquant | `url: str` (req), `reason: str` | `{"status": "opened", "url": str, "message": str}` | `services/browser_service.py` |

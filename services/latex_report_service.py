@@ -51,6 +51,8 @@ DEFAULT_LATEX_TEMPLATE = r"""\documentclass[11pt,a4paper]{article}
 }
 \usepackage{amsmath}
 \usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
 \usepackage{xcolor}
 \usepackage{fancyhdr}
 \pagestyle{fancy}
@@ -70,6 +72,8 @@ DEFAULT_LATEX_TEMPLATE = r"""\documentclass[11pt,a4paper]{article}
 \thispagestyle{fancy}
 
 <ABSTRACT_BLOCK>
+
+<TOC_BLOCK>
 
 \vspace{0.5cm}
 \hrule
@@ -164,6 +168,53 @@ def _format_inline_markdown(text: str) -> str:
     return t_escaped
 
 
+def _parse_markdown_table(table_lines: List[str]) -> str:
+    """Convertit un bloc de lignes Markdown de tableau en environnement tabular LaTeX."""
+    if not table_lines:
+        return ""
+    
+    rows: List[List[str]] = []
+    for line in table_lines:
+        raw_cells = line.strip().strip("|").split("|")
+        cells = [c.strip() for c in raw_cells]
+        # Ignore la ligne de séparation |---|---|
+        if all(re.match(r"^:?-+:?$", c) for c in cells if c):
+            continue
+        rows.append(cells)
+
+    if not rows:
+        return ""
+
+    num_cols = max(len(r) for r in rows)
+    col_format = " ".join(["l"] * num_cols)
+
+    latex_table = [
+        r"\begin{center}",
+        f"\\begin{{tabular}}{{{col_format}}}",
+        r"\toprule"
+    ]
+
+    header = rows[0]
+    # Complète les cellules manquantes
+    while len(header) < num_cols:
+        header.append("")
+    header_formatted = [f"\\textbf{{{_format_inline_markdown(c)}}}" for c in header]
+    latex_table.append(" & ".join(header_formatted) + r" \\")
+    latex_table.append(r"\midrule")
+
+    for row in rows[1:]:
+        while len(row) < num_cols:
+            row.append("")
+        row_formatted = [_format_inline_markdown(c) for c in row]
+        latex_table.append(" & ".join(row_formatted) + r" \\")
+
+    latex_table.append(r"\bottomrule")
+    latex_table.append(r"\end{tabular}")
+    latex_table.append(r"\end{center}")
+
+    return "\n".join(latex_table)
+
+
 def markdown_to_latex_body(text: str) -> str:
     """Convertit du texte structuré ou Markdown en syntaxe LaTeX valide et protégée contre les injections."""
     if not text:
@@ -173,6 +224,7 @@ def markdown_to_latex_body(text: str) -> str:
     latex_parts: List[str] = []
     in_itemize = False
     in_enumerate = False
+    table_buffer: List[str] = []
 
     def close_lists() -> List[str]:
         nonlocal in_itemize, in_enumerate
@@ -185,11 +237,43 @@ def markdown_to_latex_body(text: str) -> str:
             in_enumerate = False
         return res
 
+    def flush_table() -> List[str]:
+        nonlocal table_buffer
+        res = []
+        if table_buffer:
+            tbl = _parse_markdown_table(table_buffer)
+            if tbl:
+                res.append(tbl)
+            table_buffer = []
+        return res
+
     for raw_line in lines:
         line = raw_line.strip()
+
+        # Détection de ligne de tableau Markdown
+        if line.startswith("|") and line.endswith("|") and line.count("|") >= 2:
+            latex_parts.extend(close_lists())
+            table_buffer.append(line)
+            continue
+        elif table_buffer:
+            latex_parts.extend(flush_table())
+
         if not line:
             latex_parts.extend(close_lists())
             latex_parts.append(r"\vspace{0.2cm}")
+            continue
+
+        # Ligne horizontale
+        if line in ("---", "***", "___"):
+            latex_parts.extend(close_lists())
+            latex_parts.append(r"\vspace{0.3cm}\hrule\vspace{0.3cm}")
+            continue
+
+        # Citation / Blockquote
+        if line.startswith("> "):
+            latex_parts.extend(close_lists())
+            quote_text = _format_inline_markdown(line[2:].strip())
+            latex_parts.append(f"\\begin{{quote}}\n\\textit{{{quote_text}}}\n\\end{{quote}}")
             continue
 
         # Titres de sections Markdown
@@ -239,6 +323,8 @@ def markdown_to_latex_body(text: str) -> str:
         p_latex = _format_inline_markdown(line)
         latex_parts.append(f"{p_latex}\n")
 
+    if table_buffer:
+        latex_parts.extend(flush_table())
     latex_parts.extend(close_lists())
     return "\n".join(latex_parts)
 
@@ -250,6 +336,7 @@ def generate_latex_document(
     sources: Optional[List[Any]] = None,
     author: str = "J.A.R.V.I.S. (Stark Multi-Agent Intelligence)",
     date_str: Optional[str] = None,
+    target_pages: int = 3,
     template: str = DEFAULT_LATEX_TEMPLATE,
 ) -> str:
     """Génère le code source complet d'un document .tex à partir de données structurées échappées."""
@@ -266,6 +353,17 @@ def generate_latex_document(
             "\\noindent " + abstract_content + "\n"
             "\\end{abstract}"
         )
+
+    # Bloc Table des matières (si rapport >= 3 pages)
+    toc_block = ""
+    if target_pages >= 3:
+        toc_block = (
+            "\\vspace{0.3cm}\n"
+            "\\tableofcontents\n"
+            "\\vspace{0.5cm}\n"
+        )
+        if target_pages >= 4:
+            toc_block += "\\newpage\n"
 
     # Corps du rapport
     body_content = markdown_to_latex_body(body) if body else ""
@@ -304,6 +402,7 @@ def generate_latex_document(
     tex_code = tex_code.replace("<AUTHOR>", escaped_author)
     tex_code = tex_code.replace("<DATE>", escaped_date)
     tex_code = tex_code.replace("<ABSTRACT_BLOCK>", abstract_block)
+    tex_code = tex_code.replace("<TOC_BLOCK>", toc_block)
     tex_code = tex_code.replace("<BODY>", body_content)
     tex_code = tex_code.replace("<SOURCES_BLOCK>", sources_block)
 
@@ -341,19 +440,57 @@ def extract_latex_log_error(log_path: Optional[str], fallback_output: str = "") 
     return "Erreur TeX inconnue (aucun détail disponible dans le log)"
 
 
+def find_latex_compiler(preferred_bin: Optional[str] = None) -> Tuple[Optional[str], str]:
+    """Détecte le meilleur compilateur LaTeX disponible (latexmk, pdflatex, xelatex)."""
+    if preferred_bin and preferred_bin != "latexmk":
+        w = shutil.which(preferred_bin) or (preferred_bin if os.path.exists(preferred_bin) else None)
+        if w:
+            return w, "custom"
+        return None, "none"
+
+    # 1. latexmk
+    latexmk_path = shutil.which("latexmk")
+    if latexmk_path:
+        return latexmk_path, "latexmk"
+
+    # 2. pdflatex (incluant les chemins Windows MiKTeX et TeX Live standards)
+    pdflatex_candidates = [
+        "pdflatex",
+        r"C:\Users\pierr\AppData\Local\Programs\MiKTeX\miktex\bin\x64\pdflatex.exe",
+        r"C:\Program Files\MiKTeX\miktex\bin\x64\pdflatex.exe",
+        r"C:\texlive\2026\bin\windows\pdflatex.exe",
+        r"C:\texlive\2025\bin\windows\pdflatex.exe",
+        r"C:\texlive\2024\bin\windows\pdflatex.exe",
+        "/usr/bin/pdflatex",
+        "/usr/local/bin/pdflatex",
+        "/home/opc/.local/bin/pdflatex",
+    ]
+    for cand in pdflatex_candidates:
+        w = shutil.which(cand) or (cand if os.path.exists(cand) else None)
+        if w:
+            return w, "pdflatex"
+
+    # 3. xelatex
+    xelatex_path = shutil.which("xelatex")
+    if xelatex_path:
+        return xelatex_path, "xelatex"
+
+    return None, ""
+
+
 def compile_latex(
     tex_path: str,
     output_dir: Optional[str] = None,
     timeout: float = 60.0,
     latexmk_bin: str = "latexmk",
 ) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
-    """Compile un fichier .tex en PDF avec latexmk dans un dossier isolé.
+    """Compile un fichier .tex en PDF avec latexmk ou pdflatex dans un dossier isolé.
     
     Args:
         tex_path: Chemin absolu vers le fichier .tex
         output_dir: Répertoire de travail pour la compilation
         timeout: Délai d'attente maximum en secondes
-        latexmk_bin: Commande latexmk (défaut: 'latexmk')
+        latexmk_bin: Commande latexmk ou pdflatex (défaut: 'latexmk')
         
     Returns:
         Tuple (succès: bool, pdf_path: Optional[str], log_path: Optional[str], error_extract: Optional[str])
@@ -366,12 +503,30 @@ def compile_latex(
     pdf_path = os.path.join(work_dir, f"{base_name}.pdf")
     log_path = os.path.join(work_dir, f"{base_name}.log")
 
-    cmd = [
-        latexmk_bin,
-        "-pdf",
-        "-interaction=nonstopmode",
-        tex_filename
-    ]
+    compiler_bin, compiler_type = find_latex_compiler(latexmk_bin)
+    
+    # Si non détecté par auto-détection, utilise l'argument tel quel pour permettre le mocking dans les tests
+    if not compiler_bin:
+        compiler_bin = latexmk_bin
+        compiler_type = "latexmk" if "latexmk" in latexmk_bin else "pdflatex"
+
+    if compiler_type == "latexmk" or "latexmk" in str(compiler_bin).lower():
+        cmd = [
+            compiler_bin,
+            "-pdf",
+            "-interaction=nonstopmode",
+            tex_filename
+        ]
+    else:
+        # Configuration pdflatex / MiKTeX / Linux TeX Live
+        cmd = [
+            compiler_bin,
+            "-interaction=nonstopmode",
+            "-file-line-error",
+            tex_filename
+        ]
+        if os.name == "nt" and "miktex" in str(compiler_bin).lower():
+            cmd.insert(1, "-enable-installer")
 
     try:
         logger.info(f"[LaTeX Report Service] Compilation : {' '.join(cmd)} dans {work_dir}")
@@ -382,6 +537,19 @@ def compile_latex(
             text=True,
             timeout=timeout,
         )
+
+        # Si pdflatex et présence potentielle de TOC/liens, passe 2 pour résoudre la table des matières
+        if proc.returncode == 0 and compiler_type == "pdflatex":
+            try:
+                subprocess.run(
+                    cmd,
+                    cwd=work_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout / 2,
+                )
+            except Exception:
+                pass
 
         if proc.returncode == 0 and os.path.exists(pdf_path):
             logger.info(f"[LaTeX Report Service] Compilation PDF réussie : {pdf_path}")
@@ -398,7 +566,7 @@ def compile_latex(
         return False, None, log_path if os.path.exists(log_path) else None, err_msg
 
     except FileNotFoundError:
-        err_msg = f"Le compilateur LaTeX ('{latexmk_bin}') est introuvable sur le système."
+        err_msg = f"Le compilateur LaTeX ('{compiler_bin}') est introuvable sur le système."
         logger.warning(f"[LaTeX Report Service] {err_msg}")
         return False, None, None, err_msg
 
@@ -417,6 +585,7 @@ def generate_and_compile_l2_report(
     base_name: Optional[str] = None,
     timeout: float = 60.0,
     latexmk_bin: str = "latexmk",
+    target_pages: int = 3,
 ) -> LatexReportResult:
     """Génère le document .tex, crée un fichier .md de repli, puis compile le PDF.
     En cas d'échec de compilation TeX, retourne le chemin du fichier .md de repli et le détail de l'erreur.
@@ -461,6 +630,7 @@ def generate_and_compile_l2_report(
         summary=summary,
         body=content,
         sources=sources,
+        target_pages=target_pages,
     )
 
     try:
@@ -511,3 +681,4 @@ def generate_and_compile_l2_report(
             error_extract=err_extract,
             user_notice=notice,
         )
+

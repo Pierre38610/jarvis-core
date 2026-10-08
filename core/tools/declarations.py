@@ -130,8 +130,8 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                     name="launch_deep_research",
                     description=(
                         "RECHERCHE APPROFONDIE ET ANALYSE MULTI-AGENTS CLI NIVEAU 2 (L2 / TIER 2). "
-                        "Moteur de recherche et d'analyse multi-agents Antigravity sur le VPS (prospecteur, analyste, synthèse) pour analyses tactiques, études multi-sources, génération de rapports structurés LaTeX (PDF/Markdown) et expédition par e-mail. "
-                        "Prends l'initiative d'utiliser cet outil dès que Pierre demande une analyse tactique, une recherche de niveau 2 (L2), un rapport LaTeX, un comparatif ou une orchestration multi-agents CLI."
+                        "Moteur de recherche et d'analyse multi-agents Antigravity sur le VPS (prospecteur, analyste, synthèse) pour analyses tactiques complètes, études multi-sources approfondies, génération de rapports systématiquement rédigés en LaTeX et compilés en PDF (avec longueur personnalisable en nombre de pages) et expédition par e-mail ou affichage. "
+                        "Prends l'initiative d'utiliser cet outil dès que Pierre demande une analyse tactique, une recherche de niveau 2 (L2), un rapport LaTeX (avec ou sans nombre de pages précisé, ex: 'rapport de 5 pages'), un comparatif ou une orchestration multi-agents CLI."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -144,6 +144,14 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                             "consigne_utilisateur": types.Schema(
                                 type="STRING",
                                 description="Alias de consigne brute dictée par l'utilisateur."
+                            ),
+                            "target_pages": types.Schema(
+                                type="INTEGER",
+                                description="Nombre cible de pages pour le rapport PDF rédigé en LaTeX (ex: 2, 3, 5, 8, 10). Par défaut 3 pages pour un rapport complet et substantiel."
+                            ),
+                            "nb_pages": types.Schema(
+                                type="INTEGER",
+                                description="Alias optionnel pour le nombre cible de pages du rapport PDF."
                             ),
                             "envoyer_email": types.Schema(
                                 type="BOOLEAN",

@@ -36,6 +36,7 @@ class SearchRoutingDecision:
     query: str = ""
     model_name: str = ""
     recipe: Optional[str] = None
+    target_pages: Optional[int] = None
 
     def __post_init__(self):
         if not self.model_name:
@@ -58,6 +59,7 @@ class SearchRoutingDecision:
             "query": self.query,
             "model_name": self.model_name,
             "recipe": self.recipe,
+            "target_pages": self.target_pages,
         }
 
 
@@ -134,6 +136,17 @@ def route_search_intent(
     up = _normalize_text(user_preference or "")
     th = _normalize_text(task_hint or "")
 
+    target_pages: Optional[int] = None
+    if norm:
+        page_match = re.search(r"\b(\d+)\s*(?:pages?|page)\b", norm)
+        if page_match:
+            try:
+                p_val = int(page_match.group(1))
+                if 1 <= p_val <= 100:
+                    target_pages = p_val
+            except Exception:
+                pass
+
     # ─── 1. SURCHARGES EXPLICITES ───
 
     # A. Override par intensite_reflexion
@@ -148,6 +161,7 @@ def route_search_intent(
                 reason=f"Override explicite intensité L1 rapide ({intensite_reflexion})",
                 is_override=True,
                 query=query,
+                target_pages=target_pages,
             )
         elif any(k in ir for k in ["tactique", "tier2", "tier 2", "flash-high", "flash_high", "l2", "intermediaire"]):
             return SearchRoutingDecision(
@@ -159,6 +173,7 @@ def route_search_intent(
                 reason=f"Override explicite intensité L2 tactique multi-agent CLI ({intensite_reflexion})",
                 is_override=True,
                 query=query,
+                target_pages=target_pages,
             )
         elif any(k in ir for k in ["approfondie", "tier3", "tier 3", "pro-high", "pro_high", "l3", "fond", "pro", "exhaustif"]):
             return SearchRoutingDecision(
@@ -171,6 +186,7 @@ def route_search_intent(
                 reason=f"Override explicite intensité L3 approfondie web Gemini ({intensite_reflexion})",
                 is_override=True,
                 query=query,
+                target_pages=target_pages,
             )
 
     # B. Override par user_preference
@@ -185,6 +201,7 @@ def route_search_intent(
                 reason=f"Override préférence utilisateur L1 ({user_preference})",
                 is_override=True,
                 query=query,
+                target_pages=target_pages,
             )
         elif any(k in up for k in ["l2", "tier2", "tier 2", "tactique", "cli", "multi-agent", "multi_agent"]):
             return SearchRoutingDecision(
@@ -196,6 +213,7 @@ def route_search_intent(
                 reason=f"Override préférence utilisateur L2 multi-agent CLI ({user_preference})",
                 is_override=True,
                 query=query,
+                target_pages=target_pages,
             )
         elif any(k in up for k in ["l3", "tier3", "tier 3", "deep", "deep_research", "pro", "approfondie", "browser", "web"]):
             return SearchRoutingDecision(
@@ -208,6 +226,7 @@ def route_search_intent(
                 reason=f"Override préférence utilisateur L3 Gemini Deep Research web ({user_preference})",
                 is_override=True,
                 query=query,
+                target_pages=target_pages,
             )
 
     # C. Signaux vocaux prioritaires dans la requête
@@ -229,6 +248,7 @@ def route_search_intent(
                 reason="Override vocal explicite: consigne de rapidité L1 ('fais vite' / 'L1')",
                 is_override=True,
                 query=query,
+                target_pages=target_pages,
             )
 
         # Override explicite L3 : "analyse en profondeur", "deep research", "niveau 3", "L3", etc.
@@ -255,6 +275,7 @@ def route_search_intent(
                 reason="Override vocal explicite: consigne de recherche approfondie web Gemini L3 ('analyse en profondeur' / 'niveau 3' / 'L3')",
                 is_override=True,
                 query=query,
+                target_pages=target_pages,
             )
 
         # Override explicite L2 : "analyse tactique", "L2", "niveau 2", "tier 2", etc.
@@ -262,19 +283,25 @@ def route_search_intent(
             "analyse tactique", "passe tactique", "tactique", "intermediaire", "mode tactique",
             "multi-agent", "multi agents", "multi-agents", "orchestration agents", "etude tactique",
             "recherche de niveau 2", "recherche niveau 2", "niveau deux", "nievau 2", "nievau deux",
-            "recherche l2", "lance une recherche l2", "lance une recherche de niveau 2"
+            "recherche l2", "lance une recherche l2", "lance une recherche de niveau 2",
+            "rapport latex", "rapport en latex", "document latex", "compilation latex", "compilation pdf",
+            "rapport pdf", "rapport en pdf"
         ]
         has_l2_regex = bool(re.search(r"\b(l2|nive?a?u\s*(2|deux)|nievau\s*(2|deux)|niv\s*(2|deux)|tier\s*(2|deux)|palier\s*(2|deux))\b", norm))
-        if has_l2_regex or any(sig in norm for sig in tier2_override_signals):
+        has_l2_pages_signal = bool(re.search(r"\b(rapport|analyse|etude|document|synthese|dossier)\b.*?\b\d+\s*pages?\b", norm)) or (
+            bool(target_pages) and any(k in norm for k in ["latex", "pdf", "rapport", "analyse", "etude", "document", "redige", "synthese"])
+        )
+        if has_l2_regex or has_l2_pages_signal or any(sig in norm for sig in tier2_override_signals):
             return SearchRoutingDecision(
                 tool="launch_deep_research",
                 tier=2,
                 level="L2",
                 effort="medium",
                 timeout=120,
-                reason="Override vocal explicite: consigne tactique multi-agent CLI L2 ('analyse tactique' / 'L2')",
+                reason="Override vocal explicite: consigne tactique multi-agent CLI L2 ('analyse tactique' / 'L2' / rapport calibré)",
                 is_override=True,
                 query=query,
+                target_pages=target_pages,
             )
 
     # ─── 2. DÉTECTION SÉMANTIQUE / LEXICALE PAR PALIER ───
@@ -292,6 +319,7 @@ def route_search_intent(
                 reason="Task hint ciblé Gemini Deep Research Web L3",
                 is_override=False,
                 query=query,
+                target_pages=target_pages,
             )
         elif th in ("launch_deep_research", "multi_agent_cli", "medium", "tactique", "l2"):
             return SearchRoutingDecision(
@@ -303,6 +331,7 @@ def route_search_intent(
                 reason="Task hint ciblé Multi-Agents CLI L2",
                 is_override=False,
                 query=query,
+                target_pages=target_pages,
             )
         elif th in ("search_web", "web_search", "simple", "factuel", "l1"):
             return SearchRoutingDecision(
@@ -314,6 +343,7 @@ def route_search_intent(
                 reason="Task hint ciblé Recherche Web L1",
                 is_override=False,
                 query=query,
+                target_pages=target_pages,
             )
 
     if norm:
@@ -336,6 +366,7 @@ def route_search_intent(
                 reason="Intention détectée: recherche web approfondie Gemini L3",
                 is_override=False,
                 query=query,
+                target_pages=target_pages,
             )
 
         # B. Signaux L2 (Comparatifs, analyses multi-sources, benchmarks, analyse tactique multi-agents CLI VPS)
@@ -355,6 +386,7 @@ def route_search_intent(
                 reason="Intention détectée: analyse tactique et comparatif multi-agent CLI L2",
                 is_override=False,
                 query=query,
+                target_pages=target_pages,
             )
 
         # C. Signaux Navigation Web Autonome (actions interactives)
@@ -377,6 +409,7 @@ def route_search_intent(
                 reason="Intention détectée: navigation web autonome",
                 is_override=False,
                 query=query,
+                target_pages=target_pages,
             )
 
         # D. Signaux L1 (Recherche factuelle directe, météo, cours, définition, date, fait récent)
@@ -396,6 +429,7 @@ def route_search_intent(
                 reason="Intention détectée: requête factuelle directe L1",
                 is_override=False,
                 query=query,
+                target_pages=target_pages,
             )
 
     # ─── 3. DÉFAUT ÉCONOMIQUE EN CAS D'AMBIGUÏTÉ -> L1 ───
@@ -408,4 +442,5 @@ def route_search_intent(
         reason="Défaut économique L1 en cas d'ambiguïté (recherche rapide Factuelle)",
         is_override=False,
         query=query,
+        target_pages=target_pages,
     )

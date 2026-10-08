@@ -160,6 +160,77 @@ def test_generate_latex_document_full():
     assert r"\end{document}" in tex_code
 
 
+def test_markdown_to_latex_body_table_and_quote():
+    """Vérifie la conversion des tableaux Markdown et citations en syntaxe LaTeX valide."""
+    md_input = (
+        "Voici un tableau comparatif :\n\n"
+        "| Critère | Modèle A | Modèle B |\n"
+        "|---|---|---|\n"
+        "| Précision | 95% | 88% |\n"
+        "| Vitesse | Rapide | Moyen |\n\n"
+        "> Une citation importante d'expert.\n"
+    )
+    latex_output = markdown_to_latex_body(md_input)
+
+    assert r"\begin{tabular}" in latex_output
+    assert r"\toprule" in latex_output
+    assert r"\midrule" in latex_output
+    assert r"\bottomrule" in latex_output
+    assert r"\end{tabular}" in latex_output
+    assert r"Précision & 95\% & 88\% \\" in latex_output
+    assert r"\begin{quote}" in latex_output
+    assert r"Une citation importante d'expert." in latex_output
+    assert r"\end{quote}" in latex_output
+
+
+def test_generate_latex_document_target_pages_toc():
+    """Vérifie que la table des matières n'est incluse que pour les documents d'au moins 3 pages."""
+    # Moins de 3 pages -> pas de table des matières
+    short_doc = generate_latex_document(
+        title="Court Rapport",
+        summary="Résumé court",
+        body="## Intro\nTexte court.",
+        target_pages=2,
+    )
+    assert r"\tableofcontents" not in short_doc
+
+    # 3 pages -> table des matières incluse
+    medium_doc = generate_latex_document(
+        title="Rapport Moyen",
+        summary="Résumé moyen",
+        body="## Intro\nTexte moyen.",
+        target_pages=3,
+    )
+    assert r"\tableofcontents" in medium_doc
+
+    # 4 pages ou plus -> table des matières avec saut de page
+    long_doc = generate_latex_document(
+        title="Long Rapport",
+        summary="Résumé long",
+        body="## Intro\nTexte long.",
+        target_pages=5,
+    )
+    assert r"\tableofcontents" in long_doc
+    assert r"\newpage" in long_doc
+
+
+def test_find_latex_compiler_auto_detection():
+    """Vérifie le résolveur automatique de compilateur LaTeX."""
+    from services.latex_report_service import find_latex_compiler
+
+    # Si explicitement fourni et inexistant
+    comp, comp_type = find_latex_compiler("non_existent_compiler_xyz_123")
+    assert comp is None
+    assert comp_type == "none"
+
+    # Test avec un chemin mocké
+    with patch("shutil.which", side_effect=lambda x: "/usr/bin/pdflatex" if "pdflatex" in x else None), \
+         patch("os.path.exists", return_value=False):
+        compiler, comp_type = find_latex_compiler()
+        assert compiler == "/usr/bin/pdflatex"
+        assert comp_type == "pdflatex"
+
+
 # ─── 3. Tests de Compilation LaTeX & Gestion des Erreurs / Timeout ─────────────
 
 def test_compile_latex_success(isolated_dir):

@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from typing import Any, Optional, Dict
 
@@ -25,6 +26,7 @@ from services.google_antigravity import (
     AgentOutput,
     verify_antigravity_cli_ready,
 )
+from services.antigravity_prompts import build_l2_synthesis_prompt
 from services.memory_service import memory_service
 from services.memory import vector_memory
 from services.unified_memory import unified_memory_manager
@@ -221,12 +223,13 @@ async def _execute_cli_map_reduce_pipeline(
     websocket: Any = None,
     is_cli_fallback: bool = False,
     fallback_cause: str = "",
+    target_pages: int = 3,
 ) -> ToolResult:
     """
-    Exécute le pipeline 3 phases Map-Reduce Antigravity CLI :
-      - Phase 1 : Prospecteur (gemini-2.5-flash / effort medium)
-      - Phase 2 : Analyste (gemini-2.5-pro / effort high)
-      - Phase 3 : Synthèse (gemini-2.5-pro / effort medium)
+    Exécute le pipeline 3 phases Map-Reduce Antigravity CLI avec rédaction LaTeX systématique :
+      - Phase 1 : Prospecteur (gemini-2.5-flash / effort medium) - Collecte exhaustive & multi-sources
+      - Phase 2 : Analyste (gemini-2.5-pro / effort high) - Examen critique, benchmarking & triangulation
+      - Phase 3 : Synthèse & Rapport LaTeX (gemini-2.5-pro / effort medium) - Livrable structuré calibré en pages
     Utilisé pour l'analyse multi-agents L2 et comme repli de secours explicite pour L3.
     """
     cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
@@ -267,9 +270,16 @@ async def _execute_cli_map_reduce_pipeline(
     )
     try:
         await update_subagent(p_agent_id, activity="browsing", task="Collecte exhaustive des sources & données...")
+        p_prompt = (
+            f"Consigne de recherche : {consigne}\n\n"
+            f"MISSION PROSPECTEUR EXHAUSTIF (L2) :\n"
+            f"Collecte exhaustive et détaillée de faits concrets, données chiffrées, benchmarks techniques, "
+            f"dates clés, architectures, exemples réels et sources fiables sur le sujet.\n"
+            f"Fournis une exploration complète et approfondie sous forme de faits structurés avec leurs sources associées."
+        )
         out_p: AgentOutput = await run_agentic(
             role="prospector",
-            prompt=f"Collecte et prospection exhaustive de données et sources sur : {consigne}",
+            prompt=p_prompt,
             model=MODEL_FLASH,
             effort="medium",
             timeout=300,
@@ -335,13 +345,19 @@ async def _execute_cli_map_reduce_pipeline(
     )
     try:
         await update_subagent(a_agent_id, activity="thinking", task="Analyse critique, détection de biais et triangulation...")
+        a_prompt = (
+            f"Consigne initiale : {consigne}\n\n"
+            f"MISSION ANALYSTE CRITIQUE & COMPARATIF (L2) :\n"
+            f"Données brutes recueillies par le prospecteur :\n{out_p.conclusion}\n"
+            f"Sources : {json.dumps(out_p.sources, ensure_ascii=False)}\n\n"
+            f"Directives d'analyse :\n"
+            f"- Procède à une analyse critique rigoureuse et une triangulation des faits.\n"
+            f"- Établis une comparaison multi-critères approfondie (forces, faiblesses, compromis coûts/performances).\n"
+            f"- Identifie les nuances, risques, points de vigilance et limitations techniques."
+        )
         out_a: AgentOutput = await run_agentic(
             role="critic",
-            prompt=(
-                f"Analyse critique et triangulation pour la consigne : {consigne}\n"
-                f"Données brutes recueillies par le prospecteur :\n{out_p.conclusion}\n"
-                f"Sources : {json.dumps(out_p.sources, ensure_ascii=False)}"
-            ),
+            prompt=a_prompt,
             model=MODEL_PRO,
             effort="high",
             timeout=300,
@@ -407,15 +423,17 @@ async def _execute_cli_map_reduce_pipeline(
     )
     try:
         await update_subagent(s_agent_id, activity="coding", task="Rédaction du rapport de synthèse final...")
+        s_prompt = build_l2_synthesis_prompt(
+            goal=consigne,
+            findings=[
+                {"role": "prospector", "conclusion": out_p.conclusion, "sources": out_p.sources, "facts": getattr(out_p, "facts", [])},
+                {"role": "analyst", "conclusion": out_a.conclusion, "sources": out_a.sources, "uncertainties": getattr(out_a, "open_questions", [])},
+            ],
+            target_pages=target_pages,
+        )
         out_s: AgentOutput = await run_agentic(
             role="synthesis",
-            prompt=(
-                f"Consigne initiale : {consigne}\n"
-                f"Données vérifiées de l'analyste :\n{out_a.conclusion}\n"
-                f"Questions ouvertes restantes : {json.dumps(out_a.open_questions, ensure_ascii=False)}\n"
-                f"Rédige une synthèse exécutive structurée et percutante prête pour un rapport LaTeX structuré "
-                f"(titre, résumé, sections détaillées, sources si présentes), sans inventer de sources ni de résultats."
-            ),
+            prompt=s_prompt,
             model=MODEL_PRO,
             effort="medium",
             timeout=300,
@@ -477,6 +495,7 @@ async def _execute_cli_map_reduce_pipeline(
         content=out_s.conclusion,
         sources=all_sources,
         output_dir=s_ws,
+        target_pages=target_pages,
     )
 
     report_attachments = list(out_s.artifacts or [])
@@ -564,7 +583,7 @@ async def _execute_cli_map_reduce_pipeline(
     if not latex_res.success:
         final_user_message += f"\n\n[Note J.A.R.V.I.S. : {pdf_status_msg}]"
 
-    evidence_text = f"3 phases (flash/medium -> pro/high -> pro/medium), Durée totale: {total_duration:.1f}s, Confiance: {out_s.confidence}"
+    evidence_text = f"3 phases (flash/medium -> pro/high -> pro/medium), Rapport {target_pages}p LaTeX {'PDF' if latex_res.success else 'MD'}, Durée: {total_duration:.1f}s, Confiance: {out_s.confidence}"
     if is_cli_fallback:
         evidence_text += " [Repli CLI]"
 
@@ -580,6 +599,9 @@ async def _execute_cli_map_reduce_pipeline(
             "open_questions": out_s.open_questions,
             "delivery": delivery_info,
             "latex_report": latex_res.to_dict(),
+            "target_pages": target_pages,
+            "pdf_compiled": latex_res.success,
+            "pdf_path": latex_res.pdf_path,
             "phases": {
                 "prospector": {"model": MODEL_FLASH, "effort": "medium", "duration_s": round(dur_p, 2)},
                 "analyst": {"model": MODEL_PRO, "effort": "high", "duration_s": round(dur_a, 2)},
@@ -1041,7 +1063,11 @@ async def _execute_dispatch_tool(
             )
             return await dispatch_tool(
                 name="launch_deep_research",
-                args={"consigne": question, "sync": args.get("sync", False)},
+                args={
+                    "consigne": question,
+                    "sync": args.get("sync", False),
+                    "target_pages": search_route.target_pages,
+                },
                 websocket=websocket,
                 session=session,
                 is_paid_live=is_paid_live,
@@ -1142,6 +1168,18 @@ async def _execute_dispatch_tool(
         destinataire_email = args.get("destinataire_email")
         is_sync = bool(args.get("sync", False) or args.get("wait_completion", False))
         is_cli_fallback = bool(args.get("is_cli_fallback", False))
+        target_pages_raw = args.get("target_pages") or args.get("nb_pages") or args.get("nombre_pages") or args.get("pages") or args.get("page_count")
+        target_pages = int(target_pages_raw) if target_pages_raw is not None else None
+        if target_pages is None:
+            pm = re.search(r"\b(\d+)\s*(?:pages?|page)\b", consigne.lower())
+            if pm:
+                try:
+                    target_pages = int(pm.group(1))
+                except Exception:
+                    target_pages = 3
+            else:
+                target_pages = 3
+        target_pages = max(1, min(50, target_pages))
 
         if not acquire_search_lock(consigne):
             return ToolResult.done(
@@ -1188,7 +1226,7 @@ async def _execute_dispatch_tool(
             try:
                 await websocket.send_text(json.dumps({
                     "type": "jarvis_announcement",
-                    "text": f"Analyse multi-agents CLI L2 lancée : {consigne}",
+                    "text": f"Analyse multi-agents CLI L2 lancée ({target_pages}p) : {consigne}",
                     "voice": False,
                 }))
             except Exception:
@@ -1206,6 +1244,7 @@ async def _execute_dispatch_tool(
                     session=_sess_dr,
                     websocket=_ws_dr,
                     is_cli_fallback=False,
+                    target_pages=target_pages,
                 )
             finally:
                 release_search_lock(consigne)
