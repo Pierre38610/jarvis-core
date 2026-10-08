@@ -68,17 +68,16 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="guide_active_task",
                     description=(
-                        "Transmet en direct une consigne d'orientation, d'adaptation ou de correction à la tâche active ou à l'agent Antigravity CLI sans interrompre la session. "
-                        "À UTILISER QUAND : Une tâche de fond est en cours et Pierre souhaite en direct affiner un axe, corriger un paramètre ou réorienter l'analyse. "
-                        "NE JAMAIS UTILISER QUAND : Aucune tâche n'est active, quand Pierre veut stopper la tâche (utiliser 'stop_current_action'), "
-                        "ou quand il s'agit d'une nouvelle demande indépendante (utiliser 'ask_deep_reasoning' ou 'launch_deep_research')."
+                        "Transmet en direct une consigne d'orientation, d'adaptation ou de correction de code/analyse à la tâche active ou à l'agent Antigravity CLI en cours d'exécution. "
+                        "À UTILISER STRICTEMENT ET UNIQUEMENT QUAND : Une tâche/agent de fond est actif ET que Pierre demande EXPLICITEMENT d'ajuster, enrichir, corriger le code ou réorienter la tâche en cours (ex: 'ajoute un test', 'change telle couleur dans le code', 'prends aussi en compte ce paramètre dans l'analyse'). "
+                        "INTERDICTION FORMELLE D'UTILISER QUAND : Pierre demande une action indépendante sans lien avec la tâche en cours (ex: Spotify/musique via 'control_spotify', météo/recherche factuelle via 'search_web', navigation via 'run_browser_task', e-mails, rappels, question générale factuelle ou conversation). Dans ce cas, exécute directement l'action demandée avec l'outil adéquat sans toucher à l'agent en arrière-plan."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
                             "directive": types.Schema(
                                 type="STRING",
-                                description="La consigne ou adaptation demandée par l'utilisateur pour l'action en cours"
+                                description="La consigne ou adaptation explicite demandée par l'utilisateur pour le code ou l'analyse en cours d'exécution"
                             )
                         },
                         required=["directive"]

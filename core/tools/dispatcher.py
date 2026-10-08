@@ -865,11 +865,38 @@ async def _execute_dispatch_tool(
     # ─── guide_active_task ─────────────────────────────────────────────────────
     elif name in ("guide_active_task", "guide"):
         directive = args.get("directive", "")
+        is_running = (
+            active_task_controller["info"]["running"]
+            or bool(active_task_controller.get("bg_task"))
+            or bool(active_task_controller.get("browser_bg_task"))
+            or bool(active_task_controller.get("deep_research_bg_task"))
+        )
+        if not is_running:
+            return ToolResult.failed(
+                user_message="Aucune tâche ou agent Antigravity CLI n'est actuellement en cours d'exécution à guider. Pour une nouvelle demande ou action indépendante, exécute l'outil dédié approprié.",
+                error_hint="no_active_agent_running",
+                data={"directive": directive},
+            )
+
+        # Guard anti-confusion : si la directive ressemble à une commande Spotify/multimédia indépendante
+        directive_lower = directive.lower().strip()
+        spotify_patterns = ["spotify", "musique", "chanson", "play", "pause", "morceau", "playlist", "volume", "suivante", "précédente"]
+        if any(p in directive_lower for p in spotify_patterns) and not any(k in directive_lower for k in ["code", "script", "fichier", "fonction", "classe", "bug", "test", "variable"]):
+            return ToolResult.failed(
+                user_message=f"Attention : la directive '{directive}' semble être une commande musicale Spotify indépendante et non une consigne pour l'agent de code. Utilise 'control_spotify' pour piloter la musique.",
+                error_hint="misrouted_spotify_command",
+                data={"directive": directive},
+            )
+
         if active_task_controller["info"]["running"]:
             await active_task_controller["queue"].put(directive)
             active_task_controller.setdefault("directives", []).append(directive)
         await websocket.send_text(json.dumps({"type": "jarvis_announcement", "text": f"Consigne en direct prise en compte : {directive}.", "voice": False}))
-        return {"status": "adapted", "directive": directive, "message": f"Consigne '{directive}' transmise en direct à Antigravity CLI sur le VPS."}
+        return ToolResult.done(
+            user_message=f"Consigne '{directive}' transmise en direct à Antigravity CLI sur le VPS.",
+            data={"directive": directive, "status": "adapted"},
+            verified=True,
+        )
 
     # ─── set_browser_link ──────────────────────────────────────────────────────
     elif name in ("set_browser_link", "browser_link"):

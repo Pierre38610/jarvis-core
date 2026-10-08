@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.90.0 — Constellation orbitale de sous-agents animée en dynamique fluide (lévitation, anneau HUD 360°, halos et icônes d'activité) avec support du multi-agents parallèle L2 simultané, et bouton d'interruption immédiate (Arrêter) avec feedback visuel, arrêt physique des sous-processus et notification directe à la session Live de Jarvis.*
+> *Dernière révision majeure : Version 5.91.0 — Discrimination sémantique et exécution multitâche transparente lors de l'activité des agents CLI en tâche de fond (interdiction des transmissions aveugles d'actions indépendantes vers guide_active_task, clarification stricte des instructions Live et guard anti-confusion).*
 
 
 ---
@@ -280,7 +280,7 @@ jarvis-core/
 ├── docs/                                # VPS_L3_ACTIONS_RESTANTES.md, VPS_L3_CHECKLIST.md, VPS_GOOGLE_SESSION_SETUP.md, BROWSER_AGENT_SPEC.md, N8N_GUIDE.md, n8n_workflows/*.json (documents_suite, time_and_briefing, train_monitoring)
 ├── static/                              # HUD PWA Stark Industries (index.html, app.js, style.css, manifest.json, SVG/PNG, latest_screenshot.jpg, tunnel_url.json)
 ├── data/                                # site_memory/<domain>.json (parcours web réussis), gemini_ui_map.json (avec repli DEFAULT_UI_MAP), migration_reports/
-└── tests/                               # 44 modules pytest racine (dont test_l3_integration_vps.py, test_l3_report_delivery.py, test_l3_vps_routing.py, test_l3_error_propagation.py) + tests/unit/ (20) + tests/e2e/ (2: test_live_scenarios.py, test_cognitive_e2e_pipeline.py), conftest.py, run_all_tests.py (597 tests vérifiés), dossiers scratch : tests/scratch_healing/, tests/_test_scratch/)
+└── tests/                               # 45 modules pytest racine + tests/unit/ (23 dont test_agent_concurrency_discrimination.py) + tests/e2e/ (2: test_live_scenarios.py, test_cognitive_e2e_pipeline.py), conftest.py, run_all_tests.py (652 tests vérifiés)
 ```
 
 ---
@@ -925,7 +925,7 @@ L'implémentation respecte le standard d'échange bidirectionnel temps réel pou
 | # | Nom Officiel (`declarations.py`) | Alias Supportés (`dispatcher.py`) | Mode d'Exécution | Arguments Clés & Types | Format de Réponse (`tool_resp`) | Service Exécutant |
 | :- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **1** | `stop_current_action` | `stop` | Bloquant | `reason: str` (opt) | `{"status": "stopped", "message": str, "instruction_to_jarvis": str}` | `core/shared_state.py` |
-| **2** | `guide_active_task` | `guide` | Non-bloquant | `directive: str` (req) | `{"status": "adapted", "directive": str, "message": str}` | `core/shared_state.py` |
+| **2** | `guide_active_task` | `guide` | Non-bloquant | `directive: str` (req) | `ToolResult` (`done`\|`failed`, guard anti-confusion) | `core/shared_state.py` |
 | **3** | `ask_deep_reasoning` | `deep_reasoning` | Non-bloquant | `question: str` (req), `model: str`, `intensite_reflexion: str`, `confirmed_by_user: bool` | `{"status": "launched_in_background"|"success", "summary": str}` | `services/reasoning_service.py` |
 | **4** | `launch_deep_research` | `lancer_mission_deep_research`, `deep_research` | Non-bloquant | `consigne: str`, `consigne_utilisateur: str` (alias ASR), `envoyer_email: bool`, `destinataire_email: str` — *aucun champ marqué requis* (le dispatcher accepte `consigne` / `consigne_utilisateur` / `sujet`) | `ToolResult` (`done`\|`failed`) | `services/browser_agent` (recette `gemini_deep_research`, résultat attendu en direct) avec repli `services/deep_research_service.py` |
 | **5** | `search_web` | `web_search` | Bloquant | `query: str` (req) | `{"status": "success", "results": list[dict], "summary": str}` | `services/browser_service.py` |
@@ -1622,4 +1622,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.78.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.91.0.*

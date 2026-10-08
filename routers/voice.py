@@ -213,6 +213,14 @@ async def _build_system_instruction() -> str:
         f"- PRIORITÉ IMMÉDIATE AUX DIRECTIVES : Dès que Pierre demande une recherche L1/L2/L3, un briefing, un état système, Spotify ou toute autre tâche, exécute directement l'action demandée sans jamais bifurquer vers des questions de sommeil, de rêves ou d'heure de la journée."
     )
 
+    agent_concurrency_discrimination_rule = (
+        f"\n\nGESTION DU MULTITÂCHE ET INDÉPENDANCE DES DEMANDES PENDANT L'EXÉCUTION D'AGENTS CLI :\n"
+        f"- Lorsque des agents Antigravity CLI tournent en arrière-plan (visibles dans 'Agents Antigravity en cours'), Pierre est libre de te demander n'importe quoi d'autre en attendant.\n"
+        f"- RÈGLE STRICTE DE DISCRIMINATION SÉMANTIQUE :\n"
+        f"  1. Demande indépendante (sans rapport avec le travail de l'agent) : Si Pierre demande de la musique (Spotify), pose une question de culture/actualité, demande la météo, un e-mail, un rappel, une recherche web ou une navigation web, tu dois EXÉCUTER IMMÉDIATEMENT son action avec l'outil dédié (ex: 'control_spotify', 'search_web', 'run_browser_task', 'send_email'...) ou répondre oralement avec ta voix Aoede. NE FAIS AUCUN LIEN avec le code en cours, N'APPELLE JAMAIS 'guide_active_task', et NE TRANSMETS PAS sa phrase aux agents. L'agent continue de tourner en arrière-plan de façon totalement transparente.\n"
+        f"  2. Directive explicite pour l'agent de fond : Si et UNIQUEMENT SI Pierre formule explicitement une modification, correction, consigne ou adaptation ciblant le code ou le travail de l'agent (ex: 'ajoute une méthode pour...', 'change la couleur', 'corrige le bug de compilation', 'prends aussi en compte ce critère') : ALORS appelle l'outil 'guide_active_task' avec la directive correspondante."
+    )
+
     language_rule = (
         f"\n\nRÈGLE STRICTE DE LANGUE DE RÉPONSE (FR OU EN STRICTEMENT) :\n"
         f"- Tu réponds TOUJOURS dans la langue de l'entrée parlée ou écrite de Pierre : en français si Pierre s'exprime en français, et en anglais s'il s'exprime en anglais.\n"
@@ -238,12 +246,12 @@ async def _build_system_instruction() -> str:
             )
         except Exception:
             base_prompt = str(template)
-        return f"{base_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}\n{cognitive_tier_instruction}\n{dreams_and_morning_rule}\n{language_rule}"
+        return f"{base_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}\n{cognitive_tier_instruction}\n{agent_concurrency_discrimination_rule}\n{dreams_and_morning_rule}\n{language_rule}"
 
     static = getattr(config, "JARVIS_SYSTEM_INSTRUCTION", "")
     full_prompt = f"{memory_context}\n\n{static}" if memory_context else static
     full_prompt = inject_turn_status_into_prompt(full_prompt)
-    return f"{full_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}\n{cognitive_tier_instruction}\n{dreams_and_morning_rule}\n{language_rule}"
+    return f"{full_prompt}\n{nav_arbitration_rule}\n{anti_tics_rule}\n{cognitive_tier_instruction}\n{agent_concurrency_discrimination_rule}\n{dreams_and_morning_rule}\n{language_rule}"
 
 
 
