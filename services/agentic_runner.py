@@ -134,42 +134,163 @@ class L2ExecutionResult:
         }
 
 
+def _clean_text_for_json(raw_text: str) -> str:
+    """Nettoie le texte brut des codes d'échappement ANSI et des balises terminales."""
+    if not raw_text:
+        return ""
+    text = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', raw_text)
+    return text.strip()
+
+
+def _repair_json_string(s: str) -> str:
+    """Applique des corrections heuristiques courantes sur le JSON produit par un LLM."""
+    if not s:
+        return ""
+    s = re.sub(r',\s*([\]}])', r'\1', s)
+    s = re.sub(r'(?m)^\s*//.*?$', '', s)
+    return s.strip()
+
+
+def _try_parse_json_candidate(candidate: str) -> Optional[Dict[str, Any]]:
+    """Tente de parser une chaîne candidate en dictionnaire JSON."""
+    if not candidate:
+        return None
+    candidate = candidate.strip()
+    try:
+        data = json.loads(candidate)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    
+    repaired = _repair_json_string(candidate)
+    try:
+        data = json.loads(repaired)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    return None
+
+
+def _normalize_agent_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalise et harmonise les champs d'un payload extrait d'un agent."""
+    if not isinstance(data, dict):
+        return data
+
+    payload = dict(data)
+    
+    # Normalisation de la conclusion
+    if not payload.get("conclusion"):
+        for alias in ("summary", "synthesis", "synthese", "result", "response", "reponse", "texte", "rapport", "exploration", "analysis", "analyse"):
+            if payload.get(alias):
+                payload["conclusion"] = str(payload[alias])
+                break
+
+    # Si conclusion toujours absente mais facts présent, synthétiser à partir des faits
+    facts_list = payload.get("facts") or payload.get("faits") or payload.get("data") or payload.get("findings")
+    if not payload.get("conclusion") and facts_list and isinstance(facts_list, list):
+        payload["conclusion"] = "\n".join(f"- {f}" for f in facts_list)
+
+    # Normalisation des sources
+    if "sources" not in payload:
+        for alias in ("references", "links", "liens", "urls", "bibliographie", "citations", "docs"):
+            if alias in payload:
+                payload["sources"] = payload[alias]
+                break
+    if "sources" not in payload or payload["sources"] is None:
+        payload["sources"] = []
+    elif isinstance(payload["sources"], str):
+        payload["sources"] = [payload["sources"]] if payload["sources"].strip() else []
+
+    # Normalisation des faits
+    if "facts" not in payload:
+        for alias in ("faits", "data", "points", "donnees", "findings"):
+            if alias in payload and isinstance(payload[alias], list):
+                payload["facts"] = payload[alias]
+                break
+
+    # Normalisation des incertitudes / open_questions
+    if "open_questions" not in payload:
+        for alias in ("uncertainties", "incertitudes", "questions", "limites", "points_ouverts"):
+            if alias in payload and isinstance(payload[alias], list):
+                payload["open_questions"] = payload[alias]
+                break
+
+    # Défaut artifacts
+    if "artifacts" not in payload or payload["artifacts"] is None:
+        payload["artifacts"] = []
+    elif isinstance(payload["artifacts"], str):
+        payload["artifacts"] = [payload["artifacts"]] if payload["artifacts"].strip() else []
+
+    # Défaut confidence
+    if "confidence" not in payload or payload["confidence"] is None:
+        payload["confidence"] = 0.95
+    else:
+        try:
+            payload["confidence"] = float(payload["confidence"])
+        except (ValueError, TypeError):
+            payload["confidence"] = 0.95
+
+    return payload
+
+
 def _extract_json_payload(raw_text: str) -> Optional[Dict[str, Any]]:
     """Tente d'extraire et désérialiser l'objet JSON requis depuis la réponse brute."""
     if not raw_text or not raw_text.strip():
         return None
 
-    text = raw_text.strip()
-    
+    cleaned = _clean_text_for_json(raw_text)
+
     # 1. Tentative directe
-    try:
-        data = json.loads(text)
-        if isinstance(data, dict):
-            return data
-    except Exception:
-        pass
+    res = _try_parse_json_candidate(cleaned)
+    if res is not None:
+        return _normalize_agent_payload(res)
 
     # 2. Recherche d'un bloc ```json ... ``` ou ``` ... ```
-    json_block = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if json_block:
-        try:
-            data = json.loads(json_block.group(1))
-            if isinstance(data, dict):
-                return data
-        except Exception:
-            pass
+    for m in re.finditer(r"```(?:json)?\s*([\s\S]*?)```", cleaned, re.IGNORECASE):
+        code_content = m.group(1).strip()
+        res = _try_parse_json_candidate(code_content)
+        if res is not None:
+            return _normalize_agent_payload(res)
+        start = code_content.find("{")
+        end = code_content.rfind("}")
+        if start != -1 and end > start:
+            res = _try_parse_json_candidate(code_content[start:end + 1])
+            if res is not None:
+                return _normalize_agent_payload(res)
 
-    # 3. Recherche du premier { au dernier }
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        candidate = text[start : end + 1]
-        try:
-            data = json.loads(candidate)
-            if isinstance(data, dict):
-                return data
-        except Exception:
-            pass
+    # 3. Recherche du premier { au dernier } et comptage d'accolades équilibrées
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end > start:
+        res = _try_parse_json_candidate(cleaned[start:end + 1])
+        if res is not None:
+            return _normalize_agent_payload(res)
+
+        depth = 0
+        obj_start = -1
+        in_string = False
+        escape = False
+        for idx, ch in enumerate(cleaned):
+            if ch == '"' and not escape:
+                in_string = not in_string
+            elif ch == '\\' and in_string:
+                escape = not escape
+                continue
+            elif not in_string:
+                if ch == '{':
+                    if depth == 0:
+                        obj_start = idx
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0 and obj_start != -1:
+                        candidate = cleaned[obj_start:idx + 1]
+                        res = _try_parse_json_candidate(candidate)
+                        if res is not None and isinstance(res, dict) and any(k in res for k in ("conclusion", "facts", "faits", "sources", "summary", "result")):
+                            return _normalize_agent_payload(res)
+            escape = False
 
     return None
 
@@ -184,13 +305,19 @@ def _validate_json_schema(payload: Optional[Dict[str, Any]]) -> bool:
         return True
 
     # Schéma 2 : L2 spécialisé (faits, sources, hypothèses, incertitudes, conclusion)
-    has_conclusion = "conclusion" in payload
+    has_conclusion = bool(payload.get("conclusion") and str(payload.get("conclusion")).strip())
     has_sources = "sources" in payload
     has_facts = "facts" in payload or "faits" in payload
     has_hypotheses = "hypotheses" in payload or "hypothèses" in payload
     has_uncertainties = "uncertainties" in payload or "incertitudes" in payload or "open_questions" in payload
 
-    if has_conclusion and has_sources and (has_facts or has_hypotheses or has_uncertainties):
+    if (has_conclusion or has_facts) and has_sources:
+        return True
+
+    if has_conclusion and (has_facts or has_hypotheses or has_uncertainties):
+        return True
+
+    if has_conclusion:
         return True
 
     return False
@@ -255,13 +382,23 @@ async def _execute_subprocess(
             current_path = f"{ep}:{current_path}"
     env["PATH"] = current_path
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        cwd=work_dir,
-        env=env,
-    )
+    # Assurer la présence de GEMINI_API_KEY dans l'environnement
+    if "GEMINI_API_KEY" not in env or not env["GEMINI_API_KEY"]:
+        eff_k = config.get_effective_paid_key() if config.is_paid_key_authorized() else (getattr(config, "GEMINI_API_KEY", "") or "")
+        if eff_k:
+            env["GEMINI_API_KEY"] = eff_k
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=work_dir,
+            env=env,
+        )
+    except (FileNotFoundError, PermissionError) as fnf_err:
+        logger.warning(f"[AgenticRunner] Binaire introuvable ou non exécutable '{cmd[0]}': {fnf_err}")
+        return 127, "", f"Binary '{cmd[0]}' not found or not executable: {fnf_err}"
 
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -281,6 +418,95 @@ async def _execute_subprocess(
     return proc.returncode, stdout_str, stderr_str
 
 
+async def _execute_gemini_direct_api(
+    prompt: str,
+    model: str = MODEL_FLASH,
+    api_key: Optional[str] = None,
+    session_id: Optional[str] = None,
+    task_id: Optional[str] = None,
+    execute_paid_api_fn: Optional[Callable] = None,
+    effort: str = "direct_api",
+) -> AgentOutput:
+    """Exécute la tâche directement via l'API Gemini (GenAI / GenerativeAI) en repli résilient."""
+    key = api_key or (
+        config.get_effective_paid_key()
+        if config.is_paid_key_authorized()
+        else (getattr(config, "GEMINI_API_KEY", "") or os.environ.get("GEMINI_API_KEY", ""))
+    )
+    if not key:
+        raise RuntimeError("Aucune clé d'API Gemini disponible pour l'exécution directe.")
+
+    if execute_paid_api_fn is not None:
+        raw_res = await execute_paid_api_fn(prompt=prompt, model=model, api_key=key)
+    else:
+        if model == MODEL_PRO or "pro" in str(model).lower():
+            gemini_model_name = getattr(config, "GEMINI_PRO_MODEL", "gemini-2.5-pro")
+        else:
+            gemini_model_name = getattr(config, "GEMINI_FLASH_MODEL", "gemini-2.5-flash")
+
+        raw_res = ""
+        try:
+            from google import genai
+            client = genai.Client(api_key=key)
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=gemini_model_name,
+                contents=prompt,
+            )
+            raw_res = response.text or ""
+        except Exception:
+            try:
+                import google.generativeai as legacy_genai
+                legacy_genai.configure(api_key=key)
+                m = legacy_genai.GenerativeModel(gemini_model_name)
+                resp = await asyncio.to_thread(m.generate_content, prompt)
+                raw_res = resp.text or ""
+            except Exception as e2:
+                raise RuntimeError(f"Erreur d'appel API Gemini directe ({gemini_model_name}): {e2}") from e2
+
+    parsed = _extract_json_payload(raw_res)
+    if parsed and _validate_json_schema(parsed):
+        return AgentOutput(
+            conclusion=str(parsed.get("conclusion", "")),
+            confidence=float(parsed.get("confidence", 0.95)),
+            sources=list(parsed.get("sources", [])),
+            open_questions=list(parsed.get("open_questions") or parsed.get("uncertainties") or []),
+            artifacts=list(parsed.get("artifacts", [])),
+            facts=list(parsed.get("facts") or parsed.get("faits") or []),
+            hypotheses=list(parsed.get("hypotheses") or parsed.get("hypothèses") or []),
+            uncertainties=list(parsed.get("uncertainties") or parsed.get("incertitudes") or []),
+            model=model,
+            effort=effort,
+            status="success",
+            raw_output=raw_res,
+        )
+
+    if raw_res and raw_res.strip():
+        return AgentOutput(
+            conclusion=raw_res.strip(),
+            confidence=0.85,
+            sources=[],
+            open_questions=[],
+            artifacts=[],
+            facts=[],
+            hypotheses=[],
+            uncertainties=[],
+            model=model,
+            effort=effort,
+            status="success",
+            raw_output=raw_res,
+        )
+
+    return AgentOutput(
+        conclusion="L'API Gemini a répondu mais la sortie est vide.",
+        confidence=0.0,
+        status="failed",
+        model=model,
+        effort=effort,
+        raw_output=raw_res,
+        error="Empty response from Gemini direct API",
+    )
+
 
 async def _execute_gemini_paid_fallback(
     prompt: str,
@@ -299,54 +525,14 @@ async def _execute_gemini_paid_fallback(
         failure_detail="Quota Antigravity CLI dépassé, passage sur l'API Gemini payante autorisée.",
     )
 
-    if execute_paid_api_fn is not None:
-        raw_res = await execute_paid_api_fn(prompt=prompt, model=model, api_key=paid_api_key)
-    else:
-        gemini_model_name = getattr(config, "GEMINI_PRO_MODEL", "gemini-2.5-pro") if model == MODEL_PRO else getattr(config, "GEMINI_FLASH_MODEL", "gemini-2.5-flash")
-        
-        try:
-            from google import genai
-            client = genai.Client(api_key=paid_api_key)
-            response = client.models.generate_content(
-                model=gemini_model_name,
-                contents=prompt,
-            )
-            raw_res = response.text or ""
-        except Exception as e:
-            try:
-                import google.generativeai as legacy_genai
-                legacy_genai.configure(api_key=paid_api_key)
-                m = legacy_genai.GenerativeModel(gemini_model_name)
-                resp = await asyncio.to_thread(m.generate_content, prompt)
-                raw_res = resp.text or ""
-            except Exception as e2:
-                raise RuntimeError(f"Erreur d'appel API Gemini Paid: {e2}") from e2
-
-    parsed = _extract_json_payload(raw_res)
-    if parsed and _validate_json_schema(parsed):
-        return AgentOutput(
-            conclusion=str(parsed.get("conclusion", "")),
-            confidence=float(parsed.get("confidence", 1.0)),
-            sources=list(parsed.get("sources", [])),
-            open_questions=list(parsed.get("open_questions") or parsed.get("uncertainties") or []),
-            artifacts=list(parsed.get("artifacts", [])),
-            facts=list(parsed.get("facts") or parsed.get("faits") or []),
-            hypotheses=list(parsed.get("hypotheses") or parsed.get("hypothèses") or []),
-            uncertainties=list(parsed.get("uncertainties") or parsed.get("incertitudes") or []),
-            model=model,
-            effort="paid_api",
-            status="success",
-            raw_output=raw_res,
-        )
-
-    return AgentOutput(
-        conclusion="L'API Gemini Paid a répondu mais sans le format JSON requis.",
-        confidence=0.0,
-        status="failed",
+    return await _execute_gemini_direct_api(
+        prompt=prompt,
         model=model,
+        api_key=paid_api_key,
+        session_id=session_id,
+        task_id=task_id,
+        execute_paid_api_fn=execute_paid_api_fn,
         effort="paid_api",
-        raw_output=raw_res,
-        error="Invalid JSON response from paid API fallback",
     )
 
 
@@ -364,7 +550,7 @@ async def run_agentic(
     workspace: Optional[str] = None,
     worker_id: Optional[str] = None,
 ) -> AgentOutput:
-    """Exécute une tâche agentique via Antigravity CLI dans un workspace isolé."""
+    """Exécute une tâche agentique via Antigravity CLI dans un workspace isolé avec résilience API."""
     valid_model, valid_effort = validate_model_and_effort(model, effort)
     exec_func = custom_exec_fn or _execute_subprocess
 
@@ -384,11 +570,14 @@ async def run_agentic(
 
     async def _run_cli_cycle(m: str, eff: str, p: str, tout: float) -> Tuple[int, str, str]:
         cmd = _build_command(role=role, prompt=p, model=m, effort=eff)
-        # Prise en compte de custom_exec_fn avec signature (cmd, timeout) ou (cmd, timeout, cwd)
         try:
             return await exec_func(cmd, tout, cwd=workspace)
         except TypeError:
             return await exec_func(cmd, tout)
+
+    code = 0
+    stdout = ""
+    stderr = ""
 
     try:
         code, stdout, stderr = await _run_cli_cycle(current_model, current_effort, full_prompt, float(timeout))
@@ -400,24 +589,87 @@ async def run_agentic(
             try:
                 code, stdout, stderr = await _run_cli_cycle(current_model, current_effort, full_prompt, float(timeout))
             except asyncio.TimeoutError:
+                if custom_exec_fn is not None:
+                    return AgentOutput(
+                        conclusion="Échec : Timeout de l'agent après repli sur flash/high.",
+                        confidence=0.0,
+                        model=current_model,
+                        effort=current_effort,
+                        status="failed",
+                        error="TimeoutError après repli unique flash/high",
+                        workspace=workspace,
+                        worker_id=worker_id,
+                    )
+                try:
+                    return await _execute_gemini_direct_api(
+                        prompt=full_prompt,
+                        model=current_model,
+                        session_id=session_id,
+                        task_id=task_id,
+                        execute_paid_api_fn=execute_paid_api_fn,
+                    )
+                except Exception as api_err:
+                    return AgentOutput(
+                        conclusion="Échec : Timeout de l'agent après repli sur flash/high.",
+                        confidence=0.0,
+                        model=current_model,
+                        effort=current_effort,
+                        status="failed",
+                        error=f"TimeoutError après repli ({api_err})",
+                        workspace=workspace,
+                        worker_id=worker_id,
+                    )
+        else:
+            if custom_exec_fn is not None:
                 return AgentOutput(
-                    conclusion="Échec : Timeout de l'agent après repli sur flash/high.",
+                    conclusion=f"Échec : Timeout de l'agent ({current_model}/{current_effort}).",
                     confidence=0.0,
                     model=current_model,
                     effort=current_effort,
                     status="failed",
-                    error="TimeoutError après repli unique flash/high",
+                    error="TimeoutError",
                     workspace=workspace,
                     worker_id=worker_id,
                 )
-        else:
+            try:
+                return await _execute_gemini_direct_api(
+                    prompt=full_prompt,
+                    model=current_model,
+                    session_id=session_id,
+                    task_id=task_id,
+                    execute_paid_api_fn=execute_paid_api_fn,
+                )
+            except Exception as api_err:
+                return AgentOutput(
+                    conclusion=f"Échec : Timeout de l'agent ({current_model}/{current_effort}).",
+                    confidence=0.0,
+                    model=current_model,
+                    effort=current_effort,
+                    status="failed",
+                    error=f"TimeoutError ({api_err})",
+                    workspace=workspace,
+                    worker_id=worker_id,
+                )
+    except Exception as cli_spawn_err:
+        if custom_exec_fn is not None:
+            raise
+        logger.warning(f"[AgenticRunner] Exception exécution CLI ({cli_spawn_err}), tentative de repli API Gemini...")
+        try:
+            return await _execute_gemini_direct_api(
+                prompt=full_prompt,
+                model=current_model,
+                session_id=session_id,
+                task_id=task_id,
+                execute_paid_api_fn=execute_paid_api_fn,
+            )
+        except Exception as fallback_err:
             return AgentOutput(
-                conclusion=f"Échec : Timeout de l'agent ({current_model}/{current_effort}).",
+                conclusion=f"Échec lors de l'exécution CLI et repli API: {cli_spawn_err}",
                 confidence=0.0,
                 model=current_model,
                 effort=current_effort,
                 status="failed",
-                error="TimeoutError",
+                error=str(cli_spawn_err),
                 workspace=workspace,
                 worker_id=worker_id,
             )
@@ -445,17 +697,43 @@ async def run_agentic(
                 session_id=session_id,
             )
 
-    # Validation du JSON obligatoire
-    payload = _extract_json_payload(stdout)
+    # Si le CLI a renvoyé un code non-zéro (binaire introuvable ou erreur) sans custom_exec_fn, repli API direct
+    if code != 0 and custom_exec_fn is None:
+        logger.warning(f"[AgenticRunner] CLI a renvoyé le code {code} (stderr: {stderr[:100]}), repli API directe...")
+        try:
+            return await _execute_gemini_direct_api(
+                prompt=full_prompt,
+                model=current_model,
+                session_id=session_id,
+                task_id=task_id,
+                execute_paid_api_fn=execute_paid_api_fn,
+            )
+        except Exception as api_err:
+            logger.error(f"[AgenticRunner] Repli API directe échoué: {api_err}")
+
+    # Validation du JSON obligatoire (recherche dans stdout, combined_output, stderr)
+    payload = _extract_json_payload(stdout) or _extract_json_payload(combined_output) or _extract_json_payload(stderr)
     if not (payload and _validate_json_schema(payload)):
         retry_prompt = build_json_retry_prompt(full_prompt, stdout or combined_output)
         try:
             r_code, r_stdout, r_stderr = await _run_cli_cycle(current_model, current_effort, retry_prompt, float(timeout))
-            r_payload = _extract_json_payload(r_stdout)
+            r_combined = f"{r_stdout}\n{r_stderr}".strip()
+            r_payload = _extract_json_payload(r_stdout) or _extract_json_payload(r_combined) or _extract_json_payload(r_stderr)
             if r_payload and _validate_json_schema(r_payload):
                 payload = r_payload
                 stdout = r_stdout
             else:
+                if custom_exec_fn is None:
+                    try:
+                        return await _execute_gemini_direct_api(
+                            prompt=full_prompt,
+                            model=current_model,
+                            session_id=session_id,
+                            task_id=task_id,
+                            execute_paid_api_fn=execute_paid_api_fn,
+                        )
+                    except Exception:
+                        pass
                 return AgentOutput(
                     conclusion="Échec : Format JSON obligatoire absent après relance.",
                     confidence=0.0,
@@ -468,6 +746,17 @@ async def run_agentic(
                     worker_id=worker_id,
                 )
         except Exception as retry_err:
+            if custom_exec_fn is None:
+                try:
+                    return await _execute_gemini_direct_api(
+                        prompt=full_prompt,
+                        model=current_model,
+                        session_id=session_id,
+                        task_id=task_id,
+                        execute_paid_api_fn=execute_paid_api_fn,
+                    )
+                except Exception:
+                    pass
             return AgentOutput(
                 conclusion=f"Échec lors de la relance JSON : {retry_err}",
                 confidence=0.0,
@@ -481,6 +770,17 @@ async def run_agentic(
             )
 
     if not payload or not _validate_json_schema(payload):
+        if custom_exec_fn is None:
+            try:
+                return await _execute_gemini_direct_api(
+                    prompt=full_prompt,
+                    model=current_model,
+                    session_id=session_id,
+                    task_id=task_id,
+                    execute_paid_api_fn=execute_paid_api_fn,
+                )
+            except Exception:
+                pass
         return AgentOutput(
             conclusion="Échec : Format JSON manquant ou non conforme.",
             confidence=0.0,

@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.92.0 — Rédaction systématique des rapports d'analyse tactique multi-agents L2 en LaTeX et compilation PDF par Antigravity CLI, enrichissement substantiel du contenu et calibration personnalisable de la longueur du document en nombre de pages (target_pages / nb_pages).*
+> *Dernière révision majeure : Version 5.93.0 — Résilience et robustesse de la recherche approfondie multi-agents de niveau 2 (Map-Reduce L2 Agentic Pipeline), parsing JSON tolérant avec détection d'échappements ANSI, normalisation de schémas alternatifs, fallback automatique vers l'API Gemini directe et transmission systématique par email du rapport PDF LaTeX.*
 
 
 ---
@@ -1622,4 +1622,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.91.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.93.0.*

@@ -26,7 +26,7 @@ from services.google_antigravity import (
     AgentOutput,
     verify_antigravity_cli_ready,
 )
-from services.antigravity_prompts import build_l2_synthesis_prompt
+from services.antigravity_prompts import build_l2_agentic_prompt, build_l2_synthesis_prompt
 from services.memory_service import memory_service
 from services.memory import vector_memory
 from services.unified_memory import unified_memory_manager
@@ -232,6 +232,12 @@ async def _execute_cli_map_reduce_pipeline(
       - Phase 3 : Synthèse & Rapport LaTeX (gemini-2.5-pro / effort medium) - Livrable structuré calibré en pages
     Utilisé pour l'analyse multi-agents L2 et comme repli de secours explicite pour L3.
     """
+    # Détection automatique de l'intention d'envoi par e-mail dans la consigne
+    if not envoyer_email and consigne:
+        c_low = consigne.lower()
+        if any(w in c_low for w in ["mail", "email", "courriel", "boite mail", "boîte mail"]):
+            envoyer_email = True
+
     cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
     if not cli_ok:
         clean_err = sanitize_error_text(cli_err or "cli_not_ready")
@@ -270,12 +276,15 @@ async def _execute_cli_map_reduce_pipeline(
     )
     try:
         await update_subagent(p_agent_id, activity="browsing", task="Collecte exhaustive des sources & données...")
-        p_prompt = (
-            f"Consigne de recherche : {consigne}\n\n"
-            f"MISSION PROSPECTEUR EXHAUSTIF (L2) :\n"
+        p_mission = (
             f"Collecte exhaustive et détaillée de faits concrets, données chiffrées, benchmarks techniques, "
-            f"dates clés, architectures, exemples réels et sources fiables sur le sujet.\n"
-            f"Fournis une exploration complète et approfondie sous forme de faits structurés avec leurs sources associées."
+            f"dates clés, architectures, exemples réels et sources fiables sur le sujet : {consigne}."
+        )
+        p_prompt = build_l2_agentic_prompt(
+            role="prospector",
+            mission=p_mission,
+            context=f"Consigne de recherche : {consigne}",
+            target_pages=target_pages,
         )
         out_p: AgentOutput = await run_agentic(
             role="prospector",
@@ -345,15 +354,19 @@ async def _execute_cli_map_reduce_pipeline(
     )
     try:
         await update_subagent(a_agent_id, activity="thinking", task="Analyse critique, détection de biais et triangulation...")
-        a_prompt = (
-            f"Consigne initiale : {consigne}\n\n"
-            f"MISSION ANALYSTE CRITIQUE & COMPARATIF (L2) :\n"
+        a_mission = (
             f"Données brutes recueillies par le prospecteur :\n{out_p.conclusion}\n"
             f"Sources : {json.dumps(out_p.sources, ensure_ascii=False)}\n\n"
             f"Directives d'analyse :\n"
             f"- Procède à une analyse critique rigoureuse et une triangulation des faits.\n"
             f"- Établis une comparaison multi-critères approfondie (forces, faiblesses, compromis coûts/performances).\n"
             f"- Identifie les nuances, risques, points de vigilance et limitations techniques."
+        )
+        a_prompt = build_l2_agentic_prompt(
+            role="critic",
+            mission=a_mission,
+            context=f"Consigne de recherche : {consigne}",
+            target_pages=target_pages,
         )
         out_a: AgentOutput = await run_agentic(
             role="critic",
@@ -1165,6 +1178,10 @@ async def _execute_dispatch_tool(
     elif name in ("launch_deep_research", "deep_research", "lancer_mission_deep_research"):
         consigne = args.get("consigne") or args.get("consigne_utilisateur") or args.get("sujet") or ""
         envoyer_email = bool(args.get("envoyer_email", False))
+        if not envoyer_email and consigne:
+            c_low = consigne.lower()
+            if any(w in c_low for w in ["mail", "email", "courriel", "boite mail", "boîte mail"]):
+                envoyer_email = True
         destinataire_email = args.get("destinataire_email")
         is_sync = bool(args.get("sync", False) or args.get("wait_completion", False))
         is_cli_fallback = bool(args.get("is_cli_fallback", False))
