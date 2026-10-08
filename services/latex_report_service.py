@@ -50,11 +50,13 @@ DEFAULT_LATEX_TEMPLATE = r"""\documentclass[11pt,a4paper]{article}
     pdftitle={<PDFFILENAME>},
 }
 \usepackage{amsmath}
+\setcounter{MaxMatrixCols}{20}
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{array}
 \usepackage{xcolor}
 \usepackage{fancyhdr}
+\setlength{\headheight}{14pt}
 \pagestyle{fancy}
 \fancyhf{}
 \rhead{\textcolor{gray}{J.A.R.V.I.S. --- Rapport Multi-Agents L2}}
@@ -117,11 +119,13 @@ class LatexReportResult:
 
 def escape_latex(text: Any) -> str:
     """Échappe rigoureusement les caractères réservés LaTeX pour prévenir toute injection ou erreur TeX.
-    Traite en premier l'antislash pour éviter les doubles échappements.
+    Traite en premier l'antislash pour éviter les doubles échappements et filtre les caractères de contrôle non imprimables.
     """
     if text is None:
         return ""
     s = str(text)
+    # Nettoie les caractères de contrôle non imprimables (ex: vertical tab \x0b, etc.)
+    s = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', ' ', s)
     for char, replacement in LATEX_SPECIAL_CHARS:
         s = s.replace(char, replacement)
     return s
@@ -142,28 +146,37 @@ def _format_inline_markdown(text: str) -> str:
         idx = len(placeholders)
         code_txt = escape_latex(m.group(1))
         placeholders.append(f"\\texttt{{{code_txt}}}")
-        return f"__PH_{idx}__"
+        return f"PHLATEXINDEX{idx}ENDPH"
+
+    def repl_link(m: re.Match) -> str:
+        idx = len(placeholders)
+        anchor = escape_latex(m.group(1))
+        url = escape_latex(m.group(2))
+        placeholders.append(f"\\href{{{url}}}{{{anchor}}}")
+        return f"PHLATEXINDEX{idx}ENDPH"
 
     def repl_bold(m: re.Match) -> str:
         idx = len(placeholders)
         bold_txt = escape_latex(m.group(1))
         placeholders.append(f"\\textbf{{{bold_txt}}}")
-        return f"__PH_{idx}__"
+        return f"PHLATEXINDEX{idx}ENDPH"
 
     def repl_italic(m: re.Match) -> str:
         idx = len(placeholders)
         it_txt = escape_latex(m.group(1))
         placeholders.append(f"\\textit{{{it_txt}}}")
-        return f"__PH_{idx}__"
+        return f"PHLATEXINDEX{idx}ENDPH"
 
     t = re.sub(r'`([^`]+)`', repl_code, text)
+    t = re.sub(r'\[([^\]]+)\]\((https?://[^\)]+)\)', repl_link, t)
     t = re.sub(r'\*\*([^*]+)\*\*', repl_bold, t)
-    t = re.sub(r'\*([^*]+)\*', repl_italic, t)
+    t = re.sub(r'__([^_]+)__', repl_bold, t)
+    t = re.sub(r'(?<!\*)\*([^*]+)\*(?!\*)', repl_italic, t)
 
     t_escaped = escape_latex(t)
 
     for idx, ph_val in enumerate(placeholders):
-        t_escaped = t_escaped.replace(escape_latex(f"__PH_{idx}__"), ph_val)
+        t_escaped = t_escaped.replace(f"PHLATEXINDEX{idx}ENDPH", ph_val)
 
     return t_escaped
 
@@ -224,6 +237,7 @@ def markdown_to_latex_body(text: str) -> str:
     latex_parts: List[str] = []
     in_itemize = False
     in_enumerate = False
+    in_code_block = False
     table_buffer: List[str] = []
 
     def close_lists() -> List[str]:
@@ -249,6 +263,23 @@ def markdown_to_latex_body(text: str) -> str:
 
     for raw_line in lines:
         line = raw_line.strip()
+
+        # Gestion des blocs de code multi-lignes ```...```
+        if line.startswith("```"):
+            latex_parts.extend(close_lists())
+            if table_buffer:
+                latex_parts.extend(flush_table())
+            if not in_code_block:
+                in_code_block = True
+                latex_parts.append(r"\begin{verbatim}")
+            else:
+                in_code_block = False
+                latex_parts.append(r"\end{verbatim}")
+            continue
+
+        if in_code_block:
+            latex_parts.append(raw_line)
+            continue
 
         # Détection de ligne de tableau Markdown
         if line.startswith("|") and line.endswith("|") and line.count("|") >= 2:
@@ -279,17 +310,17 @@ def markdown_to_latex_body(text: str) -> str:
         # Titres de sections Markdown
         if line.startswith("### "):
             latex_parts.extend(close_lists())
-            title = escape_latex(line[4:].strip())
+            title = _format_inline_markdown(line[4:].strip())
             latex_parts.append(f"\\subsubsection*{{{title}}}")
             continue
         elif line.startswith("## "):
             latex_parts.extend(close_lists())
-            title = escape_latex(line[3:].strip())
+            title = _format_inline_markdown(line[3:].strip())
             latex_parts.append(f"\\subsection*{{{title}}}")
             continue
         elif line.startswith("# "):
             latex_parts.extend(close_lists())
-            title = escape_latex(line[2:].strip())
+            title = _format_inline_markdown(line[2:].strip())
             latex_parts.append(f"\\section*{{{title}}}")
             continue
 
@@ -323,6 +354,8 @@ def markdown_to_latex_body(text: str) -> str:
         p_latex = _format_inline_markdown(line)
         latex_parts.append(f"{p_latex}\n")
 
+    if in_code_block:
+        latex_parts.append(r"\end{verbatim}")
     if table_buffer:
         latex_parts.extend(flush_table())
     latex_parts.extend(close_lists())
@@ -417,8 +450,9 @@ def extract_latex_log_error(log_path: Optional[str], fallback_output: str = "") 
                 lines = f.readlines()
             error_lines = []
             for i, l in enumerate(lines):
-                if l.startswith("!"):
-                    error_lines.append(l.strip())
+                l_s = l.strip()
+                if l_s.startswith("!") or "LaTeX Error:" in l_s or "Emergency stop" in l_s or "Fatal error" in l_s:
+                    error_lines.append(l_s)
                     for j in range(i + 1, min(i + 4, len(lines))):
                         if lines[j].strip():
                             error_lines.append(lines[j].strip())
@@ -441,17 +475,20 @@ def extract_latex_log_error(log_path: Optional[str], fallback_output: str = "") 
 
 
 def find_latex_compiler(preferred_bin: Optional[str] = None) -> Tuple[Optional[str], str]:
-    """Détecte le meilleur compilateur LaTeX disponible (latexmk, pdflatex, xelatex)."""
-    if preferred_bin and preferred_bin != "latexmk":
+    """Détecte le meilleur compilateur LaTeX disponible (latexmk, pdflatex, xelatex).
+    Privilégie pdflatex sur Windows si perl est absent (évite le blocage de MiKTeX latexmk).
+    """
+    if preferred_bin and preferred_bin not in ("latexmk", "auto", ""):
         w = shutil.which(preferred_bin) or (preferred_bin if os.path.exists(preferred_bin) else None)
         if w:
             return w, "custom"
         return None, "none"
 
-    # 1. latexmk
-    latexmk_path = shutil.which("latexmk")
-    if latexmk_path:
-        return latexmk_path, "latexmk"
+    has_perl = bool(shutil.which("perl"))
+
+    # 1. Si perl est présent ou sur Linux/VPS, tester latexmk en premier
+    if (has_perl or os.name != "nt") and shutil.which("latexmk"):
+        return shutil.which("latexmk"), "latexmk"
 
     # 2. pdflatex (incluant les chemins Windows MiKTeX et TeX Live standards)
     pdflatex_candidates = [
@@ -470,7 +507,12 @@ def find_latex_compiler(preferred_bin: Optional[str] = None) -> Tuple[Optional[s
         if w:
             return w, "pdflatex"
 
-    # 3. xelatex
+    # 3. latexmk si aucun pdflatex direct n'a été trouvé
+    latexmk_path = shutil.which("latexmk")
+    if latexmk_path:
+        return latexmk_path, "latexmk"
+
+    # 4. xelatex
     xelatex_path = shutil.which("xelatex")
     if xelatex_path:
         return xelatex_path, "xelatex"
@@ -525,7 +567,7 @@ def compile_latex(
             "-file-line-error",
             tex_filename
         ]
-        if os.name == "nt" and "miktex" in str(compiler_bin).lower():
+        if os.name == "nt" or "miktex" in str(compiler_bin).lower():
             cmd.insert(1, "-enable-installer")
 
     try:
@@ -537,6 +579,30 @@ def compile_latex(
             text=True,
             timeout=timeout,
         )
+
+        # Si échec avec latexmk (ex: manque de perl sous Windows), tentative de repli immédiate vers pdflatex
+        if proc.returncode != 0 and (compiler_type == "latexmk" or "latexmk" in str(compiler_bin).lower()):
+            pdf_cand, _ = find_latex_compiler(preferred_bin="pdflatex")
+            if pdf_cand and pdf_cand != compiler_bin:
+                logger.info(f"[LaTeX Report Service] Repli automatique de latexmk vers pdflatex ({pdf_cand})")
+                cmd_fallback = [
+                    pdf_cand,
+                    "-interaction=nonstopmode",
+                    "-file-line-error",
+                    tex_filename
+                ]
+                if os.name == "nt" or "miktex" in str(pdf_cand).lower():
+                    cmd_fallback.insert(1, "-enable-installer")
+                proc = subprocess.run(
+                    cmd_fallback,
+                    cwd=work_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+                compiler_bin = pdf_cand
+                compiler_type = "pdflatex"
+                cmd = cmd_fallback
 
         # Si pdflatex et présence potentielle de TOC/liens, passe 2 pour résoudre la table des matières
         if proc.returncode == 0 and compiler_type == "pdflatex":

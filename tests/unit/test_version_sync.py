@@ -17,7 +17,7 @@ async def test_get_version_endpoint():
         assert response.status_code == 200
         data = response.json()
         assert "version" in data
-        assert data["version"] == getattr(config, "APP_VERSION", "5.93.0")
+        assert data["version"] == getattr(config, "APP_VERSION", "5.94.0")
         assert "J.A.R.V.I.S." in data["app"]
 
 

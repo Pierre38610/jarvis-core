@@ -92,7 +92,7 @@ def sync_and_verify_versions(target_version: Optional[str] = None) -> str:
             pass
 
     if not version:
-        version = "5.93.0"
+        version = "5.94.0"
 
     print(f"\n[0/3] Vérification & synchronisation des versions applicatives (v{version})...", flush=True)
     synced_files = []
