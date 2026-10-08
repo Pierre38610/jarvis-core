@@ -1574,14 +1574,15 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                     name="launch_phone_navigation",
                     description=(
                         "Lance un itinéraire de navigation GPS (Google Maps) sur le smartphone Samsung S24 de Pierre via webhook mobile. "
-                        "À UTILISER QUAND : Pierre demande un itinéraire, de lancer le GPS ou la navigation vers une destination sur son téléphone."
+                        "Prend en charge nativement toutes les adresses, villes et TOUS les lieux enregistrés avec libellé dans son Google Maps (ex: 'Maison', 'Domicile', 'Travail', 'Bureau', 'Salle de sport', etc.). "
+                        "À UTILISER QUAND : Pierre demande un itinéraire, de lancer le GPS ou la navigation vers une destination ou un lieu enregistré sur son téléphone."
                     ),
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
                             "destination": types.Schema(
                                 type="STRING",
-                                description="Adresse, lieu, ville ou destination pour la navigation GPS."
+                                description="Adresse, lieu, ville ou nom exact du libellé enregistré dans Google Maps (ex: 'Maison', 'Travail', 'Salle de sport', 'Malmö Central', 'Gare de Lyon'). Ne pas inclure de préfixe conversationnel."
                             ),
                             "mode": types.Schema(
                                 type="STRING",

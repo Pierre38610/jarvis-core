@@ -118,6 +118,88 @@ from core.tools.verifier import (
 )
 
 
+def normalize_navigation_destination(raw: str) -> str:
+    """Nettoie et normalise une destination de navigation GPS pour Google Maps et MacroDroid.
+    Élimine les préfixes conversationnels ('itinéraire vers', 'aller à', etc.) et préserve
+    fidèlement les libellés enregistrés dans Google Maps (Maison, Travail, Bureau, Salle de sport, etc.).
+    """
+    if not raw:
+        return ""
+
+    clean = str(raw).strip().strip("\"'«»`")
+
+    # Suppression des ponctuations terminales
+    clean = re.sub(r"[\.\,\;\:\?\!]+$", "", clean).strip()
+
+    # Motifs de préfixes conversationnels fréquents en français
+    prefix_patterns = [
+        r"^(?:peux-tu\s+|pourrais-tu\s+|merci\s+de\s+|veuillez\s+)?(?:l['’]itinéraire\s+(?:vers|pour|en\s+direction\s+de|jusqu['’]à|jusqu['’]au))\s+",
+        r"^(?:itinéraire\s+(?:vers|pour|en\s+direction\s+de|jusqu['’]à|jusqu['’]au))\s+",
+        r"^(?:la\s+navigation\s+(?:vers|pour|en\s+direction\s+de|jusqu['’]à|jusqu['’]au))\s+",
+        r"^(?:navigation\s+(?:vers|pour|en\s+direction\s+de|jusqu['’]à|jusqu['’]au))\s+",
+        r"^(?:mets(?:-moi|\s+moi)?\s+(?:l['’]itinéraire|la\s+navigation|le\s+gps)\s+(?:vers|pour|en\s+direction\s+de|jusqu['’]à|jusqu['’]au))\s+",
+        r"^(?:lance(?:-moi|\s+moi)?\s+(?:l['’]itinéraire|la\s+navigation|le\s+gps)\s+(?:vers|pour|en\s+direction\s+de|jusqu['’]à|jusqu['’]au))\s+",
+        r"^(?:guide(?:-moi|\s+moi)?\s+(?:vers|pour|en\s+direction\s+de|jusqu['’]à|jusqu['’]au))\s+",
+        r"^(?:emmène(?:-moi|\s+moi)?\s+(?:vers|pour|à|au|aux|en\s+direction\s+de|jusqu['’]à|jusqu['’]au))\s+",
+        r"^(?:conduis(?:-moi|\s+moi)?\s+(?:vers|pour|à|au|aux|en\s+direction\s+de|jusqu['’]à|jusqu['’]au))\s+",
+        r"^(?:pour\s+aller\s+(?:à\s+la|à\s+l['’]|à|au|aux|en|vers|chez))\s+",
+        r"^(?:aller\s+(?:à\s+la|à\s+l['’]|à|au|aux|en|vers|chez))\s+",
+        r"^(?:direction|en\s+direction\s+de|à\s+destination\s+de)\s+",
+        r"^(?:jusqu['’]à\s+la|jusqu['’]au|jusqu['’]aux|jusqu['’]à)\s+",
+        r"^(?:vers\s+la|vers\s+le|vers\s+les|vers\s+l['’]|vers)\s+",
+    ]
+
+    for pat in prefix_patterns:
+        clean = re.sub(pat, "", clean, flags=re.IGNORECASE).strip()
+
+    # Normalisation des lieux enregistrés et libellés Google Maps fréquents
+    lower_map = {
+        "maison": "Maison",
+        "la maison": "Maison",
+        "à la maison": "Maison",
+        "a la maison": "Maison",
+        "chez moi": "Maison",
+        "mon chez moi": "Maison",
+        "domicile": "Maison",
+        "mon domicile": "Maison",
+        "au domicile": "Maison",
+        "home": "Maison",
+        "rentrer": "Maison",
+        "rentrer chez moi": "Maison",
+        "rentrer a la maison": "Maison",
+        "rentrer à la maison": "Maison",
+        "travail": "Travail",
+        "mon travail": "Travail",
+        "au travail": "Travail",
+        "le travail": "Travail",
+        "boulot": "Travail",
+        "mon boulot": "Travail",
+        "au boulot": "Travail",
+        "le boulot": "Travail",
+        "bureau": "Travail",
+        "mon bureau": "Travail",
+        "au bureau": "Travail",
+        "le bureau": "Travail",
+        "work": "Travail",
+        "job": "Travail",
+        "salle de sport": "Salle de sport",
+        "la salle de sport": "Salle de sport",
+        "a la salle de sport": "Salle de sport",
+        "à la salle de sport": "Salle de sport",
+        "la salle": "Salle de sport",
+        "a la salle": "Salle de sport",
+        "à la salle": "Salle de sport",
+        "sport": "Salle de sport",
+        "gym": "Salle de sport",
+    }
+
+    lowered = clean.lower()
+    if lowered in lower_map:
+        return lower_map[lowered]
+
+    return clean
+
+
 def _infer_tool_tier_and_cost(
     name: str,
     args: dict,
@@ -3976,14 +4058,15 @@ async def _execute_dispatch_tool(
 
     # ─── launch_phone_navigation (Pont mobile MacroDroid Samsung S24) ───────────
     elif name in ("launch_phone_navigation", "lancer_navigation_telephone", "phone_navigation"):
-        destination = (args.get("destination") or "").strip()
+        raw_dest = (args.get("destination") or args.get("dest") or args.get("lieu") or args.get("adresse") or args.get("target") or args.get("place") or "").strip()
+        destination = normalize_navigation_destination(raw_dest)
         if not destination:
             return ToolResult.failed(
                 action="launch_phone_navigation",
                 error_hint="destination manquante ou vide",
                 user_message="Veuillez spécifier une destination valide pour la navigation.",
             )
-        mode = args.get("mode") or "driving"
+        mode = (args.get("mode") or "driving").strip().lower()
         from services.mobile_bridge_service import mobile_bridge_service
         bridge_res = await mobile_bridge_service.launch_maps_navigation(destination=destination, mode=mode)
         if bridge_res.ok:

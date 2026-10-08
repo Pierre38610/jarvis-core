@@ -93,7 +93,7 @@ async def test_mobile_bridge_empty_device_id_no_network(monkeypatch):
     assert mock_client.get.called is False
 
 
-# ─── 5. params "Gare de Malmö" correctement encodés + mode transmis ───────────
+# ─── 5. params "Gare de Malmö" correctement encodés + matrice d'alias complète ─
 
 @pytest.mark.asyncio
 async def test_mobile_bridge_launch_maps_params_and_mode(monkeypatch):
@@ -109,7 +109,18 @@ async def test_mobile_bridge_launch_maps_params_and_mode(monkeypatch):
     mock_client.get.assert_called_once()
     called_url, called_kwargs = mock_client.get.call_args
     assert called_url[0] == "https://ask.macrodroid.com/test_device_uuid_12345/Jarvis maps"
-    assert called_kwargs.get("params") == {"dest": "Gare de Malmö", "mode": "walking"}
+    params = called_kwargs.get("params")
+    assert params["dest"] == "Gare de Malmö"
+    assert params["destination"] == "Gare de Malmö"
+    assert params["q"] == "Gare de Malmö"
+    assert params["query"] == "Gare de Malmö"
+    assert params["daddr"] == "Gare de Malmö"
+    assert params["address"] == "Gare de Malmö"
+    assert params["d"] == "Gare de Malmö"
+    assert params["D"] == "Gare de Malmö"
+    assert params["mode"] == "walking"
+    assert params["travelmode"] == "walking"
+    assert params["m"] == "w"
 
 
 # ─── 6. mode invalide → driving ───────────────────────────────────────────────
@@ -126,7 +137,11 @@ async def test_mobile_bridge_launch_maps_invalid_mode_defaults_driving(monkeypat
     res = await mobile_bridge_service.launch_maps_navigation(destination="Paris", mode="teleportation")
     assert res.ok is True
     _, called_kwargs = mock_client.get.call_args
-    assert called_kwargs.get("params") == {"dest": "Paris", "mode": "driving"}
+    params = called_kwargs.get("params")
+    assert params["dest"] == "Paris"
+    assert params["destination"] == "Paris"
+    assert params["mode"] == "driving"
+    assert params["m"] == "d"
 
 
 # ─── 7. destination vide → failed ────────────────────────────────────────────
@@ -151,6 +166,28 @@ async def test_dispatcher_launch_phone_navigation_success(monkeypatch):
     assert res.get("verified") is False
     assert res.get("evidence") == "macrodroid_2xx"
     assert "Gare de Lyon" in res.get("user_message", "")
+
+
+# ─── 8b. normalisation des préfixes et lieux enregistrés Google Maps ──────────
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("raw_input,expected", [
+    ("l'itinéraire vers la maison", "Maison"),
+    ("mets-moi l'itinéraire pour le travail", "Travail"),
+    ("guide-moi vers la salle de sport", "Salle de sport"),
+    ("rentrer chez moi", "Maison"),
+    ("au bureau", "Travail"),
+    ("aller à Malmö Central", "Malmö Central"),
+    ("direction Aéroport de Copenhague", "Aéroport de Copenhague"),
+    ("emmène-moi à la salle", "Salle de sport"),
+])
+async def test_dispatcher_launch_phone_navigation_normalization(monkeypatch, raw_input, expected):
+    mock_trigger = AsyncMock(return_value=BridgeResult(ok=True, status=200, reason="ok"))
+    monkeypatch.setattr(mobile_bridge_service, "launch_maps_navigation", mock_trigger)
+
+    res = await dispatch_tool("launch_phone_navigation", {"destination": raw_input, "mode": "driving"})
+    assert res.get("status") == "done"
+    mock_trigger.assert_called_once_with(destination=expected, mode="driving")
 
 
 # ─── 9. control_spotify phone : déjà visible → pas de réveil ───────────────────

@@ -5,7 +5,7 @@ os.environ["NO_PROXY"] = "127.0.0.1,localhost,::1,0.0.0.0"
 os.environ["no_proxy"] = "127.0.0.1,localhost,::1,0.0.0.0"
 
 # Version applicative centrale
-APP_VERSION = "5.94.0"
+APP_VERSION = "5.95.0"
 
 # Répertoires de base
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -476,6 +476,15 @@ Tu ne peux JAMAIS modifier, écrire ou supprimer de fichier dans cet espace (rè
   1. Enregistre fidèlement le récit dans la mémoire avec 'save_memory' (category='fait') ou 'save_notion_entry'.
   2. Si Pierre demande expressément de l'envoyer par courriel, utilise 'send_email' (destinataire : adresse email configurée, objet clair ex: 'Journal des rêves - [Date]').
 - EXÉCUTION DIRECTE DES ORDRES : Quand Pierre demande une recherche (L1/L2/L3), un briefing, la météo, la lecture d'emails, Spotify ou toute autre tâche, réponds et exécute DIRECTEMENT son ordre sans aucune digression ni question parasite.
+
+══════════════════════════════════════════
+13. NAVIGATION GPS ET LIEUX ENREGISTRÉS GOOGLE MAPS
+══════════════════════════════════════════
+- Quand Pierre demande un itinéraire, de lancer le GPS ou la navigation sur son smartphone (« mets l'itinéraire vers X », « lance le GPS », « emmène-moi à X », « itinéraire pour rentrer / maison / travail / sport ») :
+  Appelle IMMÉDIATEMENT l'outil 'launch_phone_navigation' avec le nom épuré de la destination (ex: destination="Maison", destination="Travail", destination="Salle de sport", destination="Malmö Central").
+- Prise en charge intégrale des lieux enregistrés et libellés Google Maps : Pierre utilise des libellés personnalisés dans Google Maps (ex: 'Maison', 'Travail', 'Bureau', 'Salle de sport', etc.). Conserve fidèlement l'intitulé du libellé sans jamais inventer une fausse adresse.
+- Ne place JAMAIS de préfixe parasite ("itinéraire vers", "aller à", "direction") dans l'argument destination.
+- Dès que 'launch_phone_navigation' renvoie status = "done", confirme naturellement et brièvement (ex: « J'ai envoyé l'itinéraire vers [Destination] sur ton téléphone. »).
 """
 
 

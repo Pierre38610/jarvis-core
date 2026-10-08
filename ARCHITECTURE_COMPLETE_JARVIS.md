@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.94.0 — Résolution définitive de la génération et compilation PDF LaTeX (sélection intelligente du compilateur sans blocage Perl sous Windows, priorisation MiKTeX pdflatex, support double passe TOC, polices scalables lmodern, setcounter MaxMatrixCols, assainissement des caractères de contrôle et expédition systématique des pièces jointes PDF).*
+> *Dernière révision majeure : Version 5.95.0 — Correction intégrale et fiabilisation de la navigation Google Maps sur smartphone Samsung S24 via MacroDroid : matrice exhaustive d'alias de variables (dest, destination, q, query, daddr, address, d, D, mode, travelmode, m), suppression définitive des artefacts de substitution non résolus (%dest / %D), normalisation automatique des préfixes conversationnels et prise en charge native des lieux enregistrés avec libellé personnalisé dans Google Maps (Maison, Travail, Bureau, Salle de sport, etc.).*
 
 
 ---
@@ -1248,11 +1248,13 @@ Afin de rendre structurellement impossible que Jarvis annonce oralement un succ�
 6. **Modification de Présentation (`modify_presentation`)** : applique une instruction vocale/texte à une présentation Google Slides existante (`presentation_id` ou `last`), avec contre-vérification d'effet réel via `core/tools/verifier.py`.
 
 ### 9.18. Pont Mobile MacroDroid (Samsung S24)
-- **Fichiers** : `services/mobile_bridge_service.py`, `config.py` (`MACRODROID_DEVICE_ID`, `MACRODROID_BASE_URL`).
-- **Rôle & Objectifs** : Pilote le smartphone Samsung S24 de Pierre via des webhooks MacroDroid sécurisés (navigation Google Maps, réveil de l'application Spotify).
+- **Fichiers** : `services/mobile_bridge_service.py`, `config.py` (`MACRODROID_DEVICE_ID`, `MACRODROID_BASE_URL`), `core/tools/dispatcher.py` (`normalize_navigation_destination`).
+- **Rôle & Objectifs** : Pilote le smartphone Samsung S24 de Pierre via des webhooks MacroDroid sécurisés (navigation Google Maps temps réel, réveil de l'application Spotify).
 - **Architecture & Résilience** :
   - Client asynchrone `httpx.AsyncClient` partagé avec délai d'attente de 4,0 s.
   - Déclencheur `_trigger(identifier, params)` avec retry unique sur timeout ou erreur réseau (`httpx.TimeoutException`, `httpx.NetworkError`).
+  - Matrice exhaustive d'alias de paramètres envoyée par webhook (`dest`, `destination`, `q`, `query`, `daddr`, `address`, `adresse`, `lieu`, `location`, `place`, `target`, `d`, `D`, `mode`, `travelmode`, `directionsmode`, `m`, `mode_letter`) garantissant la substitution sans résidu de jeton non remplacé (`%dest`, `%D`, etc.) quelle que soit la variable locale définie dans MacroDroid/Tasker.
+  - Normalisation intelligente des destinations (`normalize_navigation_destination`) : nettoyage des préfixes parasites (« itinéraire vers », « aller à », « emmène-moi à », etc.) et reconnaissance des libellés et lieux enregistrés Google Maps de Pierre (`Maison`, `Travail`, `Bureau`, `Salle de sport`, etc.).
   - Retour typé via dataclass `BridgeResult(ok, status, reason)`.
   - Intégration transparente dans `control_spotify` et `dispatcher.py` avec détection automatique sur Spotify Connect (polling 0,5 s max 6,0 s) sans blocage arbitraire.
   - Confidentialité stricte : masquage systématique du `DEVICE_ID` et de l'URL complète dans tous les journaux.
@@ -1413,7 +1415,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre minérale et raffinée (`#05070D`, `#0B0F19`, `#0D1321`), verre dépoli avec bordures ultra-fines (`backdrop-filter: blur(24px)`), hiérarchie chromatique équilibrée (cyan glace, émeraude, ambre, violet, rose alerte) sans saturation agressive.
 - **Typographie** : Polices modernes géométriques sans-serif (`Inter`, `Plus Jakarta Sans`) et code monospace technique (`JetBrains Mono`).
 - **Responsive Fluid Architecture** : Expérience fluide optimisée sur smartphone (< 768px : barre d'onglets fixée en bas, statusbar compacte, mini-lecteur au-dessus des onglets, `100dvh`) et cockpit glassmorphic centré sur grand écran desktop PC.
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `v5.89.0`.
+- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `v5.95.0`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
@@ -1622,4 +1624,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.94.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.95.0.*

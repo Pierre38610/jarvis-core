@@ -17,6 +17,28 @@ logger = logging.getLogger("jarvis.mobile_bridge")
 
 ALLOWED_MODES: Set[str] = {"driving", "walking", "bicycling", "transit"}
 
+MODE_LETTER_MAP: Dict[str, str] = {
+    "driving": "d",
+    "walking": "w",
+    "bicycling": "b",
+    "transit": "r",
+}
+
+MAPS_WEBHOOK_IDENTIFIERS = (
+    "Jarvis maps",
+    "Jarvis_maps",
+    "jarvis_maps",
+    "Jarvis_Maps",
+    "jarvis maps",
+    "JarvisMaps",
+    "jarvismaps",
+    "Jarvis navigation",
+    "Jarvis_navigation",
+    "jarvis_navigation",
+    "maps",
+    "navigation",
+)
+
 
 @dataclass
 class BridgeResult:
@@ -90,17 +112,53 @@ class MobileBridgeService:
         return res
 
     async def launch_maps_navigation(self, destination: str, mode: str = "driving") -> BridgeResult:
-        """Envoie le signal MacroDroid pour lancer un itinéraire Google Maps vers la destination demandée."""
-        if mode not in ALLOWED_MODES:
-            mode = "driving"
-        params = {"dest": destination, "mode": mode}
-        res = await self._trigger("Jarvis maps", params)
-        if not res.ok:
-            for alt in ("Jarvis_maps", "jarvis_maps"):
-                alt_res = await self._trigger(alt, params)
-                if alt_res.ok:
-                    return alt_res
-        return res
+        """Envoie le signal MacroDroid pour lancer un itinéraire Google Maps vers la destination demandée.
+        Fournit une matrice exhaustive d'alias de paramètres pour garantir la compatibilité absolue avec
+        toutes les configurations MacroDroid / Tasker / Intents Android (dest, destination, q, query,
+        daddr, address, adresse, lieu, location, place, target, d, D, mode, travelmode, directionsmode, m).
+        Gère nativement les adresses, villes et lieux enregistrés avec libellé dans Google Maps (Maison, Travail, etc.).
+        """
+        dest_clean = (destination or "").strip()
+        if not dest_clean:
+            return BridgeResult(ok=False, status=None, reason="destination vide")
+
+        mode_clean = mode.lower().strip() if mode else "driving"
+        if mode_clean not in ALLOWED_MODES:
+            mode_clean = "driving"
+
+        mode_letter = MODE_LETTER_MAP.get(mode_clean, "d")
+
+        # Matrice complète de paramètres pour satisfaire toute variable locale MacroDroid/Tasker/Intent
+        params = {
+            "dest": dest_clean,
+            "destination": dest_clean,
+            "q": dest_clean,
+            "query": dest_clean,
+            "daddr": dest_clean,
+            "address": dest_clean,
+            "adresse": dest_clean,
+            "lieu": dest_clean,
+            "location": dest_clean,
+            "place": dest_clean,
+            "target": dest_clean,
+            "d": dest_clean,
+            "D": dest_clean,
+            "mode": mode_clean,
+            "travelmode": mode_clean,
+            "directionsmode": mode_clean,
+            "m": mode_letter,
+            "mode_letter": mode_letter,
+        }
+
+        # Déclenchement du premier webhook supporté par MacroDroid
+        last_res = BridgeResult(ok=False, status=None, reason="no_webhook_triggered")
+        for identifier in MAPS_WEBHOOK_IDENTIFIERS:
+            res = await self._trigger(identifier, params)
+            if res.ok:
+                return res
+            last_res = res
+
+        return last_res
 
 
 mobile_bridge_service = MobileBridgeService()

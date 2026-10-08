@@ -38,7 +38,7 @@ class PaidConsentRequest(BaseModel):
 async def get_version():
     """Retourne la version applicative centrale de J.A.R.V.I.S. Core."""
     return {
-        "version": getattr(config, "APP_VERSION", "5.94.0"),
+        "version": getattr(config, "APP_VERSION", "5.95.0"),
         "app": "J.A.R.V.I.S. - Stark Industries",
     }
 
