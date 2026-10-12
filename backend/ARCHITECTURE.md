@@ -8,7 +8,7 @@ Le dossier `backend/` regroupe l'ensemble du cœur applicatif serveur et de l'in
 - **Point d'entrée & Orchestration** : `App.py`, initialisation ASGI FastAPI, cycle de vie, gestion des WebSockets et intégrations LLM.
 - **Configuration & Sécurité** : `config.py` (variables d'environnement, drapeaux de routage, chemins persistants), `auth.py` et contrôle d'accès.
 - **État Partagé & Dispatcher d'Outils** : `backend/core/shared_state.py` (état mémoire centralisé, clients Gemini, broadcast), `backend/core/tools/` (`declarations.py` avec contrat 51 outils Gemini Live, `dispatcher.py`, `arg_validator.py`, `result.py`, `verifier.py`).
-- **Routeurs d'API & WebSockets** : `routers/` (voix, agents locaux, appareils ESP32, chat, streaming, supervision, réglages).
+- **Routeurs d'API & WebSockets** : `backend/routers/` (voix, agents locaux, appareils ESP32, chat, streaming, supervision, réglages).
 - **Services Métier & Intelligence** : `services/` (routage de modèles LLM Gemini, sessions de navigation Playwright/CDP, mémoires SQLite/Redis/Qdrant, synchronisations externes).
 - **Données, Prompts & Schémas** : `config/models.json`, templates de prompts, schémas de base de données relationnelle (`db/`).
 - **Tests Automatisés** : `tests/` (suites de tests unitaires et d'intégration pytest).
