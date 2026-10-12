@@ -8,7 +8,13 @@ import sys
 from unittest.mock import AsyncMock, patch
 import pytest
 
-from scripts.try_browser_task import main
+try:
+    from ops.scripts.try_browser_task import main
+except ModuleNotFoundError:
+    try:
+        from scripts.try_browser_task import main
+    except ModuleNotFoundError:
+        from try_browser_task import main
 
 
 @pytest.mark.asyncio
