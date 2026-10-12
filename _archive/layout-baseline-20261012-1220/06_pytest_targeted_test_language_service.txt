@@ -1,0 +1,12 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.13.9, pytest-9.1.1, pluggy-1.6.0
+cachedir: .cache\pytest
+rootdir: C:\Users\pierr\Documents\_anti_gravity\jarvis\jarvis-core
+configfile: pytest.ini
+plugins: anyio-4.12.1, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 13 items
+
+tests\unit\test_language_service.py .............                        [100%]
+
+============================= 13 passed in 0.08s ==============================

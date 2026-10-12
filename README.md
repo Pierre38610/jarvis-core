@@ -149,6 +149,23 @@ async for message in cache_service.listen_channel("jarvis:system:alerts"):
 
 ---
 
+## 🧪 Tests & Assurance Qualité
+
+La suite de tests automatisée est regroupée dans `backend/tests/` :
+
+```powershell
+# Exécuter l'ensemble de la suite de tests
+.\venv\Scripts\pytest.exe -v backend/tests/
+
+# Exécuter uniquement les tests unitaires
+.\venv\Scripts\pytest.exe -v backend/tests/unit/
+
+# Exécuter un test unitaire ciblé
+.\venv\Scripts\pytest.exe -v backend/tests/unit/test_language_service.py
+```
+
+---
+
 ## 🔄 Synchronisation & Déploiement Continu
 
 Pour déployer les modifications instantanément vers GitHub et sur le VPS Oracle Cloud :

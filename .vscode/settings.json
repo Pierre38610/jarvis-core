@@ -1,5 +1,5 @@
 {
-    "cmake.sourceDirectory": "${workspaceFolder}/firmware_esp32/xiaozhi-esp32",
+    "cmake.sourceDirectory": "${workspaceFolder}/firmware/esp32/xiaozhi-esp32",
     "python-envs.defaultPackageManager": "ms-python.python:pip",
     "chat.tools.terminal.autoApprove": {
         "&": true,

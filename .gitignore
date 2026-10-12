@@ -44,12 +44,16 @@ ssh/
 
 # ─── Binaires, Dumps Firmware & Archives ─────────────────────────────────────
 cloudflared.exe
+ops/deploy/cloudflared.exe
 *.exe
 *.bin
 firmware_backup.bin
 firmware_esp32/*.bin
+firmware/esp32/*.bin
 firmware_esp32/nvs_jarvis.csv
+firmware/esp32/nvs_jarvis.csv
 !firmware_esp32/nvs_jarvis.csv.example
+!firmware/esp32/nvs_jarvis.csv.example
 *.tar.gz
 *.zip
 *.7z
@@ -72,8 +76,11 @@ data/
 .agent_instance.pid
 tunnel_url.txt
 static/tunnel_url.json
+frontend/static/tunnel_url.json
 static/latest_screenshot.jpg
+frontend/static/latest_screenshot.jpg
 static/uploads/
+frontend/static/uploads/
 outbox_emails/
 test_workspace/
 test_ws/
