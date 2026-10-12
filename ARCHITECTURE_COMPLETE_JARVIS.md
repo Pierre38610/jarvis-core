@@ -183,7 +183,7 @@ jarvis-core/
 ├── scripts_tmp_fix_slides*.py / scripts_tmp_append_tests.py # Scripts jetables historiques (dette technique, purge recommandée)
 ├── .agents/rules/                       # Règles agents locales (AGENTS.md, architecture-knowledge-and-sync.md, git-sync.md)
 │
-├── firmware_esp32/                       # Firmware embarqué pour l'enceinte intelligente Waveshare ESP32-S3 Audio Board
+├── firmware/esp32/                         # Firmware embarqué pour l'enceinte intelligente Waveshare ESP32-S3 Audio Board
 │   ├── xiaozhi-esp32/                   # Projet firmware ESP-IDF C++ (codecs ES8311/ES7210, WakeNet 9, LCD JD9853/ST7789)
 │   ├── build_firmware.bat               # Script Windows automatisé : compilation idf.py, flash COM5, préservation NVS & monitor
 │   └── DEPLOY_GUIDE.sh                  # Procédure pas-à-pas de configuration, menuconfig, génération token NVS et flash
@@ -906,13 +906,13 @@ L'implémentation respecte le standard d'échange bidirectionnel temps réel pou
 
 ### 8.8. Compilation, Flash & Outillage Firmware (`build_firmware.bat`, ESP-IDF 5.x)
 - **Environnement de Compilation** : Espressif ESP-IDF v5.2+ (GCC Xtensa, CMake, Ninja, composants ESP-SR, ESP-ADF audio pipeline).
-- **Script Windows Automatisé (`firmware_esp32/build_firmware.bat`)** :
+- **Script Windows Automatisé (`firmware/esp32/build_firmware.bat`)** :
   - Prépare l'environnement de build avec détection automatique d'ESP-IDF.
   - Compile le projet C++ XiaoZhi (`idf.py build`).
   - Détecte le port série COM (par défaut `COM5` pour le convertisseur CH343 / CP2102 de la carte Waveshare).
   - Flashe les partitions bootloader, partition-table et application (`idf.py -p COM5 flash`) **en préservant strictement la partition NVS** `0x9000` afin de ne jamais écraser les identifiants Wi-Fi et le jeton JWT.
   - Lance automatiquement le moniteur série temps réel (`idf.py -p COM5 monitor`).
-- **Guide Déploiement Complet** : Documenté pas-à-pas dans `firmware_esp32/DEPLOY_GUIDE.sh` et `build_firmware.bat`.
+- **Guide Déploiement Complet** : Documenté pas-à-pas dans `firmware/esp32/DEPLOY_GUIDE.sh` et `build_firmware.bat`.
 
 ---
 

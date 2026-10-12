@@ -48,8 +48,11 @@ cloudflared.exe
 *.bin
 firmware_backup.bin
 firmware_esp32/*.bin
+firmware/esp32/*.bin
 firmware_esp32/nvs_jarvis.csv
+firmware/esp32/nvs_jarvis.csv
 !firmware_esp32/nvs_jarvis.csv.example
+!firmware/esp32/nvs_jarvis.csv.example
 *.tar.gz
 *.zip
 *.7z

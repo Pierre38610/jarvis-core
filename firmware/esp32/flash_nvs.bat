@@ -17,7 +17,7 @@ set NVS_CSV=%SCRIPT_DIR%nvs_jarvis.csv
 if not exist "%NVS_CSV%" (
     if exist "%SCRIPT_DIR%nvs_jarvis.csv.example" (
         echo [INFO] Fichier nvs_jarvis.csv non trouve.
-        echo Veuillez creer firmware_esp32/nvs_jarvis.csv a partir de firmware_esp32/nvs_jarvis.csv.example
+        echo Veuillez creer firmware/esp32/nvs_jarvis.csv a partir de firmware/esp32/nvs_jarvis.csv.example
         echo en y renseignant votre token JWT d'appareil.
         exit /b 1
     )
