@@ -15,6 +15,13 @@ Ce document définit les directives d'exécution obligatoires pour tout agent au
 ## 3. Périmètre & Confinement
 - Opère strictement au sein de l'espace de travail (`workspace`) fourni.
 - Ne modifie aucun fichier système en dehors du périmètre du projet.
+- **Contrats d'architecture par sous-dossier** : Chaque sous-dossier de l'arborescence modulaire dispose de son propre contrat d'architecture et de confinement. L'agent ne modifie aucun fichier hors du dossier ciblé par sa tâche sans prompt explicite :
+  - `backend/ARCHITECTURE.md` : FastAPI, état, outils, routeurs, services, DB et tests.
+  - `frontend/ARCHITECTURE.md` : Interface PWA HUD (`frontend/static/`).
+  - `firmware/ARCHITECTURE.md` : Code C++/ESP-IDF pour microcontrôleur ESP32-S3 (`firmware/esp32/`).
+  - `ops/ARCHITECTURE.md` : Relais local Windows, lanceurs et scripts de déploiement cloud.
+  - `docs/ARCHITECTURE.md` : Spécifications, documentation technique et workflows n8n.
+  - `_archive/ARCHITECTURE.md` : Sauvegardes, baselines et scripts historiques décommissionnés.
 
 ## 4. Rigueur & Vérification du Travail
 - Vérifie systématiquement tes modifications (tests unitaires `pytest`, vérification de syntaxe Python, linting) avant de clore la session.

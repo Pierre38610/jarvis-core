@@ -1,0 +1,37 @@
+# Architecture Backend — J.A.R.V.I.S. Core
+
+## 1. Vision Globale de Jarvis
+J.A.R.V.I.S. est un assistant IA multimodal et modulaire articulé autour de FastAPI asynchrone, de Google Gemini Live Audio et d'une infrastructure distribuée (Cloud VPS Oracle ARM64, relais PC local Windows et microcontrôleurs embarqués ESP32-S3).
+
+## 2. Rôle Précis du Dossier `backend/`
+Le dossier `backend/` regroupe l'ensemble du cœur applicatif serveur et de l'intelligence centrale :
+- **Point d'entrée & Orchestration** : `App.py`, initialisation ASGI FastAPI, cycle de vie, gestion des WebSockets et intégrations LLM.
+- **Configuration & Sécurité** : `config.py` (variables d'environnement, drapeaux de routage, chemins persistants), `auth.py` et contrôle d'accès.
+- **État Partagé & Dispatcher d'Outils** : `core/shared_state.py` (état mémoire centralisé), `core/tools/` (déclarations des 51 outils, validation d'arguments, exécution et vérification).
+- **Routeurs d'API & WebSockets** : `routers/` (voix, agents locaux, appareils ESP32, chat, streaming, supervision, réglages).
+- **Services Métier & Intelligence** : `services/` (routage de modèles LLM Gemini, sessions de navigation Playwright/CDP, mémoires SQLite/Redis/Qdrant, synchronisations externes).
+- **Données, Prompts & Schémas** : `config/models.json`, templates de prompts, schémas de base de données relationnelle (`db/`).
+- **Tests Automatisés** : `tests/` (suites de tests unitaires et d'intégration pytest).
+
+## 3. Interfaces avec les Autres Dossiers
+- **`frontend/static/`** : `backend/App.py` monte le répertoire statique sous `/static` et sert `index.html` à la racine `/`.
+- **`ops/`** : Les scripts de démarrage (`ops/windows/`) lancent `backend/App.py` ; le pipeline de déploiement (`ops/deploy/sync_deploy.py`) synchronise le backend vers le VPS ; l'agent relais local communique via le WebSocket `/ws/local-agent`.
+- **`firmware/esp32/`** : Communique directement avec le backend via le point de terminaison WebSocket `/ws/device` pour le flux audio bidirectionnel et les commandes matérielles.
+- **`docs/`** : Fournit les spécifications fonctionnelles et la documentation de référence associées au backend.
+- **`data/`** : Emplacement de persistance des bases SQLite locales (`jarvis_memory.db`) et caches de travail.
+- **`_archive/`** : Aucune dépendance runtime. Les modules legacy décommissionnés y sont placés sans liaison avec `backend/`.
+
+## 4. Règle de Confinement
+> **RÈGLE STRICTE** : L'agent ne modifie aucun fichier en dehors du dossier `backend/` sans prompt ou instruction explicite.
+
+## 5. Commandes de Vérification
+```powershell
+# Compilation syntaxique Python
+python -m compileall -q backend
+
+# Exécution des tests unitaires
+.\venv\Scripts\pytest.exe -q backend/tests/unit/
+
+# Vérification de l'import du point d'entrée
+python -c "import sys; sys.path.insert(0, 'backend'); import App; print('App import OK')"
+```
