@@ -1,0 +1,6 @@
+﻿.\venv\Scripts\python.exe : Failed to find real location of C:\Program Files\Python313\python.exe
+Au caractère Ligne:1 : 1
++ .\venv\Scripts\python.exe -m compileall -q App.py core routers servic ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Failed to find ...n313\python.exe:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError

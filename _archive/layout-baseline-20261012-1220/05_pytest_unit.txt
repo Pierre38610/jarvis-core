@@ -1,0 +1,127 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.13.9, pytest-9.1.1, pluggy-1.6.0
+cachedir: .cache\pytest
+rootdir: C:\Users\pierr\Documents\_anti_gravity\jarvis\jarvis-core
+configfile: pytest.ini
+plugins: anyio-4.12.1, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 232 items
+
+tests\unit\test_agent_concurrency_discrimination.py ......               [  2%]
+tests\unit\test_auth_jwt.py ..................                           [ 10%]
+tests\unit\test_automation_n8n.py ...................                    [ 18%]
+tests\unit\test_cache_service.py .............                           [ 24%]
+tests\unit\test_chrome_cdp_presence.py .........                         [ 28%]
+tests\unit\test_device_barge_in.py ..                                    [ 28%]
+tests\unit\test_device_voice_buffer.py ..                                [ 29%]
+tests\unit\test_device_voice_followup.py ....                            [ 31%]
+tests\unit\test_email_attachments.py ........                            [ 34%]
+tests\unit\test_email_reading.py ..........                              [ 39%]
+tests\unit\test_injection_no_self_interrupt.py .....                     [ 41%]
+tests\unit\test_language_service.py .............                        [ 46%]
+tests\unit\test_local_agent_dispatcher.py ........                       [ 50%]
+tests\unit\test_mobile_bridge.py ....................                    [ 59%]
+tests\unit\test_paid_key_gate.py ...........                             [ 63%]
+tests\unit\test_slides_service.py ............................           [ 75%]
+tests\unit\test_subagents.py ......                                      [ 78%]
+tests\unit\test_system_instruction_template.py ...                       [ 79%]
+tests\unit\test_tool_false_failures.py ........                          [ 83%]
+tests\unit\test_unified_memory.py .............                          [ 88%]
+tests\unit\test_version_sync.py ..                                       [ 89%]
+tests\unit\test_voice_fluidity.py ...............EEEE                    [ 96%]
+tests\unit\test_voice_injection_queue.py EEEEEEEEEE                      [ 99%]
+tests\unit\test_voice_multisession.py EEEE                               [100%]
+
+=================================== ERRORS ====================================
+_ ERROR at setup of TestSynchronousQuickTools.test_open_browser_returns_synchronously _
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+_ ERROR at teardown of TestSynchronousQuickTools.test_open_browser_returns_synchronously _
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+_ ERROR at setup of TestHeavyAsyncTasks.test_generer_presentation_returns_background_status _
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+_ ERROR at teardown of TestHeavyAsyncTasks.test_generer_presentation_returns_background_status _
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+_____________ ERROR at setup of test_priority_ordering_preemption _____________
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+___________ ERROR at teardown of test_priority_ordering_preemption ____________
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+__________ ERROR at setup of test_fifo_ordering_within_same_priority __________
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+________ ERROR at teardown of test_fifo_ordering_within_same_priority _________
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+______ ERROR at setup of test_single_channel_rule_blocks_enqueued_action ______
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+____ ERROR at teardown of test_single_channel_rule_blocks_enqueued_action _____
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+______________ ERROR at setup of test_clear_purges_pending_items ______________
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+____________ ERROR at teardown of test_clear_purges_pending_items _____________
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+___________ ERROR at setup of test_should_emit_milestones_threshold ___________
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+_________ ERROR at teardown of test_should_emit_milestones_threshold __________
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+_ ERROR at setup of TestMultiSessionWebSocket.test_broadcast_to_multiple_ws_sessions _
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+_ ERROR at teardown of TestMultiSessionWebSocket.test_broadcast_to_multiple_ws_sessions _
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+_ ERROR at setup of TestMultiSessionWebSocket.test_push_speak_preferred_device _
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+_ ERROR at teardown of TestMultiSessionWebSocket.test_push_speak_preferred_device _
+C:\Program Files\Python313\Lib\contextlib.py:148: in __exit__
+    next(self.gen)
+E   UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 82: invalid start byte
+=========================== short test summary info ===========================
+ERROR tests/unit/test_voice_fluidity.py::TestSynchronousQuickTools::test_open_browser_returns_synchronously
+ERROR tests/unit/test_voice_fluidity.py::TestSynchronousQuickTools::test_open_browser_returns_synchronously
+ERROR tests/unit/test_voice_fluidity.py::TestHeavyAsyncTasks::test_generer_presentation_returns_background_status
+ERROR tests/unit/test_voice_fluidity.py::TestHeavyAsyncTasks::test_generer_presentation_returns_background_status
+ERROR tests/unit/test_voice_injection_queue.py::test_priority_ordering_preemption
+ERROR tests/unit/test_voice_injection_queue.py::test_priority_ordering_preemption
+ERROR tests/unit/test_voice_injection_queue.py::test_fifo_ordering_within_same_priority
+ERROR tests/unit/test_voice_injection_queue.py::test_fifo_ordering_within_same_priority
+ERROR tests/unit/test_voice_injection_queue.py::test_single_channel_rule_blocks_enqueued_action
+ERROR tests/unit/test_voice_injection_queue.py::test_single_channel_rule_blocks_enqueued_action
+ERROR tests/unit/test_voice_injection_queue.py::test_clear_purges_pending_items
+ERROR tests/unit/test_voice_injection_queue.py::test_clear_purges_pending_items
+ERROR tests/unit/test_voice_injection_queue.py::test_should_emit_milestones_threshold
+ERROR tests/unit/test_voice_injection_queue.py::test_should_emit_milestones_threshold
+ERROR tests/unit/test_voice_multisession.py::TestMultiSessionWebSocket::test_broadcast_to_multiple_ws_sessions
+ERROR tests/unit/test_voice_multisession.py::TestMultiSessionWebSocket::test_broadcast_to_multiple_ws_sessions
+ERROR tests/unit/test_voice_multisession.py::TestMultiSessionWebSocket::test_push_speak_preferred_device
+ERROR tests/unit/test_voice_multisession.py::TestMultiSessionWebSocket::test_push_speak_preferred_device
+======================= 223 passed, 18 errors in 32.49s =======================
