@@ -72,8 +72,11 @@ data/
 .agent_instance.pid
 tunnel_url.txt
 static/tunnel_url.json
+frontend/static/tunnel_url.json
 static/latest_screenshot.jpg
+frontend/static/latest_screenshot.jpg
 static/uploads/
+frontend/static/uploads/
 outbox_emails/
 test_workspace/
 test_ws/

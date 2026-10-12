@@ -66,8 +66,12 @@ def sync_and_verify_versions(target_version: Optional[str] = None) -> str:
     import re
 
     config_path = os.path.join(BASE_DIR, "config.py")
-    index_path = os.path.join(BASE_DIR, "static", "index.html")
-    style_path = os.path.join(BASE_DIR, "static", "style.css")
+    index_path = os.path.join(BASE_DIR, "frontend", "static", "index.html")
+    if not os.path.exists(index_path):
+        index_path = os.path.join(BASE_DIR, "static", "index.html")
+    style_path = os.path.join(BASE_DIR, "frontend", "static", "style.css")
+    if not os.path.exists(style_path):
+        style_path = os.path.join(BASE_DIR, "static", "style.css")
     arch_path = os.path.join(BASE_DIR, "ARCHITECTURE_COMPLETE_JARVIS.md")
 
     version = target_version
@@ -130,11 +134,11 @@ def sync_and_verify_versions(target_version: Optional[str] = None) -> str:
             if new_i != i_txt:
                 with open(index_path, "w", encoding="utf-8") as f:
                     f.write(new_i)
-                synced_files.append("static/index.html")
+                synced_files.append(os.path.relpath(index_path, BASE_DIR).replace("\\", "/"))
         except Exception as e:
             print(f"  [!] Avertissement sync index.html: {e}", flush=True)
 
-    # 3. static/style.css
+    # 3. style.css
     if os.path.exists(style_path):
         try:
             with open(style_path, "r", encoding="utf-8") as f:
@@ -143,7 +147,7 @@ def sync_and_verify_versions(target_version: Optional[str] = None) -> str:
             if new_s != s_txt:
                 with open(style_path, "w", encoding="utf-8") as f:
                     f.write(new_s)
-                synced_files.append("static/style.css")
+                synced_files.append(os.path.relpath(style_path, BASE_DIR).replace("\\", "/"))
         except Exception as e:
             print(f"  [!] Avertissement sync style.css: {e}", flush=True)
 

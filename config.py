@@ -9,7 +9,9 @@ APP_VERSION = "5.95.0"
 
 # Répertoires de base
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+STATIC_DIR = os.path.join(BASE_DIR, "frontend", "static")  # frontend/static/
+if not os.path.exists(STATIC_DIR) and os.path.exists(os.path.join(BASE_DIR, "static")):
+    STATIC_DIR = os.path.join(BASE_DIR, "static")
 SCREENSHOT_PATH = os.path.join(STATIC_DIR, "latest_screenshot.jpg")
 AUTH_FILE = os.path.join(BASE_DIR, "authorized_devices.json")
 DB_PATH = os.path.join(BASE_DIR, "jarvis_memory.db")

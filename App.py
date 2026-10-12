@@ -44,6 +44,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Montage des fichiers statiques du HUD PWA (frontend/static/)
 app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 _downloads_dir = getattr(config, "DOWNLOADS_DIR", os.path.join(config.BASE_DIR, "downloads"))
 os.makedirs(_downloads_dir, exist_ok=True)
