@@ -185,7 +185,7 @@ Le payload est totalement libre. Gemini Live injecte les paramètres extraits de
 
 ### Méthode : Ajouter à `AUTOMATION_TOOL_DECLARATION`
 
-Le fichier [`services/automation.py`](services/automation.py) contient `AUTOMATION_TOOL_DECLARATION`.
+Le fichier [`services/automation.py`](../services/automation.py) contient `AUTOMATION_TOOL_DECLARATION`.
 Il suffit d'ajouter le nouvel identifiant dans la description du champ `action` :
 
 ```python
@@ -359,7 +359,7 @@ curl -s -X POST http://localhost:5678/webhook/test-ping \
 | `youtube-search` | Rechercher sur YouTube | À créer |
 | `deezer-play` | Contrôler Deezer | À créer |
 
-> Pour ajouter une ligne à ce tableau, créer le workflow n8n correspondant, puis ajouter le slug à `AUTOMATION_TOOL_DECLARATION` dans [`services/automation.py`](services/automation.py).
+> Pour ajouter une ligne à ce tableau, créer le workflow n8n correspondant, puis ajouter le slug à `AUTOMATION_TOOL_DECLARATION` dans [`services/automation.py`](../services/automation.py).
 
 ---
 
