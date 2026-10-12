@@ -3,7 +3,12 @@ import sys
 import asyncio
 import json
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_backend = os.path.join(_root, "backend")
+if _backend not in sys.path:
+    sys.path.insert(0, _backend)
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 
 async def run_tests():
     print("=== 1. TEST IMPORTS ===")

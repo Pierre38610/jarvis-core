@@ -27,7 +27,7 @@ if not exist "%CLOUDFLARED_BIN%" (
 taskkill /F /IM cloudflared.exe >nul 2>&1
 
 echo [1/2] Demarrage du backend FastAPI Uvicorn sur le port 8000...
-start "JARVIS Backend (FastAPI)" cmd /k "cd /d "%ROOT_DIR%" && "%ROOT_DIR%\venv\Scripts\python.exe" -m uvicorn App:app --host 0.0.0.0 --port 8000"
+start "JARVIS Backend (FastAPI)" cmd /k "cd /d "%ROOT_DIR%" && "%ROOT_DIR%\venv\Scripts\python.exe" -m uvicorn backend.App:app --host 0.0.0.0 --port 8000"
 
 echo [2/2] Negociation du Tunnel Securise Cloudflare...
 "%ROOT_DIR%\venv\Scripts\python.exe" "%~dp0tunnel_launcher.py"

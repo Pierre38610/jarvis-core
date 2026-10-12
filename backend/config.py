@@ -8,7 +8,12 @@ os.environ["no_proxy"] = "127.0.0.1,localhost,::1,0.0.0.0"
 APP_VERSION = "5.95.0"
 
 # Répertoires de base
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(BACKEND_DIR)
+for _p in (BACKEND_DIR, BASE_DIR):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 STATIC_DIR = os.path.join(BASE_DIR, "frontend", "static")  # frontend/static/
 if not os.path.exists(STATIC_DIR) and os.path.exists(os.path.join(BASE_DIR, "static")):
     STATIC_DIR = os.path.join(BASE_DIR, "static")

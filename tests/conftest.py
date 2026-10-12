@@ -9,8 +9,11 @@ import socket
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 
-# Ajouter la racine du projet et les sous-dossiers ops dans le PYTHONPATH
+# Ajouter la racine du projet, le dossier backend et les sous-dossiers ops dans le PYTHONPATH
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_BACKEND_DIR = os.path.join(ROOT_DIR, "backend")
+if os.path.exists(_BACKEND_DIR) and _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 for _sub in ("windows", "deploy", "scripts"):
