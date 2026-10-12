@@ -3,12 +3,27 @@
 import os
 import sys
 
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_BACKEND_DIR = os.path.join(ROOT_DIR, "backend")
+_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+if os.path.basename(os.path.abspath(os.path.join(_CURRENT_DIR, ".."))) == "backend":
+    _BACKEND_DIR = os.path.abspath(os.path.join(_CURRENT_DIR, ".."))
+    ROOT_DIR = os.path.abspath(os.path.join(_BACKEND_DIR, ".."))
+else:
+    ROOT_DIR = os.path.abspath(os.path.join(_CURRENT_DIR, ".."))
+    _BACKEND_DIR = os.path.join(ROOT_DIR, "backend")
+
 if os.path.exists(_BACKEND_DIR) and _BACKEND_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_DIR)
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
+for _sub in ("windows", "deploy", "scripts"):
+    _subpath = os.path.join(ROOT_DIR, "ops", _sub)
+    if os.path.exists(_subpath) and _subpath not in sys.path:
+        sys.path.insert(0, _subpath)
+try:
+    import ops.scripts
+    sys.modules["scripts"] = ops.scripts
+except Exception:
+    pass
 import time
 import json
 import asyncio

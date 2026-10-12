@@ -24,7 +24,7 @@ Ce document définit les directives d'exécution obligatoires pour tout agent au
   - `_archive/ARCHITECTURE.md` : Sauvegardes, baselines et scripts historiques décommissionnés.
 
 ## 4. Rigueur & Vérification du Travail
-- Vérifie systématiquement tes modifications (tests unitaires `pytest`, vérification de syntaxe Python, linting) avant de clore la session.
+- Vérifie systématiquement tes modifications (tests unitaires `pytest` via `.\venv\Scripts\pytest.exe -v backend/tests/`, vérification de syntaxe Python, linting) avant de clore la session.
 - Ne réécris pas un fichier existant en entier si des modifications ciblées suffisent.
 
 ## 5. Rapport de Sortie Standardisé (JSON)

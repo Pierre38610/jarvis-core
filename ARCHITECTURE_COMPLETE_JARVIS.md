@@ -276,7 +276,7 @@ jarvis-core/
 ├── docs/                                # VPS_L3_ACTIONS_RESTANTES.md, VPS_L3_CHECKLIST.md, VPS_GOOGLE_SESSION_SETUP.md, BROWSER_AGENT_SPEC.md, N8N_GUIDE.md, n8n_workflows/*.json (documents_suite, time_and_briefing, train_monitoring)
 ├── static/                              # HUD PWA Stark Industries (index.html, app.js, style.css, manifest.json, SVG/PNG, latest_screenshot.jpg, tunnel_url.json)
 ├── data/                                # site_memory/<domain>.json (parcours web réussis), gemini_ui_map.json (avec repli DEFAULT_UI_MAP), migration_reports/
-└── tests/                               # 45 modules pytest racine + tests/unit/ (23 dont test_agent_concurrency_discrimination.py) + tests/e2e/ (2: test_live_scenarios.py, test_cognitive_e2e_pipeline.py), conftest.py, run_all_tests.py (652 tests vérifiés)
+└── backend/tests/                       # 45 modules pytest racine + tests/unit/ (24 dont test_agent_concurrency_discrimination.py) + tests/e2e/ (2: test_live_scenarios.py, test_cognitive_e2e_pipeline.py), conftest.py, run_all_tests.py (695 tests collectés)
 ```
 
 ---
@@ -1605,10 +1605,10 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 - `VOCAL_MILESTONE_THRESHOLD_SECONDS` : Seuil en secondes pour déclencher les jalons oraux intermédiaires (défaut `90.0`).
 
 ### 14.8. Exécution des Tests & Validation Hors-Ligne
-- Lancer l'intégralité des tests : `.\venv\Scripts\pytest.exe -v tests/`
-- Lancer les tests unitaires : `.\venv\Scripts\pytest.exe -v tests/unit/` (206 tests unitaires hors-ligne)
-- Lancer un test ciblé : `.\venv\Scripts\pytest.exe -v tests/unit/test_language_service.py`
-- *Règle d'or de test* : Tous les tests unitaires s'exécutent hors-ligne sans consommer le moindre centime d'API grâce aux mocks dans `tests/conftest.py`.
+- Lancer l'intégralité des tests : `.\venv\Scripts\pytest.exe -v backend/tests/`
+- Lancer les tests unitaires : `.\venv\Scripts\pytest.exe -v backend/tests/unit/` (232 tests unitaires hors-ligne)
+- Lancer un test ciblé : `.\venv\Scripts\pytest.exe -v backend/tests/unit/test_language_service.py`
+- *Règle d'or de test* : Tous les tests unitaires s'exécutent hors-ligne sans consommer le moindre centime d'API grâce aux mocks dans `backend/tests/conftest.py`.
 
 ### 14.9. Procédure de Déploiement & Maintenance Cloud
 - Après toute modification validée par les tests, exécuter :

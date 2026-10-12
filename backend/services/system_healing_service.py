@@ -376,10 +376,14 @@ class SystemHealingService:
         Retourne (liste_des_fichiers_tests_relatifs, est_généré, code_du_test).
         """
         stem = os.path.splitext(os.path.basename(target_file))[0]
-        tests_dir = os.path.join(sandbox_dir, "tests")
+        base_test_dir = "backend/tests" if os.path.exists(os.path.join(sandbox_dir, "backend")) else "tests"
+        tests_dir = os.path.join(sandbox_dir, base_test_dir)
         os.makedirs(tests_dir, exist_ok=True)
 
         candidate_tests = [
+            f"backend/tests/test_{stem}.py",
+            f"backend/tests/unit/test_{stem}.py",
+            f"backend/tests/test_{stem.replace('_service', '')}.py",
             f"tests/test_{stem}.py",
             f"tests/unit/test_{stem}.py",
             f"tests/test_{stem.replace('_service', '')}.py"
@@ -394,7 +398,7 @@ class SystemHealingService:
             return existing, False, ""
 
         # Aucun test existant : Génération automatique d'un test minimal de non-régression
-        gen_filename = f"tests/test_regression_{stem}.py"
+        gen_filename = f"{base_test_dir}/test_regression_{stem}.py"
         gen_full_path = os.path.join(sandbox_dir, gen_filename)
 
         if suggested_test_code and "def test_" in suggested_test_code:

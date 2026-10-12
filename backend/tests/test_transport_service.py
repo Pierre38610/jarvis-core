@@ -121,9 +121,11 @@ class TestTransportService(unittest.IsolatedAsyncioTestCase):
 
     def test_n8n_workflow_json(self):
         """Vérifie la validité syntaxique et structurelle du workflow n8n train_monitoring.json."""
-        workflow_path = os.path.join(
-            os.path.dirname(__file__), "..", "docs", "n8n_workflows", "train_monitoring.json"
-        )
+        candidates = [
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "docs", "n8n_workflows", "train_monitoring.json")),
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "docs", "n8n_workflows", "train_monitoring.json")),
+        ]
+        workflow_path = next((p for p in candidates if os.path.exists(p)), candidates[0])
         self.assertTrue(os.path.exists(workflow_path), f"Fichier {workflow_path} introuvable")
 
         with open(workflow_path, "r", encoding="utf-8") as f:

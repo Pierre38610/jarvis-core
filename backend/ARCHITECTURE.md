@@ -11,7 +11,7 @@ Le dossier `backend/` regroupe l'ensemble du cœur applicatif serveur et de l'in
 - **Routeurs d'API & WebSockets** : `backend/routers/` (voix, agents locaux, appareils ESP32, chat, streaming, supervision, réglages).
 - **Services Métier & Intelligence** : `backend/services/` (routage de modèles LLM Gemini `services/model_routing/`, sessions de navigation autonome `services/browser_agent/recipes/`, mémoires SQLite/Redis/Qdrant, synchronisations externes).
 - **Données, Prompts & Schémas** : `backend/config/models.json`, templates de prompts (`backend/prompts/templates/`), schémas relationnels et migrations (`backend/db/`).
-- **Tests Automatisés** : `tests/` (suites de tests unitaires et d'intégration pytest, planifiés pour déplacement en P11).
+- **Tests Automatisés** : `backend/tests/` (suites de tests unitaires et d'intégration pytest, conftest.py, run_all_tests.py).
 
 ## 3. Interfaces avec les Autres Dossiers
 - **`frontend/static/`** : `backend/App.py` monte le répertoire statique sous `/static` et sert `index.html` à la racine `/`.
