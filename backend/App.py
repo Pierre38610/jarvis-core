@@ -135,6 +135,7 @@ async def shutdown_event():
 # ─── Routes racines et authentification ──────────────────────────────────────
 
 @app.get("/")
+@app.head("/")
 async def serve_ui():
     """Sert l'interface HUD mobile Stark Industries."""
     index_file = os.path.join(config.STATIC_DIR, "index.html")

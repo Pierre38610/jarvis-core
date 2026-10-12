@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.95.0 — Correction intégrale et fiabilisation de la navigation Google Maps sur smartphone Samsung S24 via MacroDroid : matrice exhaustive d'alias de variables (dest, destination, q, query, daddr, address, d, D, mode, travelmode, m), suppression définitive des artefacts de substitution non résolus (%dest / %D), normalisation automatique des préfixes conversationnels et prise en charge native des lieux enregistrés avec libellé personnalisé dans Google Maps (Maison, Travail, Bureau, Salle de sport, etc.).*
+> *Dernière révision majeure : Version 5.95.0 — Restructuration architecturale modulaire par sous-dossiers de confinement stricts (backend/, frontend/, firmware/, ops/, docs/, _archive/) : isolation du cœur applicatif FastAPI, services, routeurs et tests sous backend/, délocalisation du HUD PWA sous frontend/static/, isolation du firmware Waveshare ESP32-S3 sous firmware/esp32/, centralisation des relais Windows et déploiement sous ops/, assainissement des sauvegardes dans _archive/legacy/ avec README, et préservation intégrale des contrats d'interfaces (/ws, /ws/local-agent, /ws/device, /static, /downloads) avec 100% de réussite sur les 232 tests unitaires.*
 
 
 ---
@@ -158,125 +158,132 @@ Pour permettre à tout agent d'ingénierie d'éditer le code avec la même préc
 
 ```
 jarvis-core/
-├── App.py                               # Point d'entrée FastAPI, montage /static & /downloads, routes d'auth (/api/auth*, /api/verify), startup/shutdown
-├── App_backup_monolith.py               # Sauvegarde de l'ancien monolithe App.py (dette technique, non importé par le runtime)
-├── config.py                            # Constantes, répertoires, clés FREE/PAID, encoche paid_key_authorized, MODEL_ROUTING_ENABLED
-├── auth.py                              # Wrapper d'authentification légère et compatibilité
-├── google_antigravity.py                # Implémentation racine du wrapper Antigravity CLI VPS (AntigravityAgent, resolve_cognitive_tier(_sync), verify_antigravity_cli_ready, invalidate_cli_ready_cache, resolve_cli_model_args, find_antigravity_binary, _sanitize_secrets)
-├── model_registry.py                    # Shim racine du registre de découverte et catalogue des modèles (Gemini / Claude)
-├── model_router.py                      # Shim racine du routeur intelligent de modèles (select_model)
-├── fallback_handler.py                  # Shim racine du gestionnaire de repli résilient quota (execute_with_fallback)
-├── prompt_builder.py                    # Shim racine du constructeur de prompts adaptés et parseur JSON tolérant
-├── AGENTS.md                            # Charte générale et règles obligatoires pour tout agent autonome Antigravity CLI
-├── ops/                                  # Relais local Windows, pipeline de déploiement et outillage système
-│   ├── launchers/                        # Lanceurs et raccourcis opérationnels (.gitkeep)
-│   ├── windows/                          # Agent relais PC local Windows (jarvis_local_agent.py, local_browser_actions.py, tunnel_launcher.py, start_*.bat, stop_agent.bat, view_logs.bat, start_agent_silent.vbs, install_autostart.bat, uninstall_autostart.bat, open_n8n_tunnel.bat)
-│   ├── deploy/                           # Pipeline de déploiement Cloud (sync_deploy.py, sync_deploy.bat, install_antigravity_arm64.sh, cloudflared.exe)
-│   └── scripts/                          # Scripts système et maintenance (setup_vps_chrome.sh, setup_vps_latex.sh, check_gemini_session.py, connect_gemini_vps_browser.py, etc.)
+├── backend/                             # Cœur applicatif serveur FastAPI, état, outils, routeurs, services, DB et tests
+│   ├── App.py                           # Point d'entrée principal FastAPI, montage /static & /downloads, routes d'auth (/api/auth*, /api/verify), cycle de vie
+│   ├── config.py                        # Constantes, répertoires, clés FREE/PAID, encoche paid_key_authorized, MODEL_ROUTING_ENABLED
+│   ├── auth.py                          # Authentification légère et contrôle d'accès
+│   ├── google_antigravity.py            # Implémentation du wrapper Antigravity CLI VPS (AntigravityAgent, resolve_cognitive_tier, verify_antigravity_cli_ready)
+│   ├── model_registry.py                # Shim du registre des modèles vers services/model_routing/
+│   ├── model_router.py                  # Shim du routeur intelligent de modèles (select_model)
+│   ├── fallback_handler.py              # Shim du gestionnaire de repli résilient quota (execute_with_fallback)
+│   ├── prompt_builder.py                # Shim du constructeur de prompts adaptés et parseur JSON tolérant
+│   ├── core/                            # Cœur applicatif transverse
+│   │   ├── shared_state.py              # État global partagé, clients Gemini FREE/PAID, active_task_controller, verrou d'élocution, broadcast
+│   │   └── tools/                       # Outils Gemini Live (contrat universel 51 outils)
+│   │       ├── declarations.py          # 51 FunctionDeclarations Google GenAI (schémas, descriptions ASR, behavior BLOCKING/NON_BLOCKING)
+│   │       ├── dispatcher.py            # Routeur central d'exécution (51 outils + alias), boucle browser_task, métriques, consentement payant
+│   │       ├── arg_validator.py         # Validation stricte des arguments (validate_tool_arguments) & rappel multi-actions
+│   │       ├── result.py                # Contrat canonique ToolResult (done/failed/started/partial/needs_user) + normalize_result
+│   │       └── verifier.py              # Vérifications post-exécution d'effet réel (email, slides, xlsx, download, process, agenda, mémoire, navigateur)
+│   ├── routers/                         # Routeurs modulaires FastAPI (/api/* et /ws/*)
+│   │   ├── voice.py                     # WebSocket /ws : session bidirectionnelle Gemini Live Audio, streaming PCM et injection client (PWA)
+│   │   ├── device_voice.py              # WebSocket /ws/device & /api/device/* : canal vocal dédié enceinte ESP32-S3, pacer Opus, rééchantillonneur continu
+│   │   ├── local_agent.py               # WebSocket /ws/local-agent et GET /api/local-agent/status (relais PC physique)
+│   │   ├── chat.py                      # GET/POST /api/chat/* : messagerie multimodale écrite et vision Gemini 3.8 Flash
+│   │   ├── spotify.py                   # GET/POST /api/media/spotify/* : OAuth PKCE, playback, devices, migration Deezer->Spotify
+│   │   ├── browser.py                   # /api/browser/*, /api/downloads, /api/emails/* : gestion documents, Kindle et courriels
+│   │   ├── supervision.py               # /api/supervision/*, /api/task/* : métriques, fenêtres actives, patches SRE, directives
+│   │   ├── settings.py                  # /api/live-model, /api/settings/paid-key, /api/paid-consent, /api/tunnel-info
+│   │   ├── briefing.py                  # /api/briefing/*, /api/agenda/*, /api/device/location : météo, rendez-vous, géolocalisation
+│   │   └── transport.py                 # /api/train/* : recherche de trains, surveillance proactive n8n, alertes et résa multi-onglets
+│   ├── services/                        # Services métier d'arrière-plan et d'intégration
+│   │   ├── model_routing/               # Module de routage intelligent et résilience de quota pour Antigravity CLI
+│   │   │   ├── model_registry.py        # Registre dynamique avec cache TTL (1h) et cascade CLI -> Config -> Liste par défaut
+│   │   │   ├── model_router.py          # Sélection optimale du modèle et niveau d'effort selon type, complexité et contexte
+│   │   │   ├── fallback_handler.py      # Cascade de repli Claude -> Gemini CLI -> API PAID, gestion cooldowns et détection 429
+│   │   │   └── prompt_builder.py        # Formatage adapté (XML pour Claude, Markdown pour Gemini) et parseur JSON tolérant
+│   │   ├── browser_agent/               # Moteur de navigation autonome piloté par Antigravity CLI (S1/S2)
+│   │   │   ├── loop.py                  # Boucle de navigation S2 (run_browser_task, cycle snapshot-decide-act, handoff, verifier)
+│   │   │   ├── cli_brain.py             # Cerveau décisionnel S4 et vérificateur s'appuyant sur les agents CLI agy
+│   │   │   ├── guards.py                # Garde-fous de sécurité S5 (anti-paiement strict, interdiction données bancaires/mots de passe)
+│   │   │   ├── site_memory.py           # Persistance atomique par domaine des parcours de navigation réussis (S6)
+│   │   │   └── recipes/                 # Recettes de navigation spécialisées (cart.md, train.md, gemini_deep_research.md)
+│   │   ├── deep_research_service.py     # Moteur B Deep Research : pipeline Map-Reduce VPS (spec, MAP 3 ouvriers, REDUCE, Quality Gate)
+│   │   ├── agentic_dispatcher.py        # Orchestrateur Système 2 universel : 8 missions spécialisées (transport, excel, healing, etc.)
+│   │   ├── agentic_runner.py            # Exécuteur agy : prompt JSON strict, validation de schéma, retry, repli Gemini payant via key_gate
+│   │   ├── antigravity_models.py        # Modèles & efforts agy (MODEL_FLASH/MODEL_PRO, validate_model_and_effort, choose_model_and_effort)
+│   │   ├── antigravity_prompts.py       # Prompts de rôle Antigravity, exigences de sortie JSON et prompt de retry
+│   │   ├── key_gate.py                  # Gouvernance FREE/PAID : consentement par tâche, échec qualifié, action en attente, get_key()
+│   │   ├── llm_router.py                # Routeur LLM unifié (Live standard/thinking sur clé FREE, bascule PAID via key_gate)
+│   │   ├── live_mode_policy.py          # Politique voice_mode (thinking vs standard), hystérésis, détection besoin agentique, log tier routing
+│   │   ├── task_planner.py              # Planificateur multi-étapes (needs_planning, decompose, get_plan_status, mark_plan_step, HUD)
+│   │   ├── turn_audit.py                # Audit de tour : détection de fausses affirmations, contexte plan/sous-agents injecté au prompt
+│   │   ├── vps_chrome.py                # Gestionnaire Python du Chrome Headless/CDP VPS (ensure_chrome_running, health check port 9222, relance systemd)
+│   │   ├── l3_error.py                  # Structure stable d'erreur L3 détaillée (L3ErrorDetails), assainissement des secrets et diagnostic
+│   │   ├── gemini_web_automator.py      # Automatisation de l'UI Gemini Web (Moteur A Deep Research via Chrome local)
+│   │   ├── chat_service.py              # Messagerie écrite multimodale (clients FREE/PAID, consentement key_gate)
+│   │   ├── language_service.py          # Moteur multilingue strict FR/EN, détection par tour, héritage de contexte, prompts de clarification et routage TTS
+│   │   ├── system_healing_service.py    # SRE autonome : analyse RCA, tests sandbox isolés, auto-tests, Blue/Green releases, symlink
+│   │   ├── metrics_service.py           # Observabilité : enregistrement asynchrone Postgres/RAM des appels d'outils, latences, tiers
+│   │   ├── browser_service.py           # Navigation Playwright headless VPS et local Chrome CDP, recherche DuckDuckGo, Send to Kindle
+│   │   ├── download_service.py          # Téléchargement fichiers/ebooks (Anna's Archive), validation EPUB, détection liseuses USB
+│   │   ├── email_service.py             # Envoi SMTP Stark HTML et réception IMAP Gmail avec résolution floue des pièces jointes
+│   │   ├── latex_report_service.py      # Génération et compilation de rapports LaTeX/Markdown (latexmk, template Stark, repli MD)
+│   │   ├── slides_service.py            # Générateur & modificateur de présentations Google Slides (7 layouts 16:9, conformité API v1)
+│   │   ├── transport_service.py         # Calcul d'itinéraires ferroviaires France/Suède, découpage multi-segments, deep links Omio
+│   │   ├── mobile_bridge_service.py     # Pont MacroDroid Samsung S24 (GPS maps, wake Spotify, BridgeResult, retry unique)
+│   │   ├── briefing_service.py          # Compilation morning briefing à 6h45, météo Open-Meteo, alertes et push Telegram
+│   │   ├── spotify_service.py           # Spotify Web API (OAuth PKCE, playback, devices, vérification post-action /me/player)
+│   │   ├── deezer_migration_service.py  # Migration Deezer -> Spotify (ISRC puis fuzzy matching, scoring de confiance, rapports)
+│   │   ├── media_service.py             # Routage des commandes audio Deezer et vidéo Stremio (URI protocol)
+│   │   ├── automation.py                # Webhooks n8n génériques, export tableur XLSX et intégration Notion
+│   │   ├── user_profile_service.py      # Hot-reload de PROFIL_CANDIDATURE... via mtime, synchro SQLite et injection Live context
+│   │   ├── unified_memory.py            # Façade unifiée : déduplication SQLite (profil) vs vectoriel Qdrant (souvenirs)
+│   │   ├── memory.py                    # Client vectoriel Qdrant & modèle local fastembed BAAI/bge-small-en-v1.5 (384 dim)
+│   │   ├── memory_service.py            # Service de persistance relationnelle des conversations et souvenirs
+│   │   ├── cache.py                     # Cache Redis asynchrone, TTL, présence équipements et fallback mémoire vive dégradé
+│   │   ├── auth_service.py              # Cryptographie JWT HMAC-SHA256, tickets QR uniques 300s, révocation Redis et migration
+│   │   ├── local_agent_service.py       # Client RPC émettant les requêtes vers jarvis_local_agent.py via WebSocket
+│   │   ├── supervision_service.py       # Agrégateur d'état système, sous-agents, métriques et fenêtres actives
+│   │   ├── console_monitor.py           # Capture continue des logs et exceptions Python avec suggestions de diagnostics
+│   │   ├── reasoning_service.py         # Pipeline d'agents Antigravity CLI et classification cognitive LLM légère Tier 1
+│   │   ├── google_antigravity.py        # Façade de ré-export agy
+│   │   ├── system_service.py            # Télémétrie système serveur/local et ouverture d'applications
+│   │   ├── voice_injection_queue.py     # File d'attente à priorités FIFO pour injection vocale sans collision (Aoede)
+│   │   ├── workspace_service.py         # Exploration et lecture seule stricte des projets locaux _anti_gravity (anti-traversal, filtres)
+│   │   └── architecture_service.py      # Hot-reload de ARCHITECTURE_COMPLETE_JARVIS.md et outil live query_jarvis_architecture
+│   ├── config/                          # Configuration déclarative
+│   │   └── models.json                  # Catalogue déclaratif (5 modèles Gemini/Claude) + routing_rules + fallback_chain + cooldown 300s
+│   ├── prompts/                         # Gabarits de prompts
+│   │   └── templates/                   # Templates modulaires par complexité (simple.txt, medium.txt, complex.txt, code.txt)
+│   ├── db/                              # Schémas et migrations relationnelles
+│   │   ├── schema.sql                   # Schéma PostgreSQL (conversations, memories, tier_routing_log, tool_call_metrics, patches)
+│   │   ├── spotify_schema.sql           # Tables SQLite des tokens OAuth Spotify
+│   │   └── migrations/                  # Migrations SQL versionnées (001_create_tool_call_metrics.sql)
+│   ├── tests/                           # Suite de tests automatisés pytest
+│   │   ├── unit/                        # Tests unitaires hors-ligne (24 modules, 232 tests)
+│   │   ├── e2e/                         # Tests de bout en bout (2 modules: test_live_scenarios.py, test_cognitive_e2e_pipeline.py)
+│   │   ├── conftest.py                  # Fixtures globales, mocks réutilisables et garde-fous anti-réseau
+│   │   └── run_all_tests.py             # Lanceur global de la suite de tests
+│   └── ARCHITECTURE.md                  # Contrat d'architecture et de confinement du backend
+├── frontend/                            # Interface utilisateur web & PWA
+│   ├── static/                          # HUD PWA Stark Industries (index.html, app.js, style.css, manifest.json, SVG/PNG, médias)
+│   └── ARCHITECTURE.md                  # Contrat d'architecture et de confinement du frontend
+├── firmware/                            # Code embarqué matériel
+│   ├── esp32/                           # Firmware enceinte Waveshare ESP32-S3 Audio (xiaozhi-esp32, build_firmware.bat, DEPLOY_GUIDE.sh)
+│   └── ARCHITECTURE.md                  # Contrat d'architecture et de confinement du firmware
+├── ops/                                 # Relais local Windows, pipeline de déploiement et outillage système
+│   ├── launchers/                       # Lanceurs et raccourcis opérationnels (.gitkeep)
+│   ├── windows/                         # Agent relais PC local Windows (jarvis_local_agent.py, local_browser_actions.py, tunnel_launcher.py, start_*.bat, stop_agent.bat, view_logs.bat, start_agent_silent.vbs, install_autostart.bat, uninstall_autostart.bat, open_n8n_tunnel.bat)
+│   ├── deploy/                          # Pipeline de déploiement Cloud (sync_deploy.py, sync_deploy.bat, install_antigravity_arm64.sh, cloudflared.exe)
+│   ├── scripts/                         # Scripts système et maintenance (setup_vps_chrome.sh, setup_vps_latex.sh, check_gemini_session.py, connect_gemini_vps_browser.py, etc.)
+│   └── ARCHITECTURE.md                  # Contrat d'architecture et de confinement ops
+├── docs/                                # Documentation technique, guides VPS et scénarios n8n
+│   ├── n8n_workflows/                   # Exports de scénarios n8n (documents_suite, time_and_briefing, train_monitoring)
+│   ├── *.md                             # Guides d'exploitation VPS (VPS_L3_*.md), spécifications navigateur (BROWSER_AGENT_SPEC.md) et n8n (N8N_GUIDE.md)
+│   └── ARCHITECTURE.md                  # Contrat d'architecture et de confinement docs
+├── _archive/                            # Sauvegardes passives et composants historiques décommissionnés
+│   ├── legacy/                          # Composants retirés (App_backup_monolith.py, scripts_tmp_*.py) avec README justificatif
+│   ├── layout-baseline-*/               # Snapshots d'inventaires préalables au refactoring
+│   ├── runtime/                         # Artefacts de session historiques (tunnel_url.json)
+│   └── ARCHITECTURE.md                  # Contrat d'architecture et de confinement de l'archive
+├── data/                                # Données locales persistantes (site_memory/, gemini_ui_map.json, migration_reports/, jarvis_memory.db)
+├── App.py                               # Shim racine vers backend.App:app pour compatibilité des lanceurs
+├── sync_deploy.py                       # Shim racine vers ops/deploy/sync_deploy.py
 ├── docker-compose.yml                   # Définition conteneurs Redis 7, Postgres 16, Qdrant et n8n (bound sur 127.0.0.1)
 ├── PROFIL_CANDIDATURE_PIERRE_CASSAGNETTES.md # Dossier complet académique et pro de Pierre (Phelma SICOM, Scintil, Teem, Suède)
-├── ARCHITECTURE_COMPLETE_JARVIS.md      # Le présent référentiel architectural complet maître
-├── requirements.txt / pytest.ini / README.md
-├── authorized_devices.json / qr_tickets.json / jarvis_memory.db / tunnel_url.txt / jarvis_agent.log
-├── scripts_tmp_fix_slides*.py / scripts_tmp_append_tests.py # Scripts jetables historiques (dette technique, purge recommandée)
-├── .agents/rules/                       # Règles agents locales (AGENTS.md, architecture-knowledge-and-sync.md, git-sync.md)
-│
-├── firmware/esp32/                         # Firmware embarqué pour l'enceinte intelligente Waveshare ESP32-S3 Audio Board
-│   ├── xiaozhi-esp32/                   # Projet firmware ESP-IDF C++ (codecs ES8311/ES7210, WakeNet 9, LCD JD9853/ST7789)
-│   ├── build_firmware.bat               # Script Windows automatisé : compilation idf.py, flash COM5, préservation NVS & monitor
-│   └── DEPLOY_GUIDE.sh                  # Procédure pas-à-pas de configuration, menuconfig, génération token NVS et flash
-├── config/
-│   └── models.json                      # Catalogue déclaratif (5 modèles Gemini/Claude) + routing_rules + fallback_chain + cooldown 300s
-│
-├── prompts/
-│   └── templates/                       # Templates modulaires par complexité (simple.txt, medium.txt, complex.txt, code.txt)
-│
-├── core/                                # Cœur applicatif transverse
-│   ├── shared_state.py                  # État global partagé, clients Gemini FREE/PAID, active_task_controller, verrou d'élocution, broadcast
-│   └── tools/
-│       ├── declarations.py              # 51 FunctionDeclarations Google GenAI (schémas, descriptions ASR, behavior BLOCKING/NON_BLOCKING)
-│       ├── dispatcher.py                # Routeur central d'exécution (51 outils + alias), boucle browser_task, métriques, consentement payant
-│       ├── arg_validator.py             # Validation stricte des arguments (validate_tool_arguments) & rappel multi-actions
-│       ├── result.py                    # Contrat canonique ToolResult (done/failed/started/partial/needs_user) + normalize_result
-│       └── verifier.py                  # Vérifications post-exécution d'effet réel (email, slides, xlsx, download, process, agenda, mémoire, navigateur)
-│
-├── routers/                             # Routeurs modulaires FastAPI (/api/* et /ws/*)
-│   ├── voice.py                         # WebSocket /ws : session bidirectionnelle Gemini Live Audio, streaming PCM et injection client (PWA)
-│   ├── device_voice.py                  # WebSocket /ws/device & /api/device/* : canal vocal dédié enceinte ESP32-S3, pacer Opus, rééchantillonneur continu
-│   ├── local_agent.py                   # WebSocket /ws/local-agent et GET /api/local-agent/status (relais PC physique)
-│   ├── chat.py                          # GET/POST /api/chat/* : messagerie multimodale écrite et vision Gemini 3.8 Flash
-│   ├── spotify.py                       # GET/POST /api/media/spotify/* : OAuth PKCE, playback, devices, migration Deezer->Spotify
-│   ├── browser.py                       # /api/browser/*, /api/downloads, /api/emails/* : gestion documents, Kindle et courriels
-│   ├── supervision.py                   # /api/supervision/*, /api/task/* : métriques, fenêtres actives, patches SRE, directives
-│   ├── settings.py                      # /api/live-model, /api/settings/paid-key, /api/paid-consent, /api/tunnel-info
-│   ├── briefing.py                      # /api/briefing/*, /api/agenda/*, /api/device/location : météo, rendez-vous, géolocalisation
-│   └── transport.py                     # /api/train/* : recherche de trains, surveillance proactive n8n, alertes et résa multi-onglets
-│
-├── services/                            # Services métier d'arrière-plan et d'intégration
-│   ├── model_routing/                   # Module de routage intelligent et résilience de quota pour Antigravity CLI
-│   │   ├── model_registry.py            # Registre dynamique avec cache TTL (1h) et cascade CLI -> Config -> Liste par défaut
-│   │   ├── model_router.py              # Sélection optimale du modèle et niveau d'effort selon type, complexité et contexte
-│   │   ├── fallback_handler.py          # Cascade de repli Claude -> Gemini CLI -> API PAID, gestion cooldowns et détection 429
-│   │   └── prompt_builder.py            # Formatage adapté (XML pour Claude, Markdown pour Gemini) et parseur JSON tolérant
-│   ├── browser_agent/                   # Moteur de navigation autonome piloté par Antigravity CLI (S1/S2)
-│   │   ├── loop.py                      # Boucle de navigation S2 (run_browser_task, cycle snapshot-decide-act, handoff, verifier)
-│   │   ├── cli_brain.py                 # Cerveau décisionnel S4 et vérificateur s'appuyant sur les agents CLI agy
-│   │   ├── guards.py                    # Garde-fous de sécurité S5 (anti-paiement strict, interdiction données bancaires/mots de passe)
-│   │   ├── site_memory.py               # Persistance atomique par domaine des parcours de navigation réussis (S6)
-│   │   └── recipes/                     # Recettes de navigation spécialisées (cart.md, train.md, gemini_deep_research.md)
-│   ├── deep_research_service.py         # Moteur B Deep Research : pipeline Map-Reduce VPS (spec, MAP 3 ouvriers, REDUCE, Quality Gate)
-│   ├── agentic_dispatcher.py            # Orchestrateur Système 2 universel : 8 missions spécialisées (transport, excel, healing, etc.)
-│   ├── agentic_runner.py                # Exécuteur agy : prompt JSON strict, validation de schéma, retry, repli Gemini payant via key_gate
-│   ├── antigravity_models.py            # Modèles & efforts agy (MODEL_FLASH/MODEL_PRO, validate_model_and_effort, choose_model_and_effort)
-│   ├── antigravity_prompts.py           # Prompts de rôle Antigravity, exigences de sortie JSON et prompt de retry
-│   ├── key_gate.py                      # Gouvernance FREE/PAID : consentement par tâche, échec qualifié, action en attente, get_key()
-│   ├── llm_router.py                    # Routeur LLM unifié (Live standard/thinking sur clé FREE, bascule PAID via key_gate)
-│   ├── live_mode_policy.py              # Politique voice_mode (thinking vs standard), hystérésis, détection besoin agentique, log tier routing
-│   ├── task_planner.py                  # Planificateur multi-étapes (needs_planning, decompose, get_plan_status, mark_plan_step, HUD)
-│   ├── turn_audit.py                    # Audit de tour : détection de fausses affirmations, contexte plan/sous-agents injecté au prompt
-│   ├── vps_chrome.py                    # Gestionnaire Python du Chrome Headless/CDP VPS (ensure_chrome_running, health check port 9222, relance systemd)
-│   ├── l3_error.py                      # Structure stable d'erreur L3 détaillée (L3ErrorDetails), assainissement des secrets et diagnostic
-│   ├── gemini_web_automator.py          # Automatisation de l'UI Gemini Web (Moteur A Deep Research via Chrome local)
-│   ├── chat_service.py                  # Messagerie écrite multimodale (clients FREE/PAID, consentement key_gate)
-│   ├── language_service.py              # Moteur multilingue strict FR/EN, détection par tour, héritage de contexte, prompts de clarification et routage TTS
-│   ├── system_healing_service.py        # SRE autonome : analyse RCA, tests sandbox isolés, auto-tests, Blue/Green releases, symlink
-│   ├── metrics_service.py               # Observabilité : enregistrement asynchrone Postgres/RAM des appels d'outils, latences, tiers
-│   ├── browser_service.py               # Navigation Playwright headless VPS et local Chrome CDP, recherche DuckDuckGo, Send to Kindle
-│   ├── download_service.py              # Téléchargement fichiers/ebooks (Anna's Archive), validation EPUB, détection liseuses USB
-│   ├── email_service.py                 # Envoi SMTP Stark HTML et réception IMAP Gmail avec résolution floue des pièces jointes
-│   ├── latex_report_service.py          # Génération et compilation de rapports LaTeX/Markdown (latexmk, template Stark, repli MD)
-│   ├── slides_service.py                # Générateur & modificateur de présentations Google Slides (7 layouts 16:9, conformité API v1)
-│   ├── transport_service.py             # Calcul d'itinéraires ferroviaires France/Suède, découpage multi-segments, deep links Omio
-│   ├── mobile_bridge_service.py         # Pont MacroDroid Samsung S24 (GPS maps, wake Spotify, BridgeResult, retry unique)
-│   ├── briefing_service.py              # Compilation morning briefing à 6h45, météo Open-Meteo, alertes et push Telegram
-│   ├── spotify_service.py               # Spotify Web API (OAuth PKCE, playback, devices, vérification post-action /me/player)
-│   ├── deezer_migration_service.py      # Migration Deezer -> Spotify (ISRC puis fuzzy matching, scoring de confiance, rapports)
-│   ├── media_service.py                 # Routage des commandes audio Deezer et vidéo Stremio (URI protocol)
-│   ├── automation.py                    # Webhooks n8n génériques, export tableur XLSX et intégration Notion
-│   ├── user_profile_service.py          # Hot-reload de PROFIL_CANDIDATURE... via mtime, synchro SQLite et injection Live context
-│   ├── unified_memory.py                # Façade unifiée : déduplication SQLite (profil) vs vectoriel Qdrant (souvenirs)
-│   ├── memory.py                        # Client vectoriel Qdrant & modèle local fastembed BAAI/bge-small-en-v1.5 (384 dim)
-│   ├── memory_service.py                # Service de persistance relationnelle des conversations et souvenirs
-│   ├── cache.py                         # Cache Redis asynchrone, TTL, présence équipements et fallback mémoire vive dégradé
-│   ├── auth_service.py                  # Cryptographie JWT HMAC-SHA256, tickets QR uniques 300s, révocation Redis et migration
-│   ├── local_agent_service.py           # Client RPC émettant les requêtes vers jarvis_local_agent.py via WebSocket
-│   ├── supervision_service.py           # Agrégateur d'état système, sous-agents, métriques et fenêtres actives
-│   ├── console_monitor.py               # Capture continue des logs et exceptions Python avec suggestions de diagnostics
-│   ├── reasoning_service.py             # Pipeline d'agents Antigravity CLI et classification cognitive LLM légère Tier 1
-│   ├── google_antigravity.py            # Façade de ré-export agy (google_antigravity racine + antigravity_models + agentic_runner) ; l'implémentation réelle du wrapper est à la racine
-│   ├── system_service.py                # Télémétrie système serveur/local et ouverture d'applications
-│   ├── voice_injection_queue.py         # File d'attente à priorités FIFO pour injection vocale sans collision (Aoede)
-│   ├── workspace_service.py             # Exploration et lecture seule stricte des projets locaux _anti_gravity (anti-traversal, filtres)
-│   └── architecture_service.py          # Hot-reload de ARCHITECTURE_COMPLETE_JARVIS.md et outil live query_jarvis_architecture
-│
-├── db/
-│   ├── schema.sql                       # Schéma PostgreSQL (conversations, memories, tier_routing_log, tool_call_metrics, patches)
-│   ├── spotify_schema.sql               # Tables SQLite des tokens OAuth Spotify
-│   └── migrations/001_create_tool_call_metrics.sql
-├── docs/                                # VPS_L3_ACTIONS_RESTANTES.md, VPS_L3_CHECKLIST.md, VPS_GOOGLE_SESSION_SETUP.md, BROWSER_AGENT_SPEC.md, N8N_GUIDE.md, n8n_workflows/*.json (documents_suite, time_and_briefing, train_monitoring)
-├── static/                              # HUD PWA Stark Industries (index.html, app.js, style.css, manifest.json, SVG/PNG, latest_screenshot.jpg, tunnel_url.json)
-├── data/                                # site_memory/<domain>.json (parcours web réussis), gemini_ui_map.json (avec repli DEFAULT_UI_MAP), migration_reports/
-└── backend/tests/                       # 45 modules pytest racine + tests/unit/ (24 dont test_agent_concurrency_discrimination.py) + tests/e2e/ (2: test_live_scenarios.py, test_cognitive_e2e_pipeline.py), conftest.py, run_all_tests.py (695 tests collectés)
+├── AGENTS.md, README.md, requirements.txt, pytest.ini
+└── ARCHITECTURE_COMPLETE_JARVIS.md      # Référentiel architectural complet maître mis à jour
 ```
 
 ---
@@ -1411,7 +1418,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre minérale et raffinée (`#05070D`, `#0B0F19`, `#0D1321`), verre dépoli avec bordures ultra-fines (`backdrop-filter: blur(24px)`), hiérarchie chromatique équilibrée (cyan glace, émeraude, ambre, violet, rose alerte) sans saturation agressive.
 - **Typographie** : Polices modernes géométriques sans-serif (`Inter`, `Plus Jakarta Sans`) et code monospace technique (`JetBrains Mono`).
 - **Responsive Fluid Architecture** : Expérience fluide optimisée sur smartphone (< 768px : barre d'onglets fixée en bas, statusbar compacte, mini-lecteur au-dessus des onglets, `100dvh`) et cockpit glassmorphic centré sur grand écran desktop PC.
-- **Version affichée dans l'en-tête** (`static/index.html`, classe `hud-version-tag`) : `v5.95.0`.
+- **Version affichée dans l'en-tête** (`frontend/static/index.html`, classe `hud-version-tag`) : `v5.95.0`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
@@ -1453,9 +1460,9 @@ L'avatar adapte ses filtres de lueur SVG et ses anneaux rotatifs selon l'état s
 1. **Gestion de Concurrence sur Profils Chrome Locaux** : Lorsque Chrome CDP est sollicité alors que Pierre navigue manuellement, des verrous de profil temporaires peuvent survenir si Chrome n'est pas lancé avec le flag de débogage distant adéquat.
 2. **Volumétrie des Logs en Longue Session** : Le fichier `jarvis_agent.log` sur Windows nécessite la mise en place d'une rotation automatique des journaux (`RotatingFileHandler`).
 3. **Dépendance Réseau Cloudflare** : Bien que le tunnel Zero Trust soit exceptionnellement stable, un filtrage d'entreprise sur le port 7844 impose le repli Wi-Fi local.
-4. **Dette Documentaire & Risque de Dérive** : ce référentiel a historiquement dérivé (nombre d'outils, arborescence, versions). Toute évolution doit être répercutée immédiatement (règle `.agents/rules/architecture-knowledge-and-sync.md`). Sources de vérité à interroger : `core/tools/declarations.py` (51 déclarations), `App.py` + `routers/*.py` (routes), `config/models.json` (modèles et routage), `static/index.html` (classe `hud-version-tag`).
-5. **Shims Rétrocompatibles à la Racine** : `model_registry.py` (8 lignes), `model_router.py` (6 lignes), `fallback_handler.py` (15 lignes) et `prompt_builder.py` (7 lignes) ne sont que des ré-exports vers `services/model_routing/` ; ils doivent être purgés dès qu'aucun import legacy ne subsiste.
-6. **Artefacts de Sauvegarde & Scripts Jetables** : `App_backup_monolith.py` (plusieurs milliers de lignes, non importé par le runtime) et les `scripts_tmp_*.py` alourdissent le dépôt et faussent les inventaires de code ; leur archivage est recommandé.
+4. **Dette Documentaire & Risque de Dérive** : ce référentiel a historiquement dérivé (nombre d'outils, arborescence, versions). Toute évolution doit être répercutée immédiatement (règle `.agents/rules/architecture-knowledge-and-sync.md`). Sources de vérité à interroger : `backend/core/tools/declarations.py` (51 déclarations), `backend/App.py` + `backend/routers/*.py` (routes), `backend/config/models.json` (modèles et routage), `frontend/static/index.html` (classe `hud-version-tag`).
+5. **Shims Rétrocompatibles Conservés** : `backend/model_registry.py`, `backend/model_router.py`, `backend/fallback_handler.py` et `backend/prompt_builder.py` sont conservés dans `backend/` pour assurer la rétrocompatibilité des imports legacy vers `backend/services/model_routing/` ; les shims racine `App.py` et `sync_deploy.py` garantissent la pérennité des scripts de lancement et déploiement.
+6. **Artefacts de Sauvegarde & Scripts Jetables** : Résolu — `App_backup_monolith.py` et les `scripts_tmp_*.py` ont été déplacés dans `_archive/legacy/` avec documentation explicative, assainissant l'arborescence active sans perte d'historique.
 
 ### 13.3. Pistes d'Évolution Stratégique & Prochaines Étapes
 1. **Anticipation Proactive d'Agenda & Trajets** : Déclenchement automatique de la recherche de trains et de l'optimisation des correspondances dès qu'un rendez-vous extérieur est créé sur Google Calendar.
