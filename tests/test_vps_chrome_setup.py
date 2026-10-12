@@ -15,7 +15,9 @@ from config import BASE_DIR
 
 def test_setup_script_exists_and_content():
     """Vérifie l'existence et les caractéristiques structurelles du script d'installation VPS."""
-    script_path = os.path.join(BASE_DIR, "scripts", "setup_vps_chrome.sh")
+    script_path = os.path.join(BASE_DIR, "ops", "scripts", "setup_vps_chrome.sh")
+    if not os.path.exists(script_path):
+        script_path = os.path.join(BASE_DIR, "scripts", "setup_vps_chrome.sh")
     assert os.path.exists(script_path), f"Le script {script_path} doit exister."
 
     with open(script_path, "r", encoding="utf-8") as f:
@@ -53,7 +55,9 @@ def test_setup_script_exists_and_content():
 
 def test_systemd_service_unit():
     """Vérifie la syntaxe et les directives de l'unité systemd jarvis-chrome.service."""
-    unit_path = os.path.join(BASE_DIR, "scripts", "jarvis-chrome.service")
+    unit_path = os.path.join(BASE_DIR, "ops", "scripts", "jarvis-chrome.service")
+    if not os.path.exists(unit_path):
+        unit_path = os.path.join(BASE_DIR, "scripts", "jarvis-chrome.service")
     assert os.path.exists(unit_path), f"L'unité systemd {unit_path} doit exister."
 
     with open(unit_path, "r", encoding="utf-8") as f:
@@ -114,7 +118,10 @@ def test_profile_exclusion_in_gitignore_and_deploy():
 
     assert ".jarvis_chrome_profile" in git_content, ".gitignore doit exclure .jarvis_chrome_profile."
 
-    from sync_deploy import EXCLUDE_DIRS
+    try:
+        from ops.deploy.sync_deploy import EXCLUDE_DIRS
+    except ImportError:
+        from sync_deploy import EXCLUDE_DIRS
     assert ".jarvis_chrome_profile" in EXCLUDE_DIRS, "sync_deploy.py doit exclure .jarvis_chrome_profile du tar de déploiement."
 
 

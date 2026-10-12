@@ -5,7 +5,13 @@ Vérifie le routage exhaustif des 23 actions locales et la gestion des actions i
 
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from jarvis_local_agent import handle_local_action
+import sys
+try:
+    from ops.windows.jarvis_local_agent import handle_local_action
+    import ops.windows.local_browser_actions as _lba
+    sys.modules.setdefault("local_browser_actions", _lba)
+except ImportError:
+    from jarvis_local_agent import handle_local_action
 
 
 @pytest.mark.asyncio

@@ -1094,10 +1094,14 @@ class TransportService:
         if sys.platform == "win32":
             import subprocess
             import webbrowser
+            # Relais exécuté depuis ops/windows/jarvis_local_agent.py
             try:
-                from jarvis_local_agent import CHROME_PATH
+                from ops.windows.jarvis_local_agent import CHROME_PATH
             except Exception:
-                CHROME_PATH = None
+                try:
+                    from jarvis_local_agent import CHROME_PATH
+                except Exception:
+                    CHROME_PATH = None
 
             try:
                 if CHROME_PATH and os.path.exists(CHROME_PATH):

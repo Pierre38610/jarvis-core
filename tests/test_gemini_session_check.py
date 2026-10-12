@@ -27,7 +27,11 @@ from services.vps_chrome import (
     check_gemini_session,
     get_effective_cdp_url,
 )
-import scripts.check_gemini_session as check_session_cli
+try:
+    import ops.scripts.check_gemini_session as check_session_cli
+    sys.modules.setdefault("scripts.check_gemini_session", check_session_cli)
+except ImportError:
+    import scripts.check_gemini_session as check_session_cli
 
 
 class TestGeminiSessionDetection(unittest.IsolatedAsyncioTestCase):

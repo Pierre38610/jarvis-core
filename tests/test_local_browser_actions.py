@@ -5,7 +5,10 @@ Mocke entièrement Playwright pour garantir aucun appel réseau ou externe.
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from local_browser_actions import BrowserBridge
+try:
+    from ops.windows.local_browser_actions import BrowserBridge
+except ImportError:
+    from local_browser_actions import BrowserBridge
 
 
 @pytest.fixture

@@ -44,6 +44,7 @@ ssh/
 
 # ─── Binaires, Dumps Firmware & Archives ─────────────────────────────────────
 cloudflared.exe
+ops/deploy/cloudflared.exe
 *.exe
 *.bin
 firmware_backup.bin

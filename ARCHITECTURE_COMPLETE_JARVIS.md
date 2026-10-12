@@ -168,17 +168,15 @@ jarvis-core/
 ├── fallback_handler.py                  # Shim racine du gestionnaire de repli résilient quota (execute_with_fallback)
 ├── prompt_builder.py                    # Shim racine du constructeur de prompts adaptés et parseur JSON tolérant
 ├── AGENTS.md                            # Charte générale et règles obligatoires pour tout agent autonome Antigravity CLI
-├── jarvis_local_agent.py                # Agent client WebSocket s'exécutant sur le PC Windows 11 (23 actions physiques, Chrome CDP, Spotify Desktop, Stremio)
-├── local_browser_actions.py             # Pont CDP Playwright côté PC (port 9222), balisage DOM data-jarvis-id, exécution d'actions et screenshots
-├── tunnel_launcher.py                   # Gestionnaire du tunnel Cloudflare Zero Trust, fallback Quick Tunnel et LAN Wi-Fi
-├── sync_deploy.py                       # Pipeline automatisé : Git commit/push + archive in-memory tar.gz + SFTP + relance systemd VPS
+├── ops/                                  # Relais local Windows, pipeline de déploiement et outillage système
+│   ├── launchers/                        # Lanceurs et raccourcis opérationnels (.gitkeep)
+│   ├── windows/                          # Agent relais PC local Windows (jarvis_local_agent.py, local_browser_actions.py, tunnel_launcher.py, start_*.bat, stop_agent.bat, view_logs.bat, start_agent_silent.vbs, install_autostart.bat, uninstall_autostart.bat, open_n8n_tunnel.bat)
+│   ├── deploy/                           # Pipeline de déploiement Cloud (sync_deploy.py, sync_deploy.bat, install_antigravity_arm64.sh, cloudflared.exe)
+│   └── scripts/                          # Scripts système et maintenance (setup_vps_chrome.sh, setup_vps_latex.sh, check_gemini_session.py, connect_gemini_vps_browser.py, etc.)
 ├── docker-compose.yml                   # Définition conteneurs Redis 7, Postgres 16, Qdrant et n8n (bound sur 127.0.0.1)
 ├── PROFIL_CANDIDATURE_PIERRE_CASSAGNETTES.md # Dossier complet académique et pro de Pierre (Phelma SICOM, Scintil, Teem, Suède)
 ├── ARCHITECTURE_COMPLETE_JARVIS.md      # Le présent référentiel architectural complet maître
 ├── requirements.txt / pytest.ini / README.md
-├── start_jarvis.bat / start_local_agent.bat / stop_agent.bat / view_logs.bat / sync_deploy.bat / open_n8n_tunnel.bat
-├── start_agent_silent.vbs               # Lancement invisible du relais PC via wscript.exe (zéro console)
-├── install_autostart.bat / uninstall_autostart.bat / install_antigravity_arm64.sh / cloudflared.exe
 ├── authorized_devices.json / qr_tickets.json / jarvis_memory.db / tunnel_url.txt / jarvis_agent.log
 ├── scripts_tmp_fix_slides*.py / scripts_tmp_append_tests.py # Scripts jetables historiques (dette technique, purge recommandée)
 ├── .agents/rules/                       # Règles agents locales (AGENTS.md, architecture-knowledge-and-sync.md, git-sync.md)
@@ -270,8 +268,6 @@ jarvis-core/
 │   ├── voice_injection_queue.py         # File d'attente à priorités FIFO pour injection vocale sans collision (Aoede)
 │   ├── workspace_service.py             # Exploration et lecture seule stricte des projets locaux _anti_gravity (anti-traversal, filtres)
 │   └── architecture_service.py          # Hot-reload de ARCHITECTURE_COMPLETE_JARVIS.md et outil live query_jarvis_architecture
-│
-├── scripts/                             # setup_vps_chrome.sh, check_gemini_session.py, connect_gemini_vps_browser.py, verifier_session_gemini_vps.py, deploy_gemini_session_to_vps.py, jarvis-chrome.service, install_agent_rules.py, quality_report.py, deploy_n8n_vps.py, setup_*.py, show_qr.py, try_browser_task.py, *.bat
 │
 ├── db/
 │   ├── schema.sql                       # Schéma PostgreSQL (conversations, memories, tier_routing_log, tool_call_metrics, patches)

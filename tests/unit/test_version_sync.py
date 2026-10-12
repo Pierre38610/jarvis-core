@@ -5,7 +5,10 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 import config
 from App import app
-from sync_deploy import sync_and_verify_versions
+try:
+    from ops.deploy.sync_deploy import sync_and_verify_versions
+except ImportError:
+    from sync_deploy import sync_and_verify_versions
 
 
 @pytest.mark.asyncio
