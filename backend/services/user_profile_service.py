@@ -17,7 +17,7 @@ import sqlite3
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-from config import DB_PATH
+from config import BASE_DIR, DB_PATH
 
 logger = logging.getLogger("jarvis.user_profile")
 
@@ -33,8 +33,16 @@ class UserProfileKnowledgeService:
         if file_path:
             self.file_path = file_path
         else:
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            try:
+                base_dir = BASE_DIR
+            except Exception:
+                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             self.file_path = os.path.join(base_dir, "PROFIL_CANDIDATURE_PIERRE_CASSAGNETTES.md")
+            if not os.path.exists(self.file_path):
+                alt = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "PROFIL_CANDIDATURE_PIERRE_CASSAGNETTES.md")
+                if os.path.exists(alt):
+                    self.file_path = alt
+
 
         self._last_mtime: float = 0.0
         self._raw_content: str = ""

@@ -13,8 +13,14 @@ from services.model_routing.model_registry import model_registry
 
 logger = logging.getLogger("jarvis.prompt_builder")
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-TEMPLATES_DIR = os.path.join(BASE_DIR, "prompts", "templates")
+_ROUTING_DIR = os.path.dirname(os.path.abspath(__file__))
+_SERVICES_DIR = os.path.dirname(_ROUTING_DIR)
+BACKEND_DIR = os.path.dirname(_SERVICES_DIR)
+BASE_DIR = os.path.dirname(BACKEND_DIR)
+
+_candidate_templates = os.path.join(BACKEND_DIR, "prompts", "templates")
+TEMPLATES_DIR = _candidate_templates if os.path.exists(_candidate_templates) else os.path.join(BASE_DIR, "prompts", "templates")
+
 
 
 # Schema JSON standard exigé

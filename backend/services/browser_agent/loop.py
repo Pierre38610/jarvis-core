@@ -279,7 +279,7 @@ async def _run_local_browser_loop(
             shot_res = await _call_rpc("browser_screenshot", task_id=task.task_id)
             if shot_res.get("ok") and (shot_res.get("image") or shot_res.get("screenshot")):
                 b64_data = shot_res.get("image") or shot_res.get("screenshot")
-                tmp_base = "/tmp" if os.name != "nt" else os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".cache")
+                tmp_base = "/tmp" if os.name != "nt" else os.path.join(getattr(config, "BASE_DIR", os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))), ".cache")
                 tmp_dir = os.path.join(tmp_base, "jarvis_browser", task.task_id)
                 os.makedirs(tmp_dir, exist_ok=True)
                 screenshot_path = os.path.join(tmp_dir, f"step_{step_n}.jpg")
@@ -305,7 +305,7 @@ async def _run_local_browser_loop(
             shot_res = await _call_rpc("browser_screenshot", task_id=task.task_id)
             if shot_res.get("ok") and (shot_res.get("image") or shot_res.get("screenshot")):
                 b64_data = shot_res.get("image") or shot_res.get("screenshot")
-                tmp_base = "/tmp" if os.name != "nt" else os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".cache")
+                tmp_base = "/tmp" if os.name != "nt" else os.path.join(getattr(config, "BASE_DIR", os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))), ".cache")
                 tmp_dir = os.path.join(tmp_base, "jarvis_browser", task.task_id)
                 os.makedirs(tmp_dir, exist_ok=True)
                 screenshot_path = os.path.join(tmp_dir, f"step_{step_n}.jpg")

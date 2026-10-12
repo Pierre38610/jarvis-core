@@ -15,7 +15,8 @@ from typing import Dict, Any, Optional, List, Literal
 
 
 _CURRENT_DIR = Path(__file__).resolve().parent
-_WORKSPACE_ROOT = _CURRENT_DIR.parent
+_WORKSPACE_ROOT = _CURRENT_DIR.parent.parent
+
 
 # Chemins d'installation Stremio
 STREMIO_PATHS = [

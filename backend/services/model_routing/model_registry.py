@@ -14,9 +14,18 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("jarvis.model_registry")
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CONFIG_JSON_PATH = os.path.join(BASE_DIR, "config", "models.json")
-CONFIG_YAML_PATH = os.path.join(BASE_DIR, "config", "models.yaml")
+_ROUTING_DIR = os.path.dirname(os.path.abspath(__file__))
+_SERVICES_DIR = os.path.dirname(_ROUTING_DIR)
+BACKEND_DIR = os.path.dirname(_SERVICES_DIR)
+BASE_DIR = os.path.dirname(BACKEND_DIR)
+
+# Priorité à backend/config/models.json, repli vers BASE_DIR/config/models.json
+_candidate_json = os.path.join(BACKEND_DIR, "config", "models.json")
+CONFIG_JSON_PATH = _candidate_json if os.path.exists(_candidate_json) else os.path.join(BASE_DIR, "config", "models.json")
+
+_candidate_yaml = os.path.join(BACKEND_DIR, "config", "models.yaml")
+CONFIG_YAML_PATH = _candidate_yaml if os.path.exists(_candidate_yaml) else os.path.join(BASE_DIR, "config", "models.yaml")
+
 
 
 @dataclass

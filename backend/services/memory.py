@@ -141,8 +141,9 @@ class VectorMemoryService:
             self._pg_pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=5, command_timeout=10)
 
             # Applique le schéma SQL si nécessaire
-            import os
             schema_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "db", "schema.sql")
+            if not os.path.exists(schema_path):
+                schema_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "db", "schema.sql")
             if os.path.exists(schema_path):
                 with open(schema_path, "r", encoding="utf-8") as f:
                     schema_sql = f.read()

@@ -11,8 +11,12 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("jarvis.browser_agent.site_memory")
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    from config import BASE_DIR
+except Exception:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 SITE_MEMORY_DIR = os.path.join(BASE_DIR, "data", "site_memory")
+
 
 
 def _sanitize_domain(domain: str) -> str:

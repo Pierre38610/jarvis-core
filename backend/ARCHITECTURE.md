@@ -9,9 +9,9 @@ Le dossier `backend/` regroupe l'ensemble du cœur applicatif serveur et de l'in
 - **Configuration & Sécurité** : `config.py` (variables d'environnement, drapeaux de routage, chemins persistants), `auth.py` et contrôle d'accès.
 - **État Partagé & Dispatcher d'Outils** : `backend/core/shared_state.py` (état mémoire centralisé, clients Gemini, broadcast), `backend/core/tools/` (`declarations.py` avec contrat 51 outils Gemini Live, `dispatcher.py`, `arg_validator.py`, `result.py`, `verifier.py`).
 - **Routeurs d'API & WebSockets** : `backend/routers/` (voix, agents locaux, appareils ESP32, chat, streaming, supervision, réglages).
-- **Services Métier & Intelligence** : `services/` (routage de modèles LLM Gemini, sessions de navigation Playwright/CDP, mémoires SQLite/Redis/Qdrant, synchronisations externes).
-- **Données, Prompts & Schémas** : `config/models.json`, templates de prompts, schémas de base de données relationnelle (`db/`).
-- **Tests Automatisés** : `tests/` (suites de tests unitaires et d'intégration pytest).
+- **Services Métier & Intelligence** : `backend/services/` (routage de modèles LLM Gemini `services/model_routing/`, sessions de navigation autonome `services/browser_agent/recipes/`, mémoires SQLite/Redis/Qdrant, synchronisations externes).
+- **Données, Prompts & Schémas** : `backend/config/models.json`, templates de prompts (`backend/prompts/templates/`), schémas relationnels et migrations (`backend/db/`).
+- **Tests Automatisés** : `tests/` (suites de tests unitaires et d'intégration pytest, planifiés pour déplacement en P11).
 
 ## 3. Interfaces avec les Autres Dossiers
 - **`frontend/static/`** : `backend/App.py` monte le répertoire statique sous `/static` et sert `index.html` à la racine `/`.

@@ -28,8 +28,17 @@ class ArchitectureKnowledgeService:
             self.file_path = file_path
         else:
             # Racine du projet jarvis-core
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            try:
+                from config import BASE_DIR
+                base_dir = BASE_DIR
+            except Exception:
+                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             self.file_path = os.path.join(base_dir, "ARCHITECTURE_COMPLETE_JARVIS.md")
+            if not os.path.exists(self.file_path):
+                alt = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ARCHITECTURE_COMPLETE_JARVIS.md")
+                if os.path.exists(alt):
+                    self.file_path = alt
+
 
         self._last_mtime: float = 0.0
         self._raw_content: str = ""
@@ -231,12 +240,17 @@ class ArchitectureKnowledgeService:
         et ARCHITECTURE_COMPLETE_JARVIS.md via l'agent Antigravity CLI 'doc_sync' (Système 2).
         """
         from services.agentic_dispatcher import agentic_dispatcher
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        try:
+            from config import BASE_DIR
+            base_dir = BASE_DIR
+        except Exception:
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         goal = "Synchronisation continue de la documentation d'architecture avec le code source réel"
 
-        routers_dir = os.path.join(base_dir, "routers")
-        services_dir = os.path.join(base_dir, "services")
-        tools_dir = os.path.join(base_dir, "core", "tools")
+        backend_dir = os.path.join(base_dir, "backend")
+        routers_dir = os.path.join(backend_dir, "routers") if os.path.exists(os.path.join(backend_dir, "routers")) else os.path.join(base_dir, "routers")
+        services_dir = os.path.join(backend_dir, "services") if os.path.exists(os.path.join(backend_dir, "services")) else os.path.join(base_dir, "services")
+        tools_dir = os.path.join(backend_dir, "core", "tools") if os.path.exists(os.path.join(backend_dir, "core", "tools")) else os.path.join(base_dir, "core", "tools")
 
         routers_files = [f for f in os.listdir(routers_dir) if f.endswith(".py")] if os.path.exists(routers_dir) else []
         services_files = [f for f in os.listdir(services_dir) if f.endswith(".py")] if os.path.exists(services_dir) else []
