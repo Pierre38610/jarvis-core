@@ -399,7 +399,14 @@ class SlidesService:
                             evidence = f"https://docs.google.com/presentation/d/{presentation_id} ({real_count} slides vérifiées{titles_summary})"
                             return PresentationVerificationResult(True, real_count, evidence, titles)
 
-                        return PresentationVerificationResult(False, real_count, f"La présentation {presentation_id} contient 0 slide (attendu >= {min_slides}).", titles)
+                    if resp.status_code in (401, 403):
+                        try:
+                            from services.automation import check_workspace_agentic_error
+                            agentic_msg = check_workspace_agentic_error(resp.text)
+                            if agentic_msg:
+                                return PresentationVerificationResult(False, 0, agentic_msg, titles)
+                        except Exception:
+                            pass
                     return PresentationVerificationResult(False, 0, f"Erreur API Google Slides HTTP {resp.status_code}", titles)
         except Exception as e:
             logger.warning(f"[SlidesService] Exception lors du contrôle Google Slides: {e}")

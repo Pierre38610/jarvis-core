@@ -5,7 +5,7 @@ os.environ["NO_PROXY"] = "127.0.0.1,localhost,::1,0.0.0.0"
 os.environ["no_proxy"] = "127.0.0.1,localhost,::1,0.0.0.0"
 
 # Version applicative centrale
-APP_VERSION = "5.95.0"
+APP_VERSION = "5.96.0"
 
 # Répertoires de base
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))

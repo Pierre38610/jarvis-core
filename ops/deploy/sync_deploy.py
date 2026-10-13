@@ -71,7 +71,9 @@ def sync_and_verify_versions(target_version: Optional[str] = None) -> str:
     """Synchronise et valide automatiquement la version centrale sur tous les fichiers clés."""
     import re
 
-    config_path = os.path.join(BASE_DIR, "config.py")
+    config_path = os.path.join(BASE_DIR, "backend", "config.py")
+    if not os.path.exists(config_path):
+        config_path = os.path.join(BASE_DIR, "config.py")
     index_path = os.path.join(BASE_DIR, "frontend", "static", "index.html")
     if not os.path.exists(index_path):
         index_path = os.path.join(BASE_DIR, "static", "index.html")

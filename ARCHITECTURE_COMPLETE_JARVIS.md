@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.95.0 — Restructuration architecturale modulaire par sous-dossiers de confinement stricts (backend/, frontend/, firmware/, ops/, docs/, _archive/) : isolation du cœur applicatif FastAPI, services, routeurs et tests sous backend/, délocalisation du HUD PWA sous frontend/static/, isolation du firmware Waveshare ESP32-S3 sous firmware/esp32/, centralisation des relais Windows et déploiement sous ops/, assainissement des sauvegardes dans _archive/legacy/ avec README, et préservation intégrale des contrats d'interfaces (/ws, /ws/local-agent, /ws/device, /static, /downloads) avec 100% de réussite sur les 232 tests unitaires.*
+> *Dernière révision majeure : Version 5.96.0 — Intégration et gouvernance proactive Google Workspace MCP (Model Context Protocol) & OAuth 2.0 Agentic (`is_agentic`) pour le projet Google Cloud `jarvis-pierre` : guide de configuration dédié `docs/GOOGLE_WORKSPACE_MCP_SETUP.md`, mise à jour de `docs/N8N_GUIDE.md`, enrichissement de `backend/services/automation.py` (`check_workspace_agentic_error`) et `backend/services/slides_service.py` pour l'interception automatique et le diagnostic des rejets d'authentification MCP Workspace, et 100% de succès sur la suite de tests.*
 
 
 ---
@@ -226,7 +226,7 @@ jarvis-core/
 │   │   ├── spotify_service.py           # Spotify Web API (OAuth PKCE, playback, devices, vérification post-action /me/player)
 │   │   ├── deezer_migration_service.py  # Migration Deezer -> Spotify (ISRC puis fuzzy matching, scoring de confiance, rapports)
 │   │   ├── media_service.py             # Routage des commandes audio Deezer et vidéo Stremio (URI protocol)
-│   │   ├── automation.py                # Webhooks n8n génériques, export tableur XLSX et intégration Notion
+│   │   ├── automation.py                # Webhooks n8n génériques, export tableur XLSX, intégration Notion et conformité Google Workspace MCP (is_agentic)
 │   │   ├── user_profile_service.py      # Hot-reload de PROFIL_CANDIDATURE... via mtime, synchro SQLite et injection Live context
 │   │   ├── unified_memory.py            # Façade unifiée : déduplication SQLite (profil) vs vectoriel Qdrant (souvenirs)
 │   │   ├── memory.py                    # Client vectoriel Qdrant & modèle local fastembed BAAI/bge-small-en-v1.5 (384 dim)
@@ -1172,6 +1172,7 @@ Comprend également le compteur d'intégrité `claimed_success_without_verificat
 
 ### 9.13. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
 Synchronisation bidirectionnelle Google/Samsung Calendar via n8n. Rappels push instantanés via Telegram Stark Bot (`chatId: 6849746502`). Briefing matinal compilé dans Redis (`jarvis:briefing:today`).
+- **Gouvernance OAuth Google Workspace MCP (`is_agentic`)** : Le projet Google Cloud `jarvis-pierre` relie les automatisations Calendar, Gmail, Drive et Slides. Conformément à la directive Google Cloud d'octobre 2026, l'identifiant client OAuth 2.0 doit être marqué avec l'attribut `is_agentic = true` (« AI Agent ») afin de conserver l'accès aux serveurs MCP Google Workspace après le 11 novembre 2026. `backend/services/automation.py` (`check_workspace_agentic_error`) et `backend/services/slides_service.py` interceptent proactivement toute réponse de rejet (`the client isn't marked as an AI agent`) pour fournir un diagnostic guidé (`docs/GOOGLE_WORKSPACE_MCP_SETUP.md`).
 
 ### 9.14. Connaissance Architecturale Dynamique & Auto-évaluation
 `services/architecture_service.py` surveille `ARCHITECTURE_COMPLETE_JARVIS.md` via `mtime`. Outil `query_jarvis_architecture` permettant à Jarvis de citer ses propres spécifications.
@@ -1418,7 +1419,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre minérale et raffinée (`#05070D`, `#0B0F19`, `#0D1321`), verre dépoli avec bordures ultra-fines (`backdrop-filter: blur(24px)`), hiérarchie chromatique équilibrée (cyan glace, émeraude, ambre, violet, rose alerte) sans saturation agressive.
 - **Typographie** : Polices modernes géométriques sans-serif (`Inter`, `Plus Jakarta Sans`) et code monospace technique (`JetBrains Mono`).
 - **Responsive Fluid Architecture** : Expérience fluide optimisée sur smartphone (< 768px : barre d'onglets fixée en bas, statusbar compacte, mini-lecteur au-dessus des onglets, `100dvh`) et cockpit glassmorphic centré sur grand écran desktop PC.
-- **Version affichée dans l'en-tête** (`frontend/static/index.html`, classe `hud-version-tag`) : `v5.95.0`.
+- **Version affichée dans l'en-tête** (`frontend/static/index.html`, classe `hud-version-tag`) : `v5.96.0`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
@@ -1627,4 +1628,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.95.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.96.0.*

@@ -228,9 +228,10 @@ if function_call.name == "executer_action_externe":
 
 ### Google Calendar / Gmail (OAuth2 gratuit)
 
-1. Aller sur [Google Cloud Console](https://console.cloud.google.com/)
-2. **APIs & Services** → **Enable APIs** → activer `Google Calendar API` et `Gmail API`
+1. Aller sur [Google Cloud Console](https://console.cloud.google.com/) (Projet `jarvis-pierre`)
+2. **APIs & Services** → **Enable APIs** → activer `Google Calendar API`, `Gmail API` et `Google Slides API`
 3. **Credentials** → **Create OAuth 2.0 Client ID** → Type : `Web application`
+3b. **Classification Agentique (Obligatoire 2026)** : Dans la configuration de l'ID client, activer le paramètre **"AI Agent"** (`is_agentic`). Obligatoire pour accéder aux serveurs Google Workspace MCP et éviter l'erreur *the client isn't marked as an AI agent* (voir [Guide Workspace MCP](GOOGLE_WORKSPACE_MCP_SETUP.md)).
 4. Redirect URI : `http://localhost:5678/rest/oauth2-credential/callback`
 5. Dans n8n : **Settings** → **Credentials** → **New** → `Google OAuth2 API`
 6. Coller `Client ID` et `Client Secret` → **Connect** → autoriser le compte Google

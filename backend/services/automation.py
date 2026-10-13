@@ -43,6 +43,34 @@ ACTION_WEBHOOK_MAPPING = {
 
 
 
+# ─── Détection & Diagnostic Google Workspace MCP (is_agentic) ────────────────
+
+def check_workspace_agentic_error(err_text: str) -> Optional[str]:
+    """Détecte l'erreur Google Workspace MCP OAuth liée au paramètre 'is_agentic'.
+    
+    À partir de novembre 2026, Google Workspace exige que les identifiants OAuth 2.0
+    utilisés par les agents IA (comme J.A.R.V.I.S.) soient explicitement marqués
+    avec le paramètre 'is_agentic' (AI Agent) dans Google Cloud Console.
+    """
+    if not err_text or not isinstance(err_text, str):
+        return None
+    low = err_text.lower()
+    if (
+        "client isn't marked as an ai agent" in low
+        or "client is not marked as an ai agent" in low
+        or "is_agentic" in low
+        or "agentic oauth client" in low
+        or ("workspace mcp server" in low and "not marked as agentic" in low)
+    ):
+        return (
+            "Erreur Google Workspace MCP : Le client OAuth 2.0 (projet 'jarvis-pierre') n'est pas marqué "
+            "comme agentique (is_agentic). Activez le paramètre 'AI Agent' dans Google Cloud Console "
+            "(APIs & Services > Credentials > Identifiant OAuth 2.0) avant le 11 novembre 2026. "
+            "Consultez docs/GOOGLE_WORKSPACE_MCP_SETUP.md pour la procédure détaillée."
+        )
+    return None
+
+
 # ─── 1. Déclenchement de workflow via Webhook ────────────────────────────────
 
 async def trigger_webhook(action_name: str, payload: dict) -> dict:
@@ -353,9 +381,34 @@ async def executer_action_externe(
     try:
         result = await trigger_webhook(action_name=effective_action, payload=effective_params)
         logger.info("[automation] Résultat action '%s': %s", effective_action, result)
+
+        # Interception d'erreur applicative Google Workspace MCP dans la charge utile n8n
+        if isinstance(result, dict):
+            raw_err = str(result.get("error") or result.get("message") or result.get("details") or result.get("raw") or "")
+            agentic_msg = check_workspace_agentic_error(raw_err)
+            if agentic_msg:
+                return {
+                    "status": "error",
+                    "action": effective_action,
+                    "error": agentic_msg,
+                    "is_agentic_error": True,
+                    "resolution_guide": "docs/GOOGLE_WORKSPACE_MCP_SETUP.md",
+                    "raw_result": result,
+                }
+
         return {"status": "success", "action": effective_action, "result": result}
     except httpx.HTTPStatusError as exc:
         logger.error("[automation] Erreur HTTP webhook '%s': %s", effective_action, exc)
+        agentic_msg = check_workspace_agentic_error(exc.response.text)
+        if agentic_msg:
+            return {
+                "status": "error",
+                "action": effective_action,
+                "error": agentic_msg,
+                "is_agentic_error": True,
+                "resolution_guide": "docs/GOOGLE_WORKSPACE_MCP_SETUP.md",
+                "status_code": exc.response.status_code,
+            }
         return {
             "status": "error",
             "action": effective_action,
@@ -377,6 +430,15 @@ async def executer_action_externe(
         }
     except Exception as exc:
         logger.error("[automation] Erreur inattendue webhook '%s': %s", effective_action, exc)
+        agentic_msg = check_workspace_agentic_error(str(exc))
+        if agentic_msg:
+            return {
+                "status": "error",
+                "action": effective_action,
+                "error": agentic_msg,
+                "is_agentic_error": True,
+                "resolution_guide": "docs/GOOGLE_WORKSPACE_MCP_SETUP.md",
+            }
         return {"status": "error", "action": effective_action, "error": str(exc)}
 
 

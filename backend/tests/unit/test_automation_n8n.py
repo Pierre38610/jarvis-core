@@ -12,6 +12,7 @@ from services.automation import (
     trigger_webhook,
     executer_action_externe,
     import_workflow_from_json,
+    check_workspace_agentic_error,
     N8N_BASE_URL,
 )
 
@@ -396,5 +397,58 @@ class TestDispatchDocumentTools:
 
         # Nettoyage
         slides_service._current_task["active"] = False
+
+
+@pytest.mark.asyncio
+class TestWorkspaceAgenticOAuth:
+    """Tests de détection et prise en charge des erreurs Google Workspace MCP is_agentic."""
+
+    def test_check_workspace_agentic_error_patterns(self):
+        """Vérifie la détection de divers motifs d'erreur Google Workspace MCP."""
+        # Non-erreur
+        assert check_workspace_agentic_error("") is None
+        assert check_workspace_agentic_error("Normal execution error") is None
+
+        # Erreur standard notée dans le mail Google
+        err_msg = "OAuth rejection: the client isn't marked as an AI agent. Please update settings."
+        res = check_workspace_agentic_error(err_msg)
+        assert res is not None
+        assert "jarvis-pierre" in res
+        assert "is_agentic" in res
+        assert "11 novembre 2026" in res
+
+        # Variante is_agentic
+        assert check_workspace_agentic_error("Parameter is_agentic is required for Workspace MCP") is not None
+
+        # Variante Workspace MCP not marked as agentic
+        assert check_workspace_agentic_error("Access denied: Workspace MCP server rejected request because client not marked as agentic") is not None
+
+    async def test_executer_action_externe_agentic_error_payload(self):
+        """Vérifie l'interception quand n8n retourne une erreur contenant le motif agentique."""
+        with patch("services.automation.trigger_webhook", new_callable=AsyncMock) as mock_trigger:
+            mock_trigger.return_value = {
+                "status": "error",
+                "error": "Google Calendar MCP error: the client isn't marked as an AI agent"
+            }
+
+            resp = await executer_action_externe(action_name="agenda-event", parametres={"action": "creer", "titre": "RDV"})
+            assert resp["status"] == "error"
+            assert resp.get("is_agentic_error") is True
+            assert "jarvis-pierre" in resp["error"]
+            assert resp.get("resolution_guide") == "docs/GOOGLE_WORKSPACE_MCP_SETUP.md"
+
+    async def test_executer_action_externe_agentic_http_status_error(self):
+        """Vérifie l'interception d'une HTTPStatusError contenant le motif agentique."""
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 403
+        mock_response.text = '{"error": "the client isn\'t marked as an AI agent"}'
+        http_err = httpx.HTTPStatusError("403 Forbidden", request=MagicMock(), response=mock_response)
+
+        with patch("services.automation.trigger_webhook", side_effect=http_err):
+            resp = await executer_action_externe(action_name="agenda-event", parametres={"action": "creer", "titre": "RDV"})
+            assert resp["status"] == "error"
+            assert resp.get("is_agentic_error") is True
+            assert "jarvis-pierre" in resp["error"]
+            assert resp.get("status_code") == 403
 
 
