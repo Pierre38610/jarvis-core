@@ -34,12 +34,13 @@ HOST = os.environ.get("JARVIS_VPS_HOST", "158.178.206.213").strip()
 USER = os.environ.get("JARVIS_VPS_USER", "opc").strip()
 
 EXCLUDE_DIRS = {
-    "venv", ".git", ".jarvis_chrome_profile", ".jarvis_shopping_profile",
+    "venv", ".venv", ".git", ".jarvis_chrome_profile", ".jarvis_shopping_profile",
     ".browseruse", ".antigravity_save", "downloads", "__pycache__", "clés ssh", "cles ssh", "my-project",
-    "releases", "current", ".cache", ".pytest_cache", "build", "managed_components"
+    "releases", "current", ".cache", ".pytest_cache", "build", "managed_components",
+    "firmware", "_archive", "scratch_healing", "_test_scratch", "test_workspace", "test_ws"
 }
 EXCLUDE_FILES = {
-    "cloudflared.exe", "jarvis_memory.db", ".env"
+    "cloudflared.exe", "jarvis_memory.db", ".env", "firmware_backup.bin"
 }
 
 
