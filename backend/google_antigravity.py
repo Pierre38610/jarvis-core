@@ -16,6 +16,15 @@ from typing import Any, Optional, Literal, Tuple
 from services.console_monitor import console_monitor
 import config
 from config import GEMINI_API_KEY_FREE, GEMINI_API_KEY_PAID
+from core.shared_state import (
+    ACTIVE_AGY_LOGS,
+    append_agy_log,
+    get_agy_task_telemetry,
+    mark_agy_task_status,
+    register_agy_task,
+    broadcast_supervision,
+    broadcast_subagents,
+)
 
 logger = logging.getLogger("jarvis.google_antigravity")
 
@@ -504,6 +513,79 @@ def resolve_cli_model_args(model_name: Any = None, thinking_level: str | None = 
     return result
 
 
+STALL_THRESHOLD_S = 60.0
+
+
+async def _agy_watchdog_loop(
+    proc: Any,
+    task_id: str,
+    timeout: float,
+    start_time: float,
+    is_done_event: asyncio.Event,
+    timed_out_flag: list[bool],
+    check_interval: float = 10.0,
+) -> None:
+    """Surveille l'activité du processus Antigravity CLI en arrière-plan.
+    - Vérifie toutes les 10 secondes le silence (time.monotonic() - last_output_at).
+    - Si aucun octet n'est émis depuis > 60s (STALL_THRESHOLD_S), passe le statut à 'stalled'
+      et journalise un warning explicite '[AGY_WATCHDOG] Task {task_id} silencieuse depuis 60s'.
+    - Si le timeout global est dépassé, tue proprement le sous-processus (terminate puis kill),
+      marque 'timeout' et signale timed_out_flag pour éviter tout processus zombie.
+    """
+    stalled_logged = False
+    while not is_done_event.is_set():
+        try:
+            await asyncio.wait_for(is_done_event.wait(), timeout=check_interval)
+            break
+        except asyncio.TimeoutError:
+            pass
+
+        if is_done_event.is_set():
+            break
+
+        now = time.monotonic()
+        # 1. Vérification timeout global
+        if now - start_time >= timeout:
+            timed_out_flag[0] = True
+            logger.warning(f"[AGY_WATCHDOG] Task {task_id} dépasse le timeout global ({timeout:.0f}s). Arrêt du processus.")
+            mark_agy_task_status(task_id, "timeout", error=f"Timeout global dépassé ({timeout:.0f}s)")
+            if hasattr(proc, "terminate"):
+                try:
+                    t = proc.terminate()
+                    if asyncio.iscoroutine(t):
+                        await t
+                    await asyncio.sleep(0.2)
+                except Exception:
+                    pass
+            if hasattr(proc, "kill"):
+                try:
+                    if getattr(proc, "returncode", None) is None:
+                        k = proc.kill()
+                        if asyncio.iscoroutine(k):
+                            await k
+                        if hasattr(proc, "wait"):
+                            w = proc.wait()
+                            if asyncio.iscoroutine(w):
+                                await w
+                except Exception:
+                    pass
+            break
+
+        # 2. Vérification silence (stalled)
+        telemetry = get_agy_task_telemetry(task_id)
+        last_out = telemetry.get("last_output_at", start_time)
+        silence_duration = now - last_out
+        if silence_duration >= STALL_THRESHOLD_S:
+            if not stalled_logged:
+                logger.warning(f"[AGY_WATCHDOG] Task {task_id} silencieuse depuis 60s")
+                mark_agy_task_status(task_id, "stalled", error=f"Silencieuse depuis {int(silence_duration)}s")
+                stalled_logged = True
+        else:
+            if stalled_logged:
+                mark_agy_task_status(task_id, "running")
+                stalled_logged = False
+
+
 class AntigravityAgent:
     """Agent Antigravity CLI exécutant les tâches via le binaire agy/antigravity-cli sur le VPS."""
 
@@ -515,6 +597,7 @@ class AntigravityAgent:
         thinking_level: str | None = None,
         effort: str | None = None,
         timeout_seconds: int = 300,
+        task_id: str | None = None,
         **kwargs
     ):
         self.workspace = os.path.abspath(workspace)
@@ -532,6 +615,7 @@ class AntigravityAgent:
         self.thinking_level = self.effort
         self.timeout_seconds = int(timeout_seconds) if timeout_seconds else 300
         self.target_model, self.model_label = resolve_antigravity_model(model, api_key=self.api_key)
+        self.task_id = task_id or kwargs.get("task_id") or f"agy_{int(time.time() * 1000)}"
 
     def cancel(self):
         """Déclenche l'interruption immédiate de l'agent Antigravity CLI."""
@@ -555,20 +639,26 @@ class AntigravityAgent:
         instruction: str,
         on_progress: Any = None,
         directive_queue: asyncio.Queue | None = None,
-        timeout: Optional[float] = None
+        timeout: Optional[float] = None,
+        task_id: Optional[str] = None
     ) -> TaskResult:
         """Délègue directement à Antigravity CLI."""
-        return await self.run_cli_task_stream(instruction, on_progress=on_progress, directive_queue=directive_queue, timeout=timeout)
+        return await self.run_cli_task_stream(instruction, on_progress=on_progress, directive_queue=directive_queue, timeout=timeout, task_id=task_id)
 
     async def run_cli_task_stream(
         self,
         instruction: str,
         on_progress: Any = None,
         directive_queue: asyncio.Queue | None = None,
-        timeout: Optional[float] = None
+        timeout: Optional[float] = None,
+        task_id: Optional[str] = None
     ) -> TaskResult:
-        """Exécute la tâche en appelant directement le binaire antigravity-cli sur le système via subprocess."""
+        """Exécute la tâche en appelant directement le binaire antigravity-cli sur le système via subprocess avec streaming temps réel et watchdog."""
+        effective_task_id = task_id or getattr(self, "task_id", None) or f"agy_{int(time.time() * 1000)}"
+        self.task_id = effective_task_id
+
         if self.is_cancelled:
+            mark_agy_task_status(effective_task_id, "failed", error="cancelled")
             return TaskResult(
                 summary="Développement arrêté à la demande de l'utilisateur.",
                 status="cancelled",
@@ -579,8 +669,15 @@ class AntigravityAgent:
         t0 = time.perf_counter()
         effective_timeout = float(timeout or self.timeout_seconds or 300)
 
+        register_agy_task(
+            task_id=effective_task_id,
+            goal=instruction[:140],
+            model=self.model_label,
+            effort=self.effort or "medium"
+        )
+
         try:
-            logger.info(f"[Antigravity CLI] Démarrage agent ({self.model_label}) - timeout: {effective_timeout:.0f}s")
+            logger.info(f"[Antigravity CLI] Démarrage agent ({self.model_label}) task={effective_task_id} - timeout: {effective_timeout:.0f}s")
             if on_progress:
                 await on_progress({"step": "start", "text": f"Lancement de la réflexion approfondie via Antigravity CLI avec {self.model_label}."})
 
@@ -607,6 +704,7 @@ class AntigravityAgent:
             if not cli_ready or not binary:
                 msg = cli_msg or "Antigravity CLI n'est pas disponible sur le serveur (binaire 'agy' introuvable)."
                 logger.warning(f"[Antigravity CLI] Préflight échoué: {msg}")
+                mark_agy_task_status(effective_task_id, "failed", error=msg)
                 return TaskResult(
                     summary=msg,
                     status="error",
@@ -637,6 +735,7 @@ class AntigravityAgent:
                 )
             except FileNotFoundError:
                 logger.error(f"[Antigravity CLI] Fichier binaire introuvable à l'exécution.")
+                mark_agy_task_status(effective_task_id, "failed", error="Binary not found")
                 return TaskResult(
                     summary="Binaire Antigravity CLI introuvable à l'exécution.",
                     status="error",
@@ -646,52 +745,130 @@ class AntigravityAgent:
 
             stdout_output: list[str] = []
             stderr_output: list[str] = []
+            is_done_event = asyncio.Event()
+            timed_out_flag = [False]
+            last_ws_broadcast = 0.0
+            traceback_count = 0
 
-            async def read_stream(stream, is_stderr=False):
+            # Lancement Watchdog anti-blocage
+            watchdog_task = asyncio.create_task(
+                _agy_watchdog_loop(
+                    proc=self.cli_process,
+                    task_id=effective_task_id,
+                    timeout=effective_timeout,
+                    start_time=time.monotonic(),
+                    is_done_event=is_done_event,
+                    timed_out_flag=timed_out_flag
+                )
+            )
+
+            async def _read_stream(stream, is_stderr: bool = False):
+                nonlocal last_ws_broadcast, traceback_count
+                if stream is None:
+                    return
                 while True:
                     line = await stream.readline()
                     if not line:
                         break
-                    line_str = line.decode('utf-8', errors='replace').strip()
-                    if line_str:
-                        if is_stderr:
-                            stderr_output.append(line_str)
-                            # Détection immédiate de quota 429
-                            if any(k in line_str.lower() for k in ["429", "quota", "resource_exhausted", "quotaexceeded", "rate limit"]):
-                                if self.cli_process:
-                                    try:
-                                        self.cli_process.terminate()
-                                    except Exception:
-                                        pass
-                                    try:
-                                        self.cli_process.kill()
-                                    except Exception:
-                                        pass
-                                raise AntigravityQuotaExhaustedError(f"Quota saturé sur Antigravity CLI ({self.model_label}).")
-                        else:
-                            stdout_output.append(line_str)
-                            if on_progress:
-                                await on_progress({"step": "thought", "text": line_str[:120]})
+                    raw_line = line.decode('utf-8', errors='replace').strip()
+                    if not raw_line:
+                        continue
+
+                    # a) Nettoyage des secrets
+                    clean_line = _sanitize_secrets(raw_line)
+                    stream_name = "stderr" if is_stderr else "stdout"
+
+                    # b) Enregistrement télémétrie & c) déduction current_step
+                    append_agy_log(effective_task_id, clean_line, stream=stream_name)
+
+                    if is_stderr:
+                        stderr_output.append(clean_line)
+                    else:
+                        stdout_output.append(clean_line)
+                        if on_progress:
+                            await on_progress({"step": "thought", "text": clean_line[:120]})
+
+                    # d) Diffuse un événement WebSocket léger throttlé (max 1 fois / 2s)
+                    now = time.monotonic()
+                    if now - last_ws_broadcast >= 2.0:
+                        last_ws_broadcast = now
+                        try:
+                            asyncio.create_task(broadcast_supervision())
+                        except Exception:
+                            pass
+
+                    # e) Détection immédiate des erreurs fatales
+                    line_lower = clean_line.lower()
+                    if any(k in line_lower for k in ["429", "quota", "resource_exhausted", "quotaexceeded", "rate limit"]):
+                        mark_agy_task_status(effective_task_id, "failed", error="Quota exceeded (429)")
+                        if self.cli_process:
+                            try:
+                                self.cli_process.terminate()
+                            except Exception:
+                                pass
+                            try:
+                                self.cli_process.kill()
+                            except Exception:
+                                pass
+                        raise AntigravityQuotaExhaustedError(f"Quota saturé sur Antigravity CLI ({self.model_label}).")
+
+                    if "permission denied" in line_lower or "permissionerror" in line_lower:
+                        mark_agy_task_status(effective_task_id, "failed", error=f"PermissionError: {clean_line[:120]}")
+
+                    if "traceback (most recent call last)" in line_lower:
+                        traceback_count += 1
+                        if traceback_count >= 2:
+                            mark_agy_task_status(effective_task_id, "failed", error=f"Traceback répété: {clean_line[:120]}")
 
             async def _execute_streams():
-                await asyncio.gather(
-                    read_stream(self.cli_process.stdout, False),
-                    read_stream(self.cli_process.stderr, True)
-                )
-                await self.cli_process.wait()
+                try:
+                    await asyncio.gather(
+                        _read_stream(self.cli_process.stdout, False),
+                        _read_stream(self.cli_process.stderr, True)
+                    )
+                finally:
+                    if self.cli_process and hasattr(self.cli_process, "wait"):
+                        await self.cli_process.wait()
 
             try:
                 await asyncio.wait_for(_execute_streams(), timeout=effective_timeout)
             except asyncio.TimeoutError:
-                if self.cli_process:
+                timed_out_flag[0] = True
+            finally:
+                is_done_event.set()
+                if not watchdog_task.done():
+                    watchdog_task.cancel()
                     try:
-                        self.cli_process.kill()
-                        await self.cli_process.wait()
-                    except Exception:
+                        await watchdog_task
+                    except (asyncio.CancelledError, Exception):
                         pass
+
+            if timed_out_flag[0]:
+                if self.cli_process:
+                    if hasattr(self.cli_process, "terminate"):
+                        try:
+                            t = self.cli_process.terminate()
+                            if asyncio.iscoroutine(t):
+                                await t
+                            await asyncio.sleep(0.2)
+                        except Exception:
+                            pass
+                    if hasattr(self.cli_process, "kill"):
+                        try:
+                            if getattr(self.cli_process, "returncode", None) is None:
+                                k = self.cli_process.kill()
+                                if asyncio.iscoroutine(k):
+                                    await k
+                                if hasattr(self.cli_process, "wait"):
+                                    w = self.cli_process.wait()
+                                    if asyncio.iscoroutine(w):
+                                        await w
+                        except Exception:
+                            pass
                 duration = time.perf_counter() - t0
                 err_msg = f"Timeout d'exécution ({effective_timeout:.0f}s) dépassé pour Antigravity CLI ({self.model_label})."
                 logger.warning(f"[Antigravity CLI] {err_msg} (durée: {duration:.1f}s)")
+                mark_agy_task_status(effective_task_id, "timeout", error=err_msg)
                 return TaskResult(
                     summary=err_msg,
                     status="timeout",
@@ -700,6 +877,7 @@ class AntigravityAgent:
                 )
 
             if self.is_cancelled:
+                mark_agy_task_status(effective_task_id, "failed", error="cancelled")
                 raise asyncio.CancelledError("Arrêt demandé par l'utilisateur.")
 
             duration = time.perf_counter() - t0
@@ -707,7 +885,9 @@ class AntigravityAgent:
             if self.cli_process.returncode != 0:
                 err_text = _sanitize_secrets("\n".join(stderr_output).strip())
                 if any(k in err_text.lower() for k in ["429", "quota", "resource_exhausted", "quotaexceeded", "rate limit"]):
+                    mark_agy_task_status(effective_task_id, "failed", error="Quota exceeded")
                     raise AntigravityQuotaExhaustedError(f"Quota saturé sur Antigravity CLI ({self.model_label}).")
+                mark_agy_task_status(effective_task_id, "failed", error=err_text[:200])
                 logger.error(f"[Antigravity CLI] Échec code {self.cli_process.returncode} en {duration:.1f}s : {err_text[:200]}")
                 raise RuntimeError(f"Erreur Antigravity CLI (code {self.cli_process.returncode}): {err_text[:300]}")
 
@@ -716,6 +896,7 @@ class AntigravityAgent:
                 summary = "Tâche Antigravity CLI terminée avec succès."
 
             logger.info(f"[Antigravity CLI] Succès ({self.model_label}) en {duration:.1f}s")
+            mark_agy_task_status(effective_task_id, "completed")
             if on_progress:
                 await on_progress({"step": "complete", "text": "Le raisonnement est achevé avec succès."})
 
@@ -731,6 +912,7 @@ class AntigravityAgent:
                 except Exception:
                     pass
             logger.info(f"[Antigravity CLI] Tâche annulée avec succès ({self.model_label}).")
+            mark_agy_task_status(effective_task_id, "failed", error="cancelled")
             return TaskResult(
                 summary="Développement interrompu à la demande de l'utilisateur.",
                 status="cancelled",
@@ -744,8 +926,10 @@ class AntigravityAgent:
             logger.error(f"[Antigravity CLI] Exception d'exécution ({self.model_label}): {err_msg[:200]}")
             console_monitor.record_error(source=f"Antigravity CLI ({self.model_label})", message=err_msg[:300], level="ERROR")
             if any(k in err_msg.lower() for k in ["429", "quota", "resource_exhausted", "quotaexceeded", "rate limit"]):
+                mark_agy_task_status(effective_task_id, "failed", error="Quota exceeded")
                 raise AntigravityQuotaExhaustedError(f"Quota saturé sur Antigravity CLI ({self.model_label}).")
 
+            mark_agy_task_status(effective_task_id, "failed", error=err_msg[:200])
             return TaskResult(
                 summary=f"Erreur d'exécution Antigravity CLI ({self.model_label}): {err_msg[:300]}",
                 status="error",

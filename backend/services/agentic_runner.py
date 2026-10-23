@@ -27,6 +27,17 @@ from services.antigravity_prompts import (
 )
 from services.key_gate import PaidKeyConsentRequired, get_key, has_paid_consent
 from services.model_routing.fallback_handler import cooldown_manager
+from google_antigravity import (
+    _sanitize_secrets,
+    AntigravityQuotaExhaustedError,
+    _agy_watchdog_loop,
+)
+from core.shared_state import (
+    append_agy_log,
+    mark_agy_task_status,
+    register_agy_task,
+    broadcast_supervision,
+)
 
 logger = logging.getLogger("jarvis.agentic_runner")
 
@@ -362,8 +373,9 @@ async def _execute_subprocess(
     cmd: List[str],
     timeout: float,
     cwd: Optional[str] = None,
+    task_id: Optional[str] = None,
 ) -> Tuple[int, str, str]:
-    """Exécute la commande via create_subprocess_exec (sans shell) dans un workspace isolé."""
+    """Exécute la commande via create_subprocess_exec avec streaming asynchrone des flux et watchdog."""
     # Vérification explicite avant exécution
     for arg in cmd:
         if "--thinking" in arg:
@@ -388,6 +400,14 @@ async def _execute_subprocess(
         if eff_k:
             env["GEMINI_API_KEY"] = eff_k
 
+    effective_task_id = task_id or f"agy_runner_{int(time.time() * 1000)}"
+    register_agy_task(
+        task_id=effective_task_id,
+        goal=" ".join(cmd[:6])[:140],
+        model="Antigravity CLI",
+        effort="medium",
+    )
+
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -398,24 +418,138 @@ async def _execute_subprocess(
         )
     except (FileNotFoundError, PermissionError) as fnf_err:
         logger.warning(f"[AgenticRunner] Binaire introuvable ou non exécutable '{cmd[0]}': {fnf_err}")
+        mark_agy_task_status(effective_task_id, "failed", error=str(fnf_err))
         return 127, "", f"Binary '{cmd[0]}' not found or not executable: {fnf_err}"
 
-    try:
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            proc.communicate(),
-            timeout=timeout,
-        )
-    except asyncio.TimeoutError:
-        try:
-            proc.kill()
-            await proc.wait()
-        except Exception:
-            pass
-        raise
+    stdout_output: List[str] = []
+    stderr_output: List[str] = []
+    is_done_event = asyncio.Event()
+    timed_out_flag = [False]
+    last_ws_broadcast = 0.0
+    traceback_count = 0
 
-    stdout_str = stdout_bytes.decode("utf-8", errors="replace").strip()
-    stderr_str = stderr_bytes.decode("utf-8", errors="replace").strip()
-    return proc.returncode, stdout_str, stderr_str
+    watchdog_task = asyncio.create_task(
+        _agy_watchdog_loop(
+            proc=proc,
+            task_id=effective_task_id,
+            timeout=timeout,
+            start_time=time.monotonic(),
+            is_done_event=is_done_event,
+            timed_out_flag=timed_out_flag,
+        )
+    )
+
+    async def _read_stream(stream: Optional[asyncio.StreamReader], is_stderr: bool = False):
+        nonlocal last_ws_broadcast, traceback_count
+        if stream is None:
+            return
+        while True:
+            line_bytes = await stream.readline()
+            if not line_bytes:
+                break
+            raw_line = line_bytes.decode("utf-8", errors="replace").strip()
+            if not raw_line:
+                continue
+
+            # a) Nettoyage des secrets
+            clean_line = _sanitize_secrets(raw_line)
+            stream_name = "stderr" if is_stderr else "stdout"
+
+            # b) Enregistrement télémétrie & c) déduction current_step
+            append_agy_log(effective_task_id, clean_line, stream=stream_name)
+
+            if is_stderr:
+                stderr_output.append(clean_line)
+            else:
+                stdout_output.append(clean_line)
+
+            # d) Diffuse un événement WebSocket léger (throttling 2s)
+            now = time.monotonic()
+            if now - last_ws_broadcast >= 2.0:
+                last_ws_broadcast = now
+                try:
+                    asyncio.create_task(broadcast_supervision())
+                except Exception:
+                    pass
+
+            # e) Détection immédiate des erreurs fatales
+            line_lower = clean_line.lower()
+            if any(k in line_lower for k in ["429", "quota", "resource_exhausted", "quotaexceeded", "rate limit"]):
+                mark_agy_task_status(effective_task_id, "failed", error="Quota exceeded (429)")
+                if hasattr(proc, "kill"):
+                    try:
+                        k = proc.kill()
+                        if asyncio.iscoroutine(k):
+                            await k
+                    except Exception:
+                        pass
+                raise AntigravityQuotaExhaustedError(f"Quota saturé sur Antigravity CLI ({clean_line[:100]})")
+
+            if "permission denied" in line_lower or "permissionerror" in line_lower:
+                mark_agy_task_status(effective_task_id, "failed", error=f"PermissionError: {clean_line[:120]}")
+
+            if "traceback (most recent call last)" in line_lower:
+                traceback_count += 1
+                if traceback_count >= 2:
+                    mark_agy_task_status(effective_task_id, "failed", error=f"Traceback répété: {clean_line[:120]}")
+
+    async def _execute_streams():
+        try:
+            await asyncio.gather(
+                _read_stream(proc.stdout, False),
+                _read_stream(proc.stderr, True),
+            )
+        finally:
+            if hasattr(proc, "wait"):
+                w = proc.wait()
+                if asyncio.iscoroutine(w):
+                    await w
+
+    try:
+        await asyncio.wait_for(_execute_streams(), timeout=timeout)
+    except asyncio.TimeoutError:
+        timed_out_flag[0] = True
+    finally:
+        is_done_event.set()
+        if not watchdog_task.done():
+            watchdog_task.cancel()
+            try:
+                await watchdog_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    if timed_out_flag[0]:
+        if hasattr(proc, "terminate"):
+            try:
+                t = proc.terminate()
+                if asyncio.iscoroutine(t):
+                    await t
+                await asyncio.sleep(0.2)
+            except Exception:
+                pass
+        if hasattr(proc, "kill"):
+            try:
+                if getattr(proc, "returncode", None) is None:
+                    k = proc.kill()
+                    if asyncio.iscoroutine(k):
+                        await k
+                    if hasattr(proc, "wait"):
+                        w = proc.wait()
+                        if asyncio.iscoroutine(w):
+                            await w
+            except Exception:
+                pass
+        mark_agy_task_status(effective_task_id, "timeout", error=f"Timeout après {timeout}s")
+        raise asyncio.TimeoutError(f"Timeout après {timeout}s")
+
+    stdout_str = "\n".join(stdout_output).strip()
+    stderr_str = "\n".join(stderr_output).strip()
+    returncode = getattr(proc, "returncode", 0) or 0
+    if returncode == 0:
+        mark_agy_task_status(effective_task_id, "completed")
+    else:
+        mark_agy_task_status(effective_task_id, "failed", error=stderr_str[:120])
+    return returncode, stdout_str, stderr_str
 
 
 async def _execute_gemini_direct_api(
@@ -567,13 +701,17 @@ async def run_agentic(
     current_model = valid_model
     current_effort = valid_effort
     used_timeout_fallback = False
+    effective_task_id = task_id or worker_id or f"agy_runner_{int(time.time()*1000)}"
 
     async def _run_cli_cycle(m: str, eff: str, p: str, tout: float) -> Tuple[int, str, str]:
         cmd = _build_command(role=role, prompt=p, model=m, effort=eff)
         try:
-            return await exec_func(cmd, tout, cwd=workspace)
+            return await exec_func(cmd, tout, cwd=workspace, task_id=effective_task_id)
         except TypeError:
-            return await exec_func(cmd, tout)
+            try:
+                return await exec_func(cmd, tout, cwd=workspace)
+            except TypeError:
+                return await exec_func(cmd, tout)
 
     code = 0
     stdout = ""

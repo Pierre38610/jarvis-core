@@ -1,0 +1,25 @@
+[Unit]
+Description=J.A.R.V.I.S. Independent Autonomous VPS Deployer Service
+Documentation=https://github.com/Pierre38610/jarvis-core
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=opc
+Group=opc
+WorkingDirectory=/home/opc/jarvis-core
+Environment=PYTHONUNBUFFERED=1
+Environment=JARVIS_WORKSPACE_DIR=/home/opc/jarvis-core
+EnvironmentFile=-/home/opc/jarvis-core/.env
+ExecStart=/home/opc/jarvis-core/venv/bin/python /home/opc/jarvis-core/ops/deploy/jarvis_deployer.py --server
+Restart=always
+RestartSec=5s
+KillMode=process
+TimeoutStopSec=15s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jarvis-deployer
+
+[Install]
+WantedBy=multi-user.target

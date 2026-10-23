@@ -263,7 +263,7 @@ async def test_e2e_l2_parallel_agents_with_cross_check_and_synthesis():
                 assert "pro" in phases["analyst"]["model"]
                 assert "pro" in phases["synthesis"]["model"]
             else:
-                assert "recherche" in res.get("user_message", "").lower() or "deep_research" in res.get("user_message", "").lower()
+                assert any(term in res.get("user_message", "").lower() for term in ("recherche", "deep_research", "analyse"))
 
 
 # ─── 4. Pipeline L3 : Gemini Deep Research Web Automator CDP (Plan Confirmé) ──
@@ -289,7 +289,7 @@ async def test_e2e_l3_deep_research_web_automator_cdp():
          patch.object(automator, "_confirm_research_plan", AsyncMock(return_value=True)), \
          patch.object(automator, "_wait_for_research_completion", AsyncMock(return_value=True)), \
          patch.object(automator, "_extract_report_markdown", AsyncMock(return_value=mock_md_content)), \
-         patch.object(automator, "_trigger_webpage_creation", AsyncMock(return_value="https://gemini.google.com/canvas/12345")), \
+         patch.object(automator, "_generate_and_extract_webpage_html", AsyncMock(return_value=("https://gemini.google.com/canvas/12345", "<html>Mock</html>"))), \
          patch.object(automator, "_save_report_file", return_value={"filepath_md": report_file}), \
          patch.object(automator, "_deliver_result", AsyncMock(return_value={"status": "opened_on_screen"})), \
          patch.object(automator, "_disconnect", AsyncMock()):

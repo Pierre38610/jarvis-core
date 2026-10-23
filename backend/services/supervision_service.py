@@ -514,6 +514,12 @@ class SupervisionService:
         active_actions_list = list(self._actions.values())
         running_count = len(active_actions_list)
 
+        try:
+            from core.shared_state import get_agy_task_telemetry
+            agy_tasks = get_agy_task_telemetry()
+        except Exception:
+            agy_tasks = {}
+
         return {
             "status": "ok",
             "timestamp": datetime.now().strftime("%H:%M:%S"),
@@ -521,10 +527,11 @@ class SupervisionService:
             "active_actions": active_actions_list,
             "running_count": running_count,
             "subagents": self.get_active_subagents(),
+            "agy_tasks": agy_tasks,
             "recent_actions": self._recent_actions,
             "tools": list(self._active_tools.values()),
             "open_windows": open_windows,
-                "paid_key_authorized": config.is_paid_key_authorized(),
+            "paid_key_authorized": config.is_paid_key_authorized(),
             "api_keys": {
                 "free_key": {
                     "configured": bool(config.GEMINI_API_KEY_FREE),

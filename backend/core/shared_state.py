@@ -8,7 +8,9 @@ os.environ["NO_PROXY"] = "127.0.0.1,localhost,::1,0.0.0.0"
 os.environ["no_proxy"] = "127.0.0.1,localhost,::1,0.0.0.0"
 
 import asyncio
+from collections import deque
 import json
+import threading
 import time
 from typing import Any, Optional, Dict, List
 
@@ -110,6 +112,130 @@ active_task_controller: dict = {
     "last_turn_complete_time": 0.0,  # Horodatage du dernier turn_complete
     "sync_resolved_actions": {},     # Actions terminées en mode synchrone {action_name: timestamp}
 }
+
+
+# ─── Registre de Télémétrie et Logs Temps Réel Antigravity CLI ──────────────
+ACTIVE_AGY_LOGS: Dict[str, Dict[str, Any]] = {}
+_AGY_LOGS_LOCK = threading.RLock()
+
+
+def register_agy_task(
+    task_id: str,
+    goal: str = "",
+    model: str = "",
+    effort: str = "",
+) -> Dict[str, Any]:
+    """Enregistre et initialise une tâche Antigravity CLI dans le registre de télémétrie temps réel."""
+    if not task_id:
+        return {}
+    now = time.monotonic()
+    with _AGY_LOGS_LOCK:
+        if len(ACTIVE_AGY_LOGS) > 60:
+            terminal_keys = [
+                k for k, v in ACTIVE_AGY_LOGS.items()
+                if v.get("status") in ("completed", "failed", "timeout")
+            ]
+            for old_k in terminal_keys[:10]:
+                ACTIVE_AGY_LOGS.pop(old_k, None)
+
+        entry = {
+            "task_id": task_id,
+            "goal": goal,
+            "model": model,
+            "effort": effort,
+            "status": "running",
+            "started_at": now,
+            "last_output_at": now,
+            "current_step": "Démarrage de la tâche",
+            "log_lines": deque(maxlen=150),
+            "error_detected": None,
+        }
+        ACTIVE_AGY_LOGS[task_id] = entry
+        return entry
+
+
+def append_agy_log(task_id: str, line: str, stream: str = "stdout") -> None:
+    """Ajoute une ligne de log nettoyée au registre de télémétrie de la tâche agy."""
+    if not task_id:
+        return
+    now = time.monotonic()
+    with _AGY_LOGS_LOCK:
+        if task_id not in ACTIVE_AGY_LOGS:
+            ACTIVE_AGY_LOGS[task_id] = {
+                "task_id": task_id,
+                "goal": "",
+                "model": "",
+                "effort": "",
+                "status": "running",
+                "started_at": now,
+                "last_output_at": now,
+                "current_step": "",
+                "log_lines": deque(maxlen=150),
+                "error_detected": None,
+            }
+
+        entry = ACTIVE_AGY_LOGS[task_id]
+        entry["last_output_at"] = now
+        if entry.get("status") == "stalled":
+            entry["status"] = "running"
+
+        clean_line = (line or "").strip()
+        if clean_line:
+            entry["log_lines"].append(f"[{stream.upper()}] {clean_line}")
+
+            # Déduction de current_step (dernière ligne non vide informative)
+            if (
+                clean_line
+                and not clean_line.startswith(("{", "}", "[", "]", "```", "//"))
+                and len(clean_line) > 3
+            ):
+                entry["current_step"] = clean_line[:140]
+
+
+def mark_agy_task_status(task_id: str, status: str, error: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Met à jour le statut d'une tâche agy (running, completed, failed, stalled, timeout) et l'erreur associée."""
+    if not task_id:
+        return None
+    with _AGY_LOGS_LOCK:
+        if task_id not in ACTIVE_AGY_LOGS:
+            now = time.monotonic()
+            ACTIVE_AGY_LOGS[task_id] = {
+                "task_id": task_id,
+                "goal": "",
+                "model": "",
+                "effort": "",
+                "status": status,
+                "started_at": now,
+                "last_output_at": now,
+                "current_step": "",
+                "log_lines": deque(maxlen=150),
+                "error_detected": error,
+            }
+        else:
+            entry = ACTIVE_AGY_LOGS[task_id]
+            entry["status"] = status
+            if error is not None:
+                entry["error_detected"] = error
+        return dict(ACTIVE_AGY_LOGS[task_id])
+
+
+def get_agy_task_telemetry(task_id: Optional[str] = None) -> Dict[str, Any]:
+    """Retourne la télémétrie sérialisable d'une tâche spécifique ou de l'ensemble des tâches actives."""
+    with _AGY_LOGS_LOCK:
+        if task_id:
+            entry = ACTIVE_AGY_LOGS.get(task_id)
+            if not entry:
+                return {}
+            copy_entry = dict(entry)
+            copy_entry["log_lines"] = list(entry["log_lines"])
+            return copy_entry
+        else:
+            result = {}
+            for tid, entry in ACTIVE_AGY_LOGS.items():
+                copy_entry = dict(entry)
+                copy_entry["log_lines"] = list(entry["log_lines"])
+                result[tid] = copy_entry
+            return result
 
 
 def get_speech_idle_event() -> asyncio.Event:
