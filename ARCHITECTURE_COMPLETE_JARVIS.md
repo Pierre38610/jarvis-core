@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.96.0 — Intégration et gouvernance proactive Google Workspace MCP (Model Context Protocol) & OAuth 2.0 Agentic (`is_agentic`) pour le projet Google Cloud `jarvis-pierre` : guide de configuration dédié `docs/GOOGLE_WORKSPACE_MCP_SETUP.md`, mise à jour de `docs/N8N_GUIDE.md`, enrichissement de `backend/services/automation.py` (`check_workspace_agentic_error`) et `backend/services/slides_service.py` pour l'interception automatique et le diagnostic des rejets d'authentification MCP Workspace, et 100% de succès sur la suite de tests.*
+> *Dernière révision majeure : Version 5.96.0 — Refonte intégrale de l'interaction web autonome (`browser_task`, `open_train_booking`, `prepare_web_cart_or_checkout`) : délégation 100% de la navigation à un agent autonome Antigravity (`agy` / `run_agentic`) sur le VPS via l'exécuteur unifié `run_antigravity_browser_mission` (`backend/services/browser_agent/loop.py`), extraction autonome de A à Z de l'URL profonde finale (deep-link de réservation ferroviaire ou permalien de panier e-commerce), ouverture automatique sur le navigateur du PC local de Pierre via `send_rpc_command("open_browser")`, mise à jour du lien HUD PWA via `set_browser_link`, annonce vocale par file d'injection prioritaire (`TOOL_RESPONSE`), modernisation des recettes `train.md` et `cart.md`, et maintien de l'ancienne boucle RPC en repli conditionnel via `LEGACY_RPC_BROWSER_LOOP=true`.*
 
 
 ---
@@ -1053,22 +1053,26 @@ Orchestrées par `services/agentic_dispatcher.py` :
 7. `memory_consolidation` : Déduplication nocturne et réconciliation de contradictions.
 8. `doc_sync` : Contrôle de cohérence entre le code des routeurs et `ARCHITECTURE_COMPLETE_JARVIS.md`.
 
-### 9.5. Interaction Web Autonome & Agent Navigateur Local (`browser_task`)
+### 9.5. Interaction Web Autonome & Missions Agentiques Antigravity (`browser_task`)
 
-#### 9.5.1. Paradigme & Schéma du Flux Opérationnel
-Le système d'interaction web repose sur une architecture découplée en tâche de fond :
+#### 9.5.1. Paradigme & Schéma du Flux Opérationnel (Délégation 100% Antigravity)
+Le système d'interaction web repose sur une architecture entièrement agentique et asynchrone :
 1. **Jarvis (Gemini Live)** : Reçoit l'intention vocale, déclenche `browser_task(goal, start_url, recipe)` de manière non-bloquante, confirme oralement à Pierre (« Je m'en occupe ») et reste immédiatement disponible à la voix.
 2. **Exécution en Arrière-Plan** : `core/tools/dispatcher.py` instancie un `BrowserTask` et lance `run_browser_agent_task(task, notify)` au sein d'une tâche asyncio supervisée (`BROWSER_TASKS`).
-3. **Agent Local PC (`jarvis_local_agent.py` & `local_browser_actions.py`)** : Se connecte via CDP sur l'instance Chrome réelle ouverte de Pierre (`http://localhost:9222`), conservant tous ses cookies et sessions authentifiées. Il exécute les ordres physiques (DOM, clics, saisie, captures) sans logique décisionnelle locale.
-4. **Cerveau Décisionnel Cloud (`services/browser_agent/cli_brain.py`)** : TOUTE la réflexion (analyse du snapshot DOM, décision d'action S4, analyse d'image par vision si nécessaire, vérification de réussite) est déléguée aux agents CLI Antigravity (`agy`) exécutés en sous-processus sur le VPS.
-5. **Boucle d'Action & Vérification (S2)** :
-   - *Observer* : RPC `browser_snapshot` → extrait l'URL, le titre, le texte visible (1500 car) et numérote jusqu'à 150 éléments interactifs avec l'attribut `data-jarvis-id`.
-   - *Décider* : Appel CLI `agy` (`decide`) avec objectif, recette, mémoire du site, snapshot et 6 dernières actions.
-   - *Vision* : Si `need_screenshot=true` (ou après 3 erreurs consécutives), RPC `browser_screenshot` (JPEG qualité 60), enregistrement dans le cache (`step_<n>.jpg`), et appel CLI `agy` multimodal analysant l'image.
-   - *Garde-Fou* : Validation de chaque action par `guards.check_action()`.
-   - *Agir* : RPC `browser_act` exécutant 1 à 3 actions (`click`, `type`, `select`, `scroll`, `goto`, `wait`, `back`, `extract`).
-   - *Vérifier* : Lorsque `done=true`, appel CLI `agy` (`verify`) pour valider formellement le critère de réussite.
-6. **Mise au Premier Plan & Notification Vocale** : Jarvis ne génère jamais d'URL de résultat artificielle. À la fin, RPC `browser_focus` met l'onglet actif au premier plan et le résultat est injecté dans le flux vocal via `VoiceInjectionQueue`.
+3. **Missions Autonomes Antigravity (`run_antigravity_browser_mission`)** :
+   - Par défaut, Jarvis délègue 100% de la navigation web à un agent autonome Antigravity (`agy` / `run_agentic`) sur le VPS.
+   - L'agent exécute toute la recherche, la comparaison et la sélection de A à Z avec accès au Chrome Headless VPS (`http://127.0.0.1:9222` via Playwright Python).
+   - L'agent extrait l'URL finale exacte (`final_url`) :
+     - Pour un **billet de train** (SNCF Connect, Trainline, Omio, SJ.se) : recherche des horaires réels, comparaison des tarifs, choix du trajet optimal et extraction de l'**URL profonde exacte (deep-link)** menant directement au récapitulatif du billet pré-rempli.
+     - Pour un **panier e-commerce** : recherche du produit exact (meilleur rapport qualité/prix/avis), construction d'un **permalien d'ajout direct au panier** (ex: Amazon `/gp/aws/cart/add.html?ASIN.1=...&Quantity.1=1`, Shopify `/cart/VARIANT:1`) ou de la fiche produit avec la variante active.
+   - **Garde-fou inviolable** : Interdiction formelle de valider un paiement ou de renseigner des coordonnées bancaires.
+   - **Contrat JSON de sortie obligatoire** : `{status: "ready_for_user", summary_for_voice: "...", final_url: "https://...", options_found: [...], requires_user_action: "..."}`.
+4. **Ouverture Automatique sur le PC Local de Pierre & Notification Multicanale** :
+   - Dès que `final_url` est validée :
+     - Si le PC de Pierre est connecté (`is_pc_connected()`), Jarvis appelle automatiquement `local_agent_service.send_rpc_command("open_browser", {"url": final_url, "new_window": False})`. La page s'affiche directement sur son écran sans manipulation.
+     - Jarvis met à jour le lien dans le HUD PWA / mobile via `set_browser_link(url=final_url, title=...)` (au cas où Pierre est sur son smartphone).
+     - Le message `summary_for_voice` est injecté dans `voice_injection_queue` avec la priorité `TOOL_RESPONSE` pour que Jarvis annonce oralement que la réservation ou le panier est ouvert devant lui et prêt pour la connexion/paiement.
+5. **Repli Conditionnel Legacy RPC** : Si la variable d'environnement `LEGACY_RPC_BROWSER_LOOP=true` est activée, Jarvis bascule sur l'ancienne boucle RPC micro-clic pas-à-pas (`_run_local_browser_loop`).
 
 ```
 ┌─────────────────┐       (1) Tool Call Non-Bloquant       ┌───────────────────────────────┐

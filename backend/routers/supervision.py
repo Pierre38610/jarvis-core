@@ -17,6 +17,8 @@ from core.shared_state import (
     active_task_controller,
     broadcast_supervision,
     stop_active_task,
+    ACTIVE_AGY_LOGS,
+    _AGY_LOGS_LOCK,
 )
 
 router = APIRouter()
@@ -216,8 +218,28 @@ async def get_supervision_logs(request: Request):
             if any(k in clean.lower() for k in ["warning", "warn", "attention", "repli", "timeout"]):
                 sanitized_lines.append(clean)
         elif filter_type in ("agy", "antigravity", "l2"):
-            if any(k in clean.lower() for k in ["antigravity", "agy", "agentic", "prospector", "analyst", "synthesis", "l2"]):
-                sanitized_lines.append(clean)
+            # Inclusion prioritaire des logs temps réel de ACTIVE_AGY_LOGS
+            agy_live_lines = []
+            try:
+                with _AGY_LOGS_LOCK:
+                    for tid, entry in ACTIVE_AGY_LOGS.items():
+                        goal_str = f" [{entry.get('goal')[:30]}]" if entry.get("goal") else ""
+                        for l in entry.get("log_lines", []):
+                            clean_l = _sanitize_secrets(f"[AGY:{tid[:8]}{goal_str}] {l}")
+                            agy_live_lines.append(clean_l)
+            except Exception:
+                pass
+
+            for line in raw_lines:
+                clean = _sanitize_secrets(line)
+                if any(k in clean.lower() for k in ["antigravity", "agy", "agentic", "prospector", "analyst", "synthesis", "l2"]):
+                    sanitized_lines.append(clean)
+
+            # Priorité aux logs en direct des agents actifs
+            if agy_live_lines:
+                sanitized_lines = (agy_live_lines + sanitized_lines)[-lines:]
+            else:
+                sanitized_lines = sanitized_lines[-lines:]
         elif filter_type in ("dr", "deep_research", "l3"):
             if any(k in clean.lower() for k in ["deepresearch", "deep_research", "gemini_deep_research", "browser", "cdp", "l3"]):
                 sanitized_lines.append(clean)

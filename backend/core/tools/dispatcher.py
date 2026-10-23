@@ -1664,6 +1664,7 @@ async def _execute_dispatch_tool(
             goal=goal,
             start_url=start_url,
             recipe=recipe,
+            session=session,
         )
         BROWSER_TASKS[task_id] = task
 
@@ -1804,16 +1805,18 @@ async def _execute_dispatch_tool(
                 final_priority = InjectionPriority.INTERRUPTION if is_handoff else InjectionPriority.TOOL_RESPONSE
                 final_msg = res.user_message or (f"Navigation terminée : {_g}" if res.is_success else f"Échec de la navigation : {_g}")
 
-                try:
-                    await voice_injection_queue.enqueue(
-                        text=final_msg,
-                        priority=final_priority,
-                        session=_sess,
-                        action_key=f"browser_task_result_{_tid}",
-                        metadata={"task_id": _tid, "status": res.status},
-                    )
-                except Exception as inj_err:
-                    logger.error(f"[BrowserAgent BG] Erreur injection résultat final: {inj_err}")
+                already_injected = getattr(task, "voice_injected", False) or (isinstance(res.data, dict) and res.data.get("voice_injected"))
+                if not already_injected:
+                    try:
+                        await voice_injection_queue.enqueue(
+                            text=final_msg,
+                            priority=final_priority,
+                            session=_sess,
+                            action_key=f"browser_task_result_{_tid}",
+                            metadata={"task_id": _tid, "status": res.status},
+                        )
+                    except Exception as inj_err:
+                        logger.error(f"[BrowserAgent BG] Erreur injection résultat final: {inj_err}")
 
                 action_status = "completed" if res.is_success else ("pending_user" if is_handoff else "error")
                 supervision_service.complete_action("browser_task", status=action_status, summary=final_msg[:250])
@@ -3088,7 +3091,80 @@ async def _execute_dispatch_tool(
     # ─── get_active_task_status ──────────────────────────────────────────────
     elif name in ("get_active_task_status", "task_status"):
         from services.slides_service import slides_service
+        from core.shared_state import get_agy_task_telemetry
 
+        req_task_id = (args.get("task_id") or "").strip()
+        include_logs = bool(args.get("include_logs", False))
+        lines_count = min(100, max(1, int(args.get("lines_count") or 30)))
+
+        # 1. Vérification de la télémétrie Antigravity CLI (ciblée ou tâche active)
+        agy_telemetry: Dict[str, Any] = {}
+        if req_task_id:
+            agy_telemetry = get_agy_task_telemetry(req_task_id)
+        if not agy_telemetry:
+            # Chercher une tâche en cours ou récemment exécutée dans ACTIVE_AGY_LOGS
+            all_agy = get_agy_task_telemetry()
+            if all_agy:
+                # Priorité aux tâches running ou stalled
+                for tid, entry in all_agy.items():
+                    if entry.get("status") in ("running", "stalled"):
+                        agy_telemetry = entry
+                        break
+                if not agy_telemetry:
+                    # Prendre la dernière tâche enregistrée
+                    last_tid = list(all_agy.keys())[-1]
+                    agy_telemetry = all_agy[last_tid]
+
+        if agy_telemetry:
+            now_mono = time.monotonic()
+            agy_status = agy_telemetry.get("status", "running")
+            started_at = agy_telemetry.get("started_at", now_mono)
+            last_output_at = agy_telemetry.get("last_output_at", started_at)
+            elapsed_seconds = round(max(0.0, now_mono - started_at), 1)
+            seconds_since_last_log = round(max(0.0, now_mono - last_output_at), 1)
+            current_step = agy_telemetry.get("current_step") or "Traitement en cours"
+            error_detected = agy_telemetry.get("error_detected")
+
+            raw_logs = agy_telemetry.get("log_lines") or []
+            recent_logs = raw_logs[-lines_count:] if (include_logs or raw_logs) else []
+
+            # Diagnostic clair
+            if agy_status == "running":
+                if seconds_since_last_log > 30.0:
+                    diagnostic = f"Attention: aucune sortie depuis {seconds_since_last_log}s (en cours d'exécution)."
+                else:
+                    diagnostic = "L'agent travaille activement."
+            elif agy_status == "stalled":
+                diagnostic = f"Attention: aucune sortie depuis {seconds_since_last_log}s (agent potentiellement bloqué)."
+            elif agy_status == "completed":
+                diagnostic = "L'agent a terminé sa tâche avec succès."
+            elif agy_status in ("failed", "timeout"):
+                diagnostic = f"Erreur ou timeout détecté : {error_detected or 'échec agent'}"
+            else:
+                diagnostic = f"Statut de l'agent : {agy_status}."
+
+            instruction = (
+                f"L'agent Antigravity est dans l'état '{agy_status}' (étape : {current_step}). {diagnostic} "
+                f"Temps écoulé : {int(elapsed_seconds)}s. Explique calmement et avec assurance la situation à Pierre."
+            )
+
+            return ToolResult.done(
+                user_message=f"Agent Antigravity ({agy_status}) : {current_step}. {diagnostic}",
+                evidence=f"agy_task_{agy_telemetry.get('task_id', 'active')}",
+                verified=True,
+                has_active_task=True,
+                task_id=agy_telemetry.get("task_id"),
+                task_type="antigravity_agent",
+                status=agy_status,
+                elapsed_seconds=elapsed_seconds,
+                seconds_since_last_log=seconds_since_last_log,
+                current_step=current_step,
+                recent_logs=recent_logs,
+                diagnostic=diagnostic,
+                instruction_to_jarvis=instruction,
+            )
+
+        # 2. Vérification Deep Research ou Slides Service
         task_info = deep_research_service.get_current_task()
         task_type_label = "deep_research"
         if not task_info.get("active"):
@@ -3103,51 +3179,72 @@ async def _execute_dispatch_tool(
             step = task_info.get("step", "")
             details = task_info.get("details", "")
             elapsed = task_info.get("elapsed_seconds", 0)
-            return {
-                "status": "completed",
-                "has_active_task": True,
-                "task_type": task_type_label,
-                "topic": task_info.get("topic"),
-                "step": step,
-                "details": details,
-                "elapsed_seconds": elapsed,
-                "explanation": explanation,
-                "instruction_to_jarvis": (
+            return ToolResult.done(
+                user_message=f"Tâche {task_type_label} active : {step}",
+                evidence=f"{task_type_label}_active",
+                verified=True,
+                has_active_task=True,
+                task_type=task_type_label,
+                topic=task_info.get("topic"),
+                step=step,
+                details=details,
+                elapsed_seconds=elapsed,
+                seconds_since_last_log=0.0,
+                current_step=step,
+                recent_logs=[],
+                diagnostic="La tâche progresse normalement.",
+                explanation=explanation,
+                instruction_to_jarvis=(
                     f"Voici ce que tu es exactement en train de faire : {explanation}. "
                     f"Explique-le immédiatement et naturellement à Pierre à voix haute avec ta voix Aoede, "
                     f"d'un ton complice, direct et rassurant, en lui précisant l'étape en cours."
                 )
-            }
+            )
 
-        # Vérification d'autres actions actives (ex: Antigravity, Browser-Use, etc.)
+        # 3. Vérification d'autres actions actives (ex: Browser-Use, etc.)
         running_actions = [a for a in active_actions if a.get("status") == "running"]
         if running_actions:
             first_act = running_actions[0]
             act_name = first_act.get("name", "Action en cours")
             act_step = first_act.get("progress_step", "Traitement en cours")
             act_detail = first_act.get("progress_text", "")
-            return {
-                "status": "completed",
-                "has_active_task": True,
-                "task_type": first_act.get("tool", "action"),
-                "name": act_name,
-                "step": act_step,
-                "details": act_detail,
-                "instruction_to_jarvis": (
+            return ToolResult.done(
+                user_message=f"Action en cours : {act_name} ({act_step})",
+                evidence=f"action_{first_act.get('action_id', 'active')}",
+                verified=True,
+                has_active_task=True,
+                task_type=first_act.get("tool", "action"),
+                name=act_name,
+                step=act_step,
+                details=act_detail,
+                elapsed_seconds=first_act.get("elapsed_seconds", 0),
+                seconds_since_last_log=0.0,
+                current_step=act_step,
+                recent_logs=[],
+                diagnostic="L'action est en cours d'exécution.",
+                instruction_to_jarvis=(
                     f"Tu es en train d'exécuter l'action '{act_name}' (étape : {act_step}, détail : {act_detail}). "
                     f"Explique immédiatement à Pierre avec ta voix Aoede ce que tu es en train de faire de manière naturelle et concise."
                 )
-            }
+            )
 
-        return {
-            "status": "completed",
-            "has_active_task": False,
-            "instruction_to_jarvis": (
+        return ToolResult.done(
+            user_message="Aucune tâche en cours d'exécution. En veille active.",
+            evidence="idle",
+            verified=True,
+            has_active_task=False,
+            status="idle",
+            elapsed_seconds=0.0,
+            seconds_since_last_log=0.0,
+            current_step="Veille active",
+            recent_logs=[],
+            diagnostic="Aucune tâche active.",
+            instruction_to_jarvis=(
                 "Aucune tâche lourde n'est en cours d'exécution pour le moment. "
                 "Dis simplement et naturellement à Pierre avec ta voix Aoede que tu es en veille active, "
                 "entièrement disponible et à son écoute."
             )
-        }
+        )
 
     # ─── notion_enregistrer ───────────────────────────────────────────────────
     elif name in ("save_notion_entry", "notion_enregistrer"):

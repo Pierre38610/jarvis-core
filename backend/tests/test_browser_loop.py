@@ -14,6 +14,12 @@ from services.browser_agent.loop import BrowserTask, run_browser_task
 from services.browser_agent import site_memory
 
 
+@pytest.fixture(autouse=True)
+def enable_legacy_rpc_loop(monkeypatch):
+    """Active le repli LEGACY_RPC_BROWSER_LOOP pour tester la boucle locale RPC pas-à-pas."""
+    monkeypatch.setenv("LEGACY_RPC_BROWSER_LOOP", "true")
+
+
 @pytest.mark.asyncio
 async def test_scenario_two_steps_then_done_and_verify_ok():
     """(a) Scénario de 2 étapes puis done et verify OK -> status done."""

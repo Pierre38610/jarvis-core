@@ -7,6 +7,7 @@ open_task -> boucle [snapshot -> decide -> (screenshot + vision si need_screensh
 import asyncio
 import base64
 from dataclasses import dataclass, field
+import json
 import logging
 import os
 import re
@@ -18,7 +19,7 @@ import urllib.parse
 import config
 from core.tools.result import ToolResult
 from services.browser_agent import cli_brain, guards, site_memory
-from services.local_agent_service import local_agent_service, is_pc_connected_async
+from services.local_agent_service import local_agent_service, is_pc_connected, is_pc_connected_async
 from services.l3_error import L3ErrorDetails, set_last_l3_error, get_last_l3_error, sanitize_error_text
 
 logger = logging.getLogger("jarvis.browser_agent.loop")
@@ -42,6 +43,8 @@ class BrowserTask:
     result: str = ""
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
     last_error: Optional[Dict[str, Any]] = None
+    session: Any = None
+    voice_injected: bool = False
 
 
 # Registre global des tâches
@@ -677,11 +680,384 @@ async def _run_gemini_deep_research_task(
     return local_res
 
 
+async def set_browser_link(url: str, title: str = "Page Web") -> None:
+    """Met à jour le lien de navigation affiché dans le HUD PWA / Mobile de Pierre."""
+    try:
+        from services.supervision_service import supervision_service
+        from core.shared_state import active_task_controller, broadcast_supervision
+
+        supervision_service.track_browser_window(url, title)
+        await broadcast_supervision()
+
+        ws = active_task_controller.get("websocket")
+        if ws:
+            try:
+                await ws.send_text(
+                    json.dumps({
+                        "type": "browser_update",
+                        "url": url,
+                        "title": title,
+                        "screenshot": "/static/latest_screenshot.jpg",
+                    })
+                )
+                await ws.send_text(
+                    json.dumps({
+                        "type": "set_browser_link",
+                        "url": url,
+                        "title": title,
+                    })
+                )
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning("[BrowserLoop] Impossible de positionner le lien dans le HUD: %s", e)
+
+
+def _is_valid_final_url(url: Optional[str]) -> bool:
+    """Vérifie si une URL finale est une URL HTTP/HTTPS valide et non générique."""
+    if not url or not isinstance(url, str):
+        return False
+    u = url.strip()
+    if not (u.startswith("http://") or u.startswith("https://")):
+        return False
+    if "..." in u or u in ("https://", "http://", "https://example.com", "http://example.com"):
+        return False
+    try:
+        parsed = urllib.parse.urlparse(u)
+        return bool(parsed.netloc and "." in parsed.netloc)
+    except Exception:
+        return False
+
+
+def _build_browser_mission_prompt(task: BrowserTask, recipe_text: Optional[str] = None) -> str:
+    """Construit un prompt de mission autonome complet pour l'agent Antigravity (agy)."""
+    goal = task.goal
+    start_url = task.start_url or ""
+    recipe_name = (task.recipe or "").lower()
+
+    is_train = "train" in recipe_name or any(k in goal.lower() for k in ["train", "billet", "sncf", "trainline", "omio", "sj", "gare"])
+    is_cart = "cart" in recipe_name or any(k in goal.lower() for k in ["panier", "cart", "acheter", "achat", "commande", "amazon", "produit", "checkout"])
+
+    prompt_parts = [
+        "Tu es l'agent autonome Antigravity expert en navigation web pour Pierre et J.A.R.V.I.S.",
+        "",
+        "## OBJECTIF PRINCIPAL DE LA MISSION :",
+        f"« {goal} »",
+    ]
+
+    if start_url:
+        prompt_parts.append(f"URL de départ suggérée : {start_url}")
+
+    if recipe_text:
+        prompt_parts.extend([
+            "",
+            "## GUIDE & SPÉCIFICATIONS DE LA RECETTE :",
+            recipe_text.strip(),
+        ])
+
+    prompt_parts.extend([
+        "",
+        "## ENVIRONNEMENT & OUTILS :",
+        "- Tu opères sur le VPS et as accès à un navigateur Chrome headless (port CDP http://127.0.0.1:9222 / Playwright Python / outils de navigation).",
+        "- Tu effectues toute la recherche, comparaison et navigation de A à Z de manière 100% autonome.",
+        "",
+        "## CONSIGNES STRICTES SUR L'URL DE SORTIE (final_url) :",
+    ])
+
+    if is_train:
+        prompt_parts.extend([
+            "1. RECHERCHE ET BILLET DE TRAIN (SNCF Connect, Trainline, Omio, SJ.se selon le pays ou la demande) :",
+            "   - Cherche les horaires réels et compare les prix.",
+            "   - Sélectionne le meilleur trajet correspondant à la demande de Pierre (meilleur compromis durée/prix, confort, moins de correspondances).",
+            "   - Récupère l'URL PROFONDE EXACTE (deep-link) menant directement au récapitulatif du billet ou à la sélection pré-remplie.",
+        ])
+    elif is_cart:
+        prompt_parts.extend([
+            "1. PANIER E-COMMERCE (Amazon, Shopify, marchands web) :",
+            "   - Cherche le produit exact (meilleur rapport qualité/prix/avis vérifiés).",
+            "   - Construis soit un PERMALIEN D'AJOUT DIRECT AU PANIER (ex: Amazon `/gp/aws/cart/add.html?ASIN.1=...&Quantity.1=1`, Shopify `/cart/VARIANT:1`),",
+            "     soit l'URL exacte de la fiche produit avec la variante sélectionnée.",
+            "   - Si un cookie local est requis, signale-le dans le résultat.",
+        ])
+    else:
+        prompt_parts.extend([
+            "1. NAVIGATION ET SÉLECTION :",
+            "   - Navigue jusqu'à la page finale exacte de la ressource demandée.",
+            "   - Extrais l'URL finale directe.",
+        ])
+
+    prompt_parts.extend([
+        "",
+        "## GARDE-FOU INVIOLABLE :",
+        "⚠️ INTERDICTION ABSOLUE ET INVIOLABLE de valider un paiement, une commande définitive ou de renseigner des coordonnées bancaires.",
+        "Ta mission s'arrête impérativement à la page de sélection finale / récapitulatif prête pour Pierre.",
+        "",
+        "## CONTRAT JSON DE SORTIE OBLIGATOIRE :",
+        "Termine impérativement et obligatoirement ta réponse par un unique bloc JSON valide respectant ce format exact :",
+        "```json",
+        "{",
+        '  "status": "ready_for_user",',
+        '  "summary_for_voice": "J\'ai trouvé le train Malmö-Stockholm de 08h12 à 45€ et je t\'ouvre la page de réservation sur ton PC.",',
+        '  "final_url": "https://...",',
+        '  "options_found": [{"title": "...", "price": "...", "time": "...", "url": "https://..."}],',
+        '  "requires_user_action": "Se connecter et valider le paiement"',
+        "}",
+        "```",
+        "Règles impératives pour les champs :",
+        "- `status` : \"ready_for_user\" dès que l'URL est prête, ou \"failed\" en cas d'échec.",
+        "- `summary_for_voice` : synthèse concise et naturelle destinée à être lue par la voix de Jarvis à Pierre.",
+        "- `final_url` : URL HTTP/HTTPS complète et directe.",
+        "- `options_found` : liste d'objets avec title, price, time et url.",
+        "- `requires_user_action` : action finale attendue de Pierre (ex: \"Se connecter et valider le paiement\").",
+    ])
+
+    return "\n".join(prompt_parts)
+
+
+def _extract_browser_mission_json(raw_text: str) -> Optional[Dict[str, Any]]:
+    """Extrait et désérialise le contrat JSON de la réponse de l'agent Antigravity."""
+    if not raw_text or not raw_text.strip():
+        return None
+
+    # 1. Recherche d'un bloc ```json ... ```
+    for match in re.finditer(r"```(?:json)?\s*([\s\S]*?)```", raw_text, re.IGNORECASE):
+        candidate = match.group(1).strip()
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict) and ("final_url" in parsed or "url" in parsed or "status" in parsed):
+                return parsed
+        except Exception:
+            pass
+
+    # 2. Recherche du premier { au dernier }
+    start = raw_text.find("{")
+    end = raw_text.rfind("}")
+    if start != -1 and end > start:
+        candidate = raw_text[start : end + 1]
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict) and ("final_url" in parsed or "url" in parsed or "status" in parsed):
+                return parsed
+        except Exception:
+            pass
+
+    # 3. Parsing équilibré d'accolades
+    depth = 0
+    obj_start = -1
+    in_string = False
+    escape = False
+    for idx, ch in enumerate(raw_text):
+        if ch == '"' and not escape:
+            in_string = not in_string
+        elif ch == '\\' and in_string:
+            escape = not escape
+            continue
+        elif not in_string:
+            if ch == '{':
+                if depth == 0:
+                    obj_start = idx
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0 and obj_start != -1:
+                    candidate = raw_text[obj_start : idx + 1]
+                    try:
+                        parsed = json.loads(candidate)
+                        if isinstance(parsed, dict) and ("final_url" in parsed or "url" in parsed or "status" in parsed):
+                            return parsed
+                    except Exception:
+                        pass
+        escape = False
+
+    return None
+
+
+async def run_antigravity_browser_mission(
+    task: BrowserTask,
+    notify_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+) -> Dict[str, Any]:
+    """Exécute une mission autonome de navigation via Antigravity CLI sur le VPS.
+    
+    1. Construit un prompt de mission complet avec la recette et l'objectif.
+    2. Lance un agent autonome Antigravity (`run_agentic`).
+    3. Extrait l'URL finale exacte (`final_url`).
+    4. Si le PC local est connecté, ouvre la page sur le PC de Pierre.
+    5. Met à jour le HUD PWA / mobile via `set_browser_link`.
+    6. Injecte le message vocal dans `voice_injection_queue`.
+    """
+    TASKS[task.task_id] = task
+    task.status = "running"
+    logger.info(
+        "[BrowserMission] Démarrage mission autonome Antigravity (task_id=%s, goal='%s', recipe=%s)",
+        task.task_id,
+        task.goal,
+        task.recipe,
+    )
+
+    # 1. Chargement de la recette éventuelle
+    recipe_data = load_recipe(task.recipe) if task.recipe else None
+    recipe_text = recipe_data["text"] if recipe_data else _load_recipe_text(task.recipe)
+    if recipe_data and not task.start_url and recipe_data.get("start_url"):
+        task.start_url = recipe_data["start_url"]
+
+    if notify_callback:
+        try:
+            await notify_callback(f"Lancement de la navigation autonome pour : {task.goal}")
+        except Exception:
+            pass
+
+    # 2. Construction du prompt autonome
+    mission_prompt = _build_browser_mission_prompt(task, recipe_text=recipe_text)
+
+    # 3. Exécution via run_agentic
+    from services.agentic_runner import run_agentic
+    from services.antigravity_models import MODEL_FLASH
+
+    timeout = int(
+        getattr(config, "BROWSER_MISSION_TIMEOUT", None)
+        or (recipe_data.get("max_duration") if recipe_data else None)
+        or getattr(config, "BROWSER_MAX_DURATION", 300)
+    )
+
+    agent_output = None
+    try:
+        agent_output = await run_agentic(
+            role="Expert Navigation Web Autonome",
+            prompt=mission_prompt,
+            model=MODEL_FLASH,
+            effort="medium",
+            timeout=timeout,
+            task_id=task.task_id,
+        )
+    except Exception as e:
+        logger.error("[BrowserMission] Exception lors de run_agentic: %s", e, exc_info=True)
+        task.status = "failed"
+        return {
+            "status": "failed",
+            "error": str(e),
+            "summary_for_voice": f"Une erreur est survenue lors de la navigation : {e}",
+            "final_url": "",
+            "options_found": [],
+            "requires_user_action": "",
+            "opened_on_pc": False,
+        }
+
+    # 4. Extraction et normalisation du contrat JSON
+    raw_response = (agent_output.conclusion if agent_output else "") or (agent_output.raw_output if agent_output else "")
+    parsed_json = _extract_browser_mission_json(raw_response)
+
+    if not parsed_json:
+        extracted_url = ""
+        if agent_output and getattr(agent_output, "sources", None):
+            for s in agent_output.sources:
+                if _is_valid_final_url(str(s)):
+                    extracted_url = str(s)
+                    break
+        if not extracted_url and raw_response:
+            url_match = re.search(r"https?://[^\s)\]\"'>]+", raw_response)
+            if url_match and _is_valid_final_url(url_match.group(0)):
+                extracted_url = url_match.group(0)
+
+        summary_fallback = (agent_output.conclusion if agent_output else "") or f"Navigation terminée pour : {task.goal}"
+        parsed_json = {
+            "status": "ready_for_user" if extracted_url else "failed",
+            "summary_for_voice": summary_fallback,
+            "final_url": extracted_url,
+            "options_found": [{"title": task.goal, "url": extracted_url}] if extracted_url else [],
+            "requires_user_action": "Se connecter et valider le paiement" if extracted_url else "",
+        }
+
+    final_url = parsed_json.get("final_url") or parsed_json.get("url") or ""
+    summary_for_voice = (
+        parsed_json.get("summary_for_voice")
+        or parsed_json.get("summary")
+        or (agent_output.conclusion if agent_output else "")
+        or f"Navigation terminée pour {task.goal}."
+    )
+    options_found = parsed_json.get("options_found") or []
+    requires_user_action = parsed_json.get("requires_user_action") or "Se connecter et valider le paiement"
+
+    is_valid_url = _is_valid_final_url(final_url)
+    opened_on_pc = False
+
+    # 5. Déclenchement des actions si final_url est valide
+    if is_valid_url:
+        task.status = "ready_for_user"
+        task.result = summary_for_voice
+
+        # a) Ouverture Automatique sur le PC Local Windows de Pierre
+        pc_online = False
+        try:
+            pc_online = await is_pc_connected_async()
+        except Exception:
+            pc_online = local_agent_service.is_connected()
+
+        if pc_online:
+            logger.info("[BrowserMission] PC local connecté : transmission commande open_browser pour %s", final_url)
+            try:
+                open_res = await local_agent_service.send_rpc_command(
+                    "open_browser",
+                    {"url": final_url, "new_window": False},
+                )
+                if isinstance(open_res, dict) and open_res.get("status") in ("success", "ok"):
+                    opened_on_pc = True
+                    logger.info("[BrowserMission] ✔ Page ouverte avec succès sur le PC local : %s", final_url)
+            except Exception as rpc_err:
+                logger.warning("[BrowserMission] Erreur lors de l'ouverture sur le PC local : %s", rpc_err)
+
+        # b) Mise à jour du lien dans le HUD PWA / Mobile
+        primary_title = ""
+        if options_found and isinstance(options_found, list) and isinstance(options_found[0], dict):
+            primary_title = options_found[0].get("title", "")
+        hud_title = primary_title or task.goal or "Page sélectionnée"
+        await set_browser_link(url=final_url, title=hud_title)
+
+        # c) Injection vocale dans voice_injection_queue (priorité TOOL_RESPONSE)
+        try:
+            from services.voice_injection_queue import voice_injection_queue, InjectionPriority
+            from core.shared_state import active_task_controller
+            effective_session = getattr(task, "session", None) or active_task_controller.get("session")
+            await voice_injection_queue.enqueue(
+                text=summary_for_voice,
+                priority=InjectionPriority.TOOL_RESPONSE,
+                session=effective_session,
+                action_key=f"browser_mission_{task.task_id}",
+                metadata={"task_id": task.task_id, "url": final_url, "status": "ready_for_user"},
+            )
+            task.voice_injected = True
+        except Exception as v_err:
+            logger.warning("[BrowserMission] Erreur injection vocale: %s", v_err)
+
+        # d) Notification callback
+        if notify_callback:
+            try:
+                await notify_callback(summary_for_voice)
+            except Exception:
+                pass
+    else:
+        task.status = "failed"
+        logger.warning(
+            "[BrowserMission] URL finale invalide ou introuvable ('%s') pour task=%s",
+            final_url,
+            task.task_id,
+        )
+
+    return {
+        "status": task.status,
+        "summary_for_voice": summary_for_voice,
+        "final_url": final_url,
+        "options_found": options_found,
+        "requires_user_action": requires_user_action,
+        "opened_on_pc": opened_on_pc,
+        "voice_injected": task.voice_injected,
+    }
+
+
 async def run_browser_task(
     task: BrowserTask,
     notify: Optional[Callable[[str], Awaitable[None]]] = None,
 ) -> ToolResult:
-    """Exécute la boucle complète de navigation autonome pour une tâche donnée."""
+    """Exécute la boucle de navigation autonome pour une tâche donnée."""
     TASKS[task.task_id] = task
 
     async with TASK_SEMAPHORE:
@@ -696,8 +1072,34 @@ async def run_browser_task(
         if task.recipe == "gemini_deep_research":
             return await _run_gemini_deep_research_task(task, notify=notify)
 
-        return await _run_local_browser_loop(task, notify=notify)
+        # Mode de repli vers l'ancienne boucle RPC pas-à-pas si explicitement activé
+        use_legacy_rpc = (
+            os.getenv("LEGACY_RPC_BROWSER_LOOP", "").lower() in ("true", "1", "yes")
+            or getattr(config, "LEGACY_RPC_BROWSER_LOOP", False)
+        )
+        if use_legacy_rpc:
+            logger.info("[BrowserLoop] Mode LEGACY_RPC_BROWSER_LOOP activé, repli vers _run_local_browser_loop.")
+            return await _run_local_browser_loop(task, notify=notify)
+
+        mission_result = await run_antigravity_browser_mission(task, notify_callback=notify)
+        if mission_result.get("status") in ("ready_for_user", "done", "success"):
+            return ToolResult.done(
+                user_message=mission_result.get("summary_for_voice") or "Navigation autonome prête.",
+                evidence=mission_result.get("final_url", ""),
+                verified=True,
+                task_id=task.task_id,
+                data=mission_result,
+            )
+        else:
+            err_msg = mission_result.get("summary_for_voice") or mission_result.get("error") or "Échec de la navigation autonome."
+            return ToolResult.failed(
+                user_message=err_msg,
+                task_id=task.task_id,
+                error_hint=mission_result.get("status", "failed"),
+                data=mission_result,
+            )
 
 
 # Alias pour compatibilité d'orchestration
 run_browser_agent_task = run_browser_task
+

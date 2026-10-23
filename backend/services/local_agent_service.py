@@ -164,6 +164,12 @@ class LocalAgentService:
         params.update(kwargs)
         return await self.execute_command(action, timeout=timeout, **params)
 
+    async def send_rpc_command(self, action: str, params: Optional[Dict[str, Any]] = None, timeout: float = 12.0, **kwargs) -> Dict[str, Any]:
+        """Transmet une commande RPC structurée à l'agent local sur le PC personnel de Pierre."""
+        merged_params = dict(params or {})
+        merged_params.update(kwargs)
+        return await self.execute_command(action, timeout=timeout, **merged_params)
+
     def execute_command_sync(self, action: str, timeout: float = 12.0, **kwargs) -> Dict[str, Any]:
         """Transmet une commande depuis un thread synchrone (ex: thread pool) en toute sécurité."""
         if not self.is_connected() or not self._loop or not self._loop.is_running():

@@ -1041,9 +1041,9 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="get_active_task_status",
                     description=(
-                        "Consulte en direct l'avancement, l'étape courante et les détails d'une tâche de fond en cours "
+                        "Consulte en direct l'avancement, l'étape courante, les logs récents et les détails d'une tâche de fond en cours "
                         "(génération de slides, prospection Deep Research, agent Antigravity, navigation). "
-                        "À UTILISER QUAND : Pierre te demande où en est son travail ou ce que tu fais ('qu'est-ce que tu fais ?', 'où en est ma présentation ?'). "
+                        "À UTILISER SYSTÉMATIQUEMENT quand Pierre demande où en est l'agent Antigravity, ce qu'il fait en ce moment, ou si une tâche semble lente/bloquée. "
                         "NE JAMAIS UTILISER QUAND : Pierre veut arrêter la tâche (utiliser 'stop_current_action'), "
                         "ni pour modifier son orientation en direct (utiliser 'guide_active_task')."
                     ),
@@ -1053,6 +1053,14 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                             "task_id": types.Schema(
                                 type="STRING",
                                 description="Identifiant optionnel d'une tâche spécifique à vérifier"
+                            ),
+                            "include_logs": types.Schema(
+                                type="BOOLEAN",
+                                description="Si True, retourne les 30 dernières lignes de logs en direct de l'agent Antigravity actif pour vérifier s'il travaille ou diagnostiquer un problème"
+                            ),
+                            "lines_count": types.Schema(
+                                type="INTEGER",
+                                description="Nombre de lignes de logs à inclure (défaut 30, max 100)"
                             ),
                         }
                     )
