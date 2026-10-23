@@ -100,7 +100,7 @@ def detect_vocal_cognitive_level(
                 "is_override": True,
                 "model_tier": "flash-high",
                 "timeout_seconds": 300,
-                "recommended_tools": ["browser_task", "transport_optimizer", "spreadsheet_modeler", "draft_email_response"],
+                "recommended_tools": ["run_agentic_task", "browser_task", "transport_optimizer", "spreadsheet_modeler", "draft_email_response"],
             }
         elif any(k in ir for k in ["approfondie", "tier3", "tier 3", "pro-high", "l3", "fond", "pro", "exhaustif"]):
             return {
@@ -110,7 +110,7 @@ def detect_vocal_cognitive_level(
                 "is_override": True,
                 "model_tier": "pro-high",
                 "timeout_seconds": 600,
-                "recommended_tools": ["launch_deep_research", "system_self_healing", "ask_deep_reasoning"],
+                "recommended_tools": ["launch_deep_research", "run_agentic_task", "browser_task", "system_self_healing", "ask_deep_reasoning"],
             }
 
     if up:
@@ -132,7 +132,7 @@ def detect_vocal_cognitive_level(
                 "is_override": True,
                 "model_tier": "flash-high",
                 "timeout_seconds": 300,
-                "recommended_tools": ["browser_task", "transport_optimizer", "spreadsheet_modeler", "draft_email_response"],
+                "recommended_tools": ["run_agentic_task", "browser_task", "transport_optimizer", "spreadsheet_modeler", "draft_email_response"],
             }
         elif any(k in up for k in ["l3", "tier3", "tier 3", "deep", "deep_research", "pro", "approfondie"]):
             return {
@@ -142,7 +142,7 @@ def detect_vocal_cognitive_level(
                 "is_override": True,
                 "model_tier": "pro-high",
                 "timeout_seconds": 600,
-                "recommended_tools": ["launch_deep_research", "system_self_healing", "ask_deep_reasoning"],
+                "recommended_tools": ["launch_deep_research", "run_agentic_task", "browser_task", "system_self_healing", "ask_deep_reasoning"],
             }
 
     if norm:
@@ -185,7 +185,7 @@ def detect_vocal_cognitive_level(
                 "is_override": True,
                 "model_tier": "pro-high",
                 "timeout_seconds": 600,
-                "recommended_tools": ["launch_deep_research", "system_self_healing", "ask_deep_reasoning"],
+                "recommended_tools": ["launch_deep_research", "run_agentic_task", "browser_task", "system_self_healing", "ask_deep_reasoning"],
             }
 
         # Override explicite L2 vocal : "analyse tactique", "L2", "niveau 2", etc.
@@ -199,7 +199,7 @@ def detect_vocal_cognitive_level(
                 "is_override": True,
                 "model_tier": "flash-high",
                 "timeout_seconds": 300,
-                "recommended_tools": ["browser_task", "transport_optimizer", "spreadsheet_modeler", "draft_email_response"],
+                "recommended_tools": ["run_agentic_task", "browser_task", "transport_optimizer", "spreadsheet_modeler", "draft_email_response"],
             }
 
     # ─── 2. DÉTECTION SÉMANTIQUE PAR INTENTION ───
@@ -218,24 +218,34 @@ def detect_vocal_cognitive_level(
             "is_override": False,
             "model_tier": "pro-high",
             "timeout_seconds": 600,
-            "recommended_tools": ["launch_deep_research", "system_self_healing", "ask_deep_reasoning"],
+            "recommended_tools": ["launch_deep_research", "run_agentic_task", "browser_task", "system_self_healing", "ask_deep_reasoning"],
         }
 
-    # Signaux L2 : Planification, échecs répétés, navigation structurée, transport, tableur, e-mails
+    # Signaux L2 : Création de livrables agentiques (site web, powerpoint, pptx, pdf, dossier, comparatif, panier, billet),
+    # planification, échecs répétés, navigation structurée, transport, tableur, e-mails
+    deliverable_signals = [
+        "site web", "site internet", "landing page", "page web",
+        "powerpoint", "pptx", "presentation", "slides", "diaporama",
+        "pdf", "document pdf", "rapport pdf",
+        "dossier", "comparatif", "comparaison", "compare",
+        "panier", "checkout", "billet", "billets", "sncf", "trainline", "booking",
+        "reservation", "reserve", "navigue", "va sur le site", "va sur", "ouvre le site",
+        "amazon", "fnac", "formulaire", "tableur", "excel", "spreadsheet",
+        "brouillon email", "redige un mail", "optimise le trajet"
+    ]
+    is_deliverable = norm and any(sig in norm for sig in deliverable_signals)
+
     if (
         plan_steps >= 3
         or recent_failures >= 2
         or tier_hint >= 2
-        or (norm and any(sig in norm for sig in [
-            "navigue", "va sur le site", "va sur", "ouvre le site", "panier", "reserve",
-            "reservation", "billet", "sncf", "trainline", "booking", "amazon", "fnac",
-            "formulaire", "tableur", "excel", "spreadsheet", "brouillon email", "redige un mail",
-            "optimise le trajet", "compare", "comparaison"
-        ]))
+        or is_deliverable
     ):
         r_reason = "Plan actif complexe (>=3 étapes)" if plan_steps >= 3 else (
             f"Échecs consécutifs d'outils ({recent_failures})" if recent_failures >= 2 else (
-                "Intention tactique / comparaison multi-critères L2"
+                "Création de livrable / délégation agentique L2" if is_deliverable else (
+                    "Intention tactique / comparaison multi-critères L2"
+                )
             )
         )
         return {
@@ -245,7 +255,7 @@ def detect_vocal_cognitive_level(
             "is_override": False,
             "model_tier": "flash-high",
             "timeout_seconds": 300,
-            "recommended_tools": ["browser_task", "transport_optimizer", "spreadsheet_modeler", "draft_email_response"],
+            "recommended_tools": ["run_agentic_task", "browser_task", "transport_optimizer", "spreadsheet_modeler", "draft_email_response"],
         }
 
     # Signaux L1 : Question factuelle directe, action locale courte, météo, cours, diagnostic simple
@@ -299,6 +309,8 @@ def _detect_agentic_need(
     # Missions agentiques Stark & délégations lourdes
     if any(k in norm for k in ["deep research", "recherche approfondie", "recherche de niveau 3", "recherche niveau 3", "niveau 3", "recherche l3", "investigation", "slides", "veille tech"]):
         return True, "deep_research"
+    if any(k in norm for k in ["site web", "site internet", "landing page", "powerpoint", "pptx", "presentation", "diaporama", "pdf", "document pdf", "dossier", "comparatif", "comparaison", "panier", "billet"]):
+        return True, "deliverable_mission"
     if any(k in norm for k in ["tableur", "excel", "spreadsheet", "modele financier", "modele comptable"]):
         return True, "spreadsheet_modeler"
     if any(k in norm for k in ["system healing", "auto-reparation", "repare le systeme", "diagnostic", "corrige le bug"]):

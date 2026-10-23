@@ -169,9 +169,9 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="run_agentic_task",
                     description=(
-                        "Exécuteur de tâche agentique autonome Antigravity CLI. "
-                        "À utiliser de ta propre initiative dès qu'il faut rédiger long, structurer un plan, "
-                        "transformer des données, exécuter du code ou produire un livrable complexe."
+                        "Exécuteur de tâche agentique autonome Antigravity CLI sur VPS (paradigme Antigravity-First / Mode Task). "
+                        "À utiliser obligatoirement dès qu'une tâche dépasse l'oral réflexe : création de livrables de A à Z (site web, présentation PowerPoint/pptx, document PDF LaTeX, tableur, script, rapport d'analyse ou comparatif). "
+                        "Formule un objectif et un contexte riches et auto-suffisants incluant les préférences de Pierre (sujet exact, ville, budget, style, format attendu) pour que l'agent Antigravity opère en totale autonomie."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -179,11 +179,15 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                         properties={
                             "objectif": types.Schema(
                                 type="STRING",
-                                description="L'objectif précis de la tâche agentique à accomplir."
+                                description=(
+                                    "Objectif complet, riche et auto-suffisant destiné à l'agent Antigravity CLI. "
+                                    "Précise en détail la mission, le livrable concret attendu, et les préférences connues de Pierre "
+                                    "(ville, budget, contraintes, style, format attendu : HTML/Tailwind, PPTX, PDF, etc.)."
+                                )
                             ),
                             "contexte": types.Schema(
                                 type="STRING",
-                                description="Contexte technique, contraintes ou informations de cadrage."
+                                description="Contexte technique, contraintes, données clés ou informations de cadrage pour l'agent Antigravity."
                             ),
                             "livrable_attendu": types.Schema(
                                 type="STRING",
@@ -210,9 +214,9 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="run_agent_task",
                     description=(
-                        "Exécuteur de tâche agentique autonome Antigravity CLI. "
-                        "À utiliser de ta propre initiative dès qu'il faut rédiger long, structurer un plan, "
-                        "transformer des données, exécuter du code ou produire un livrable complexe."
+                        "Exécuteur de tâche agentique autonome Antigravity CLI sur VPS (paradigme Antigravity-First / Mode Task). "
+                        "À utiliser obligatoirement dès qu'une tâche dépasse l'oral réflexe : création de livrables de A à Z (site web, présentation PowerPoint/pptx, document PDF LaTeX, tableur, script, rapport d'analyse ou comparatif). "
+                        "Formule un objectif et un contexte riches et auto-suffisants incluant les préférences de Pierre (sujet exact, ville, budget, style, format attendu) pour que l'agent Antigravity opère en totale autonomie."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -220,11 +224,15 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                         properties={
                             "objectif": types.Schema(
                                 type="STRING",
-                                description="L'objectif précis de la tâche agentique à accomplir."
+                                description=(
+                                    "Objectif complet, riche et auto-suffisant destiné à l'agent Antigravity CLI. "
+                                    "Précise en détail la mission, le livrable concret attendu, et les préférences connues de Pierre "
+                                    "(ville, budget, contraintes, style, format attendu : HTML/Tailwind, PPTX, PDF, etc.)."
+                                )
                             ),
                             "contexte": types.Schema(
                                 type="STRING",
-                                description="Contexte technique, contraintes ou informations de cadrage."
+                                description="Contexte technique, contraintes, données clés ou informations de cadrage pour l'agent Antigravity."
                             ),
                             "livrable_attendu": types.Schema(
                                 type="STRING",
@@ -308,9 +316,10 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="browser_task",
                     description=(
-                        "RECHERCHE APPROFONDIE WEB GEMINI NIVEAU 3 (L3 / TIER 3 / GEMINI DEEP RESEARCH) ET NAVIGATION WEB AUTONOME. "
-                        "Outil principal pour TOUTE recherche approfondie web de niveau 3 (L3 / Deep Research / étude de marché web / cartographie multi-sources via Gemini Deep Research web sur VPS ou Chrome CDP), "
-                        "ainsi que pour les interactions concrètes sur un site web (panier d'achat, réservation, formulaires)."
+                        "Agent Antigravity de navigation web autonome et Deep Research (paradigme Antigravity-First / Mode Task). "
+                        "Outil principal pour toute recherche approfondie web de niveau 3 (L3 / Deep Research) et pour toute interaction web concrète : "
+                        "achats et préparation de panier e-commerce, recherche et préparation de billets de train/avion (SNCF, Trainline, etc.), formulaires en ligne. "
+                        "L'agent Antigravity mène la tâche de A à Z et ouvre directement la page prête sur le PC de Pierre."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -318,7 +327,11 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                         properties={
                             "goal": types.Schema(
                                 type="STRING",
-                                description="Objectif complet en langage naturel avec tous les détails donnés par l'utilisateur."
+                                description=(
+                                    "Objectif riche, complet et auto-suffisant destiné à l'agent navigateur Antigravity. "
+                                    "Inclus toutes les préférences et contraintes connues de Pierre : dates, ville de départ/arrivée, "
+                                    "budget max, classe, passagers, critères de tri, produit précis."
+                                )
                             ),
                             "start_url": types.Schema(
                                 type="STRING",
