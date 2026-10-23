@@ -35,20 +35,45 @@ from core.shared_state import ACTIVE_AGY_LOGS, active_task_controller
 
 @pytest.fixture(autouse=True)
 def cleanup_environment():
-    """Garantit l'état propre du kill switch et des logs avant et après chaque test."""
+    """Garantit l'état propre du kill switch, des logs et du journal avant et après chaque test."""
     if os.path.exists(KILL_SWITCH_FILE):
         try:
             os.remove(KILL_SWITCH_FILE)
         except Exception:
             pass
     ACTIVE_AGY_LOGS.clear()
+
+    # Sauvegarde et isolation du journal de quota pour les tests
+    orig_journal = None
+    if os.path.exists(JOURNAL_FILE):
+        try:
+            with open(JOURNAL_FILE, "r", encoding="utf-8") as f:
+                orig_journal = f.read()
+            os.remove(JOURNAL_FILE)
+        except Exception:
+            pass
+
     yield
+
     if os.path.exists(KILL_SWITCH_FILE):
         try:
             os.remove(KILL_SWITCH_FILE)
         except Exception:
             pass
     ACTIVE_AGY_LOGS.clear()
+
+    # Restauration du journal d'origine
+    if orig_journal is not None:
+        try:
+            with open(JOURNAL_FILE, "w", encoding="utf-8") as f:
+                f.write(orig_journal)
+        except Exception:
+            pass
+    elif os.path.exists(JOURNAL_FILE):
+        try:
+            os.remove(JOURNAL_FILE)
+        except Exception:
+            pass
 
 
 # ─── 1. Résolveur de Sous-Dossier & Tests Ciblés ────────────────────────────

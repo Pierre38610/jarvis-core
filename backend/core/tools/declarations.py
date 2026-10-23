@@ -260,11 +260,12 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="self_improve",
                     description=(
-                        "AUTO-AMÉLIORATION ET REFACTORISATION DU CODE DE J.A.R.V.I.S. VIA ANTIGRAVITY SUR LE VPS. "
+                        "AUTO-AMÉLIORATION ET REFACTORISATION DU CODE DE J.A.R.V.I.S. VIA ANTIGRAVITY SUR LE VPS (PROMPT UNIQUE OU BATCH DE PROMPTS). "
                         "Permet à Jarvis de recoder, d'adapter et de tester ses propres modules de façon autonome, "
-                        "confiné dans un sous-dossier logique (ex: 'backend/services', 'backend/core/tools', 'backend/services/browser_agent', 'ops/deploy', 'frontend/static') "
-                        "avec validation stricte (py_compile, check_protected_paths, tests unitaires ciblés) et ouverture optionnelle d'une PR GitHub. "
-                        "Prends l'initiative d'utiliser cet outil dès que Pierre demande d'adapter, d'améliorer, d'optimiser ou d'ajouter une fonctionnalité dans le code source de Jarvis."
+                        "soit pour un objectif unique confiné dans un sous-dossier logique (ex: 'backend/services', 'backend/core/tools', 'backend/services/browser_agent', 'ops/deploy', 'frontend/static'), "
+                        "soit en exécutant toute une série de prompts séquentiels markdown (Prompt Batch Runner via 'batch_file_path' ou 'batch_content') "
+                        "avec validation stricte (py_compile, check_protected_paths, tests unitaires ciblés) et ouverture d'une PR GitHub unique. "
+                        "Prends l'initiative d'utiliser cet outil dès que Pierre demande d'adapter, d'améliorer, d'optimiser, d'exécuter un batch de prompts ou d'ajouter une fonctionnalité dans le code source de Jarvis."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -272,7 +273,7 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                         properties={
                             "objectif": types.Schema(
                                 type="STRING",
-                                description="L'objectif précis de recodage, refactorisation ou amélioration logicielle de Jarvis."
+                                description="L'objectif précis de recodage, refactorisation ou amélioration logicielle de Jarvis (pour un prompt unique)."
                             ),
                             "sous_dossier_cible": types.Schema(
                                 type="STRING",
@@ -286,8 +287,15 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                                 type="BOOLEAN",
                                 description="True pour créer une Pull Request GitHub après validation locale complète des tests (défaut True)."
                             ),
+                            "batch_file_path": types.Schema(
+                                type="STRING",
+                                description="Chemin local sécurisé d'un fichier .md contenant une série ordonnée de prompts (Prompt Batch) à implémenter, tester et valider de bout en bout sur le VPS."
+                            ),
+                            "batch_content": types.Schema(
+                                type="STRING",
+                                description="Contenu markdown brut d'une série ordonnée de prompts à exécuter en autonomie sur le VPS."
+                            ),
                         },
-                        required=["objectif"]
                     )
                 ),
 

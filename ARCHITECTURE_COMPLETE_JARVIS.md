@@ -83,7 +83,7 @@
    - 9.12. Télémétrie, Observabilité & Métriques des Outils (`services/metrics_service.py`)
    - 9.13. Agenda Google/Samsung, Rappels Push Mobiles & Morning Briefing
    - 9.14. Connaissance Architecturale Dynamique & Auto-évaluation
-   - 9.15. SRE Autonome & Auto-Guérison Système (`services/system_healing_service.py`)
+   - 9.15. SRE Autonome, Circuit d'Auto-Amélioration Continue & Déploiement Blue/Green (`services/self_improvement_service.py`, `prompt_batch_runner.py`, `ops/deploy/jarvis_deployer.py`)
    - 9.16. Contrat Universel ToolResult & Moteur de Vérification d'Effet Réel (Zero Unverified Claims)
    - 9.17. Orchestration Agentique, Planificateur Multi-Étapes, Consentement Payant & Espace de Travail
    - 9.18. Pont Mobile MacroDroid (Samsung S24)
@@ -200,6 +200,9 @@ jarvis-core/
 │   │   │   └── recipes/                 # Recettes de navigation spécialisées (cart.md, train.md, gemini_deep_research.md)
 │   │   ├── deep_research_service.py     # Moteur B Deep Research : pipeline Map-Reduce VPS (spec, MAP 3 ouvriers, REDUCE, Quality Gate)
 │   │   ├── self_improvement_service.py # Moteur d'auto-amélioration et refactorisation autonome sous worktree git et validation triple
+│   │   ├── self_improvement_telegram.py # Adaptateur Telegram interactif pour auto-amélioration (callbacks HMAC, validation 1-clic)
+│   │   ├── weekly_improvement_watch.py # Moteur de veille hebdomadaire autonome (signaux télémétrie/erreurs, L2 parallèle VPS, 1-clic)
+│   │   ├── prompt_batch_runner.py       # Exécuteur autonome de séries de prompts markdown (Prompt Batch Runner, persistance, reprise, Telegram)
 │   │   ├── agentic_dispatcher.py        # Orchestrateur Système 2 universel : 8 missions spécialisées (transport, excel, healing, etc.)
 │   │   ├── agentic_runner.py            # Exécuteur agy : prompt JSON strict, validation de schéma, retry, repli Gemini payant via key_gate
 │   │   ├── antigravity_models.py        # Modèles & efforts agy (MODEL_FLASH/MODEL_PRO, validate_model_and_effort, choose_model_and_effort)
@@ -980,8 +983,8 @@ L'implémentation respecte le standard d'échange bidirectionnel temps réel pou
 | **49**| `search_workspace_files` | `chercher_fichiers_workspace` | Bloquant | `query: str` (req), `subpath: str`, `extension: str`, `max_results: int` (défaut 30) | `ToolResult.done` (`matches`, `matches_count`, `verified=True`) | `services/workspace_service.py` |
 | **50**| `launch_phone_navigation` | `lancer_navigation_telephone` | Bloquant | `destination: str` (req), `mode: str` (`driving`\|`walking`\|`bicycling`\|`transit`) | `ToolResult.done` (`destination`, `mode`, `verified=False`, `evidence="macrodroid_2xx"`) | `services/mobile_bridge_service.py` |
 | **51**| `wake_phone_spotify` | `reveiller_spotify_telephone` | Bloquant | Aucun | `ToolResult.done` (`device_id`, `verified=True` si Connect détecté, `verified=False` sinon) | `services/mobile_bridge_service.py` |
-| **52**| `self_improve` | `auto_amelioration` | Non-bloquant | `objectif: str` (req), `sous_dossier_cible: str` (opt), `complexite: str` (opt), `creer_pr: bool` (opt) | `ToolResult.done` / `ToolResult.started` (`branch_name`, `pr_url`, `diff_summary`, `iterations_count`) | `services/self_improvement_service.py` |
-> **Total vérifié : 52 déclarations.** Les paires `browser_task`/`run_browser_task` et `run_agentic_task`/`run_agent_task` sont deux déclarations distinctes partageant le même exécuteur (compatibilité de nommage Gemini Live) ; les lignes 39 et 42 matérialisent ces déclarations jumelles. L'outil `self_improve` (ligne 52) orchestre l'auto-amélioration et l'auto-refactorisation confinée sous git worktree et validation triple (py_compile, check_protected_paths, pytest ciblés).
+| **52**| `self_improve` | `auto_amelioration`, `run_prompt_batch` | Non-bloquant | `objectif: str` (opt), `sous_dossier_cible: str` (opt), `complexite: str` (opt), `creer_pr: bool` (opt), `batch_file_path: str` (opt), `batch_content: str` (opt) | `ToolResult.done` / `ToolResult.started` (`branch_name`, `pr_url`, `diff_summary`, `iterations_count`, `batch_id`) | `services/self_improvement_service.py` & `services/prompt_batch_runner.py` |
+> **Total vérifié : 52 déclarations.** Les paires `browser_task`/`run_browser_task` et `run_agentic_task`/`run_agent_task` sont deux déclarations distinctes partageant le même exécuteur (compatibilité de nommage Gemini Live) ; les lignes 39 et 42 matérialisent ces déclarations jumelles. L'outil `self_improve` (ligne 52) orchestre l'auto-amélioration et l'auto-refactorisation confinée sous git worktree et validation triple (py_compile, check_protected_paths, pytest ciblés), ainsi que l'exécution autonome de séries de prompts (Prompt Batch Runner via `services/prompt_batch_runner.py`).
 
 ### 9.2. Moteur Multi-Agents Antigravity CLI sur VPS & Routage Intelligent de Modèles
 - **Fichiers** : `google_antigravity.py`, `services/model_routing/` (`model_registry.py`, `model_router.py`, `fallback_handler.py`, `prompt_builder.py`), `config/models.json`, `prompts/templates/`, `AGENTS.md`.
@@ -1183,16 +1186,77 @@ Synchronisation bidirectionnelle Google/Samsung Calendar via n8n. Rappels push i
 ### 9.14. Connaissance Architecturale Dynamique & Auto-évaluation
 `services/architecture_service.py` surveille `ARCHITECTURE_COMPLETE_JARVIS.md` via `mtime`. Outil `query_jarvis_architecture` permettant à Jarvis de citer ses propres spécifications.
 
-### 9.15. SRE Autonome & Auto-Guérison Système (`services/system_healing_service.py`)
-- Analyse de cause racine (RCA) suite à des crashs interceptés par `console_monitor.py`.
-- Validation syntaxique stricte (`py_compile`).
-- Exécution de tests dans une sandbox temporaire isolée (excluant `venv`, `.git`).
-- Auto-génération de test minimal de non-régression si aucun test n'existe pour le module ciblé.
+### 9.15. SRE Autonome, Circuit d'Auto-Amélioration Continue & Déploiement Blue/Green
+
+#### 9.15.1. Le Circuit d'Auto-Amélioration Unitaire (`backend/services/self_improvement_service.py`)
+Le moteur `self_improve` permet à J.A.R.V.I.S. de s'auto-analyser, se recoder et se tester lui-même de manière autonome et sécurisée sur le VPS via Antigravity CLI (`agy`) :
+- **Partitionnement par Sous-Dossier & Contrats d'Architecture (`resolve_subfolder_scope`)** :
+  L'arborescence est partitionnée en périmètres étanches (`SUBFOLDER_REGISTRY`) : `backend/core/tools`, `backend/services/model_routing`, `backend/services/browser_agent`, `backend/services`, `backend/routers`, `frontend/static`, `ops/deploy`, `ops/windows`, `firmware/esp32`, `docs`. L'agent est strictement confiné à `allowed_subdirs` et doit consulter son fichier `ARCHITECTURE.md` local dédié.
+- **Suite de Tests Unitaires Ciblée (`targeted_test_files`)** :
+  Pour éviter l'exécution coûteuse et lente de toute la suite globale, chaque sous-dossier restreint la validation aux seuls tests unitaires du module ciblé (ex: `test_browser_loop.py` pour `browser_agent`).
+- **Sélection Dynamique du Couple (Modèle, Effort) (`resolve_live_agy_model`)** :
+  Interroge dynamiquement le registre actif des modèles Antigravity (`model_registry.py`) sans jamais inclure le flag banni `--thinking` :
+  - `low` : modèle Flash le plus rapide (`latency_rank`, `cost_rank`) avec `effort="low"`.
+  - `medium` : modèle Flash le plus récent (`gemini-3.8-flash`) avec `effort="medium"`.
+  - `high` : modèle Pro (`gemini-3.1-pro`) ou Sonnet (`claude-3-7-sonnet`) avec `effort="high"`.
+- **Isolation Git par Worktree Dédié (`create_isolated_worktree`)** :
+  Création d'un git worktree temporaire branché sur `jarvis/feat-...` ou `jarvis/fix-...` garantissant qu'aucune modification non validée ne pollue l'espace de travail principal. Démontage et nettoyage garantis en bloc `finally`.
+- **Priorité CPU Basse sous Linux (`nice -n 10`)** :
+  Tous les sous-processus `agy` et `pytest` sont exécutés avec une priorité CPU abaissée (`nice -n 10` via `build_low_priority_subprocess_kwargs` et `preexec_fn`) afin d'immuniser le moteur vocal Gemini Live (`routers/voice.py`) et l'enceinte ESP32-S3 (`DeviceAudioPacer` à 55 ms) contre toute saccade ou coupure audio sur les 4 OCPU ARM64 du VPS.
+- **Télémétrie & Streaming Live (`ACTIVE_AGY_LOGS`)** :
+  Streaming en continu de chaque ligne `stdout`/`stderr` sanitisée (`_sanitize_secrets`) dans `ACTIVE_AGY_LOGS[task_id]["log_lines"]`, relayé au HUD PWA en temps réel via `broadcast_supervision()`.
+- **Porte de Validation Locale Multi-Niveaux (`_run_local_validation_gate`)** :
+  1) Confinement strict des fichiers modifiés aux `allowed_subdirs`.
+  2) Contrôle des fichiers protégés via `ops/scripts/check_protected_paths.py`.
+  3) Compilation de syntaxe `py_compile` sur chaque fichier Python modifié.
+  4) Exécution pytest ultra-rapide des tests ciblés.
+- **Revue du Diff (`review_diff`) & Création de PR GitHub** :
+  Vérification de taille (< 2500 lignes) et absence de motifs dangereux (`eval`, `rm -rf`, fuites d'API keys). Push sur branche distante et ouverture de Pull Request via l'API GitHub REST fine-grained (`_create_github_pr`).
+- **Garde-Fous de Gouvernance & Quotas** :
+  Kill switch persistant physique (`data/self_improve_kill_switch.flag`), plafonds stricts (10 runs / 24h, 30 runs / 7j) et journalisation append-only dans `data/self_improvement_journal.json`.
+
+#### 9.15.2. Veille Hebdomadaire d'Auto-Amélioration L2 (`backend/services/weekly_improvement_watch.py`)
+Moteur d'inspection proactif fonctionnant en tâche de fond sur le VPS :
+- Analyse cyclique des logs d'erreurs (`console_monitor`), métriques d'outils (`metrics_service`), commits récents et évolutions des contrats d'architecture.
+- Déduplication intelligente par empreinte SHA-256 (`fingerprint = sha256(subfolder + title)`).
+- Synthèse L2 produisant 3 opportunités d'amélioration calibrées par complexité (`low`, `medium`, `high`) avec consigne prête à l'emploi (`ready_to_run_prompt`).
+- Validation 1-clic depuis Telegram ou API FastAPI (`/api/supervision/weekly-watch`).
+
+#### 9.15.3. Adaptateur Telegram Interactif & Politique de Merge Sécurisée (`backend/services/self_improvement_telegram.py`)
+- Notification interactive envoyée à Pierre avec résumé visuel HTML, lien PR, volume du diff et résultats des tests.
+- 3 boutons inline Telegram signés par HMAC SHA-256 tronqué (< 64 octets) : `✅ Approuver`, `❌ Rejeter`, `✏️ Modifier`.
+- **Politique de Merge Sécurisée (`evaluate_merge_policy` / `check_auto_merge_policy`)** :
+  Le merge automatique est **désactivé par défaut** (`AUTO_MERGE_ENABLED=false`). Son activation conditionnelle exige obligatoirement : diff < 150 lignes, tests unitaires ciblés 100% verts, zéro fichier protégé, et validation formelle de la revue par un second modèle LLM.
+
+#### 9.15.4. L'Exécuteur de Séries de Prompts (`backend/services/prompt_batch_runner.py`)
+Orchestre l'implémentation autonome de fichiers Markdown contenant des séries de prompts séquentiels :
+- **Parser Markdown Tolérant (`parse_prompt_batch_markdown`)** :
+  Extrait les prompts (`PromptItem`), les niveaux d'effort (`low`, `medium`, `high`), les fichiers de référence en lecture seule (`LIS UNIQUEMENT`), les commandes de validation exactes, et compile la section obligatoire `Ce que tu dois faire ensuite` (`ACTIONS MANUELLES`).
+- **Sécurité Anti-Traversée (`validate_safe_batch_path`)** :
+  Interdit toute tentative de path traversal hors du dépôt ou des dossiers autorisés (`downloads/`, `data/chat_uploads/`, temporaires OS).
+- **Tolérance aux Pannes & Persistance Atomique (`BatchRunState`)** :
+  Sauvegarde atomique de l'état sous `data/prompt_batches/<batch_id>.json` à chaque étape et essai. En cas de crash ou redémarrage du VPS, reprise exacte sans perte d'historique.
+- **Boucle d'Exécution avec Essais (Max 3) & Pause Interactive** :
+  Exécution séquentielle dans un git worktree isolé avec commit incrémental par prompt. Si un prompt échoue 3 fois : suspension en statut `paused`, alerte Email et notification Telegram immédiate avec boutons signés HMAC (`▶️ Reprendre`, `⏭️ Ignorer`, `🛑 Annuler`).
+- **Reprise Déterministe (`resume_prompt_batch`)** :
+  Reprise exacte à l'indice du prompt suspendu avec conservation des commits et résultats précédents.
+- **Validation Globale & Livraison Complète** :
+  À l'achèvement de tous les prompts, validation globale finale (`pytest backend/tests/unit`), ouverture de la PR GitHub unique, et expédition d'un e-mail récapitulatif structuré contenant obligatoirement le tableau de bilan, le lien de PR et la section `## Ce que tu dois faire ensuite`.
+
+#### 9.15.5. Déployeur VPS Blue/Green Autonome (`ops/deploy/jarvis_deployer.py`)
+Service SRE autonome indépendant (`jarvis-deployer.service`, port loopback HTTP 8001) :
+- **Arborescence Blue/Green Immutée** : Dossiers de release horodatés `releases/<timestamp>` et bascule atomique du symlink `current`.
+- **Machine à États Persistante SQLite & Journal JSONL** : `queued` -> `running` (préparation et contrôle `py_compile`) -> `smoke` (bascule symlink + restart systemd + smoke probes HTTP `/api/verify`, WS, CDP 9222, contrats) -> `monitoring` (surveillance active pendant `DEPLOY_MONITOR_SECONDS` avec seuils de latence et d'erreurs) -> `succeeded` | `rolled_back` | `failed`.
+- **Auto-Rollback Physique Instantané** : En cas d'anomalie smoke ou dépassement de seuil en monitoring, restauration atomique immédiate du symlink vers l'ancienne release `prev_dir`, redémarrage du service et notification d'incident sur Telegram.
+- **Reprise après Crash VPS (`recover_or_resume`)** : Détection et réconciliation automatique des déploiements interrompus lors d'un arrêt inopiné du serveur.
+
+#### 9.15.6. SRE & Auto-Guérison Système Locale (`services/system_healing_service.py`)
+- Analyse de cause racine (RCA) suite aux crashs et exceptions critiques interceptés par `console_monitor.py`.
+- Validation syntaxique stricte `py_compile`, exécution isolée dans sandbox temporaire, auto-génération de test minimal de non-régression.
 - **Règle d'Escalade Fichiers Critiques** : Si un fichier sensible (`CRITICAL_FILES = {"auth_service.py", "dispatcher.py", "auth.py", "declarations.py", "security.py"}`) est touché, le patch passe au statut `requires_validation` et attend l'approbation orale explicite de Pierre.
-- Déploiement Blue/Green atomique (`releases/<timestamp>` + symlink `current`), rollback instantané en 1 clic ou commande vocale. Persistance PostgreSQL + SQLite.
 
 ### 9.16. Contrat Universel ToolResult & Moteur de Vérification d'Effet Réel (Zero Unverified Claims)
-Afin de rendre structurellement impossible que Jarvis annonce oralement un succès non prouvé, le contrat canonique strict s'applique à l'intégralité des 51 outils déclarés :
+Afin de rendre structurellement impossible que Jarvis annonce oralement un succès non prouvé, le contrat canonique strict s'applique à l'intégralité des 52 outils déclarés :
 
 0. **Portail de Validation Pré-Exécution (`core/tools/arg_validator.py`)** :
    - `validate_tool_arguments(name, args)` est invoqué en toute première instruction de `_execute_dispatch_tool()` (`core/tools/dispatcher.py`, section « 0. Validation stricte des arguments et confirmation utilisateur »), **avant** toute logique métier.
@@ -1620,7 +1684,7 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ### 14.8. Exécution des Tests & Validation Hors-Ligne
 - Lancer l'intégralité des tests : `.\venv\Scripts\pytest.exe -v backend/tests/`
-- Lancer les tests unitaires : `.\venv\Scripts\pytest.exe -v backend/tests/unit/` (333 tests unitaires hors-ligne, 789 tests au total hors e2e)
+- Lancer les tests unitaires : `.\venv\Scripts\pytest.exe -v backend/tests/unit/` (382 tests unitaires hors-ligne, 37 fichiers de tests unitaires)
 - Lancer un test ciblé : `.\venv\Scripts\pytest.exe -v backend/tests/unit/test_language_service.py`
 - *Règle d'or de test* : Tous les tests unitaires s'exécutent hors-ligne sans consommer le moindre centime d'API grâce aux mocks dans `backend/tests/conftest.py`.
 

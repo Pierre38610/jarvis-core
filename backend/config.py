@@ -275,6 +275,12 @@ QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "").strip()
 # Seuil de durée estimée pour le déclenchement des jalons vocaux intermédiaires (en secondes)
 VOCAL_MILESTONE_THRESHOLD_SECONDS = float(os.getenv("VOCAL_MILESTONE_THRESHOLD_SECONDS", "90.0"))
 
+# Configuration Telegram & Auto-Amélioration Interactive
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+TELEGRAM_HMAC_SECRET = os.environ.get("TELEGRAM_HMAC_SECRET", "").strip() or os.environ.get("JWT_SECRET_KEY", "jarvis-self-improve-hmac-secret")
+AUTO_MERGE_ENABLED = os.environ.get("AUTO_MERGE_ENABLED", "false").lower() in ("true", "1", "yes")
+
 # Configuration Browser Agent (Antigravity CLI)
 BROWSER_BRAIN_MODEL = os.environ.get("BROWSER_BRAIN_MODEL", "gemini-3.8-flash")
 BROWSER_VISION_MODEL = os.environ.get("BROWSER_VISION_MODEL", "gemini-3.8-flash")

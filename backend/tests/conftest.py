@@ -40,6 +40,26 @@ from services.auth_service import auth_service
 from services.cache import CacheService
 
 
+# ─── 0. Fixture tmp_path autonome (compatible pytest.ini -p no:tmpdir) ─────────
+import time
+from pathlib import Path
+
+_GLOBAL_SCRATCH_DIR = os.path.abspath(os.path.join(ROOT_DIR, "_test_scratch", "pytest_tmp"))
+os.makedirs(_GLOBAL_SCRATCH_DIR, exist_ok=True)
+
+@pytest.fixture
+def tmp_path():
+    """Fixture tmp_path autonome compatible pathlib.Path dans l'espace de travail _test_scratch."""
+    sub_id = f"test_{int(time.time() * 1000)}_{os.urandom(4).hex()}"
+    p = Path(_GLOBAL_SCRATCH_DIR) / sub_id
+    p.mkdir(parents=True, exist_ok=True)
+    try:
+        yield p
+    finally:
+        import shutil
+        shutil.rmtree(str(p), ignore_errors=True)
+
+
 # ─── 1. Garde-fou Anti-Réseau Externe (Règle Absolue) ───────────────────────────
 
 @pytest.fixture(autouse=True)

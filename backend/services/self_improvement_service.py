@@ -470,6 +470,30 @@ def review_diff(diff_text: str, goal: str) -> Tuple[bool, str]:
     return True, f"Diff examiné et validé ({len(diff_lines)} lignes modifiées)."
 
 
+# ─── 5bis. Isolation CPU & Priorité Basse des Sous-Processus ────────────────
+def _set_low_cpu_priority() -> None:
+    """Abaisser la priorité CPU du sous-processus (nice +10) sous POSIX/Linux
+    afin de garantir la priorité temps réel absolue du moteur vocal (routers/voice.py
+    et routers/device_voice.py avec DeviceAudioPacer à 55 ms) sur les 4 OCPU du VPS.
+    """
+    if os.name == "posix":
+        try:
+            if hasattr(os, "nice"):
+                os.nice(10)
+        except Exception:
+            pass
+
+
+def build_low_priority_subprocess_kwargs() -> dict:
+    """Retourne les arguments de sous-processus pour subprocess.run / asyncio.create_subprocess_exec
+    abaissant la priorité CPU sous Linux (os.name == 'posix') via preexec_fn (nice +10).
+    Sous Windows (os.name != 'posix'), retourne un dictionnaire vide car preexec_fn n'est pas supporté.
+    """
+    if os.name == "posix":
+        return {"preexec_fn": _set_low_cpu_priority}
+    return {}
+
+
 # ─── 6. Exécution d'Antigravity CLI avec Nice & Streaming ────────────────────
 async def _run_agy_process(
     cmd: List[str],
@@ -485,7 +509,7 @@ async def _run_agy_process(
 
     final_cmd = list(cmd)
     if sys.platform != "win32":
-        #nice -n 10 pour préserver le CPU du moteur vocal Gemini Live
+        # nice -n 10 pour préserver le CPU du moteur vocal Gemini Live
         nice_bin = shutil.which("nice")
         if nice_bin:
             final_cmd = [nice_bin, "-n", "10"] + final_cmd
@@ -501,6 +525,8 @@ async def _run_agy_process(
     stdout_lines: List[str] = []
     stderr_lines: List[str] = []
 
+    low_prio_kwargs = build_low_priority_subprocess_kwargs()
+
     try:
         proc = await asyncio.create_subprocess_exec(
             *final_cmd,
@@ -508,6 +534,7 @@ async def _run_agy_process(
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
             env=env,
+            **low_prio_kwargs,
         )
     except Exception as e:
         err_msg = f"Impossible de démarrer le processus agy: {e}"
@@ -605,6 +632,7 @@ def _run_local_validation_gate(
 
     # C. py_compile sur les fichiers .py modifiés
     python_bin = sys.executable or "python"
+    low_prio_kwargs = build_low_priority_subprocess_kwargs()
     for status, path in changes:
         if status.upper() == "D":
             continue
@@ -612,11 +640,17 @@ def _run_local_validation_gate(
             full_path = os.path.join(worktree_dir, path)
             if os.path.exists(full_path):
                 try:
-                    subprocess.run([python_bin, "-m", "py_compile", full_path], capture_output=True, text=True, check=True)
+                    subprocess.run(
+                        [python_bin, "-m", "py_compile", full_path],
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                        **low_prio_kwargs,
+                    )
                 except subprocess.CalledProcessError as e:
                     return False, f"Erreur de syntaxe Python dans '{path}' : {e.stderr.strip()}"
 
-    # D. Exécution des tests ciblés (ultra-rapide)
+    # D. Exécution des tests ciblés (ultra-rapide avec priorité CPU basse)
     if scope.targeted_test_files:
         valid_test_paths = []
         for tf in scope.targeted_test_files:
@@ -638,6 +672,7 @@ def _run_local_validation_gate(
                     capture_output=True,
                     text=True,
                     timeout=120,
+                    **low_prio_kwargs,
                 )
                 if proc.returncode != 0:
                     return False, f"Échec des tests unitaires ciblés ({', '.join(valid_test_paths)}) : {proc.stdout[-500:]}\n{proc.stderr[-300:]}"
@@ -719,6 +754,7 @@ async def run_self_improvement(
     create_pr: bool = True,
     session_id: Optional[str] = None,
     websocket: Any = None,
+    telegram_adapter: Optional[Any] = None,
 ) -> SelfImprovementResult:
     """Orchestre la session d'auto-amélioration complète de bout en bout :
     1. Vérification Kill Switch & Quotas
@@ -901,6 +937,40 @@ async def run_self_improvement(
                 except Exception as git_err:
                     logger.warning(f"[SelfImprovement] Erreur push/PR: {git_err}")
                     pr_url = f"https://github.com/Pierre38610/jarvis-core/tree/{branch_name}"
+
+            # Notification Telegram interactive si configuré ou injecté
+            active_adapter = telegram_adapter
+            if active_adapter is None:
+                try:
+                    from services.self_improvement_telegram import telegram_proposal_adapter
+                    if telegram_proposal_adapter.is_configured():
+                        active_adapter = telegram_proposal_adapter
+                except Exception as tg_err:
+                    logger.debug(f"[SelfImprovement] Erreur init telegram adapter: {tg_err}")
+
+            if success and active_adapter:
+                try:
+                    from services.self_improvement_telegram import ImprovementProposal, generate_proposal_id
+                    modified_files_list = [path for _, path in _get_git_modified_files(worktree_dir)] if worktree_dir else []
+                    diff_lines = len(diff_summary.splitlines()) if diff_summary else 0
+                    pytest_summary = f"{len(scope.targeted_test_files)} test(s) ciblés validés" if scope.targeted_test_files else "Validation locale réussie"
+
+                    proposal = ImprovementProposal(
+                        proposal_id=generate_proposal_id(),
+                        goal=goal,
+                        subfolder=scope.subfolder,
+                        model_used=model,
+                        diff_summary=diff_summary,
+                        diff_line_count=diff_lines,
+                        pytest_results=pytest_summary,
+                        tests_passed=True,
+                        branch_name=branch_name,
+                        modified_files=modified_files_list,
+                        pr_url=pr_url,
+                    )
+                    await active_adapter.send_proposal(proposal)
+                except Exception as tg_notify_err:
+                    logger.warning(f"[SelfImprovement] Échec envoi notification Telegram : {tg_notify_err}")
 
             total_duration = time.perf_counter() - t0
             final_status = "success" if success else "failed"

@@ -665,6 +665,9 @@ class ReleaseManager:
         """Crée un dossier de release immuté et valide la syntaxe Python."""
         rel_id = release_id or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         target_dir = os.path.join(self.config.releases_dir, rel_id)
+        if os.path.exists(target_dir) and not release_id:
+            rel_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+            target_dir = os.path.join(self.config.releases_dir, rel_id)
         os.makedirs(target_dir, exist_ok=True)
 
         def _ignore_filter(src, names):

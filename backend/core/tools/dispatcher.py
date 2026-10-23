@@ -1177,12 +1177,98 @@ async def _execute_dispatch_tool(
             )
 
     # ─── self_improve / auto_amelioration (Auto-Amélioration Autonome VPS) ─────
-    elif name in ("self_improve", "auto_amelioration", "auto_improve"):
+    elif name in ("self_improve", "auto_amelioration", "auto_improve", "run_prompt_batch", "prompt_batch"):
+        batch_file_path = args.get("batch_file_path") or args.get("file_path") or args.get("file")
+        batch_content = args.get("batch_content") or args.get("content") or args.get("markdown")
+        is_sync = bool(args.get("sync", False) or args.get("wait_completion", False))
+
+        # 1. Mode Série de Prompts (Prompt Batch Runner)
+        if batch_file_path or batch_content or name in ("run_prompt_batch", "prompt_batch"):
+            from services.prompt_batch_runner import run_prompt_batch
+            if is_sync:
+                try:
+                    state_dict = await run_prompt_batch(
+                        file_path=batch_file_path,
+                        markdown_content=batch_content,
+                        websocket=websocket,
+                    )
+                    if state_dict.get("status") in ("completed", "succeeded"):
+                        return ToolResult.done(
+                            user_message=f"Série de prompts « {state_dict.get('title')} » terminée avec succès ({len(state_dict.get('results', []))} prompts validés). PR : {state_dict.get('pr_url') or 'prête'}",
+                            evidence=f"Batch {state_dict.get('batch_id')} validé (PR: {state_dict.get('pr_url')})",
+                            verified=True,
+                            data=state_dict,
+                        )
+                    else:
+                        return ToolResult.failed(
+                            user_message=f"La série de prompts a été suspendue ou a échoué : {state_dict.get('last_error') or state_dict.get('status')}",
+                            error_hint=state_dict.get("last_error") or "batch_failed",
+                            verified=False,
+                            data=state_dict,
+                        )
+                except Exception as b_err:
+                    return ToolResult.failed(
+                        user_message=f"Erreur lors du traitement du batch de prompts : {b_err}",
+                        error_hint=str(b_err),
+                        verified=False,
+                    )
+
+            # Mode asynchrone tâche de fond pour Gemini Live
+            _bfp = batch_file_path
+            _bc = batch_content
+            _sess = session
+            _ws = websocket
+
+            async def _run_batch_bg():
+                try:
+                    state_dict = await run_prompt_batch(
+                        file_path=_bfp,
+                        markdown_content=_bc,
+                        websocket=_ws,
+                    )
+                    if state_dict.get("status") in ("completed", "succeeded"):
+                        oral_msg = f"Pierre, la série de prompts « {state_dict.get('title')} » est validée avec succès de A à Z. La Pull Request est prête."
+                        try:
+                            await voice_injection_queue.enqueue(
+                                text=oral_msg,
+                                priority=InjectionPriority.TOOL_RESPONSE,
+                                session=_sess,
+                                action_key=f"prompt_batch_{int(time.time())}",
+                                metadata={"status": "completed", "pr_url": state_dict.get("pr_url")},
+                            )
+                        except Exception as inj_err:
+                            logger.warning(f"[PromptBatch BG] Erreur injection vocale : {inj_err}")
+                    else:
+                        err_oral_msg = f"Pierre, la série de prompts « {state_dict.get('title')} » s'est arrêtée : {state_dict.get('last_error') or state_dict.get('status')}"
+                        try:
+                            await voice_injection_queue.enqueue(
+                                text=err_oral_msg,
+                                priority=InjectionPriority.TOOL_RESPONSE,
+                                session=_sess,
+                                action_key=f"prompt_batch_err_{int(time.time())}",
+                                metadata={"status": "failed", "error": state_dict.get("last_error")},
+                            )
+                        except Exception as inj_err:
+                            logger.warning(f"[PromptBatch BG] Erreur injection vocale : {inj_err}")
+                except Exception as exc:
+                    logger.error(f"[PromptBatch BG] Erreur fatale: {exc}")
+                finally:
+                    active_task_controller["bg_task"] = None
+
+            bg_task = asyncio.create_task(_run_batch_bg())
+            active_task_controller["bg_task"] = bg_task
+            return ToolResult.started(
+                user_message=f"La série de prompts « {batch_file_path or 'reçue'} » a été lancée en tâche de fond sur le VPS. Je teste et valide chaque étape de A à Z.",
+                evidence="batch_runner_started",
+                verified=True,
+                data={"status": "started", "file_path": batch_file_path},
+            ).to_dict()
+
+        # 2. Mode Prompt Unique Standard (run_self_improvement)
         objectif = args.get("objectif") or args.get("goal") or args.get("task") or ""
         sous_dossier_cible = args.get("sous_dossier_cible") or args.get("subfolder") or ""
         complexite = args.get("complexite") or args.get("complexity") or "medium"
         creer_pr = bool(args.get("creer_pr", True))
-        is_sync = bool(args.get("sync", False) or args.get("wait_completion", False))
 
         from services.self_improvement_service import run_self_improvement, SelfImprovementResult
 
