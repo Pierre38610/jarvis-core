@@ -403,7 +403,7 @@ async def test_crash_recovery_resumes_and_cleans(deployer_env):
 
     rec_mon = db.get_deployment("dep_crashed_mon")
     assert rec_mon["status"] == "rolled_back"
-    assert "Redémarrage du VPS" in rec_mon["rollback_reason"]
+    assert "Redémarrage inopiné" in rec_mon["rollback_reason"]
     assert rm.get_current_release_dir() == os.path.abspath(initial_rel)
 
 

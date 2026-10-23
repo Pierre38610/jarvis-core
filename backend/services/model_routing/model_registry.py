@@ -301,6 +301,10 @@ class ModelRegistry:
             return "gemini-3.7-flash"
         return "gemini-3.7-flash"
 
+    def refresh_if_needed(self, force: bool = False) -> List[ModelInfo]:
+        """Actualise le cache uniquement si la durée TTL est expirée."""
+        return self.refresh(force=force)
+
     @property
     def source(self) -> str:
         return self._source_used
@@ -308,3 +312,9 @@ class ModelRegistry:
 
 # Instance globale du registre
 model_registry = ModelRegistry()
+
+
+def get_registry() -> ModelRegistry:
+    """Retourne l'instance globale du registre de modèles."""
+    return model_registry
+

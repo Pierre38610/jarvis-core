@@ -282,7 +282,7 @@ async def test_launch_deep_research_three_phases(mock_websocket_and_session):
 
         res = await dispatch_tool(
             name="launch_deep_research",
-            args={"consigne": "Analyse tactique et comparative du secteur quantique européen", "sync": True},
+            args={"consigne": "Analyse tactique et comparative du secteur quantique européen", "sync": True, "is_cli_fallback": True},
             websocket=mock_ws,
             session=mock_sess,
         )

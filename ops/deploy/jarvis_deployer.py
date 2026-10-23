@@ -811,6 +811,36 @@ class DeployerEngine:
         self._active_deployment_id: Optional[str] = None
         self._is_recovering = False
 
+    @staticmethod
+    def _pid_exists(pid_num: int) -> bool:
+        """Vérifie si un processus existe sans envoyer de signal CTRL_C_EVENT sous Windows."""
+        if pid_num <= 0:
+            return False
+        if pid_num == os.getpid():
+            return True
+        if os.name == "nt":
+            try:
+                import ctypes
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                STILL_ACTIVE = 259
+                handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid_num)
+                if not handle:
+                    return False
+                try:
+                    exit_code = ctypes.c_ulong()
+                    if ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                        return exit_code.value == STILL_ACTIVE
+                    return False
+                finally:
+                    ctypes.windll.kernel32.CloseHandle(handle)
+            except Exception:
+                return False
+        try:
+            os.kill(pid_num, 0)
+            return True
+        except (OSError, ProcessLookupError, AttributeError):
+            return False
+
     def acquire_file_lock(self) -> bool:
         """Tente d'acquérir le verrou exclusif mono-déploiement."""
         pid = str(os.getpid())
@@ -820,11 +850,8 @@ class DeployerEngine:
                 with open(lock_file, "r") as f:
                     old_pid = f.read().strip()
                 if old_pid and old_pid.isdigit():
-                    try:
-                        os.kill(int(old_pid), 0)
+                    if self._pid_exists(int(old_pid)):
                         return False
-                    except (OSError, ProcessLookupError, AttributeError):
-                        pass
             except Exception:
                 pass
         try:

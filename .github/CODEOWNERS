@@ -1,0 +1,29 @@
+# Global code ownership
+* @Pierre38610
+
+# Fichiers de configuration et secrets d'environnement
+.env* @Pierre38610
+
+# Composants d'authentification et sécurité
+backend/services/auth_service.py @Pierre38610
+backend/auth.py @Pierre38610
+
+# Gouvernance des clés API et modèles
+backend/services/key_gate.py @Pierre38610
+
+# Validation stricte des arguments d'outils et actions irréversibles
+backend/core/tools/arg_validator.py @Pierre38610
+
+# Auto-guérison système et fichiers critiques SRE
+backend/services/system_healing_service.py @Pierre38610
+
+# Déploiement et orchestration d'infrastructure
+ops/deploy/jarvis_deployer.py @Pierre38610
+ops/scripts/check_protected_paths.py @Pierre38610
+
+# Workflows et configurations CI/CD GitHub
+.github/ @Pierre38610
+.github/workflows/ @Pierre38610
+
+# Suites de tests de non-régression
+backend/tests/ @Pierre38610

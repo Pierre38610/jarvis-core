@@ -12,6 +12,7 @@ AGENTIC_TOOL_NAMES = {
     "launch_deep_research",
     "run_agentic_task",
     "run_agent_task",
+    "self_improve",
 }
 
 
@@ -170,7 +171,7 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                     name="run_agentic_task",
                     description=(
                         "Exécuteur de tâche agentique autonome Antigravity CLI sur VPS (paradigme Antigravity-First / Mode Task). "
-                        "À utiliser obligatoirement dès qu'une tâche dépasse l'oral réflexe : création de livrables de A à Z (site web, présentation PowerPoint/pptx, document PDF LaTeX, tableur, script, rapport d'analyse ou comparatif). "
+                        "Prends l'initiative d'utiliser cet outil obligatoirement dès qu'une tâche dépasse l'oral réflexe : création de livrables de A à Z (site web, présentation PowerPoint/pptx, document PDF LaTeX, tableur, script, rapport d'analyse ou comparatif). "
                         "Formule un objectif et un contexte riches et auto-suffisants incluant les préférences de Pierre (sujet exact, ville, budget, style, format attendu) pour que l'agent Antigravity opère en totale autonomie."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
@@ -249,6 +250,41 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                             "timeout": types.Schema(
                                 type="INTEGER",
                                 description="Délai maximum d'exécution en secondes (défaut 300)."
+                            ),
+                        },
+                        required=["objectif"]
+                    )
+                ),
+
+                # ─── 4d. self_improve ─────────────────────────────────────────────────
+                types.FunctionDeclaration(
+                    name="self_improve",
+                    description=(
+                        "AUTO-AMÉLIORATION ET REFACTORISATION DU CODE DE J.A.R.V.I.S. VIA ANTIGRAVITY SUR LE VPS. "
+                        "Permet à Jarvis de recoder, d'adapter et de tester ses propres modules de façon autonome, "
+                        "confiné dans un sous-dossier logique (ex: 'backend/services', 'backend/core/tools', 'backend/services/browser_agent', 'ops/deploy', 'frontend/static') "
+                        "avec validation stricte (py_compile, check_protected_paths, tests unitaires ciblés) et ouverture optionnelle d'une PR GitHub. "
+                        "Prends l'initiative d'utiliser cet outil dès que Pierre demande d'adapter, d'améliorer, d'optimiser ou d'ajouter une fonctionnalité dans le code source de Jarvis."
+                    ),
+                    behavior=types.Behavior.NON_BLOCKING,
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "objectif": types.Schema(
+                                type="STRING",
+                                description="L'objectif précis de recodage, refactorisation ou amélioration logicielle de Jarvis."
+                            ),
+                            "sous_dossier_cible": types.Schema(
+                                type="STRING",
+                                description="Le sous-dossier logique visé (ex: 'backend/services', 'backend/core/tools', 'backend/services/browser_agent', 'backend/services/model_routing', 'backend/routers', 'frontend/static', 'ops/deploy', 'firmware/esp32', 'docs')."
+                            ),
+                            "complexite": types.Schema(
+                                type="STRING",
+                                description="Niveau de complexité ('low', 'medium', 'high'). Défaut 'medium'."
+                            ),
+                            "creer_pr": types.Schema(
+                                type="BOOLEAN",
+                                description="True pour créer une Pull Request GitHub après validation locale complète des tests (défaut True)."
                             ),
                         },
                         required=["objectif"]

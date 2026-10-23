@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.96.0 — Pipeline de Missions de Bout en Bout de A à Z par Agent Antigravity (`execute_end_to_end_deliverable_mission` dans `backend/services/agentic_dispatcher.py`) : création autonome de livrables professionnels (applications web interactives HTML/Tailwind, présentations PowerPoint .pptx multi-slides, rapports complets compilés en PDF/HTML/MD, classeurs Excel .xlsx avec formules actives), vérification matérielle physique (`os.path.exists`, taille > 1024 octets via `core/tools/verifier.py`), livraison automatique sur le PC local connecté de Pierre via `send_rpc_command("open_browser")`, mise à jour du lien HUD PWA via `set_browser_link`, expédition e-mail optionnelle et restitution vocale via `voice_injection_queue`. Routage prioritaire de `launch_deep_research` et `run_agentic_task` vers ce pipeline A-to-Z.*
+> *Dernière révision majeure : Version 5.97.0 — Pipeline de Missions de Bout en Bout de A à Z par Agent Antigravity (`execute_end_to_end_deliverable_mission` dans `backend/services/agentic_dispatcher.py`) : création autonome de livrables professionnels (applications web interactives HTML/Tailwind, présentations PowerPoint .pptx multi-slides, rapports complets compilés en PDF/HTML/MD, classeurs Excel .xlsx avec formules actives), vérification matérielle physique (`os.path.exists`, taille > 1024 octets via `core/tools/verifier.py`), livraison automatique sur le PC local connecté de Pierre via `send_rpc_command("open_browser")`, mise à jour du lien HUD PWA via `set_browser_link`, expédition e-mail optionnelle et restitution vocale via `voice_injection_queue`. Routage prioritaire de `launch_deep_research` et `run_agentic_task` vers ce pipeline A-to-Z.*
 
 
 ---
@@ -68,8 +68,8 @@
    - 8.6. Authentification Matérielle JWT, Provisioning NVS & Connexion Wi-Fi Directe
    - 8.7. Règle de Canal Unique, Présence Redis & Initiative Proactive (`push_speak_to_device`)
    - 8.8. Compilation, Flash & Outillage Firmware (`build_firmware.bat`, ESP-IDF 5.x)
-9. [Catalogue Matriciel & Fiches des 51 Outils Unifiés (Function Calling)](#9-catalogue-matriciel--fiches-des-51-outils-unifiés-function-calling)
-   - 9.1. Matrice Globale Exhaustive des 51 Outils Déclarés (Spécifications Exactes)
+9. [Catalogue Matriciel & Fiches des 52 Outils Unifiés (Function Calling)](#9-catalogue-matriciel--fiches-des-52-outils-unifiés-function-calling)
+   - 9.1. Matrice Globale Exhaustive des 52 Outils Déclarés (Spécifications Exactes)
    - 9.2. Moteur Multi-Agents Antigravity CLI sur VPS (`ask_deep_reasoning`, `guide_active_task`, `stop_current_action`)
    - 9.3. Moteur Asynchrone Deep Research : Architecture à Double Moteur (Moteur A Browser Agent Gemini Web + Moteur B Map-Reduce VPS)
    - 9.4. Moteur Délibératif Système 2 Transverse (Les 8 Missions Agentiques Spécialisées)
@@ -199,6 +199,7 @@ jarvis-core/
 │   │   │   ├── site_memory.py           # Persistance atomique par domaine des parcours de navigation réussis (S6)
 │   │   │   └── recipes/                 # Recettes de navigation spécialisées (cart.md, train.md, gemini_deep_research.md)
 │   │   ├── deep_research_service.py     # Moteur B Deep Research : pipeline Map-Reduce VPS (spec, MAP 3 ouvriers, REDUCE, Quality Gate)
+│   │   ├── self_improvement_service.py # Moteur d'auto-amélioration et refactorisation autonome sous worktree git et validation triple
 │   │   ├── agentic_dispatcher.py        # Orchestrateur Système 2 universel : 8 missions spécialisées (transport, excel, healing, etc.)
 │   │   ├── agentic_runner.py            # Exécuteur agy : prompt JSON strict, validation de schéma, retry, repli Gemini payant via key_gate
 │   │   ├── antigravity_models.py        # Modèles & efforts agy (MODEL_FLASH/MODEL_PRO, validate_model_and_effort, choose_model_and_effort)
@@ -979,7 +980,8 @@ L'implémentation respecte le standard d'échange bidirectionnel temps réel pou
 | **49**| `search_workspace_files` | `chercher_fichiers_workspace` | Bloquant | `query: str` (req), `subpath: str`, `extension: str`, `max_results: int` (défaut 30) | `ToolResult.done` (`matches`, `matches_count`, `verified=True`) | `services/workspace_service.py` |
 | **50**| `launch_phone_navigation` | `lancer_navigation_telephone` | Bloquant | `destination: str` (req), `mode: str` (`driving`\|`walking`\|`bicycling`\|`transit`) | `ToolResult.done` (`destination`, `mode`, `verified=False`, `evidence="macrodroid_2xx"`) | `services/mobile_bridge_service.py` |
 | **51**| `wake_phone_spotify` | `reveiller_spotify_telephone` | Bloquant | Aucun | `ToolResult.done` (`device_id`, `verified=True` si Connect détecté, `verified=False` sinon) | `services/mobile_bridge_service.py` |
-> **Total vérifié : 51 déclarations.** Les paires `browser_task`/`run_browser_task` et `run_agentic_task`/`run_agent_task` sont deux déclarations distinctes partageant le même exécuteur (compatibilité de nommage Gemini Live) ; les lignes 39 et 42 matérialisent ces déclarations jumelles.
+| **52**| `self_improve` | `auto_amelioration` | Non-bloquant | `objectif: str` (req), `sous_dossier_cible: str` (opt), `complexite: str` (opt), `creer_pr: bool` (opt) | `ToolResult.done` / `ToolResult.started` (`branch_name`, `pr_url`, `diff_summary`, `iterations_count`) | `services/self_improvement_service.py` |
+> **Total vérifié : 52 déclarations.** Les paires `browser_task`/`run_browser_task` et `run_agentic_task`/`run_agent_task` sont deux déclarations distinctes partageant le même exécuteur (compatibilité de nommage Gemini Live) ; les lignes 39 et 42 matérialisent ces déclarations jumelles. L'outil `self_improve` (ligne 52) orchestre l'auto-amélioration et l'auto-refactorisation confinée sous git worktree et validation triple (py_compile, check_protected_paths, pytest ciblés).
 
 ### 9.2. Moteur Multi-Agents Antigravity CLI sur VPS & Routage Intelligent de Modèles
 - **Fichiers** : `google_antigravity.py`, `services/model_routing/` (`model_registry.py`, `model_router.py`, `fallback_handler.py`, `prompt_builder.py`), `config/models.json`, `prompts/templates/`, `AGENTS.md`.
@@ -1618,7 +1620,7 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ### 14.8. Exécution des Tests & Validation Hors-Ligne
 - Lancer l'intégralité des tests : `.\venv\Scripts\pytest.exe -v backend/tests/`
-- Lancer les tests unitaires : `.\venv\Scripts\pytest.exe -v backend/tests/unit/` (232 tests unitaires hors-ligne)
+- Lancer les tests unitaires : `.\venv\Scripts\pytest.exe -v backend/tests/unit/` (333 tests unitaires hors-ligne, 789 tests au total hors e2e)
 - Lancer un test ciblé : `.\venv\Scripts\pytest.exe -v backend/tests/unit/test_language_service.py`
 - *Règle d'or de test* : Tous les tests unitaires s'exécutent hors-ligne sans consommer le moindre centime d'API grâce aux mocks dans `backend/tests/conftest.py`.
 
@@ -1632,4 +1634,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.96.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.97.0.*
