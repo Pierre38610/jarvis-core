@@ -952,12 +952,17 @@ def _clean_email_query(query: Optional[str]) -> Tuple[Optional[str], bool]:
     return (cleaned or None), False
 
 
-def _extract_email_body_and_attachments(msg: email.message.Message) -> Dict[str, Any]:
-    """Extrait le corps texte/html et la liste des pièces jointes d'un message email."""
+def _extract_email_body_and_attachments(msg: email.message.Message, save_to_disk: bool = True) -> Dict[str, Any]:
+    """Extrait le corps texte/html et la liste des pièces jointes d'un message email, et sauvegarde les pièces jointes dans downloads/."""
     import html as html_module
+    import re
     text_content = ""
     html_content = ""
     attachments = []
+    saved_paths = []
+
+    downloads_dir = os.path.join(BASE_DIR, "downloads")
+    batches_dir = os.path.join(BASE_DIR, "data", "prompt_batches")
 
     if msg.is_multipart():
         for part in msg.walk():
@@ -969,7 +974,25 @@ def _extract_email_body_and_attachments(msg: email.message.Message) -> Dict[str,
                 filename = part.get_filename()
                 if filename:
                     filename = _decode_mime_header(filename)
-                attachments.append(filename or "pièce_jointe")
+                fname_clean = filename or "pièce_jointe"
+                attachments.append(fname_clean)
+                if save_to_disk:
+                    try:
+                        att_bytes = part.get_payload(decode=True)
+                        if att_bytes:
+                            safe_fname = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", os.path.basename(fname_clean)).strip() or "piece_jointe"
+                            os.makedirs(downloads_dir, exist_ok=True)
+                            dest_path = os.path.join(downloads_dir, safe_fname)
+                            with open(dest_path, "wb") as f_att:
+                                f_att.write(att_bytes)
+                            saved_paths.append(f"downloads/{safe_fname}")
+                            if safe_fname.lower().endswith((".md", ".txt")):
+                                os.makedirs(batches_dir, exist_ok=True)
+                                batch_dest = os.path.join(batches_dir, safe_fname)
+                                with open(batch_dest, "wb") as f_b:
+                                    f_b.write(att_bytes)
+                    except Exception as save_err:
+                        logger.warning(f"[EmailService] Impossible de sauvegarder la pièce jointe '{fname_clean}' : {save_err}")
                 continue
 
             # Sinon contenu texte
@@ -1018,7 +1041,8 @@ def _extract_email_body_and_attachments(msg: email.message.Message) -> Dict[str,
 
     return {
         "body_text": clean_body,
-        "attachments": attachments
+        "attachments": attachments,
+        "saved_paths": saved_paths,
     }
 
 
@@ -1200,6 +1224,7 @@ def read_received_emails(
                     "snippet": body_snippet,
                     "body": body_clean,
                     "attachments": content_info["attachments"],
+                    "saved_paths": content_info.get("saved_paths", []),
                     "has_attachments": len(content_info["attachments"]) > 0
                 })
 

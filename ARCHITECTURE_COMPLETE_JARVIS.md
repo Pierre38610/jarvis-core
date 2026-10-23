@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.97.0 — Pipeline de Missions de Bout en Bout de A à Z par Agent Antigravity (`execute_end_to_end_deliverable_mission` dans `backend/services/agentic_dispatcher.py`) : création autonome de livrables professionnels (applications web interactives HTML/Tailwind, présentations PowerPoint .pptx multi-slides, rapports complets compilés en PDF/HTML/MD, classeurs Excel .xlsx avec formules actives), vérification matérielle physique (`os.path.exists`, taille > 1024 octets via `core/tools/verifier.py`), livraison automatique sur le PC local connecté de Pierre via `send_rpc_command("open_browser")`, mise à jour du lien HUD PWA via `set_browser_link`, expédition e-mail optionnelle et restitution vocale via `voice_injection_queue`. Routage prioritaire de `launch_deep_research` et `run_agentic_task` vers ce pipeline A-to-Z.*
+> *Dernière révision majeure : Version 5.98.0 — Fiabilisation Intégrale de l'Auto-Amélioration (`self_improve` & `prompt_batch_runner.py`), Réception Bidirectionnelle de Fichiers sur Telegram (`getUpdates` + `getFile` dans `self_improvement_telegram.py`), Sauvegarde Automatique des Pièces Jointes Gmail (`email_service.py`), Correction du Lanceur Windows Silencieux (`ops/windows/start_agent_silent.vbs`), Alignement des Drapeaux CLI Antigravity v1.4.6 (`--model`, `--effort`, mapping `gemini-4-argon-{low|medium|high}` et `gemini-3.8-flash-{low|medium|high}`), Registre Factuel `CAPABILITIES_LEDGER.md` (`get_capabilities_ledger_summary`, `verify_capability_not_already_implemented`), et Moteur d'Audit Technique + Recherche L2 Anti-Coaching (`generate_and_send_technical_improvements` dans `weekly_improvement_watch.py`).*
 
 
 ---
@@ -1489,7 +1489,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre minérale et raffinée (`#05070D`, `#0B0F19`, `#0D1321`), verre dépoli avec bordures ultra-fines (`backdrop-filter: blur(24px)`), hiérarchie chromatique équilibrée (cyan glace, émeraude, ambre, violet, rose alerte) sans saturation agressive.
 - **Typographie** : Polices modernes géométriques sans-serif (`Inter`, `Plus Jakarta Sans`) et code monospace technique (`JetBrains Mono`).
 - **Responsive Fluid Architecture** : Expérience fluide optimisée sur smartphone (< 768px : barre d'onglets fixée en bas, statusbar compacte, mini-lecteur au-dessus des onglets, `100dvh`) et cockpit glassmorphic centré sur grand écran desktop PC.
-- **Version affichée dans l'en-tête** (`frontend/static/index.html`, classe `hud-version-tag`) : `v5.97.0`.
+- **Version affichée dans l'en-tête** (`frontend/static/index.html`, classe `hud-version-tag`) : `v5.98.0`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.
@@ -1698,4 +1698,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.97.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.98.0.*

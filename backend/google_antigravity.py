@@ -475,35 +475,38 @@ def resolve_cli_model_args(model_name: Any = None, thinking_level: str | None = 
         effective_effort = effective_effort or cfg.thinking_level
 
     if not model_name:
-        result = ["--model", "gemini-3.7-flash-high", "--effort", "high"]
+        result = ["--model", "gemini-3.8-flash-high", "--effort", "high"]
     else:
         m = str(model_name).lower().strip()
 
-        # Modèles Claude : pas d'argument --effort
-        if "claude" in m or "sonnet" in m:
-            result = ["--model", str(model_name)]
-        # Gemini 3.1 Pro models
-        elif "3.1" in m or "pro" in m:
-            th = effective_effort or ("low" if "low" in m else "high")
-            eff = "low" if th == "low" else "high"
-            base_name = str(model_name) if ("-" in str(model_name) and not str(model_name).endswith("-pro")) else f"gemini-3.1-pro-{eff}"
-            result = ["--model", base_name, "--effort", eff]
-        # Gemini 3.7 Flash models
-        elif "3.7" in m:
+        # Modèles Claude Opus (agy v1.4.6 : claude-opus-5-5-{low|medium|high})
+        if "opus" in m:
             th = effective_effort or ("low" if "low" in m else "medium" if ("med" in m or "medium" in m) else "high")
-            eff = "low" if th == "low" else "medium" if th == "medium" else "high"
-            base_name = str(model_name) if ("-" in str(model_name) and not str(model_name).endswith("-flash")) else f"gemini-3.7-flash-{eff}"
+            eff = "low" if th == "low" else "medium" if th in ("med", "medium") else "high"
+            base_name = str(model_name) if "5-5-" in m else f"claude-opus-5-5-{eff}"
             result = ["--model", base_name, "--effort", eff]
-        # Gemini 3.8 Flash models
-        elif "3.8" in m or "flash" in m:
+        # Modèles Claude Sonnet (agy v1.4.6 : claude-sonnet-5-5-{low|medium|high})
+        elif "claude" in m or "sonnet" in m:
             th = effective_effort or ("low" if "low" in m else "medium" if ("med" in m or "medium" in m) else "high")
-            eff = "low" if th == "low" else "medium" if th == "medium" else "high"
-            base_name = str(model_name) if ("-" in str(model_name) and not str(model_name).endswith("-flash")) else f"gemini-3.8-flash-{eff}"
+            eff = "low" if th == "low" else "medium" if th in ("med", "medium") else "high"
+            base_name = str(model_name) if "5-5-" in m else f"claude-sonnet-5-5-{eff}"
+            result = ["--model", base_name, "--effort", eff]
+        # Gemini Pro / Argon models (agy v1.4.6 mappe Pro / 3.1-pro vers gemini-4-argon-{low|medium|high})
+        elif "3.1" in m or "pro" in m or "argon" in m:
+            th = effective_effort or ("low" if "low" in m else "medium" if ("med" in m or "medium" in m) else "high")
+            eff = "low" if th == "low" else "medium" if th in ("med", "medium") else "high"
+            base_name = f"gemini-4-argon-{eff}"
+            result = ["--model", base_name, "--effort", eff]
+        # Gemini 3.7 / 3.8 Flash models (agy v1.4.6 supporte gemini-3.8-flash-{low|medium|high})
+        elif "3.7" in m or "3.8" in m or "flash" in m:
+            th = effective_effort or ("low" if "low" in m else "medium" if ("med" in m or "medium" in m) else "high")
+            eff = "low" if th == "low" else "medium" if th in ("med", "medium") else "high"
+            base_name = f"gemini-3.8-flash-{eff}"
             result = ["--model", base_name, "--effort", eff]
         # Fallback générique
         else:
-            th = effective_effort or ("low" if "low" in m else "high")
-            eff = "low" if th == "low" else "high"
+            th = effective_effort or ("low" if "low" in m else "medium" if ("med" in m or "medium" in m) else "high")
+            eff = "low" if th == "low" else "medium" if th in ("med", "medium") else "high"
             result = ["--model", str(model_name), "--effort", eff]
 
     for arg in result:

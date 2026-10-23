@@ -54,6 +54,21 @@ class LocalAgentService:
         except Exception:
             pass
 
+        # Notification temps réel à la supervision et à la session vocale Gemini Live active
+        try:
+            from core.shared_state import active_task_controller, broadcast_supervision, safe_send_live_client_content
+            asyncio.create_task(broadcast_supervision())
+            live_sess = active_task_controller.get("live_session")
+            if live_sess:
+                asyncio.create_task(safe_send_live_client_content(
+                    live_sess,
+                    "[MISE À JOUR SYSTÈME : PC EN LIGNE] L'ordinateur personnel Windows 11 de Pierre vient de se connecter au VPS (jarvis_local_agent actif). Tu le vois désormais EN LIGNE et tu peux contrôler son écran (Chrome CDP, VS Code, VLC, Deezer, fichiers locaux _anti_gravity). N'annonce rien spontanément à voix haute sauf si Pierre vient de te parler de son PC.",
+                    action_key=f"pc_online_{int(self._connected_at)}",
+                    wait_if_speaking=True,
+                ))
+        except Exception:
+            pass
+
     def unregister(self):
         """Déconnecte le client WebSocket."""
         self._ws = None

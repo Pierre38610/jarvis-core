@@ -7,7 +7,7 @@
 ' ==============================================================================
 Option Explicit
 
-Dim objFSO, objShell, scriptDir, venvPythonw, dotVenvPythonw, pythonwExe, agentScript, runCmd
+Dim objFSO, objShell, scriptDir, rootDir, venvPythonw, dotVenvPythonw, pythonwExe, agentScript, runCmd
 
 Set objFSO = CreateObject("Scripting.FileSystemObject")
 Set objShell = CreateObject("WScript.Shell")

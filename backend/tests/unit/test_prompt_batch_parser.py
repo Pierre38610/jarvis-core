@@ -164,3 +164,41 @@ def test_load_batch_from_file_roundtrip():
     finally:
         if os.path.exists(f_path):
             os.remove(f_path)
+
+
+def test_parse_bold_niveau_conseille_and_fenced_blocks():
+    """Vérifie le parsing du format '**Niveau conseillé : high**' et des blocs ``` autour des prompts."""
+    md = """# Batch Correctif Veille
+
+## Prompt 1 — Registre CAPABILITIES_LEDGER.md
+
+**Niveau conseillé : medium**
+
+```
+RÔLE : Architecte
+LIS UNIQUEMENT :
+1. `backend/services/architecture_service.py`
+
+COMMANDES DE VALIDATION EXACTES :
+timeout 120 python -m py_compile backend/services/architecture_service.py
+```
+
+---
+
+## Prompt 2 — Refonte weekly_improvement_watch.py
+
+**Niveau conseillé : high**
+
+```
+RÔLE : Ingénieur IA
+COMMANDES DE VALIDATION EXACTES :
+timeout 120 python -m pytest -q backend/tests/unit/test_weekly_improvement_watch.py
+```
+"""
+    spec = parse_prompt_batch_markdown(md)
+    assert len(spec.prompts) == 2
+    assert spec.prompts[0].level == "medium"
+    assert "backend/services/architecture_service.py" in spec.prompts[0].read_only_files
+    assert "```" not in (spec.prompts[0].validation_command or "")
+    assert spec.prompts[1].level == "high"
+    assert "```" not in (spec.prompts[1].validation_command or "")

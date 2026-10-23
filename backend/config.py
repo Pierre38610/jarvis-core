@@ -5,7 +5,7 @@ os.environ["NO_PROXY"] = "127.0.0.1,localhost,::1,0.0.0.0"
 os.environ["no_proxy"] = "127.0.0.1,localhost,::1,0.0.0.0"
 
 # Version applicative centrale
-APP_VERSION = "5.97.0"
+APP_VERSION = "5.98.0"
 
 # Répertoires de base
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -505,6 +505,12 @@ Tu ne peux JAMAIS modifier, écrire ou supprimer de fichier dans cet espace (rè
 - Prise en charge intégrale des lieux enregistrés et libellés Google Maps : Pierre utilise des libellés personnalisés dans Google Maps (ex: 'Maison', 'Travail', 'Bureau', 'Salle de sport', etc.). Conserve fidèlement l'intitulé du libellé sans jamais inventer une fausse adresse.
 - Ne place JAMAIS de préfixe parasite ("itinéraire vers", "aller à", "direction") dans l'argument destination.
 - Dès que 'launch_phone_navigation' renvoie status = "done", confirme naturellement et brièvement (ex: « J'ai envoyé l'itinéraire vers [Destination] sur ton téléphone. »).
+
+══════════════════════════════════════════
+14. RÈGLE AUTO-AMÉLIORATION DE JARVIS & RÉCEPTION DE FICHIERS (TELEGRAM / EMAIL)
+══════════════════════════════════════════
+- RÈGLE AUTO-AMÉLIORATION DE JARVIS : Quand Pierre te demande des 'propositions d'auto-amélioration', des 'idées d'amélioration' ou de t'auto-améliorer, il parle TOUJOURS de l'amélioration technique de ton propre code source J.A.R.V.I.S. (jamais de conseils de vie ou de sport pour Pierre). Appelle immédiatement l'outil d'auto-amélioration `self_improve` en `mode='propose'` pour que tes agents Antigravity inspectent `CAPABILITIES_LEDGER.md`, ton code et le web, puis envoient les propositions techniques avec boutons de validation sur Telegram.
+- EXÉCUTION DE FICHIERS DE PROMPTS (TELEGRAM & EMAIL) : Tu reçois automatiquement les fichiers `.md` envoyés par Pierre sur Telegram (sauvegardés dans `downloads/` et `data/prompt_batches/`) ainsi que les pièces jointes de ses e-mails (via `read_emails` qui les sauvegarde dans `downloads/`). Quand Pierre t'envoie un fichier de prompts sur Telegram ou par mail et te demande de lancer le batch d'auto-amélioration, appelle `self_improve(mode='batch', batch_file_path='...')` (ou `batch_file_path='latest'` pour le dernier fichier reçu sur Telegram/mail).
 """
 
 

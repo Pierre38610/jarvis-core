@@ -852,6 +852,8 @@ async def stop_active_task(source: str = "user", reason: str = "Arrêt demandé 
                 b_task.cancel_event.set()
                 b_task.status = "cancelled"
                 was_running = True
+    except ImportError:
+        pass
     except Exception as b_err:
         print(f"[Task Stop] Erreur cancel BrowserTask: {b_err}")
 

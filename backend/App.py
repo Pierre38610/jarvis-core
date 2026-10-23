@@ -115,10 +115,23 @@ async def startup_event():
     except Exception as e:
         print(f"[Startup] [UserProfile] Avertissement synchro profil Pierre : {e}")
 
+    # 5. Démarrage du poller Telegram (réception de fichiers/prompts et boutons inline)
+    try:
+        from services.self_improvement_telegram import start_telegram_bot_poller
+        if start_telegram_bot_poller():
+            print("[Startup] [Telegram] Récepteur de fichiers et callbacks Telegram actif")
+    except Exception as e:
+        print(f"[Startup] [Telegram] Avertissement initialisation poller Telegram : {e}")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Arrête proprement les connexions et serveurs satellites."""
+    try:
+        from services.self_improvement_telegram import stop_telegram_bot_poller
+        stop_telegram_bot_poller()
+    except Exception:
+        pass
     try:
         await cache_service.close()
     except Exception:

@@ -325,3 +325,30 @@ async def test_dispatcher_self_improve_background_execution():
         assert resp["status"] == "started"
         assert "lancée en tâche de fond" in resp["user_message"]
         assert active_task_controller["bg_task"] is not None
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_self_improve_propose_mode_triggers_technical_watch():
+    """Vérifie que l'appel à self_improve en mode 'propose' déclenche generate_and_send_technical_improvements en tâche de fond."""
+    with patch(
+        "services.weekly_improvement_watch.generate_and_send_technical_improvements",
+        new_callable=AsyncMock,
+    ) as mock_gen:
+        mock_gen.return_value = {"status": "ok", "count": 3, "sent_count": 3}
+
+        resp = await dispatch_tool(
+            name="self_improve",
+            args={
+                "mode": "propose",
+                "objectif": "Envoie-moi des propositions d'auto-amélioration sur Telegram",
+                "sous_dossier_cible": "backend/services",
+                "sync": False,
+            },
+        )
+
+        assert resp["status"] == "started"
+        assert "CAPABILITIES_LEDGER.md" in resp["user_message"] or "Telegram" in resp["user_message"]
+        assert active_task_controller["bg_task"] is not None
+        await active_task_controller["bg_task"]
+        assert mock_gen.called
+        assert mock_gen.call_args.kwargs.get("focus_area") == "backend/services"

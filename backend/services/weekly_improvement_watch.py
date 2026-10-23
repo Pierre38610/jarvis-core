@@ -40,6 +40,11 @@ from services.agentic_runner import (
 )
 from services.console_monitor import console_monitor
 from services.metrics_service import metrics_service
+from services.architecture_service import (
+    get_capabilities_ledger_summary,
+    verify_capability_not_already_implemented,
+    _load_declared_tool_names,
+)
 from services.self_improvement_telegram import (
     ImprovementProposal,
     SelfImprovementTelegramAdapter,
@@ -61,6 +66,73 @@ KNOWN_SUBFOLDERS = {
     "ops": "ops/ARCHITECTURE.md",
     "docs": "docs/ARCHITECTURE.md",
 }
+
+VALID_SUBFOLDER_PREFIXES = (
+    "backend",
+    "frontend",
+    "firmware",
+    "ops",
+    "docs",
+)
+
+# Lexique strictement banni (anti-coaching personnel / sport / bien-être hors-sujet)
+BANNED_LIFESTYLE_KEYWORDS = (
+    "faire du sport",
+    "faire plus de sport",
+    "séance de sport",
+    "seance de sport",
+    "hydratation",
+    "boire de l'eau",
+    "sommeil",
+    "mieux dormir",
+    "méditation",
+    "meditation",
+    "régime alimentaire",
+    "regime alimentaire",
+    "musculation",
+    "cardio",
+    "course à pied",
+    "étirement",
+    "etirement",
+    "bien-être personnel",
+    "developpement personnel",
+    "développement personnel",
+    "nutrition",
+    "calories",
+    "yoga",
+    "pompes",
+    "abdos",
+    "marche quotidienne",
+)
+
+
+def validate_technical_proposal(proposal: "ImprovementWatchProposal") -> Tuple[bool, str]:
+    """Vérifie qu'une proposition d'auto-amélioration est :
+    1. Strictement logicielle/architecturale (aucun conseil personnel, sportif ou lifestyle).
+    2. Ciblée sur un vrai sous-dossier du dépôt (backend, frontend, ops, firmware, docs).
+    3. Non redondante avec les outils déjà implémentés dans CAPABILITIES_LEDGER.md et declarations.py.
+    """
+    combined_text = f"{proposal.title} {proposal.rationale} {proposal.ready_to_run_prompt}".lower()
+    for banned in BANNED_LIFESTYLE_KEYWORDS:
+        if banned in combined_text:
+            return False, f"Rejet anti-coaching : mot-clé personnel/lifestyle hors-sujet détecté ('{banned}')."
+
+    # Rejet si le mot 'sport' apparaît isolément comme conseil de vie (hors itinéraire GPS 'salle de sport')
+    if re.search(r"\bsport\b", combined_text) and "salle de sport" not in combined_text:
+        return False, "Rejet anti-coaching : proposition orientée sport/lifestyle au lieu du code de Jarvis."
+
+    sub = (proposal.target_subfolder or "").strip().replace("\\", "/").lstrip("./")
+    if not sub or not any(sub == p or sub.startswith(f"{p}/") for p in VALID_SUBFOLDER_PREFIXES):
+        return False, f"Sous-dossier cible invalide ou hors du dépôt : '{proposal.target_subfolder}'."
+
+    is_not_dup, reason = verify_capability_not_already_implemented(
+        proposal.title,
+        proposal.targeted_tests,
+    )
+    if not is_not_dup:
+        return False, f"Capacité déjà implémentée : {reason}"
+
+    return True, "Proposition technique validée."
 
 
 # ─── Dataclass de Proposition de Veille ───────────────────────────────────────
@@ -285,16 +357,32 @@ class InternalSignalsCollector:
         }
 
     async def collect_all_signals(self) -> Dict[str, Any]:
-        """Agrège l'ensemble des signaux internes pour la synthèse L2."""
+        """Agrège l'ensemble des signaux internes, du code réel et de CAPABILITIES_LEDGER.md pour la synthèse L2."""
         console_sig = self.collect_console_signals()
         telemetry_sig = await self.collect_telemetry_signals()
         arch_sig = self.collect_architecture_contracts()
+        ledger_summary = get_capabilities_ledger_summary()
+        declared_tools = _load_declared_tool_names()
+
+        services_dir = os.path.join(self.repo_root, "backend", "services")
+        routers_dir = os.path.join(self.repo_root, "backend", "routers")
+        tools_dir = os.path.join(self.repo_root, "backend", "core", "tools")
+
+        code_inventory = {
+            "declared_tools_count": len(declared_tools),
+            "declared_tools": declared_tools,
+            "services_files": sorted([f for f in os.listdir(services_dir) if f.endswith(".py")]) if os.path.isdir(services_dir) else [],
+            "routers_files": sorted([f for f in os.listdir(routers_dir) if f.endswith(".py")]) if os.path.isdir(routers_dir) else [],
+            "tools_files": sorted([f for f in os.listdir(tools_dir) if f.endswith(".py")]) if os.path.isdir(tools_dir) else [],
+        }
 
         return {
             "timestamp": time.time(),
             "console": console_sig,
             "telemetry": telemetry_sig,
             "architecture": arch_sig,
+            "code_inventory": code_inventory,
+            "capabilities_ledger_excerpt": ledger_summary[:3500] if ledger_summary else "",
         }
 
 
@@ -339,9 +427,13 @@ class L2ImprovementFormulator:
                 worker_id="proposal_synthesizer",
                 role="architect",
                 mission=(
-                    "Synthétise 1 à 3 propositions concrètes d'améliorations sous forme d'un tableau JSON strict. "
+                    "RÈGLE STRICTE : L'auto-amélioration désigne EXCLUSIVEMENT l'amélioration logicielle et "
+                    "architecturale du code source Python/JS/Firmware de J.A.R.V.I.S. INTERDICTION ABSOLUE de "
+                    "proposer des conseils personnels, sportifs, santé ou lifestyle à l'utilisateur, et INTERDICTION "
+                    "de reproposer un outil déjà listé dans CAPABILITIES_LEDGER.md. "
+                    "Synthétise 1 à 3 propositions concrètes d'améliorations techniques sous forme d'un tableau JSON strict. "
                     "Chaque élément doit comporter : title, target_subfolder, recommended_complexity (low|medium|high), "
-                    "rationale, ready_to_run_prompt, targeted_tests. "
+                    "rationale (ou technical_rationale), expected_benefit, files_to_modify_or_create, ready_to_run_prompt, targeted_tests. "
                     f"Signaux d'entrée : {signals_summary}"
                 ),
                 effort="high",
@@ -517,19 +609,38 @@ class L2ImprovementFormulator:
             if not isinstance(item, dict) or "title" not in item:
                 continue
             pid = f"watch_prop_{secrets.token_hex(4)}"
+            complexity = str(item.get("recommended_complexity") or item.get("complexity") or "medium").lower()
+            rationale = str(item.get("rationale") or item.get("technical_rationale") or "Détecté par analyse L2")
+            expected_benefit = str(item.get("expected_benefit") or "")
+            files_to_mod = item.get("files_to_modify_or_create") or item.get("targeted_tests") or []
+            if isinstance(files_to_mod, str):
+                files_to_mod = [files_to_mod]
             prop = ImprovementWatchProposal(
                 proposal_id=pid,
                 title=str(item.get("title", "Amélioration recommandée")),
                 target_subfolder=str(item.get("target_subfolder", "backend/services")),
-                recommended_complexity=str(item.get("recommended_complexity", "medium")).lower(),
-                rationale=str(item.get("rationale", "Détecté par analyse L2")),
+                recommended_complexity=complexity,
+                rationale=f"{rationale} — Bénéfice attendu : {expected_benefit}" if expected_benefit else rationale,
                 ready_to_run_prompt=str(item.get("ready_to_run_prompt", "")),
-                targeted_tests=item.get("targeted_tests", []),
+                targeted_tests=list(item.get("targeted_tests") or files_to_mod),
+                metadata={
+                    "files_to_modify_or_create": list(files_to_mod),
+                    "expected_benefit": expected_benefit,
+                    "technical_rationale": rationale,
+                },
             )
+            valid_prop, reject_reason = validate_technical_proposal(prop)
+            if not valid_prop:
+                logger.info(f"[L2ImprovementFormulator] Proposition rejetée ('{prop.title}') : {reject_reason}")
+                continue
             proposals.append(prop)
 
         if not proposals:
-            proposals = self._generate_rule_based_fallback(signals)
+            fallback_candidates = self._generate_rule_based_fallback(signals)
+            for fc in fallback_candidates:
+                ok_fc, _ = validate_technical_proposal(fc)
+                if ok_fc:
+                    proposals.append(fc)
 
         return proposals[:3]
 
@@ -577,9 +688,13 @@ class WeeklyImprovementWatchService:
             # 2. Formulation via L2 (ou heuristiques de repli)
             proposals = await self.formulator.formulate_proposals(signals)
 
-            # 3. Filtrage et déduplication
+            # 3. Filtrage anti-coaching, anti-doublon ledger et déduplication
             retained: List[ImprovementWatchProposal] = []
             for p in proposals:
+                valid_tech, reason = validate_technical_proposal(p)
+                if not valid_tech:
+                    logger.info(f"[WeeklyImprovementWatch] Proposition invalide rejetée ('{p.title}') : {reason}")
+                    continue
                 if self.store.is_duplicate(p.fingerprint, cooldown_days=7.0):
                     logger.info(f"[WeeklyImprovementWatch] Proposition dédupliquée ignorée : '{p.title}'")
                     continue
@@ -702,3 +817,86 @@ WeeklyImprovementWatchScheduler = WeeklyImprovementWatchService
 
 # Singleton global
 weekly_improvement_watch_service = WeeklyImprovementWatchService()
+
+
+async def generate_and_send_technical_improvements(
+    focus_area: str = "",
+    count: int = 3,
+    trigger_source: str = "manual",
+    service_instance: Optional[WeeklyImprovementWatchService] = None,
+) -> Dict[str, Any]:
+    """Fonction maîtresse en 4 étapes :
+    1. Audit interne du code réel et de CAPABILITIES_LEDGER.md + télémétrie/erreurs.
+    2. Vraie recherche technique L2 via agents Antigravity (agy) sur le VPS (zéro coaching personnel).
+    3. Vérification anti-doublon (verify_capability_not_already_implemented) & validation lexicale anti-coaching.
+    4. Envoi sur Telegram avec boutons d'action directe (✅ Approuver, ❌ Rejeter, ✏️ Modifier).
+    """
+    svc = service_instance or weekly_improvement_watch_service
+
+    # Étape 1 : Audit interne du code, de CAPABILITIES_LEDGER.md et de la télémétrie
+    signals = await svc.collector.collect_all_signals()
+    if focus_area:
+        signals["focus_area"] = focus_area
+    signals["trigger_source"] = trigger_source
+
+    # Étape 2 : Recherche technique L2 via agents Antigravity (ou repli déterministe si hors-ligne)
+    raw_proposals = await svc.formulator.formulate_proposals(signals)
+
+    # Étape 3 : Filtrage strict (anti-coaching + anti-doublon CAPABILITIES_LEDGER.md + sous-dossier valide)
+    validated: List[ImprovementWatchProposal] = []
+    rejected: List[Dict[str, str]] = []
+
+    for prop in raw_proposals:
+        if focus_area and focus_area.strip():
+            norm_focus = focus_area.strip().replace("\\", "/").lstrip("./")
+            if any(norm_focus.startswith(p) for p in VALID_SUBFOLDER_PREFIXES):
+                prop.target_subfolder = norm_focus
+
+        ok_tech, reason = validate_technical_proposal(prop)
+        if not ok_tech:
+            rejected.append({"title": prop.title, "reason": reason})
+            continue
+
+        # En mode manuel ('propose'), on évite de bloquer si Pierre redemande explicitement des idées,
+        # mais en mode automatique ('scheduler') on applique le cooldown de 7 jours.
+        if trigger_source != "manual" and svc.store.is_duplicate(prop.fingerprint, cooldown_days=7.0):
+            rejected.append({"title": prop.title, "reason": "Déjà proposée au cours des 7 derniers jours."})
+            continue
+
+        validated.append(prop)
+        svc.store.save(prop)
+        if len(validated) >= max(1, count):
+            break
+
+    # Si toutes les propositions L2 ont été filtrées, compléter avec les propositions techniques de repli
+    if not validated:
+        for fb in svc.formulator._generate_rule_based_fallback(signals):
+            ok_fb, _ = validate_technical_proposal(fb)
+            if ok_fb:
+                validated.append(fb)
+                svc.store.save(fb)
+                if len(validated) >= max(1, count):
+                    break
+
+    # Étape 4 : Envoi sur Telegram avec boutons inline (✅ Approuver, ❌ Rejeter, ✏️ Modifier)
+    sent_message_ids: List[int] = []
+    telegram_errors: List[str] = []
+    for p in validated:
+        tg_prop = p.to_telegram_proposal()
+        sent, mid, msg = await svc.telegram_adapter.send_proposal(tg_prop)
+        if sent and mid is not None:
+            sent_message_ids.append(mid)
+        else:
+            telegram_errors.append(msg)
+
+    return {
+        "status": "ok",
+        "trigger_source": trigger_source,
+        "focus_area": focus_area,
+        "count": len(validated),
+        "sent_count": len(sent_message_ids),
+        "sent_message_ids": sent_message_ids,
+        "proposals": [p.to_dict() for p in validated],
+        "rejected_proposals": rejected,
+        "telegram_errors": telegram_errors,
+    }

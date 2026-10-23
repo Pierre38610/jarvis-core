@@ -1177,13 +1177,121 @@ async def _execute_dispatch_tool(
             )
 
     # ─── self_improve / auto_amelioration (Auto-Amélioration Autonome VPS) ─────
-    elif name in ("self_improve", "auto_amelioration", "auto_improve", "run_prompt_batch", "prompt_batch"):
+    elif name in (
+        "self_improve",
+        "auto_amelioration",
+        "auto_improve",
+        "run_prompt_batch",
+        "prompt_batch",
+        "propose_self_improvements",
+        "veiller_ameliorations_jarvis",
+    ):
+        raw_mode = str(args.get("mode") or "").strip().lower()
+        objectif = str(args.get("objectif") or args.get("goal") or args.get("task") or "").strip()
+        sous_dossier_cible = str(args.get("sous_dossier_cible") or args.get("subfolder") or "").strip()
         batch_file_path = args.get("batch_file_path") or args.get("file_path") or args.get("file")
         batch_content = args.get("batch_content") or args.get("content") or args.get("markdown")
         is_sync = bool(args.get("sync", False) or args.get("wait_completion", False))
 
+        obj_lower = objectif.lower()
+        propose_triggers = (
+            "propose",
+            "proposition",
+            "idée d'amélioration",
+            "idées d'amélioration",
+            "idee d'amelioration",
+            "idees d'amelioration",
+            "veille",
+            "qu'est-ce qu'on peut améliorer",
+            "comment t'améliorer",
+            "comment améliorer jarvis",
+        )
+        is_propose_mode = (
+            raw_mode == "propose"
+            or name in ("propose_self_improvements", "veiller_ameliorations_jarvis")
+            or (
+                raw_mode not in ("implement", "batch")
+                and not batch_file_path
+                and not batch_content
+                and any(tr in obj_lower for tr in propose_triggers)
+            )
+        )
+
+        # 0. Mode Propositions Techniques & Veille L2 vers Telegram ('propose')
+        if is_propose_mode:
+            from services.weekly_improvement_watch import generate_and_send_technical_improvements
+
+            if is_sync:
+                try:
+                    watch_res = await generate_and_send_technical_improvements(
+                        focus_area=sous_dossier_cible,
+                        count=int(args.get("count", 3)),
+                        trigger_source="manual",
+                    )
+                    return ToolResult.done(
+                        user_message=(
+                            f"Audit technique de CAPABILITIES_LEDGER.md et recherche L2 terminés : "
+                            f"{watch_res.get('count', 0)} proposition(s) d'auto-amélioration envoyée(s) sur Telegram avec boutons de validation."
+                        ),
+                        evidence=f"technical_improvements_sent count={watch_res.get('count', 0)}",
+                        verified=True,
+                        data=watch_res,
+                    ).to_dict()
+                except Exception as p_err:
+                    return ToolResult.failed(
+                        user_message=f"Erreur lors de la génération des propositions techniques : {p_err}",
+                        error_hint=str(p_err),
+                        verified=False,
+                    ).to_dict()
+
+            _focus = sous_dossier_cible
+            _sess = session
+
+            async def _run_propose_bg():
+                try:
+                    watch_res = await generate_and_send_technical_improvements(
+                        focus_area=_focus,
+                        count=int(args.get("count", 3)),
+                        trigger_source="manual",
+                    )
+                    cnt = watch_res.get("count", 0)
+                    oral_msg = (
+                        f"Pierre, j'ai audité mon registre de capacités et mon code source avec mes agents L2. "
+                        f"Je viens de t'envoyer {cnt} propositions techniques d'auto-amélioration sur Telegram avec les boutons pour les approuver en un clic."
+                    )
+                    try:
+                        await voice_injection_queue.enqueue(
+                            text=oral_msg,
+                            priority=InjectionPriority.TOOL_RESPONSE,
+                            session=_sess,
+                            action_key=f"self_improve_propose_{int(time.time())}",
+                            metadata={"status": "completed", "count": cnt},
+                        )
+                    except Exception as inj_err:
+                        logger.warning(f"[SelfImprove Propose BG] Erreur injection vocale : {inj_err}")
+                except Exception as exc:
+                    logger.error(f"[SelfImprove Propose BG] Erreur : {exc}")
+                finally:
+                    active_task_controller["bg_task"] = None
+
+            bg_task = asyncio.create_task(_run_propose_bg())
+            active_task_controller["bg_task"] = bg_task
+            return ToolResult.started(
+                user_message=(
+                    "Audit technique du code (CAPABILITIES_LEDGER.md) et recherche L2 lancés en tâche de fond sur le VPS. "
+                    "Les propositions d'auto-amélioration avec boutons de validation arrivent sur ton Telegram."
+                ),
+                evidence="propose_technical_improvements_started",
+                verified=True,
+                data={"status": "started", "mode": "propose", "focus_area": sous_dossier_cible},
+            ).to_dict()
+
+        # Si mode='batch' ou l'objectif mentionne un batch/fichier sans chemin explicite, utiliser le dernier fichier reçu
+        if (raw_mode == "batch" or name in ("run_prompt_batch", "prompt_batch")) and not batch_file_path and not batch_content:
+            batch_file_path = "latest"
+
         # 1. Mode Série de Prompts (Prompt Batch Runner)
-        if batch_file_path or batch_content or name in ("run_prompt_batch", "prompt_batch"):
+        if batch_file_path or batch_content or raw_mode == "batch" or name in ("run_prompt_batch", "prompt_batch"):
             from services.prompt_batch_runner import run_prompt_batch
             if is_sync:
                 try:
@@ -2620,6 +2728,8 @@ async def _execute_dispatch_tool(
                 items_desc.append(f"E-mail {idx} : De '{m.get('from', 'Inconnu')}', Objet '{m.get('subject', 'Sans sujet')}', reçu le {m.get('date', '')}. Extrait : {m.get('snippet', '')}")
                 if m.get("has_attachments"):
                     items_desc.append(f"  Pièces jointes : {', '.join(m.get('attachments', []))}")
+                    if m.get("saved_paths"):
+                        items_desc.append(f"  Fichiers téléchargés localement (prêts pour self_improve) : {', '.join(m.get('saved_paths', []))}")
             emails_summary_text = "\n".join(items_desc)
             instruction = f"Voici le résultat de la consultation des e-mails reçus sur {config.DEFAULT_RECIPIENT_EMAIL} :\n{emails_summary_text}\n\nPrésente directement à Pierre à l'oral avec ta voix Aoede un compte-rendu clair, concis et naturel de ses messages récents."
             return ToolResult.done(

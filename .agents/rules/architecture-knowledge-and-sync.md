@@ -6,7 +6,8 @@ trigger: always_on
 
 
 ## 1. Obligation de Mise à Jour (Une fois le travail terminé)
-- Dès qu'une modification substantielle, un nouvel outil, un nouveau service, un changement de modèle ou une refactorisation est effectuée sur le projet, l'agent **DOIT OBLIGATOIREMENT COMPLÉTER ET METTRE À JOUR** le fichier `ARCHITECTURE_COMPLETE_JARVIS.md`.
+- Dès qu'une modification substantielle, un nouvel outil, un nouveau service, un changement de modèle ou une refactorisation est effectuée sur le projet, l'agent **DOIT OBLIGATOIREMENT COMPLÉTER ET METTRE À JOUR** le fichier `ARCHITECTURE_COMPLETE_JARVIS.md` ainsi que `CAPABILITIES_LEDGER.md`.
+- **RÈGLE OBLIGATOIRE D'AUTO-AMÉLIORATION** : Toute mission d'auto-amélioration (`self_improve` ou `prompt_batch_runner`) qui ajoute, modifie ou corrige une fonctionnalité de Jarvis DOIT mettre à jour `CAPABILITIES_LEDGER.md` (et `ARCHITECTURE_COMPLETE_JARVIS.md` si l'architecture change) avant de clôturer la tâche.
 - **Points de vigilance pour la mise à jour** :
   - Ajuster les schémas, descriptions de services et listes d'outils si nécessaire.
   - Documenter les nouveaux endpoints ou contrats WebSockets le cas échéant.

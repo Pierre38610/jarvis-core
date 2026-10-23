@@ -133,8 +133,15 @@ class ConsoleMonitor:
         # Déclenchement autonome du SRE Antigravity sur anomalie critique / 500 / traceback
         if level in ("CRITICAL", "ERROR"):
             txt_lower = f"{source} {message} {details}".lower()
-            if any(k in txt_lower for k in ["500", "traceback", "uncaught exception", "critical", "fatal", "segmentation"]):
-                self.trigger_autonomous_healing(source, message, details)
+            ignore_sre_triggers = [
+                "[promptbatch bg]",
+                "[selfimprove bg]",
+                "fichier de batch introuvable",
+                "system_healing",
+            ]
+            if not any(ig in txt_lower for ig in ignore_sre_triggers):
+                if any(k in txt_lower for k in ["500", "traceback", "uncaught exception", "critical", "fatal", "segmentation"]):
+                    self.trigger_autonomous_healing(source, message, details)
 
     def trigger_autonomous_healing(self, source: str, message: str, details: str = ""):
         """Déclenche de manière autonome un agent Antigravity CLI pour inspecter le code source et écrire un patch."""

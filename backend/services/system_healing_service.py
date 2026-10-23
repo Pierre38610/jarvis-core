@@ -287,7 +287,21 @@ class SystemHealingService:
         """Applique le patch sur un fichier donné, vérifie sa syntaxe et calcule le diff.
         Retourne (succès, diff_unifié, message_erreur).
         """
+        logger_to_file = {
+            "jarvis.dispatcher": "backend/core/tools/dispatcher.py",
+            "jarvis.prompt_batch_runner": "backend/services/prompt_batch_runner.py",
+            "jarvis.self_improvement": "backend/services/self_improvement_service.py",
+            "jarvis.voice": "backend/routers/voice.py",
+        }
+        if target_file in logger_to_file:
+            target_file = logger_to_file[target_file]
+
         full_path = os.path.join(base_path, target_file)
+        if not os.path.exists(full_path) and not target_file.startswith("backend/"):
+            alt_path = os.path.join(base_path, "backend", target_file)
+            if os.path.exists(alt_path):
+                target_file = f"backend/{target_file}".replace("\\", "/")
+                full_path = alt_path
         if not os.path.exists(full_path):
             return False, "", f"Fichier cible introuvable : {target_file}"
 

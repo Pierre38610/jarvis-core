@@ -26,6 +26,8 @@ from services.weekly_improvement_watch import (
     WeeklyImprovementWatchScheduler,
     WeeklyImprovementWatchService,
     WeeklyImprovementWatchStore,
+    validate_technical_proposal,
+    generate_and_send_technical_improvements,
 )
 
 TEST_SCRATCH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "_test_scratch"))
@@ -373,6 +375,119 @@ async def test_scheduler_lifecycle():
         assert stopped is True
         assert service.is_running is False
         assert service.stop() is False
+    finally:
+        if os.path.exists(storage_file):
+            try:
+                os.remove(storage_file)
+            except Exception:
+                pass
+
+
+# ─── Tests Anti-Coaching & Pipeline Complet generate_and_send_technical_improvements ─
+def test_rejects_personal_lifestyle_proposals_and_already_implemented_tools():
+    """Vérifie qu'une proposition 'Faire plus de sport' ou un outil déjà dans CAPABILITIES_LEDGER.md est rejetée."""
+    # 1. Proposition de coaching sportif / lifestyle -> rejet immédiat
+    sport_prop = ImprovementWatchProposal(
+        proposal_id="bad_sport_1",
+        title="Faire plus de sport et boire de l'eau",
+        target_subfolder="backend/services",
+        recommended_complexity="low",
+        rationale="Faire une séance de sport quotidienne améliore la santé.",
+        ready_to_run_prompt="Rappeler à Pierre de faire du sport.",
+        targeted_tests=[],
+    )
+    ok_sport, reason_sport = validate_technical_proposal(sport_prop)
+    assert ok_sport is False
+    assert "anti-coaching" in reason_sport.lower() or "sport" in reason_sport.lower()
+
+    # 2. Proposition recréant un outil déjà implémenté dans CAPABILITIES_LEDGER.md -> rejet immédiat
+    dup_tool_prop = ImprovementWatchProposal(
+        proposal_id="bad_dup_tool",
+        title="Créer l'outil control_spotify pour écouter de la musique",
+        target_subfolder="backend/core/tools",
+        recommended_complexity="medium",
+        rationale="Permettre à Jarvis de contrôler Spotify.",
+        ready_to_run_prompt="Créer control_spotify dans declarations.py",
+        targeted_tests=["backend/tests/unit/test_spotify.py"],
+    )
+    ok_dup, reason_dup = validate_technical_proposal(dup_tool_prop)
+    assert ok_dup is False
+    assert "control_spotify" in reason_dup or "déjà implémenté" in reason_dup.lower()
+
+    # 3. Proposition technique valide sur le code de Jarvis -> acceptée
+    valid_tech_prop = ImprovementWatchProposal(
+        proposal_id="good_tech_1",
+        title="Ajout d'un disjoncteur adaptatif sur les appels HTTP de browser_agent",
+        target_subfolder="backend/services/browser_agent",
+        recommended_complexity="medium",
+        rationale="Réduit les timeouts lors des pics de latence CDP.",
+        ready_to_run_prompt="Implémenter un circuit-breaker asynchrone dans backend/services/browser_agent/runner.py",
+        targeted_tests=["backend/tests/unit/test_antigravity_task_engine.py"],
+    )
+    ok_valid, _ = validate_technical_proposal(valid_tech_prop)
+    assert ok_valid is True
+
+
+@pytest.mark.asyncio
+async def test_generate_and_send_technical_improvements_end_to_end():
+    """Vérifie l'exécution de bout en bout de generate_and_send_technical_improvements et l'envoi Telegram."""
+    storage_file = os.path.join(TEST_SCRATCH, f"gen_tech_{int(time.time()*1000)}.json")
+    try:
+        store = WeeklyImprovementWatchStore(storage_path=storage_file)
+        mock_telegram = MagicMock()
+        mock_telegram.send_proposal = AsyncMock(return_value=(True, 777, "OK"))
+
+        # Le formulateur retourne 1 proposition lifestyle (qui doit être filtrée) et 2 vraies propositions techniques
+        bad_prop = ImprovementWatchProposal(
+            proposal_id="p_bad_sport",
+            title="Programme de méditation et sommeil",
+            target_subfolder="backend/services",
+            recommended_complexity="low",
+            rationale="Mieux dormir",
+            ready_to_run_prompt="Coaching sommeil",
+        )
+        good_prop_1 = ImprovementWatchProposal(
+            proposal_id="p_good_1",
+            title="Cache sémantique Redis sur les requêtes search_web répétées",
+            target_subfolder="backend/services",
+            recommended_complexity="medium",
+            rationale="Réduction de 80% de la latence sur les requêtes identiques",
+            ready_to_run_prompt="Ajouter un cache TTL 30m dans backend/services/web_search.py",
+            targeted_tests=["backend/tests/unit/test_web_search.py"],
+        )
+        good_prop_2 = ImprovementWatchProposal(
+            proposal_id="p_good_2",
+            title="Support du reply Telegram pour modifier un prompt d'auto-amélioration",
+            target_subfolder="backend/services",
+            recommended_complexity="medium",
+            rationale="Permet d'éditer un prompt directement en répondant au message Telegram",
+            ready_to_run_prompt="Étendre fetch_telegram_updates_sync dans self_improvement_telegram.py",
+            targeted_tests=["backend/tests/unit/test_self_improvement_telegram.py"],
+        )
+
+        mock_formulator = MagicMock()
+        mock_formulator.formulate_proposals = AsyncMock(return_value=[bad_prop, good_prop_1, good_prop_2])
+
+        service = WeeklyImprovementWatchService(
+            store=store,
+            telegram_adapter_instance=mock_telegram,
+            formulator=mock_formulator,
+        )
+
+        res = await generate_and_send_technical_improvements(
+            focus_area="backend/services",
+            count=2,
+            trigger_source="manual",
+            service_instance=service,
+        )
+
+        assert res["status"] == "ok"
+        assert res["count"] == 2
+        assert res["sent_count"] == 2
+        assert res["sent_message_ids"] == [777, 777]
+        assert len(res["rejected_proposals"]) == 1
+        assert "méditation" in res["rejected_proposals"][0]["title"]
+        assert mock_telegram.send_proposal.call_count == 2
     finally:
         if os.path.exists(storage_file):
             try:

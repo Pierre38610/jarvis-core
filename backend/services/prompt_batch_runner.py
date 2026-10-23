@@ -31,7 +31,7 @@ from core.shared_state import (
     broadcast_supervision,
     active_task_controller,
 )
-from google_antigravity import _sanitize_secrets, find_antigravity_binary
+from google_antigravity import _sanitize_secrets, find_antigravity_binary, resolve_cli_model_args
 from ops.scripts.check_protected_paths import check_all_changes
 from services.model_routing.model_registry import get_registry
 from services.supervision_service import supervision_service
@@ -199,8 +199,59 @@ def validate_safe_batch_path(file_path: str, allowed_roots: Optional[List[str]] 
             f"Chemin de batch non autorisé (traversée de répertoire détectée ou hors périmètre) : {file_path}"
         )
 
-    # Vérification que le fichier existe et est accessible
+    # Vérification que le fichier existe et est accessible (avec résolution intelligente dans downloads/ et data/prompt_batches/)
     if not os.path.exists(resolved):
+        downloads_dir = getattr(config, "DOWNLOADS_DIR", os.path.join(REPO_ROOT, "downloads"))
+        chat_dir = getattr(config, "CHAT_UPLOADS_DIR", os.path.join(REPO_ROOT, "data", "chat_uploads"))
+        search_dirs = [
+            os.path.abspath(downloads_dir),
+            os.path.abspath(BATCHES_DIR),
+            os.path.abspath(chat_dir),
+            os.path.abspath(REPO_ROOT),
+        ]
+        base_name = os.path.basename(raw_path).strip()
+        stem = os.path.splitext(base_name)[0].rstrip(".").strip().lower()
+
+        # 1. Mot-clé spécial ("latest", "dernier", "telegram")
+        if raw_path.lower() in ("latest", "dernier", "telegram", "last"):
+            try:
+                from services.self_improvement_telegram import get_latest_telegram_file
+                latest_tg = get_latest_telegram_file()
+                if latest_tg and os.path.isfile(latest_tg):
+                    return os.path.abspath(latest_tg)
+            except Exception:
+                pass
+
+        # 2. Recherche exacte par nom de fichier (ou avec extension .md ajoutée)
+        for sdir in search_dirs:
+            if not os.path.isdir(sdir):
+                continue
+            for cand_name in (base_name, f"{base_name}.md"):
+                cand = os.path.abspath(os.path.join(sdir, cand_name))
+                if os.path.isfile(cand):
+                    return cand
+
+        # 3. Recherche par préfixe (utile quand le nom de pièce jointe e-mail ou Telegram a été tronqué)
+        if len(stem) >= 6 and "nonexistent" not in stem:
+            for sdir in search_dirs[:3]:
+                if not os.path.isdir(sdir):
+                    continue
+                try:
+                    entries = sorted(
+                        [
+                            os.path.join(sdir, fn)
+                            for fn in os.listdir(sdir)
+                            if fn.lower().endswith((".md", ".txt"))
+                            and (fn.lower().startswith(stem) or stem in fn.lower())
+                        ],
+                        key=lambda p: os.path.getmtime(p),
+                        reverse=True,
+                    )
+                    if entries and os.path.isfile(entries[0]):
+                        return os.path.abspath(entries[0])
+                except Exception:
+                    pass
+
         raise FileNotFoundError(f"Fichier de batch introuvable : {file_path}")
     if not os.path.isfile(resolved):
         raise ValueError(f"Le chemin spécifié n'est pas un fichier : {file_path}")
@@ -280,8 +331,11 @@ def parse_prompt_batch_markdown(content: str, source_file: Optional[str] = None)
             norm_lvl = level_paren.group(1).lower()
             level = "high" if norm_lvl in ("high", "approfondie", "pro") else ("low" if norm_lvl in ("low", "rapide") else "medium")
         else:
-            # 2. Chercher dans le corps de section (ex: NIVEAU : high, EFFORT : low)
-            lvl_match = re.search(r'(?im)^(?:NIVEAU|EFFORT|COMPLEXIT[ÉE]|MOD[ÈE]LE)\s*[:=]\s*([a-zA-Z0-9_\-]+)', section_text)
+            # 2. Chercher dans le corps de section (ex: NIVEAU : high, **Niveau conseillé : high**, EFFORT : low)
+            lvl_match = re.search(
+                r'(?im)^[\*\-\s]*(?:NIVEAU(?:\s+CONSEILL[ÉE])?|EFFORT|COMPLEXIT[ÉE]|MOD[ÈE]LE)[\*\s]*[:=]\s*[\*`]*([a-zA-Z0-9_\-]+)',
+                section_text,
+            )
             if lvl_match:
                 norm_lvl = lvl_match.group(1).lower()
                 level = "high" if norm_lvl in ("high", "approfondie", "pro") else ("low" if norm_lvl in ("low", "rapide") else "medium")
@@ -295,6 +349,8 @@ def parse_prompt_batch_markdown(content: str, source_file: Optional[str] = None)
         curr_section = "body"
         for line in section_text.splitlines():
             s = line.strip()
+            if re.match(r'^```[a-zA-Z0-9_\-]*$', s):
+                continue
             if not s or (len(s) >= 3 and all(c in "-*=_ " for c in s)):
                 if curr_section in ("ro", "validation"):
                     curr_section = "body"
@@ -558,28 +614,28 @@ async def _execute_single_prompt(
         f"OBJECTIF : {prompt.body}\n"
         f"PÉRIMÈTRE AUTORISÉ : Travaille STRICTEMENT ET UNIQUEMENT dans : {', '.join(scope.allowed_subdirs)}.\n"
         f"CONTRAT D'ARCHITECTURE : Consulte impérativement le fichier '{scope.architecture_file}'.\n"
+        f"RÈGLE OBLIGATOIRE : Toute mission d'auto-amélioration (`self_improve` ou `prompt_batch_runner`) qui ajoute, modifie ou corrige une fonctionnalité de Jarvis DOIT mettre à jour `CAPABILITIES_LEDGER.md` (et `ARCHITECTURE_COMPLETE_JARVIS.md` si l'architecture change) avant de clôturer la tâche.\n"
         f"TESTS CIBLÉS : Lance uniquement 'pytest {tests_str}' pendant tes itérations.\n"
         f"INTERDICTIONS ABSOLUES :\n"
         f"- Ne modifie AUCUN fichier .env* ni les clés d'API ni auth_service.py.\n"
         f"- Ne supprime aucun test unitaire existant.\n"
-        f"- Reste confiné à {scope.allowed_subdirs}.\n"
+        f"- Reste confiné à {scope.allowed_subdirs} (et CAPABILITIES_LEDGER.md / backend/tests/).\n"
         f"{read_only_note}\n"
         f"{feedback_note}\n"
         f"Conclus avec un bloc JSON final conforme à AGENTS.md."
     )
 
     agy_bin = find_antigravity_binary() or shutil.which("agy") or "agy"
+    model_args = resolve_cli_model_args(model, effort=effort)
     cmd = [
         agy_bin,
         "-p", agent_prompt,
         "--dangerously-skip-permissions",
         "--output-format", "text",
-        "-m", model,
+        *model_args,
     ]
-    if effort:
-        cmd.extend(["-c", f"effort={effort}"])
 
-    append_agy_log(task_id, f"Lancement Prompt {prompt.label} avec agy (modèle: {model}, effort: {effort or 'none'})...")
+    append_agy_log(task_id, f"Lancement Prompt {prompt.label} avec agy (modèle: {model}, effort: {effort or 'none'}, args: {' '.join(model_args)})...")
     exit_code, stdout, stderr = await _run_agy_process(
         cmd=cmd,
         cwd=worktree_dir,
@@ -590,6 +646,14 @@ async def _execute_single_prompt(
     # 3. Récupération des fichiers modifiés
     changes = _get_git_modified_files(worktree_dir)
     modified_files = [path for _, path in changes]
+
+    if exit_code != 0 and not modified_files:
+        err_detail = (stderr or stdout or f"code de sortie {exit_code}")[-600:]
+        return False, f"Antigravity CLI a échoué (code {exit_code}) : {err_detail}", [], model
+
+    if not modified_files:
+        err_detail = (stderr or stdout or "aucune sortie")[-400:]
+        return False, f"Aucun fichier n'a été modifié par l'agent dans le worktree ({err_detail}).", [], model
 
     # 4. Portes de validation locale
     # A. Chemins protégés
@@ -647,23 +711,49 @@ async def _execute_single_prompt(
 
     # D. Commande de validation spécifique au prompt si présente
     if prompt.validation_command:
-        append_agy_log(task_id, f"Exécution de la commande de validation spécifique du prompt...")
-        try:
-            # Séparation de la commande pour exécution
-            val_proc = subprocess.run(
-                prompt.validation_command,
-                shell=True,
-                cwd=worktree_dir,
-                capture_output=True,
-                text=True,
-                timeout=180,
-                **low_prio_kwargs,
-            )
-            if val_proc.returncode != 0:
-                err_msg = f"Échec de la commande de validation spécifique : {val_proc.stdout[-400:]}\n{val_proc.stderr[-200:]}"
-                return False, err_msg, modified_files, model
-        except Exception as e:
-            return False, f"Erreur validation spécifique : {e}", modified_files, model
+        append_agy_log(task_id, "Exécution de la commande de validation spécifique du prompt...")
+        val_env = os.environ.copy()
+        val_env["CI"] = "1"
+        val_env["GIT_TERMINAL_PROMPT"] = "0"
+        venv_bin = os.path.dirname(python_bin) if python_bin else ""
+        if venv_bin:
+            val_env["PATH"] = f"{venv_bin}{os.pathsep}{val_env.get('PATH', '')}"
+        val_env["PYTHONPATH"] = f"{os.path.join(worktree_dir, 'backend')}{os.pathsep}{worktree_dir}{os.pathsep}{val_env.get('PYTHONPATH', '')}"
+
+        for raw_cmd_line in prompt.validation_command.splitlines():
+            cmd_line = raw_cmd_line.strip().strip("`")
+            if not cmd_line or cmd_line.startswith("#"):
+                continue
+            # Compatibilité Windows si la commande commence par 'timeout <N>' ou 'env VAR=VAL'
+            if os.name == "nt":
+                cmd_line = re.sub(r"^timeout\s+\d+\s+", "", cmd_line)
+                while cmd_line.startswith("env ") or re.match(r"^[A-Z0-9_]+=\S+\s+", cmd_line):
+                    if cmd_line.startswith("env "):
+                        cmd_line = cmd_line[4:].lstrip()
+                    m_env = re.match(r"^([A-Z0-9_]+)=(\S+)\s+(.*)$", cmd_line)
+                    if m_env:
+                        val_env[m_env.group(1)] = m_env.group(2)
+                        cmd_line = m_env.group(3).lstrip()
+                    else:
+                        break
+                if cmd_line.startswith("python "):
+                    cmd_line = f'"{python_bin}" ' + cmd_line[7:]
+            try:
+                val_proc = subprocess.run(
+                    cmd_line,
+                    shell=True,
+                    cwd=worktree_dir,
+                    env=val_env,
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                    **low_prio_kwargs,
+                )
+                if val_proc.returncode != 0:
+                    err_msg = f"Échec de la commande de validation spécifique ({cmd_line}) : {val_proc.stdout[-400:]}\n{val_proc.stderr[-200:]}"
+                    return False, err_msg, modified_files, model
+            except Exception as e:
+                return False, f"Erreur validation spécifique ({cmd_line}) : {e}", modified_files, model
 
     return True, "Validation locale réussie", modified_files, model
 

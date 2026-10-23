@@ -260,20 +260,26 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="self_improve",
                     description=(
-                        "AUTO-AMÉLIORATION ET REFACTORISATION DU CODE DE J.A.R.V.I.S. VIA ANTIGRAVITY SUR LE VPS (PROMPT UNIQUE OU BATCH DE PROMPTS). "
-                        "Permet à Jarvis de recoder, d'adapter et de tester ses propres modules de façon autonome, "
-                        "soit pour un objectif unique confiné dans un sous-dossier logique (ex: 'backend/services', 'backend/core/tools', 'backend/services/browser_agent', 'ops/deploy', 'frontend/static'), "
-                        "soit en exécutant toute une série de prompts séquentiels markdown (Prompt Batch Runner via 'batch_file_path' ou 'batch_content') "
-                        "avec validation stricte (py_compile, check_protected_paths, tests unitaires ciblés) et ouverture d'une PR GitHub unique. "
-                        "Prends l'initiative d'utiliser cet outil dès que Pierre demande d'adapter, d'améliorer, d'optimiser, d'exécuter un batch de prompts ou d'ajouter une fonctionnalité dans le code source de Jarvis."
+                        "AUTO-AMÉLIORATION ET REFACTORISATION DU CODE DE J.A.R.V.I.S. VIA ANTIGRAVITY SUR LE VPS (PROPOSITIONS, PROMPT UNIQUE OU BATCH DE PROMPTS). "
+                        "À UTILISER OBLIGATOIREMENT quand Pierre demande des propositions d'auto-amélioration, demande comment améliorer Jarvis, "
+                        "veut recevoir des idées d'améliorations sur Telegram, ou demande à Jarvis de s'auto-coder / exécuter un fichier de prompts. "
+                        "NE JAMAIS utiliser 'create_push_reminder' pour envoyer des propositions d'amélioration. "
+                        "Supporte 3 modes via 'mode' : "
+                        "1) 'propose' : audite CAPABILITIES_LEDGER.md + le code réel + la recherche L2 et envoie des cartes interactives avec boutons '✅ Approuver' sur Telegram ; "
+                        "2) 'implement' : recode et teste un objectif précis dans un worktree Git isolé et ouvre une PR GitHub ; "
+                        "3) 'batch' : exécute de A à Z un fichier .md de prompts (reçu par Telegram ou par e-mail) via 'batch_file_path' ou 'batch_content'."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
                         type="OBJECT",
                         properties={
+                            "mode": types.Schema(
+                                type="STRING",
+                                description="Mode d'action : 'propose' (génère et envoie des propositions techniques d'auto-amélioration sur Telegram), 'implement' (code un objectif précis dans un worktree Git et ouvre une PR), ou 'batch' (exécute un fichier .md de prompts de A à Z)."
+                            ),
                             "objectif": types.Schema(
                                 type="STRING",
-                                description="L'objectif précis de recodage, refactorisation ou amélioration logicielle de Jarvis (pour un prompt unique)."
+                                description="L'objectif précis de recodage, refactorisation ou amélioration logicielle de Jarvis (pour 'implement' ou 'propose')."
                             ),
                             "sous_dossier_cible": types.Schema(
                                 type="STRING",
@@ -289,7 +295,7 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                             ),
                             "batch_file_path": types.Schema(
                                 type="STRING",
-                                description="Chemin local sécurisé d'un fichier .md contenant une série ordonnée de prompts (Prompt Batch) à implémenter, tester et valider de bout en bout sur le VPS."
+                                description="Chemin ou nom du fichier .md contenant une série ordonnée de prompts (Prompt Batch, reçu sur Telegram ou par e-mail, ou 'latest' pour le dernier fichier reçu) à implémenter, tester et valider de bout en bout sur le VPS."
                             ),
                             "batch_content": types.Schema(
                                 type="STRING",

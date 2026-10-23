@@ -269,6 +269,163 @@ class ArchitectureKnowledgeService:
             context=context
         )
 
+    def get_capabilities_ledger_summary(self) -> str:
+        """Charge et retourne le contenu de CAPABILITIES_LEDGER.md avec rechargement dynamique par mtime."""
+        return get_capabilities_ledger_summary()
+
+    def verify_capability_not_already_implemented(
+        self,
+        proposal_title: str,
+        target_files: Optional[List[str]] = None,
+    ) -> tuple[bool, str]:
+        """Vérifie si une capacité est déjà implémentée dans CAPABILITIES_LEDGER.md ou declarations.py."""
+        return verify_capability_not_already_implemented(proposal_title, target_files or [])
+
+
+_LEDGER_CACHE: Dict[str, Any] = {
+    "path": "",
+    "mtime": 0.0,
+    "content": "",
+}
+
+
+def _resolve_repo_root() -> str:
+    try:
+        from config import BASE_DIR
+        if os.path.exists(os.path.join(BASE_DIR, "CAPABILITIES_LEDGER.md")):
+            return BASE_DIR
+    except Exception:
+        pass
+    cand = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if os.path.exists(os.path.join(cand, "CAPABILITIES_LEDGER.md")):
+        return cand
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def get_capabilities_ledger_summary(ledger_path: Optional[str] = None) -> str:
+    """Charge CAPABILITIES_LEDGER.md avec rechargement automatique basé sur os.path.getmtime()."""
+    path = ledger_path or os.path.join(_resolve_repo_root(), "CAPABILITIES_LEDGER.md")
+    if not os.path.exists(path):
+        logger.warning(f"[ArchitectureService] CAPABILITIES_LEDGER.md introuvable : {path}")
+        return ""
+    try:
+        mtime = os.path.getmtime(path)
+        if _LEDGER_CACHE["path"] == path and _LEDGER_CACHE["mtime"] == mtime and _LEDGER_CACHE["content"]:
+            return _LEDGER_CACHE["content"]
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+        _LEDGER_CACHE["path"] = path
+        _LEDGER_CACHE["mtime"] = mtime
+        _LEDGER_CACHE["content"] = content
+        return content
+    except Exception as e:
+        logger.error(f"[ArchitectureService] Erreur lecture CAPABILITIES_LEDGER.md : {e}")
+        return ""
+
+
+def _extract_implemented_section(ledger_text: str) -> str:
+    """Extrait uniquement la Section 1 (CAPACITÉS IMPLÉMENTÉES) du ledger."""
+    if not ledger_text:
+        return ""
+    m = re.search(
+        r"##\s*1\.\s*CAPACIT[ÉE]S\s+IMPL[ÉE]MENT[ÉE]ES.*?(?=\n##\s*2\.|\Z)",
+        ledger_text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    return m.group(0) if m else ledger_text
+
+
+def _load_declared_tool_names() -> List[str]:
+    """Extrait la liste des outils déclarés dans backend/core/tools/declarations.py."""
+    root = _resolve_repo_root()
+    decl_path = os.path.join(root, "backend", "core", "tools", "declarations.py")
+    if not os.path.exists(decl_path):
+        decl_path = os.path.join(root, "core", "tools", "declarations.py")
+    if not os.path.exists(decl_path):
+        return []
+    try:
+        with open(decl_path, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        return list(dict.fromkeys(re.findall(r'name="([a-zA-Z0-9_]+)"', text)))
+    except Exception:
+        return []
+
+
+def verify_capability_not_already_implemented(
+    proposal_title: str,
+    target_files: Optional[List[str]] = None,
+) -> tuple[bool, str]:
+    """Vérifie dans CAPABILITIES_LEDGER.md et dans declarations.py si une capacité existe déjà.
+
+    Retourne (is_new_and_valid: bool, reason: str) :
+    - (False, "...") si la proposition tente de recréer un outil ou une capacité déjà existante.
+    - (True, "OK") si la proposition apporte une amélioration ou une capacité nouvelle.
+    """
+    title_clean = (proposal_title or "").strip()
+    if not title_clean:
+        return False, "Titre de proposition vide."
+
+    title_lower = title_clean.lower()
+    ledger_text = get_capabilities_ledger_summary()
+    sec1_text = _extract_implemented_section(ledger_text).lower()
+    declared_tools = _load_declared_tool_names()
+
+    # Verbes indiquant la création from-scratch d'un outil déjà existant
+    creation_prefixes = (
+        "créer l'outil ",
+        "creer l'outil ",
+        "ajouter l'outil ",
+        "implémenter l'outil ",
+        "implementer l'outil ",
+        "création de l'outil ",
+        "ajout de l'outil ",
+        "nouvel outil ",
+        "create tool ",
+        "add tool ",
+    )
+    is_new_tool_claim = any(p in title_lower for p in creation_prefixes)
+
+    # 1. Vérifier si un nom d'outil exact de declarations.py est cité comme "à créer"
+    for tool_name in declared_tools:
+        t_low = tool_name.lower()
+        if len(t_low) < 4:
+            continue
+        # Si le titre demande de créer/ajouter cet outil existant, ou ne contient que le nom de l'outil
+        if re.search(rf"\b{re.escape(t_low)}\b", title_lower):
+            if is_new_tool_claim or title_lower.strip("`'\" ") == t_low:
+                return (
+                    False,
+                    f"L'outil '{tool_name}' est déjà implémenté dans declarations.py et CAPABILITIES_LEDGER.md.",
+                )
+
+    # 2. Vérifier dans la Section 1 de CAPABILITIES_LEDGER.md si un identifiant backtické est déjà listé comme capacité
+    backticked_symbols = re.findall(r"`([a-zA-Z0-9_]{4,})`", title_clean)
+    for sym in backticked_symbols:
+        sym_low = sym.lower()
+        if sym_low in [t.lower() for t in declared_tools] and is_new_tool_claim:
+            return (
+                False,
+                f"La capacité '{sym}' figure déjà parmi les outils opérationnels de Jarvis.",
+            )
+
+    # 3. Vérifier les correspondances directes d'outils existants même sans backticks quand il s'agit d'un doublon manifeste
+    for tool_name in declared_tools:
+        t_low = tool_name.lower()
+        if t_low in title_lower and t_low in sec1_text:
+            # Si la proposition ne parle ni d'optimiser, ni de corriger, ni de refactoriser, ni d'étendre, ni de tester
+            enhancement_words = (
+                "optimis", "amélior", "amelior", "refactor", "corrig", "fix", "cache",
+                "résilien", "resilien", "test", "latence", "timeout", "sécur", "secur",
+                "enrichi", "étend", "etend", "ajout de paramètre", "mode",
+            )
+            if not any(ew in title_lower for ew in enhancement_words):
+                return (
+                    False,
+                    f"La fonctionnalité '{tool_name}' est déjà implémentée et listée dans CAPABILITIES_LEDGER.md.",
+                )
+
+    return True, "Capacité validée (non redondante avec CAPABILITIES_LEDGER.md)."
+
 
 # Instance singleton
 architecture_service = ArchitectureKnowledgeService()

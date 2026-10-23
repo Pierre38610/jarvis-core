@@ -23,7 +23,8 @@ Ce document définit les directives d'exécution obligatoires pour tout agent au
   - `docs/ARCHITECTURE.md` : Spécifications, documentation technique et workflows n8n.
   - `_archive/ARCHITECTURE.md` : Sauvegardes, baselines et scripts historiques décommissionnés.
 
-## 4. Rigueur & Vérification du Travail
+## 4. Rigueur, Registre de Capacités & Vérification du Travail
+- **RÈGLE OBLIGATOIRE (`CAPABILITIES_LEDGER.md`)** : Toute mission d'auto-amélioration (`self_improve` ou `prompt_batch_runner`) qui ajoute, modifie ou corrige une fonctionnalité de Jarvis DOIT mettre à jour `CAPABILITIES_LEDGER.md` (et `ARCHITECTURE_COMPLETE_JARVIS.md` si l'architecture change) avant de clôturer la tâche.
 - Vérifie systématiquement tes modifications (tests unitaires `pytest` via `.\venv\Scripts\pytest.exe -v backend/tests/`, vérification de syntaxe Python, linting) avant de clore la session.
 - Ne réécris pas un fichier existant en entier si des modifications ciblées suffisent.
 

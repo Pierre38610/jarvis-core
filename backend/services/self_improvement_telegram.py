@@ -731,3 +731,315 @@ class SelfImprovementTelegramAdapter:
 
 # Singleton par défaut
 telegram_proposal_adapter = SelfImprovementTelegramAdapter()
+
+
+# ─── Réception de Fichiers, Messages & Callbacks Telegram (Polling & On-Demand) ─
+_TELEGRAM_POLLER_TASK = None
+
+
+def _get_telegram_data_paths() -> Tuple[str, str, str, str]:
+    repo_root = getattr(config, "BASE_DIR", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    data_dir = os.path.join(repo_root, "data")
+    downloads_dir = getattr(config, "DOWNLOADS_DIR", os.path.join(repo_root, "downloads"))
+    batches_dir = os.path.join(data_dir, "prompt_batches")
+    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(downloads_dir, exist_ok=True)
+    os.makedirs(batches_dir, exist_ok=True)
+    offset_file = os.path.join(data_dir, "telegram_offset.json")
+    inbox_file = os.path.join(data_dir, "telegram_inbox.json")
+    return offset_file, inbox_file, downloads_dir, batches_dir
+
+
+def _load_telegram_inbox() -> List[Dict[str, Any]]:
+    _, inbox_file, _, _ = _get_telegram_data_paths()
+    if not os.path.exists(inbox_file):
+        return []
+    try:
+        with open(inbox_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _save_telegram_inbox(entries: List[Dict[str, Any]]) -> None:
+    _, inbox_file, _, _ = _get_telegram_data_paths()
+    try:
+        trimmed = entries[-50:]
+        tmp_path = f"{inbox_file}.tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(trimmed, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, inbox_file)
+    except Exception as e:
+        logger.warning(f"[TelegramInbox] Erreur sauvegarde inbox : {e}")
+
+
+def fetch_telegram_updates_sync(
+    bot_token: Optional[str] = None,
+    chat_id: Optional[str] = None,
+    download_files: bool = True,
+) -> Dict[str, Any]:
+    """Récupère les nouveaux messages, documents/fichiers et callbacks envoyés sur Telegram via getUpdates/getFile.
+    Sauvegarde automatiquement tout document envoyé par Pierre dans downloads/ (et data/prompt_batches/ si .md/.txt).
+    """
+    import re
+    import urllib.request
+
+    token = (bot_token or getattr(config, "TELEGRAM_BOT_TOKEN", "") or os.environ.get("TELEGRAM_BOT_TOKEN", "")).strip()
+    expected_chat = (chat_id or getattr(config, "TELEGRAM_CHAT_ID", "") or os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
+
+    if not token:
+        return {"status": "not_configured", "files": [], "messages": [], "callbacks": []}
+
+    offset_file, _, downloads_dir, batches_dir = _get_telegram_data_paths()
+    last_offset = 0
+    if os.path.exists(offset_file):
+        try:
+            with open(offset_file, "r", encoding="utf-8") as f:
+                last_offset = int(json.load(f).get("last_update_id", 0))
+        except Exception:
+            last_offset = 0
+
+    url = f"https://api.telegram.org/bot{token}/getUpdates?timeout=1"
+    if last_offset > 0:
+        url += f"&offset={last_offset + 1}"
+
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Jarvis-Telegram-Receiver"})
+        with urllib.request.urlopen(req, timeout=6.0) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except Exception as e:
+        logger.debug(f"[TelegramInbox] Lecture getUpdates ignorée ou en erreur : {e}")
+        return {"status": "error", "error": str(e), "files": [], "messages": [], "callbacks": []}
+
+    if not payload.get("ok"):
+        return {"status": "error", "error": payload.get("description", "API error"), "files": [], "messages": [], "callbacks": []}
+
+    updates = payload.get("result", [])
+    if not updates:
+        return {"status": "ok", "files": [], "messages": [], "callbacks": []}
+
+    inbox = _load_telegram_inbox()
+    new_files: List[Dict[str, Any]] = []
+    new_messages: List[Dict[str, Any]] = []
+    callbacks: List[Dict[str, Any]] = []
+    max_update_id = last_offset
+
+    for upd in updates:
+        uid = int(upd.get("update_id", 0))
+        if uid > max_update_id:
+            max_update_id = uid
+
+        # 1. Traitement des messages et documents
+        msg = upd.get("message") or upd.get("edited_message")
+        if msg:
+            msg_chat_id = str(msg.get("chat", {}).get("id", ""))
+            if expected_chat and msg_chat_id and msg_chat_id != str(expected_chat):
+                continue
+
+            text_val = (msg.get("text") or msg.get("caption") or "").strip()
+            doc = msg.get("document")
+
+            if doc and download_files:
+                file_id = doc.get("file_id")
+                orig_name = doc.get("file_name") or f"telegram_file_{msg.get('message_id', int(time.time()))}.md"
+                safe_fname = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", os.path.basename(orig_name)).strip() or "telegram_file.md"
+                try:
+                    info_url = f"https://api.telegram.org/bot{token}/getFile?file_id={file_id}"
+                    with urllib.request.urlopen(info_url, timeout=8.0) as f_resp:
+                        f_info = json.loads(f_resp.read().decode("utf-8", errors="replace"))
+                    if f_info.get("ok") and f_info.get("result", {}).get("file_path"):
+                        tg_file_path = f_info["result"]["file_path"]
+                        dl_url = f"https://api.telegram.org/file/bot{token}/{tg_file_path}"
+                        with urllib.request.urlopen(dl_url, timeout=15.0) as dl_resp:
+                            file_bytes = dl_resp.read()
+
+                        dest_path = os.path.join(downloads_dir, safe_fname)
+                        with open(dest_path, "wb") as out_f:
+                            out_f.write(file_bytes)
+
+                        if safe_fname.lower().endswith((".md", ".txt")):
+                            batch_dest = os.path.join(batches_dir, safe_fname)
+                            with open(batch_dest, "wb") as out_b:
+                                out_b.write(file_bytes)
+
+                        entry = {
+                            "type": "document",
+                            "file_name": safe_fname,
+                            "saved_path": f"downloads/{safe_fname}",
+                            "abs_path": dest_path,
+                            "caption": text_val,
+                            "message_id": msg.get("message_id"),
+                            "timestamp": time.time(),
+                        }
+                        inbox.append(entry)
+                        new_files.append(entry)
+                        logger.info(f"[TelegramInbox] Fichier reçu sur Telegram et sauvegardé : {dest_path}")
+
+                        # Accusé de réception sur Telegram
+                        if expected_chat:
+                            try:
+                                ack_url = f"https://api.telegram.org/bot{token}/sendMessage"
+                                ack_data = json.dumps({
+                                    "chat_id": expected_chat,
+                                    "text": f"📥 <b>Fichier reçu sur J.A.R.V.I.S. :</b> <code>downloads/{html.escape(safe_fname)}</code>\n<i>Prêt pour exécution ou traitement.</i>",
+                                    "parse_mode": "HTML",
+                                }).encode("utf-8")
+                                ack_req = urllib.request.Request(ack_url, data=ack_data, headers={"Content-Type": "application/json"}, method="POST")
+                                urllib.request.urlopen(ack_req, timeout=5.0).read()
+                            except Exception:
+                                pass
+                except Exception as dl_err:
+                    logger.warning(f"[TelegramInbox] Échec téléchargement fichier Telegram '{orig_name}' : {dl_err}")
+            elif text_val:
+                msg_entry = {
+                    "type": "text",
+                    "text": text_val,
+                    "message_id": msg.get("message_id"),
+                    "timestamp": time.time(),
+                }
+                inbox.append(msg_entry)
+                new_messages.append(msg_entry)
+
+        # 2. Traitement des callbacks de boutons inline
+        cb = upd.get("callback_query")
+        if cb:
+            cb_id = cb.get("id")
+            cb_data = cb.get("data", "")
+            from_id = str(cb.get("from", {}).get("id", ""))
+            callbacks.append({"id": cb_id, "data": cb_data, "from_id": from_id})
+            if cb_id:
+                try:
+                    ans_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                    ans_payload = json.dumps({"callback_query_id": cb_id, "text": "Action reçue par J.A.R.V.I.S."}).encode("utf-8")
+                    ans_req = urllib.request.Request(ans_url, data=ans_payload, headers={"Content-Type": "application/json"}, method="POST")
+                    urllib.request.urlopen(ans_req, timeout=4.0).read()
+                except Exception:
+                    pass
+
+    # Persistance du nouvel offset et de l'inbox
+    if max_update_id > last_offset:
+        try:
+            with open(offset_file, "w", encoding="utf-8") as f:
+                json.dump({"last_update_id": max_update_id, "updated_at": time.time()}, f)
+        except Exception:
+            pass
+    if new_files or new_messages:
+        _save_telegram_inbox(inbox)
+
+    return {
+        "status": "ok",
+        "files": new_files,
+        "messages": new_messages,
+        "callbacks": callbacks,
+    }
+
+
+async def fetch_telegram_updates(
+    bot_token: Optional[str] = None,
+    chat_id: Optional[str] = None,
+    download_files: bool = True,
+) -> Dict[str, Any]:
+    """Version asynchrone qui récupère les fichiers/messages Telegram et exécute aussi les callbacks ou demandes de batch."""
+    import asyncio
+    res = await asyncio.to_thread(
+        fetch_telegram_updates_sync,
+        bot_token=bot_token,
+        chat_id=chat_id,
+        download_files=download_files,
+    )
+
+    # Traitement des callbacks reçus
+    for cb in res.get("callbacks", []):
+        cb_data = cb.get("data", "")
+        from_id = cb.get("from_id")
+        try:
+            if cb_data.startswith("si:"):
+                await telegram_proposal_adapter.handle_callback_query(cb_data, user_id=from_id)
+            elif cb_data.startswith("bpa:"):
+                from services.prompt_batch_runner import parse_batch_callback_data, resume_prompt_batch
+                valid, action, batch_id, _ = parse_batch_callback_data(cb_data, telegram_proposal_adapter.hmac_secret)
+                if valid and action and batch_id:
+                    asyncio.create_task(resume_prompt_batch(batch_id, action=action))
+        except Exception as cb_err:
+            logger.warning(f"[TelegramInbox] Erreur traitement callback '{cb_data}' : {cb_err}")
+
+    # Si un fichier .md vient d'être envoyé avec une consigne explicite de lancer le batch dans sa légende
+    for f_entry in res.get("files", []):
+        caption_low = (f_entry.get("caption") or "").lower()
+        fname_low = (f_entry.get("file_name") or "").lower()
+        if fname_low.endswith(".md") and any(k in caption_low for k in ("batch", "lance", "exécute", "execute", "auto-amélioration", "auto amélioration", "self_improve")):
+            try:
+                from services.prompt_batch_runner import run_prompt_batch
+                saved_p = f_entry.get("abs_path") or f_entry.get("saved_path")
+                logger.info(f"[TelegramInbox] Lancement automatique du batch depuis Telegram : {saved_p}")
+                asyncio.create_task(run_prompt_batch(file_path=saved_p))
+            except Exception as b_err:
+                logger.warning(f"[TelegramInbox] Erreur lancement auto batch Telegram : {b_err}")
+
+    return res
+
+
+def get_latest_telegram_file(filename_hint: str = "") -> Optional[str]:
+    """Synchronise d'abord les derniers messages Telegram puis retourne le chemin du fichier reçu correspondant."""
+    try:
+        fetch_telegram_updates_sync(download_files=True)
+    except Exception:
+        pass
+
+    inbox = _load_telegram_inbox()
+    docs = [e for e in reversed(inbox) if e.get("type") == "document" and e.get("abs_path") and os.path.exists(e["abs_path"])]
+    if not docs:
+        return None
+
+    hint_clean = (filename_hint or "").strip().lower()
+    generic_hints = {"", "telegram", "latest", "dernier", "last", "file", "fichier", "batch", "prompt"}
+    if hint_clean and hint_clean not in generic_hints:
+        hint_base = os.path.splitext(os.path.basename(hint_clean))[0]
+        for d in docs:
+            fn = d.get("file_name", "").lower()
+            if hint_clean in fn or (hint_base and hint_base in fn):
+                return d["abs_path"]
+
+    return docs[0]["abs_path"]
+
+
+async def _telegram_poller_loop(interval_seconds: float = 6.0) -> None:
+    """Boucle de fond légère scrutant les fichiers et boutons envoyés à Jarvis sur Telegram."""
+    import asyncio
+    while True:
+        try:
+            if telegram_proposal_adapter.is_configured():
+                await fetch_telegram_updates(download_files=True)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.debug(f"[TelegramPoller] Erreur cycle polling : {e}")
+        try:
+            await asyncio.sleep(interval_seconds)
+        except asyncio.CancelledError:
+            break
+
+
+def start_telegram_bot_poller(interval_seconds: float = 6.0) -> bool:
+    """Démarre le poller Telegram en tâche de fond sur la boucle asyncio active."""
+    import asyncio
+    global _TELEGRAM_POLLER_TASK
+    if _TELEGRAM_POLLER_TASK and not _TELEGRAM_POLLER_TASK.done():
+        return False
+    try:
+        loop = asyncio.get_running_loop()
+        _TELEGRAM_POLLER_TASK = loop.create_task(_telegram_poller_loop(interval_seconds), name="jarvis_telegram_poller")
+        logger.info("[TelegramPoller] Récepteur de fichiers et callbacks Telegram démarré.")
+        return True
+    except RuntimeError:
+        return False
+
+
+def stop_telegram_bot_poller() -> None:
+    """Arrête proprement la tâche de polling Telegram."""
+    global _TELEGRAM_POLLER_TASK
+    if _TELEGRAM_POLLER_TASK and not _TELEGRAM_POLLER_TASK.done():
+        _TELEGRAM_POLLER_TASK.cancel()
+    _TELEGRAM_POLLER_TASK = None
+

@@ -29,7 +29,7 @@ from core.shared_state import (
     register_agy_task,
     broadcast_supervision,
 )
-from google_antigravity import _sanitize_secrets, find_antigravity_binary
+from google_antigravity import _sanitize_secrets, find_antigravity_binary, resolve_cli_model_args
 from ops.scripts.check_protected_paths import check_all_changes
 from services.console_monitor import console_monitor
 from services.model_routing.model_registry import ModelInfo, get_registry, model_registry
@@ -516,11 +516,23 @@ async def _run_agy_process(
 
     env = os.environ.copy()
     current_path = env.get("PATH", "")
-    extra_paths = ["/home/opc/.local/bin", "/usr/local/bin", os.path.expanduser("~/.local/bin")]
-    for ep in extra_paths:
+    venv_bin = os.path.dirname(sys.executable) if sys.executable else ""
+    extra_paths = [
+        p for p in [
+            venv_bin,
+            os.path.join(REPO_ROOT, "venv", "bin"),
+            os.path.join(REPO_ROOT, "venv", "Scripts"),
+            "/home/opc/.local/bin",
+            "/usr/local/bin",
+            os.path.expanduser("~/.local/bin"),
+        ] if p
+    ]
+    for ep in reversed(extra_paths):
         if ep not in current_path and os.path.exists(ep):
-            current_path = f"{ep}:{current_path}"
+            current_path = f"{ep}{os.pathsep}{current_path}"
     env["PATH"] = current_path
+    if cwd:
+        env["PYTHONPATH"] = f"{os.path.join(cwd, 'backend')}{os.pathsep}{cwd}{os.pathsep}{env.get('PYTHONPATH', '')}"
 
     stdout_lines: List[str] = []
     stderr_lines: List[str] = []
@@ -614,14 +626,23 @@ def _run_local_validation_gate(
         return False, "Aucun fichier n'a été modifié par l'agent dans le worktree."
 
     # A. Vérification de confinement : les fichiers modifiés doivent respecter allowed_subdirs
+    root_allowed_files = {
+        "CAPABILITIES_LEDGER.md",
+        "ARCHITECTURE_COMPLETE_JARVIS.md",
+        "AGENTS.md",
+        "README.md",
+    }
     for status, path in changes:
         norm_path = path.replace("\\", "/").lstrip("./")
-        # Tolérer modifications dans targeted_test_files ou allowed_subdirs
-        allowed = any(norm_path.startswith(sd) for sd in scope.allowed_subdirs)
+        # Tolérer modifications dans targeted_test_files, allowed_subdirs ou fichiers de gouvernance racines
+        allowed = (
+            any(norm_path.startswith(sd) for sd in scope.allowed_subdirs)
+            or norm_path in root_allowed_files
+            or norm_path.startswith(".agents/")
+        )
         if not allowed and norm_path.startswith("backend/tests/"):
-            # Si l'agent a complété ou mis à jour un test ciblé
-            if any(norm_path == tf or norm_path.endswith(os.path.basename(tf)) for tf in scope.targeted_test_files):
-                allowed = True
+            # Si l'agent a complété, créé ou mis à jour un test unitaire
+            allowed = True
         if not allowed:
             return False, f"Violation de confinement : le fichier '{norm_path}' est hors du périmètre autorisé {scope.allowed_subdirs}."
 
@@ -867,26 +888,26 @@ async def run_self_improvement(
                     f"OBJECTIF : {goal}\n"
                     f"PÉRIMÈTRE AUTORISÉ : Travaille STRICTEMENT ET UNIQUEMENT dans : {', '.join(scope.allowed_subdirs)}.\n"
                     f"CONTRAT D'ARCHITECTURE : Consulte impérativement le fichier '{scope.architecture_file}'.\n"
+                    f"RÈGLE OBLIGATOIRE : Toute mission d'auto-amélioration (`self_improve` ou `prompt_batch_runner`) qui ajoute, modifie ou corrige une fonctionnalité de Jarvis DOIT mettre à jour `CAPABILITIES_LEDGER.md` (et `ARCHITECTURE_COMPLETE_JARVIS.md` si l'architecture change) avant de clôturer la tâche.\n"
                     f"TESTS CIBLÉS : Lance uniquement 'pytest {tests_to_run_str}' pendant tes itérations.\n"
                     f"INTERDICTIONS ABSOLUES :\n"
                     f"- Ne modifie AUCUN fichier .env* ni les clés d'API ni auth_service.py.\n"
                     f"- Ne supprime aucun test unitaire existant.\n"
-                    f"- Reste confiné à {scope.allowed_subdirs}.\n"
+                    f"- Reste confiné à {scope.allowed_subdirs} (et CAPABILITIES_LEDGER.md / backend/tests/).\n"
                     f"{feedback_section}\n"
                     f"Conclus avec un bloc JSON final conforme à AGENTS.md."
                 )
 
-                # Construction de la commande agy
+                # Construction de la commande agy (flags officiels --model et --effort via resolve_cli_model_args)
                 agy_bin = find_antigravity_binary() or shutil.which("agy") or "agy"
+                model_args = resolve_cli_model_args(model, effort=effort)
                 cmd = [
                     agy_bin,
                     "-p", agent_prompt,
                     "--dangerously-skip-permissions",
                     "--output-format", "text",
-                    "-m", model,
+                    *model_args,
                 ]
-                if effort:
-                    cmd.extend(["-c", f"effort={effort}"])
 
                 append_agy_log(task_id, f"Lancement d'Antigravity CLI (modèle: {model}, effort: {effort or 'none'})...")
                 exit_code, stdout, stderr = await _run_agy_process(
