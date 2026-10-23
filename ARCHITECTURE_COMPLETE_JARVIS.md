@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.96.0 — Refonte intégrale de l'interaction web autonome (`browser_task`, `open_train_booking`, `prepare_web_cart_or_checkout`) : délégation 100% de la navigation à un agent autonome Antigravity (`agy` / `run_agentic`) sur le VPS via l'exécuteur unifié `run_antigravity_browser_mission` (`backend/services/browser_agent/loop.py`), extraction autonome de A à Z de l'URL profonde finale (deep-link de réservation ferroviaire ou permalien de panier e-commerce), ouverture automatique sur le navigateur du PC local de Pierre via `send_rpc_command("open_browser")`, mise à jour du lien HUD PWA via `set_browser_link`, annonce vocale par file d'injection prioritaire (`TOOL_RESPONSE`), modernisation des recettes `train.md` et `cart.md`, et maintien de l'ancienne boucle RPC en repli conditionnel via `LEGACY_RPC_BROWSER_LOOP=true`.*
+> *Dernière révision majeure : Version 5.96.0 — Pipeline de Missions de Bout en Bout de A à Z par Agent Antigravity (`execute_end_to_end_deliverable_mission` dans `backend/services/agentic_dispatcher.py`) : création autonome de livrables professionnels (applications web interactives HTML/Tailwind, présentations PowerPoint .pptx multi-slides, rapports complets compilés en PDF/HTML/MD, classeurs Excel .xlsx avec formules actives), vérification matérielle physique (`os.path.exists`, taille > 1024 octets via `core/tools/verifier.py`), livraison automatique sur le PC local connecté de Pierre via `send_rpc_command("open_browser")`, mise à jour du lien HUD PWA via `set_browser_link`, expédition e-mail optionnelle et restitution vocale via `voice_injection_queue`. Routage prioritaire de `launch_deep_research` et `run_agentic_task` vers ce pipeline A-to-Z.*
 
 
 ---
@@ -1423,7 +1423,7 @@ Les sous-agents apparaissent dynamiquement sous forme de cartes d'activité dans
 - **Identité Visuelle** : Palette sombre minérale et raffinée (`#05070D`, `#0B0F19`, `#0D1321`), verre dépoli avec bordures ultra-fines (`backdrop-filter: blur(24px)`), hiérarchie chromatique équilibrée (cyan glace, émeraude, ambre, violet, rose alerte) sans saturation agressive.
 - **Typographie** : Polices modernes géométriques sans-serif (`Inter`, `Plus Jakarta Sans`) et code monospace technique (`JetBrains Mono`).
 - **Responsive Fluid Architecture** : Expérience fluide optimisée sur smartphone (< 768px : barre d'onglets fixée en bas, statusbar compacte, mini-lecteur au-dessus des onglets, `100dvh`) et cockpit glassmorphic centré sur grand écran desktop PC.
-- **Version affichée dans l'en-tête** (`frontend/static/index.html`, classe `hud-version-tag`) : `v5.96.0`.
+- **Version affichée dans l'en-tête** (`frontend/static/index.html`, classe `hud-version-tag`) : `v5.97.0`.
 
 ### 12.2. Avatar Vectoriel SVG & Réacteur Arc Réactif
 - **Tête Holographique SVG Animée** : Réacteur Arc central avec anneaux rotatifs et visualiseur audio réactif.

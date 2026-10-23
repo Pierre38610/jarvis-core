@@ -100,6 +100,26 @@ def verify_downloaded_file(
     return True, size, evidence
 
 
+def verify_mission_deliverable(
+    filepath: str,
+    min_size: int = 1024,
+) -> Tuple[bool, int, str]:
+    """Vérifie matériellement qu'un livrable de mission existe et a une taille supérieure au seuil minimum.
+    
+    Returns:
+        (verified, file_size, error_or_evidence)
+    """
+    if not filepath or not os.path.exists(filepath):
+        return False, 0, f"Livrable de mission introuvable sur le disque : {filepath}"
+
+    size = os.path.getsize(filepath)
+    if size < min_size:
+        return False, size, f"Livrable de mission vide ou incomplet ({size} octets < minimum requis {min_size})."
+
+    evidence = f"Livrable '{os.path.basename(filepath)}' vérifié matériellement ({size} octets)"
+    return True, size, evidence
+
+
 def verify_application_process(
     pid: Optional[int],
     app_name: str,

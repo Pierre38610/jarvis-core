@@ -1033,6 +1033,46 @@ async def _execute_dispatch_tool(
         effort_override = args.get("effort_override") or args.get("effort")
         timeout = int(args.get("timeout", 300))
         tier_arg = args.get("tier")
+
+        # Détection d'un livrable attendu -> Pipeline A-to-Z Antigravity
+        combined_text = f"{objectif} {livrable_attendu}".lower()
+        target_deliverable = None
+        if any(k in combined_text for k in ["site web", "site", "html", "application web", "app web", "page web", "dashboard"]):
+            target_deliverable = "website"
+        elif any(k in combined_text for k in ["pptx", "powerpoint", "slides", "présentation", "presentation", "diapo", "diaporama"]):
+            target_deliverable = "pptx"
+        elif any(k in combined_text for k in ["pdf", "rapport", "report", "dossier"]):
+            target_deliverable = "pdf"
+        elif any(k in combined_text for k in ["excel", "tableur", "xlsx", "spreadsheet", "feuille de calcul"]):
+            target_deliverable = "xlsx"
+
+        if target_deliverable:
+            logger.info(f"[Dispatcher] Redirection de {name} vers execute_end_to_end_deliverable_mission ({target_deliverable}) pour : '{objectif[:60]}'")
+            send_email = bool(args.get("send_email", False) or args.get("envoyer_email", False))
+            target_email = args.get("target_email") or args.get("destinataire_email") or ""
+            from services.agentic_dispatcher import execute_end_to_end_deliverable_mission
+            res = await execute_end_to_end_deliverable_mission(
+                goal=objectif,
+                deliverable_type=target_deliverable,
+                context=f"Contexte: {contexte}\nLivrable attendu: {livrable_attendu}",
+                send_email=send_email,
+                target_email=target_email,
+            )
+            if res.get("verified"):
+                return ToolResult.done(
+                    user_message=res.get("executive_summary_for_voice") or f"Livrable {target_deliverable} généré avec succès.",
+                    evidence=f"Livrable {res.get('main_file')} vérifié ({res.get('full_url')})",
+                    verified=True,
+                    data=res,
+                )
+            else:
+                return ToolResult.failed(
+                    user_message=res.get("executive_summary_for_voice") or f"La génération du livrable {target_deliverable} a échoué.",
+                    error_hint="deliverable_failed",
+                    verified=False,
+                    data=res,
+                )
+
         tier = int(tier_arg) if tier_arg is not None else None
         if tier is None:
             if effort_override in ("low", "rapide", "min", "tier1", "tier 1") or (model_override and "flash" in str(model_override).lower()):
@@ -1288,11 +1328,10 @@ async def _execute_dispatch_tool(
                 data={"status": "in_progress", "query": consigne}
             )
 
-        # Redirection automatique vers browser_task (L3) si intention L3 ou appel direct des alias deep research
-        routing_check = route_search_intent(consigne)
-        if (routing_check.level == "L3" or name in ("lancer_mission_deep_research", "deep_research")) and not is_cli_fallback:
+        # Redirection vers browser_task uniquement pour les alias historiques
+        if name in ("lancer_mission_deep_research", "deep_research") and not is_cli_fallback:
             release_search_lock(consigne)
-            logger.info(f"[Dispatcher] Redirection automatique de {name} vers browser_task (L3 Gemini Deep Research) pour : '{consigne}'")
+            logger.info(f"[Dispatcher] Redirection de {name} vers browser_task (L3 Gemini Deep Research) pour : '{consigne}'")
             return await dispatch_tool(
                 name="browser_task",
                 args={
@@ -1336,15 +1375,50 @@ async def _execute_dispatch_tool(
 
         async def _execute_l2_cli_core() -> ToolResult:
             try:
-                return await _execute_cli_map_reduce_pipeline(
-                    consigne=consigne,
-                    envoyer_email=envoyer_email,
-                    destinataire_email=destinataire_email,
-                    session=_sess_dr,
-                    websocket=_ws_dr,
-                    is_cli_fallback=False,
-                    target_pages=target_pages,
+                cli_ok, cli_err, _ = await verify_antigravity_cli_ready()
+                if not cli_ok:
+                    clean_err = sanitize_error_text(cli_err or "cli_not_ready")
+                    return ToolResult.failed(
+                        user_message=f"Antigravity CLI n'est pas disponible sur le serveur VPS ({clean_err}).",
+                        error_hint=clean_err,
+                        verified=False,
+                    )
+
+                # Priorité au pipeline Antigravity de bout en bout de A à Z
+                from services.agentic_dispatcher import execute_end_to_end_deliverable_mission
+                c_low = consigne.lower()
+                d_type = "pdf"
+                if any(k in c_low for k in ["site web", "site", "html", "application web"]):
+                    d_type = "website"
+                elif any(k in c_low for k in ["pptx", "powerpoint", "slides", "présentation"]):
+                    d_type = "pptx"
+                elif any(k in c_low for k in ["excel", "tableur", "xlsx"]):
+                    d_type = "xlsx"
+
+                mission_res = await execute_end_to_end_deliverable_mission(
+                    goal=consigne,
+                    deliverable_type=d_type,
+                    context=f"Pages cibles visées : {target_pages}",
+                    send_email=envoyer_email,
+                    target_email=destinataire_email or "",
                 )
+                if mission_res.get("verified"):
+                    return ToolResult.done(
+                        user_message=mission_res.get("executive_summary_for_voice") or f"Mission terminée. Livrable disponible : {mission_res.get('public_url')}",
+                        evidence=f"Livrable {mission_res.get('main_file')} vérifié ({mission_res.get('full_url')})",
+                        verified=True,
+                        data=mission_res,
+                    )
+                else:
+                    return await _execute_cli_map_reduce_pipeline(
+                        consigne=consigne,
+                        envoyer_email=envoyer_email,
+                        destinataire_email=destinataire_email,
+                        session=_sess_dr,
+                        websocket=_ws_dr,
+                        is_cli_fallback=False,
+                        target_pages=target_pages,
+                    )
             finally:
                 release_search_lock(consigne)
 
