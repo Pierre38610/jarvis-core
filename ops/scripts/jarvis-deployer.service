@@ -1,5 +1,5 @@
 [Unit]
-Description=J.A.R.V.I.S. Independent Autonomous VPS Deployer Service
+Description=J.A.R.V.I.S. Independent Blue-Green VPS Deployer
 Documentation=https://github.com/Pierre38610/jarvis-core
 After=network.target network-online.target
 Wants=network-online.target
@@ -8,11 +8,10 @@ Wants=network-online.target
 Type=simple
 User=opc
 Group=opc
+Nice=10
 WorkingDirectory=/home/opc/jarvis-core
-Environment=PYTHONUNBUFFERED=1
-Environment=JARVIS_WORKSPACE_DIR=/home/opc/jarvis-core
 EnvironmentFile=-/home/opc/jarvis-core/.env
-ExecStart=/home/opc/jarvis-core/venv/bin/python /home/opc/jarvis-core/ops/deploy/jarvis_deployer.py --server
+ExecStart=/home/opc/jarvis-core/venv/bin/python -m ops.deploy.jarvis_deployer --server
 Restart=always
 RestartSec=5s
 KillMode=process
