@@ -13,7 +13,11 @@ import tarfile
 import tempfile
 import time
 from typing import Optional
-import paramiko
+
+try:
+    import paramiko
+except ImportError:
+    paramiko = None
 
 if sys.platform == "win32":
     try:
@@ -242,6 +246,10 @@ def deploy_to_vps():
             print(f"\n[3/3] ⚠️ Aucune clé SSH trouvée.")
             print("  [*] Veuillez déposer votre clé privée dans 'clés ssh/ssh-key-2026-09-25.key' (dossier ignoré par git) ou dans '~/.ssh/'.")
             print("  [*] Le code a été commité et synchronisé sur GitHub (git push origin main).")
+            return
+
+        if paramiko is None:
+            print("\n[3/3] ⚠️ Le package 'paramiko' n'est pas disponible pour le déploiement SSH.")
             return
 
         print(f"\n[3/3] Connexion au VPS ({HOST}) & déploiement...", flush=True)
