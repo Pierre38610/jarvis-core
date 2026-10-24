@@ -135,11 +135,17 @@ def test_resolve_live_agy_model_tiers():
     assert effort_med == "medium"
     assert "--thinking" not in model_med
 
-    # High -> Pro / Claude + high
+    # High -> Modèle Gemini 3 uniquement (gemini-3.8-flash ou gemini-3.1-pro), JAMAIS Claude ni Argon
     model_high, effort_high = resolve_live_agy_model(complexity="high")
-    assert any(k in model_high.lower() for k in ["pro", "sonnet", "opus"])
+    assert not any(k in model_high.lower() for k in ["sonnet", "opus", "claude", "argon"])
+    assert any(k in model_high.lower() for k in ["flash", "pro", "gemini"])
     assert effort_high in ("high", None)
     assert "--thinking" not in model_high
+
+    # Override explicite (choix Telegram) -> autorisé
+    model_ov, effort_ov = resolve_live_agy_model(override_model="claude-sonnet-5-5-high")
+    assert "claude" in model_ov.lower()
+    assert effort_ov == "high"
 
 
 # ─── 3. Gouvernance : Kill Switch & Quotas ──────────────────────────────────

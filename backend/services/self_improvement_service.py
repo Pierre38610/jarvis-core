@@ -269,52 +269,67 @@ def _build_scope_instance(key: str, conf: Dict[str, Any]) -> SubfolderScope:
 
 
 # ─── 2. Sélection Dynamique du Modèle Antigravity ───────────────────────────
-def resolve_live_agy_model(complexity: str = "medium", task_kind: str = "code") -> Tuple[str, Optional[str]]:
-    """Sélectionne dynamiquement le meilleur couple (modèle, effort) parmi les modèles actifs
-    dans Antigravity CLI sans jamais inclure le flag '--thinking'.
+def resolve_live_agy_model(
+    complexity: str = "medium",
+    task_kind: str = "code",
+    override_model: Optional[str] = None,
+) -> Tuple[str, Optional[str]]:
+    """Sélectionne dynamiquement le meilleur couple (modèle, effort) parmi les modèles Gemini 3
+    sans jamais utiliser les modèles d'Anthropic ou d'Argon par défaut.
     
     Règles :
-    - 'low' -> modèle Flash actif le plus rapide + effort='low'
-    - 'medium' -> modèle Flash actif le plus récent + effort='medium'
-    - 'high' -> modèle Pro ou Claude Sonnet actif dans Antigravity + effort='high'
+    - Si override_model est fourni (ex: choix explicite via Telegram) -> utilisé directement
+    - 'low' -> modèle Flash actif (gemini-3.8-flash ou 3.7) + effort='low'
+    - 'medium' -> gemini-3.8-flash + effort='medium'
+    - 'high' -> modèle Gemini 3 (gemini-3.8-flash avec effort high, ou gemini-3.1-pro si configuré) + effort='high'
+    - RÈGLE ABSOLUE : Ni Claude, ni Sonnet, ni Opus, ni Argon ne sont choisis par défaut.
     """
+    if override_model:
+        m_clean = str(override_model).strip()
+        eff = "high" if "high" in m_clean.lower() else "medium" if "med" in m_clean.lower() else "low" if "low" in m_clean.lower() else None
+        return m_clean, eff
+
     comp = (complexity or "medium").lower().strip()
     registry = get_registry()
-    registry.refresh_if_needed()
+    try:
+        registry.refresh_if_needed()
+    except Exception:
+        pass
 
     active_models = registry.list_models()
-    flash_models = [m for m in active_models if m.tier == "flash" or "flash" in m.name.lower()]
-    pro_models = [m for m in active_models if m.tier in ("pro", "sonnet", "opus") or any(k in m.name.lower() for k in ("pro", "sonnet"))]
+    # RÈGLE ABSOLUE : Exclure formellement tout modèle Anthropic (Claude, Sonnet, Opus) et Argon
+    gemini_3_models = [
+        m for m in active_models
+        if not any(k in m.name.lower() for k in ("claude", "sonnet", "opus", "argon", "anthropic"))
+        and any(k in m.name.lower() for k in ("flash", "pro", "gemini-3", "3.8", "3.7", "3.1"))
+    ]
+    flash_models = [m for m in gemini_3_models if m.tier == "flash" or "flash" in m.name.lower()]
+    pro_models = [m for m in gemini_3_models if m.tier == "pro" or "pro" in m.name.lower()]
 
     if comp in ("low", "rapide", "min", "economique"):
-        # Modèle Flash le plus rapide
         if flash_models:
             flash_models.sort(key=lambda m: (m.latency_rank, m.cost_rank))
             chosen = flash_models[0].name
         else:
-            chosen = "gemini-3.7-flash"
+            chosen = "gemini-3.8-flash"
         return chosen, "low"
 
     elif comp in ("high", "complexe", "approfondie", "pro", "l3"):
-        # Modèle Pro ou Claude Sonnet actif
+        # Modèle Gemini 3 à réflexion approfondie (strictement Gemini 3, jamais Claude ni Argon)
         if pro_models:
-            # Privilégier gemini-3.1-pro ou claude-3-7-sonnet
-            preferred = [m for m in pro_models if "3.1-pro" in m.name.lower() or "sonnet" in m.name.lower()]
-            if preferred:
-                chosen_info = preferred[0]
-            else:
-                chosen_info = pro_models[0]
-            chosen = chosen_info.name
-            effort = "high" if chosen_info.supports_effort else None
+            chosen = pro_models[0].name
+            effort = "high"
+        elif flash_models:
+            chosen = flash_models[0].name
+            effort = "high"
         else:
-            chosen = "gemini-3.1-pro"
+            chosen = "gemini-3.8-flash"
             effort = "high"
         return chosen, effort
 
     else:
-        # Complexité standard 'medium' : Flash le plus récent
+        # Complexité standard 'medium' : Gemini 3.8 Flash
         if flash_models:
-            # Ordre décroissant de version si possible (3.8 > 3.7)
             flash_models.sort(key=lambda m: m.name, reverse=True)
             chosen = flash_models[0].name
         else:
@@ -472,22 +487,36 @@ def ensure_git_repository(repo_root: str) -> None:
         pass
 
 
-def create_isolated_worktree(repo_root: str, branch_name: str) -> str:
-    """Crée un git worktree isolé temporaire branché sur `branch_name`."""
+def create_isolated_worktree(repo_root: str, branch_name: str, resume_existing_branch: bool = False) -> str:
+    """Crée un git worktree isolé temporaire branché sur `branch_name`.
+    Si resume_existing_branch est True et que la branche locale existe déjà,
+    on attache le worktree directement à cette branche sans écraser ses commits précédents.
+    """
     ensure_git_repository(repo_root)
 
     temp_dir = tempfile.mkdtemp(prefix="jarvis_self_improve_")
 
-    # Si la branche existe déjà d'un run précédent avorté, la supprimer proprement
+    branch_exists = False
     try:
-        subprocess.run(["git", "branch", "-D", branch_name], cwd=repo_root, capture_output=True, text=True, check=False)
+        check = subprocess.run(["git", "rev-parse", "--verify", branch_name], cwd=repo_root, capture_output=True, text=True, check=False)
+        branch_exists = (check.returncode == 0)
     except Exception:
         pass
 
-    cmd = ["git", "worktree", "add", "-B", branch_name, temp_dir, "HEAD"]
+    if resume_existing_branch and branch_exists:
+        # Reprise sur une branche existante contenant déjà les commits des étapes précédentes :
+        cmd = ["git", "worktree", "add", temp_dir, branch_name]
+    else:
+        # Création fraîche : si la branche existe déjà d'un run précédent avorté (hors reprise), la supprimer
+        try:
+            subprocess.run(["git", "branch", "-D", branch_name], cwd=repo_root, capture_output=True, text=True, check=False)
+        except Exception:
+            pass
+        cmd = ["git", "worktree", "add", "-B", branch_name, temp_dir, "HEAD"]
+
     try:
         subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=True)
-        logger.info(f"[SelfImprovement] Worktree créé avec succès dans {temp_dir} (branche: {branch_name})")
+        logger.info(f"[SelfImprovement] Worktree créé avec succès dans {temp_dir} (branche: {branch_name}, resume={resume_existing_branch})")
         return temp_dir
     except subprocess.CalledProcessError as e:
         logger.error(f"[SelfImprovement] Échec création git worktree: {e.stderr}")

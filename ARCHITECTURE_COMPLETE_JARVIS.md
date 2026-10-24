@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.99.1 — Résolution de la détection et résolution robuste des fichiers de batchs de prompts (`validate_safe_batch_path`), visibilité en direct du statut des tâches (`get_active_task_status`), route `/api/system/logs` pour le HUD, et configuration du logging root.*
+> *Dernière révision majeure : Version 5.99.2 — Politique stricte de modèles Gemini 3 (flash 3.8 / pro 3.1, exclusion formelle de Claude et Argon par défaut), alertes interactives Telegram avec boutons signés HMAC lors des quotas Antigravity CLI, préservation de l'état et des branches Git en reprise, et suivi oral exhaustif de l'avancement et des bénéfices du patch.*
 
 
 ---
@@ -1684,7 +1684,7 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ### 14.8. Exécution des Tests & Validation Hors-Ligne
 - Lancer l'intégralité des tests : `.\venv\Scripts\pytest.exe -v backend/tests/`
-- Lancer les tests unitaires : `.\venv\Scripts\pytest.exe -v backend/tests/unit/` (382 tests unitaires hors-ligne, 37 fichiers de tests unitaires)
+- Lancer les tests unitaires : `.\venv\Scripts\pytest.exe -v backend/tests/unit/` (393 tests unitaires hors-ligne, 38 fichiers de tests unitaires)
 - Lancer un test ciblé : `.\venv\Scripts\pytest.exe -v backend/tests/unit/test_language_service.py`
 - *Règle d'or de test* : Tous les tests unitaires s'exécutent hors-ligne sans consommer le moindre centime d'API grâce aux mocks dans `backend/tests/conftest.py`.
 
@@ -1698,4 +1698,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.99.1.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.99.2.*

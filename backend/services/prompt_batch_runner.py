@@ -64,6 +64,9 @@ DEFAULT_BATCH_TIMEOUT = 360.0
 BATCH_ACTION_RESUME = "res"
 BATCH_ACTION_SKIP = "skp"
 BATCH_ACTION_ABORT = "abt"
+BATCH_ACTION_CLAUDE = "cld"
+BATCH_ACTION_ARGON = "arg"
+BATCH_ACTION_WAIT_5H = "w5h"
 
 
 # ─── Dataclasses ─────────────────────────────────────────────────────────────
@@ -97,6 +100,7 @@ class BatchSpec:
     raw_content: str
     source_file: Optional[str] = None
     all_manual_actions: List[str] = field(default_factory=list)
+    improvement_summary: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -146,6 +150,10 @@ class BatchRunState:
     last_error: Optional[str] = None
     pr_url: Optional[str] = None
     source_file: Optional[str] = None
+    override_model: Optional[str] = None
+    scheduled_resume_time: Optional[float] = None
+    improvement_summary: Optional[str] = None
+    current_prompt_title: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -567,7 +575,15 @@ def parse_batch_callback_data(callback_data: str, secret: str) -> Tuple[bool, Op
     if len(parts) != 4 or parts[0] != "bpa":
         return False, None, None, "Format de callback batch invalide"
     _, action, batch_id, signature = parts
-    if action not in (BATCH_ACTION_RESUME, BATCH_ACTION_SKIP, BATCH_ACTION_ABORT):
+    allowed_actions = (
+        BATCH_ACTION_RESUME,
+        BATCH_ACTION_SKIP,
+        BATCH_ACTION_ABORT,
+        BATCH_ACTION_CLAUDE,
+        BATCH_ACTION_ARGON,
+        BATCH_ACTION_WAIT_5H,
+    )
+    if action not in allowed_actions:
         return False, None, None, f"Action batch inconnue '{action}'"
     expected = generate_batch_callback_signature(action, batch_id, secret)
     if not hmac.compare_digest(expected, signature):
@@ -575,7 +591,151 @@ def parse_batch_callback_data(callback_data: str, secret: str) -> Tuple[bool, Op
     return True, action, batch_id, "OK"
 
 
+def is_quota_exhausted_error(error_str: str) -> bool:
+    """Détecte si une erreur provient de l'épuisement de quota (code 429 / RESOURCE_EXHAUSTED)."""
+    if not error_str:
+        return False
+    s = error_str.lower()
+    return any(k in s for k in (
+        "individual quota reached",
+        "quota reached",
+        "resource_exhausted",
+        "code 429",
+        "quota exceeded",
+        "resets in",
+        "limit reached",
+    ))
+
+
+def extract_quota_reset_hint(error_str: str) -> str:
+    """Extrait la durée de réinitialisation si présente dans l'erreur, sinon renvoie '5h'."""
+    if not error_str:
+        return "5h (environ)"
+    m = re.search(r"Resets in ([0-9a-zA-Z\s]+)", error_str, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    return "5h (environ)"
+
+
+def get_batch_improvement_summary(title: str, raw_content: str = "") -> str:
+    """Fournit un résumé clair et direct de ce qu'apporte la série d'auto-amélioration à Jarvis."""
+    t_low = (title or "").lower()
+    c_low = (raw_content or "").lower()
+    if any(k in t_low or k in c_low for k in ("auto-amélioration", "auto amélioration", "circuit d'auto-amélioration", "circuit")):
+        return (
+            "Ce patch dote Jarvis d'un circuit complet d'auto-amélioration autonome sur le VPS. Il apporte : "
+            "1. Un déployeur résilient et testable avec rollback automatique (`jarvis-deployer`), "
+            "2. Des garde-fous stricts CI/CODEOWNERS protégeant les fichiers sensibles (.env, clés), "
+            "3. L'outil `self_improve` pour générer du code dans des worktrees isolés et ouvrir des Pull Requests GitHub, "
+            "4. La validation et gouvernance interactive par Telegram (approbation, rejet, reprise sur quota), "
+            "5. Une veille technique autonome hebdomadaire et un runner de séries de prompts séquentielles avec reprise sur incident."
+        )
+    return f"Série d'amélioration logicielle ciblée « {title} » pour enrichir les capacités autonomes de Jarvis."
+
+
+async def _send_telegram_text(text: str) -> bool:
+    """Envoie un message textuel simple sur Telegram."""
+    bot_token = getattr(config, "TELEGRAM_BOT_TOKEN", "") or os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = getattr(config, "TELEGRAM_CHAT_ID", "") or os.environ.get("TELEGRAM_CHAT_ID", "")
+    if not bot_token or not chat_id:
+        return False
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(url, json=payload)
+            return resp.status_code == 200
+    except Exception as e:
+        logger.warning(f"[PromptBatchRunner] Erreur envoi Telegram texte: {e}")
+        return False
+
+
 # ─── 5. Notifications & Clavier de Pause ────────────────────────────────────
+async def send_batch_quota_telegram_alert(
+    state: BatchRunState,
+    current_prompt: PromptItem,
+    error_extract: str,
+    secret: Optional[str] = None,
+) -> bool:
+    """Envoie une alerte Telegram interactive lors d'une limite de quota atteinte sur Antigravity CLI,
+    avec boutons de décision (Claude, Argon, Retenter dans 5h, Annuler le batch, Retenter maintenant).
+    Aucun e-mail n'est envoyé lors d'un épuisement de quota.
+    """
+    bot_token = getattr(config, "TELEGRAM_BOT_TOKEN", "") or os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = getattr(config, "TELEGRAM_CHAT_ID", "") or os.environ.get("TELEGRAM_CHAT_ID", "")
+    if not bot_token or not chat_id:
+        logger.info("[PromptBatchRunner] Telegram non configuré pour l'alerte de quota batch.")
+        return False
+
+    hmac_sec = (
+        secret
+        or getattr(config, "TELEGRAM_HMAC_SECRET", "")
+        or os.environ.get("TELEGRAM_HMAC_SECRET", "")
+        or getattr(config, "JWT_SECRET_KEY", "")
+        or "jarvis-batch-hmac-fallback"
+    )
+
+    cb_claude = build_batch_callback_data(BATCH_ACTION_CLAUDE, state.batch_id, hmac_sec)
+    cb_argon = build_batch_callback_data(BATCH_ACTION_ARGON, state.batch_id, hmac_sec)
+    cb_wait5h = build_batch_callback_data(BATCH_ACTION_WAIT_5H, state.batch_id, hmac_sec)
+    cb_abort = build_batch_callback_data(BATCH_ACTION_ABORT, state.batch_id, hmac_sec)
+    cb_resume = build_batch_callback_data(BATCH_ACTION_RESUME, state.batch_id, hmac_sec)
+
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "🤖 Retenter avec Claude", "callback_data": cb_claude},
+                {"text": "⚡ Retenter avec Argon", "callback_data": cb_argon},
+            ],
+            [
+                {"text": "⏳ Retenter dans 5h", "callback_data": cb_wait5h},
+                {"text": "🛑 Annuler le batch", "callback_data": cb_abort},
+            ],
+            [
+                {"text": "▶️ Retenter maintenant", "callback_data": cb_resume},
+            ],
+        ]
+    }
+
+    reset_hint = extract_quota_reset_hint(error_extract)
+    err_clean = html.escape(error_extract[-500:] if error_extract else "Limite de quota individuel atteinte sur agy CLI.")
+    completed_count = len([r for r in state.results if r.get("status") == "succeeded"])
+
+    text = (
+        f"⚠️ <b>Limite de Quota Atteinte (Antigravity CLI)</b>\n"
+        f"📦 <b>Série :</b> {html.escape(state.title)}\n"
+        f"📍 <b>Prompt bloqué :</b> [{current_prompt.label}] {html.escape(current_prompt.title)}\n"
+        f"📊 <b>Avancement :</b> Prompt {state.current_prompt_index + 1}/{state.total_prompts} (déjà validés : {completed_count})\n"
+        f"⏳ <b>Reset estimé :</b> {html.escape(reset_hint)}\n\n"
+        f"<b>Détail :</b>\n<pre>{err_clean}</pre>\n\n"
+        f"<i>Le batch est suspendu sans perte d'état. Que souhaites-tu faire ?</i>"
+    )
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+        "reply_markup": keyboard,
+    }
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(url, json=payload)
+            return resp.status_code == 200
+    except Exception as e:
+        logger.warning(f"[PromptBatchRunner] Erreur envoi Telegram alerte quota : {e}")
+        return False
+
+
 async def send_batch_telegram_alert(
     state: BatchRunState,
     current_prompt: PromptItem,
@@ -668,16 +828,17 @@ async def _execute_single_prompt(
     worktree_dir: str,
     task_id: str,
     feedback_section: str = "",
+    override_model: Optional[str] = None,
 ) -> Tuple[bool, str, List[str], str]:
     """Exécute un prompt individuel dans le worktree isolé avec agy et effectue les validations :
-    1. Résolution dynamique du modèle et sous-dossier
+    1. Résolution dynamique du modèle et sous-dossier (Gemini 3 par défaut, ou override_model si spécifié)
     2. Exécution d'agy avec nice -n 10 et streaming
     3. Porte de validation locale (confinement, check_protected_paths, py_compile, pytest ciblés)
     
     Returns:
         (success, error_or_output, modified_files, model_used)
     """
-    # 1. Résolution sous-dossier
+    # 1. Résolution sous-dossier et modèle
     hint = ""
     if prompt.read_only_files:
         hint = prompt.read_only_files[0]
@@ -685,7 +846,10 @@ async def _execute_single_prompt(
         hint = prompt.target_subfolders[0]
 
     scope = resolve_subfolder_scope(goal=prompt.body, target_hint=hint)
-    model, effort = resolve_live_agy_model(prompt.level)
+    if override_model:
+        model, effort = resolve_live_agy_model(prompt.level, override_model=override_model)
+    else:
+        model, effort = resolve_live_agy_model(prompt.level)
 
     # 2. Construction de la consigne d'agent
     tests_str = " ".join(scope.targeted_test_files) if scope.targeted_test_files else "backend/tests/"
@@ -882,14 +1046,18 @@ class PromptBatchRunner:
                 results=[],
                 manual_actions_collected=list(self.batch_spec.all_manual_actions),
                 source_file=self.batch_spec.source_file,
+                improvement_summary=self.batch_spec.improvement_summary,
             )
             save_batch_state(self.state)
         else:
             branch_name = self.state.branch_name
+            if not self.state.improvement_summary and self.batch_spec.improvement_summary:
+                self.state.improvement_summary = self.batch_spec.improvement_summary
 
         # 3. Création du git worktree unique pour toute la série
+        is_resuming = (self.state.current_prompt_index > 0 or len(self.state.results) > 0)
         if not self.state.worktree_dir or not os.path.exists(self.state.worktree_dir):
-            worktree_dir = create_isolated_worktree(REPO_ROOT, branch_name)
+            worktree_dir = create_isolated_worktree(REPO_ROOT, branch_name, resume_existing_branch=is_resuming)
             self.state.worktree_dir = worktree_dir
             save_batch_state(self.state)
         else:
@@ -921,6 +1089,8 @@ class PromptBatchRunner:
                     break
 
                 curr_prompt = self.batch_spec.prompts[self.state.current_prompt_index]
+                self.state.current_prompt_title = f"[{curr_prompt.label}] {curr_prompt.title}"
+                save_batch_state(self.state)
                 append_agy_log(task_id, f"=== Démarrage du Prompt {curr_prompt.label} ({self.state.current_prompt_index + 1}/{self.state.total_prompts}) ===")
 
                 prompt_ok = False
@@ -941,6 +1111,7 @@ class PromptBatchRunner:
                         worktree_dir=worktree_dir,
                         task_id=task_id,
                         feedback_section=last_error if attempt > 1 else "",
+                        override_model=self.state.override_model,
                     )
                     model_used = p_model
                     mod_files = p_files
@@ -964,6 +1135,9 @@ class PromptBatchRunner:
                     else:
                         last_error = p_out
                         append_agy_log(task_id, f"Échec essai {attempt} Prompt {curr_prompt.label} : {p_out}", stream="stderr")
+                        if is_quota_exhausted_error(last_error):
+                            append_agy_log(task_id, f"Interruption préventive : limite de quota CLI détectée sur {p_model}.", stream="stderr")
+                            break
 
                 p_dur = time.perf_counter() - t_p0
 
@@ -999,15 +1173,18 @@ class PromptBatchRunner:
                     self.state.attempt = 1
                     save_batch_state(self.state)
                 else:
-                    # Échec après 3 essais -> mise en pause et alerte
+                    # Échec (ou quota atteint) -> mise en pause et notification adaptée
                     self.state.status = "paused"
                     self.state.last_error = last_error
                     save_batch_state(self.state)
-                    append_agy_log(task_id, f"PAUSE : Le Prompt {curr_prompt.label} a échoué après {MAX_PROMPT_ATTEMPTS} essais.", stream="stderr")
 
-                    # Envoi alertes Telegram + Email
-                    await send_batch_telegram_alert(self.state, curr_prompt, last_error, secret=self.telegram_secret)
-                    await send_batch_email_alert(self.state, curr_prompt, last_error)
+                    if is_quota_exhausted_error(last_error):
+                        append_agy_log(task_id, f"PAUSE : Le Prompt {curr_prompt.label} est suspendu (quota CLI atteint). Alerte interactive Telegram envoyée.", stream="stderr")
+                        await send_batch_quota_telegram_alert(self.state, curr_prompt, last_error, secret=self.telegram_secret)
+                    else:
+                        append_agy_log(task_id, f"PAUSE : Le Prompt {curr_prompt.label} a échoué après {MAX_PROMPT_ATTEMPTS} essais.", stream="stderr")
+                        await send_batch_telegram_alert(self.state, curr_prompt, last_error, secret=self.telegram_secret)
+                        await send_batch_email_alert(self.state, curr_prompt, last_error)
                     return self.state
 
             # 4. Tous les prompts sont terminés avec succès -> Validation globale
@@ -1098,8 +1275,10 @@ class PromptBatchRunner:
                 await self._deliver_final_summary()
 
         finally:
+            is_paused_or_scheduled = self.state and self.state.status in ("paused", "scheduled_resume")
+            should_delete_branch = (not success_all) and (not is_paused_or_scheduled)
             if worktree_dir:
-                cleanup_isolated_worktree(REPO_ROOT, worktree_dir, branch_name, delete_branch=not success_all)
+                cleanup_isolated_worktree(REPO_ROOT, worktree_dir, branch_name, delete_branch=should_delete_branch)
             mark_agy_task_status(task_id, "completed" if success_all else "failed")
             supervision_service.complete_action("prompt_batch", status="completed" if success_all else "error")
             await broadcast_supervision()
@@ -1184,8 +1363,24 @@ class PromptBatchRunner:
 
 
 # ─── 8. Point d'Entrée & Gestionnaire de Callback Telegram ──────────────────
+async def _delayed_resume_batch(batch_id: str, delay_seconds: float) -> None:
+    """Attend la fin de l'intervalle de réinitialisation de quota puis relance le batch."""
+    logger.info(f"[PromptBatchRunner] Attente de {delay_seconds:.0f}s avant reprise programmée du batch {batch_id}...")
+    try:
+        await asyncio.sleep(delay_seconds)
+        st = load_batch_state(batch_id)
+        if st and st.status == "scheduled_resume":
+            logger.info(f"[PromptBatchRunner] Déclenchement de la reprise programmée pour {batch_id}...")
+            await _send_telegram_text(f"⏰ <b>Reprise automatique du batch</b>\nLe délai d'attente de quota est écoulé. Reprise du batch <code>{batch_id}</code>...")
+            await resume_prompt_batch(batch_id, action=BATCH_ACTION_RESUME)
+    except asyncio.CancelledError:
+        logger.info(f"[PromptBatchRunner] Tâche d'attente annulée pour le batch {batch_id}.")
+    except Exception as e:
+        logger.error(f"[PromptBatchRunner] Erreur reprise différée batch {batch_id}: {e}")
+
+
 async def resume_prompt_batch(batch_id: str, action: str = BATCH_ACTION_RESUME) -> Optional[BatchRunState]:
-    """Reprend l'exécution d'un batch en pause, ou passe au prompt suivant (skip)."""
+    """Reprend l'exécution d'un batch en pause, passe au prompt suivant (skip), annule, change de modèle, ou programme dans 5h."""
     state = load_batch_state(batch_id)
     if not state:
         logger.error(f"[PromptBatchRunner] Impossible de reprendre : batch '{batch_id}' introuvable.")
@@ -1194,9 +1389,40 @@ async def resume_prompt_batch(batch_id: str, action: str = BATCH_ACTION_RESUME) 
     if action == BATCH_ACTION_ABORT:
         state.status = "stopped"
         save_batch_state(state)
+        await _send_telegram_text(
+            f"🛑 <b>Batch arrêté</b>\nLa série de prompts <code>{batch_id}</code> a été interrompue à votre demande."
+        )
         return state
 
-    if action == BATCH_ACTION_SKIP:
+    if action == BATCH_ACTION_WAIT_5H:
+        state.status = "scheduled_resume"
+        state.scheduled_resume_time = time.time() + (5 * 3600)
+        save_batch_state(state)
+        await _send_telegram_text(
+            f"⏳ <b>Reprise programmée</b>\nLe batch <code>{batch_id}</code> reprendra automatiquement dans 5 heures à l'expiration du quota Gemini."
+        )
+        asyncio.create_task(_delayed_resume_batch(batch_id, 5 * 3600))
+        return state
+
+    if action == BATCH_ACTION_CLAUDE:
+        state.override_model = "claude-sonnet-5-5-high"
+        state.attempt = 1
+        state.status = "running"
+        save_batch_state(state)
+        await _send_telegram_text(
+            f"🤖 <b>Reprise avec Claude Sonnet 5.5</b>\nReprise immédiate du batch <code>{batch_id}</code> au prompt {state.current_prompt_index + 1}."
+        )
+
+    elif action == BATCH_ACTION_ARGON:
+        state.override_model = "gemini-4-argon-high"
+        state.attempt = 1
+        state.status = "running"
+        save_batch_state(state)
+        await _send_telegram_text(
+            f"⚡ <b>Reprise avec Gemini Argon</b>\nReprise immédiate du batch <code>{batch_id}</code> au prompt {state.current_prompt_index + 1}."
+        )
+
+    elif action == BATCH_ACTION_SKIP:
         state.current_prompt_index += 1
         state.attempt = 1
         state.results.append({
@@ -1214,18 +1440,30 @@ async def resume_prompt_batch(batch_id: str, action: str = BATCH_ACTION_RESUME) 
         })
         state.status = "running"
         save_batch_state(state)
+        await _send_telegram_text(
+            f"⏩ <b>Prompt sauté</b>\nPassage au prompt suivant pour le batch <code>{batch_id}</code>."
+        )
 
-    if action == BATCH_ACTION_RESUME:
+    elif action == BATCH_ACTION_RESUME:
         state.attempt = 1
         state.status = "running"
         save_batch_state(state)
+        await _send_telegram_text(
+            f"▶️ <b>Reprise du batch</b>\nReprise immédiate au prompt {state.current_prompt_index + 1} avec le modèle Gemini 3 par défaut."
+        )
 
     # Si le fichier source d'origine existe, recharger le BatchSpec et relancer
-    if state.source_file and os.path.exists(state.source_file):
-        batch_spec = load_batch_from_file(state.source_file)
-        runner = PromptBatchRunner(batch_spec)
-        runner.state = state
-        return await runner.run()
+    source_p = state.source_file
+    if source_p:
+        try:
+            safe_source = validate_safe_batch_path(source_p)
+            if os.path.exists(safe_source):
+                batch_spec = load_batch_from_file(safe_source)
+                runner = PromptBatchRunner(batch_spec)
+                runner.state = state
+                return await runner.run()
+        except Exception as e:
+            logger.warning(f"[PromptBatchRunner] Impossible de relancer via {source_p}: {e}")
 
     return state
 

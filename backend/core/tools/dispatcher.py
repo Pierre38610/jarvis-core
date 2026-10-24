@@ -897,6 +897,171 @@ async def dispatch_tool(
         )
 
 
+def _format_batch_status_tool_result(
+    state: Any,
+    has_bg_batch: bool = False,
+    last_batch_error: Optional[str] = None,
+) -> ToolResult:
+    """Génère un retour structuré complet et explicite pour le suivi oral du batch d'auto-amélioration."""
+    b_status = getattr(state, "status", "unknown")
+    b_title = getattr(state, "title", "Auto-amélioration")
+    b_cur = getattr(state, "current_prompt_index", 0) + 1
+    b_tot = getattr(state, "total_prompts", 1)
+    b_err = getattr(state, "last_error", None) or last_batch_error
+    cur_prompt_title = getattr(state, "current_prompt_title", None) or f"Prompt {b_cur}"
+
+    # Liste des prompts déjà validés
+    validated_prompts = [
+        f"{r.get('label') or r.get('prompt_id')} ({r.get('title')})"
+        for r in getattr(state, "results", [])
+        if r.get("status") == "succeeded"
+    ]
+    val_summary = ", ".join(validated_prompts) if validated_prompts else "Aucun prompt encore validé"
+
+    # Synthèse du patch d'auto-amélioration (ce qu'il va apporter à Jarvis)
+    improvement_summary = getattr(state, "improvement_summary", None) or (
+        "Ce circuit d'auto-amélioration autonome dote Jarvis de 5 fonctionnalités clés : "
+        "1) Veille et propositions d'améliorations automatisées via Telegram, "
+        "2) Exécution et tests stricts dans des Worktrees Git isolés avec validation unitaire avant commit, "
+        "3) Confinement par sous-dossiers (SubfolderScope) pour interdire toute modification hors périmètre, "
+        "4) Création automatique de Pull Requests GitHub avec gouvernance des crédits, "
+        "5) Gestion interactive des quotas avec options Telegram (Claude, Argon, délai d'attente de reset de 5h ou reprise immédiate)."
+    )
+
+    if b_status in ("running", "verifying") or has_bg_batch:
+        step_str = f"Prompt {b_cur}/{b_tot} ({cur_prompt_title}, tentative {getattr(state, 'attempt', 1)}/3)" if b_status == "running" else "Validation finale globale"
+        user_msg = (
+            f"Série de prompts « {b_title} » en cours : {step_str}.\n"
+            f"Prompts déjà validés : {val_summary}."
+        )
+        instruction = (
+            f"La série de prompts « {b_title} » est activement en cours d'exécution ({step_str}). "
+            f"Explique immédiatement à Pierre à l'oral avec ta voix Aoede : "
+            f"1) À quel prompt tu en es ({b_cur}/{b_tot} : {cur_prompt_title}) et quels prompts sont déjà validés ({val_summary}). "
+            f"2) En quoi consiste ce patch d'auto-amélioration et ce qu'il va apporter à Jarvis : {improvement_summary}."
+        )
+        return ToolResult.done(
+            user_message=user_msg,
+            evidence=f"batch_{state.batch_id}",
+            verified=True,
+            has_active_task=True,
+            task_type="prompt_batch",
+            status=b_status,
+            current_step=step_str,
+            recent_logs=[f"Prompt {r.get('label')}: {r.get('status')} ({r.get('duration_seconds')}s)" for r in getattr(state, "results", [])[-5:]],
+            diagnostic="Le batch progresse sur le VPS.",
+            instruction_to_jarvis=instruction,
+        )
+
+    elif b_status == "paused":
+        user_msg = (
+            f"Série de prompts « {b_title} » en pause au prompt {b_cur}/{b_tot} ({cur_prompt_title}) : {b_err or 'Quota de requêtes atteint'}.\n"
+            f"Prompts déjà validés et sauvegardés sur la branche : {val_summary}."
+        )
+        instruction = (
+            f"La série de prompts « {b_title} » est actuellement en pause au prompt {b_cur}/{b_tot} ({cur_prompt_title}) "
+            f"suite à une limite de quota Antigravity CLI ({b_err or 'Quota atteint'}). "
+            f"Rassure immédiatement Pierre à l'oral avec ta voix Aoede en lui précisant bien que le travail n'est pas perdu et que les prompts précédents ({val_summary}) "
+            f"sont déjà validés et commités sur la branche git. "
+            f"Explique-lui en quoi consiste ce patch d'auto-amélioration : {improvement_summary}. "
+            f"Indique-lui qu'un message interactif vient de lui être envoyé sur Telegram avec des boutons pour choisir de : "
+            f"continuer avec Claude, avec Argon, attendre 5h que le quota se réinitialise, ou annuler."
+        )
+        return ToolResult.done(
+            user_message=user_msg,
+            evidence=f"batch_{state.batch_id}_paused",
+            verified=True,
+            has_active_task=False,
+            task_type="prompt_batch",
+            status="paused",
+            current_step=f"En pause au prompt {b_cur}/{b_tot} ({cur_prompt_title})",
+            recent_logs=[f"Dernière erreur: {b_err}"],
+            diagnostic=f"Pause quota : {b_err}",
+            instruction_to_jarvis=instruction,
+        )
+
+    elif b_status == "scheduled_resume":
+        now_ts = time.time()
+        sched_ts = getattr(state, "scheduled_resume_time", None) or (now_ts + 18000)
+        delay_min = max(0, int((sched_ts - now_ts) / 60))
+        rem_str = f"{delay_min // 60}h{delay_min % 60:02d}"
+        user_msg = (
+            f"Série de prompts « {b_title} » programmée pour reprise automatique dans {rem_str} (à l'expiration du quota Gemini).\n"
+            f"Prompt actuel : {b_cur}/{b_tot} ({cur_prompt_title}). Prompts déjà validés : {val_summary}."
+        )
+        instruction = (
+            f"La série de prompts « {b_title} » est en attente programmée de reset de quota et reprendra automatiquement dans {rem_str}. "
+            f"Elle reprendra exactement au prompt {b_cur}/{b_tot} ({cur_prompt_title}). "
+            f"Rappelle à Pierre que les étapes précédentes ({val_summary}) sont bien conservées. "
+            f"Explique-lui ce que ce patch va lui apporter : {improvement_summary}."
+        )
+        return ToolResult.done(
+            user_message=user_msg,
+            evidence=f"batch_{state.batch_id}_scheduled",
+            verified=True,
+            has_active_task=True,
+            task_type="prompt_batch",
+            status="scheduled_resume",
+            current_step=f"Reprise automatique programmée dans {rem_str}",
+            recent_logs=[f"Reprise programmée à: {sched_ts}"],
+            diagnostic=f"Attente reset de quota ({rem_str})",
+            instruction_to_jarvis=instruction,
+        )
+
+    elif b_status == "failed":
+        err_clean = b_err or last_batch_error or "Erreur d'exécution"
+        user_msg = (
+            f"La série de prompts « {b_title} » s'est arrêtée au prompt {b_cur}/{b_tot} : {err_clean}.\n"
+            f"Prompts validés : {val_summary}."
+        )
+        instruction = (
+            f"La série de prompts « {b_title} » s'est arrêtée avec l'erreur : {err_clean}. "
+            f"Précise à Pierre à quel prompt cela s'est produit ({b_cur}/{b_tot} : {cur_prompt_title}), "
+            f"que les prompts précédents ({val_summary}) sont enregistrés, et ce qu'apporte le patch : {improvement_summary}."
+        )
+        return ToolResult.done(
+            user_message=user_msg,
+            evidence=f"batch_{state.batch_id}_failed",
+            verified=True,
+            has_active_task=False,
+            task_type="prompt_batch",
+            status="failed",
+            current_step=f"Arrêt sur erreur au prompt {b_cur}/{b_tot}",
+            recent_logs=[f"Erreur: {err_clean}"],
+            diagnostic=f"Échec : {err_clean}",
+            instruction_to_jarvis=instruction,
+        )
+
+    elif b_status in ("completed", "succeeded"):
+        user_msg = (
+            f"La série de prompts « {b_title} » est entièrement terminée avec succès ({len(getattr(state, 'results', []))}/{b_tot} prompts validés).\n"
+            f"Pull Request : {getattr(state, 'pr_url', None) or 'prête sur la branche'}.\n"
+            f"Tous les prompts ({val_summary}) ont été validés."
+        )
+        instruction = (
+            f"La série de prompts « {b_title} » est entièrement terminée avec succès. "
+            f"Dis à Pierre que tous les prompts ({val_summary}) sont passés et que sa PR ({getattr(state, 'pr_url', None) or 'branche prête'}) est créée. "
+            f"Résume-lui les bénéfices du patch : {improvement_summary}."
+        )
+        return ToolResult.done(
+            user_message=user_msg,
+            evidence=f"batch_{state.batch_id}_completed",
+            verified=True,
+            has_active_task=False,
+            task_type="prompt_batch",
+            status="completed",
+            current_step="Terminé avec succès",
+            recent_logs=[f"PR: {getattr(state, 'pr_url', None)}"],
+            diagnostic="Toutes les étapes du batch sont validées.",
+            instruction_to_jarvis=instruction,
+        )
+
+    return ToolResult.done(
+        user_message=f"État du batch « {b_title} » : {b_status}.",
+        verified=True,
+    )
+
+
 async def _execute_dispatch_tool(
     name: str,
     args: dict,
@@ -1194,6 +1359,51 @@ async def _execute_dispatch_tool(
         is_sync = bool(args.get("sync", False) or args.get("wait_completion", False))
 
         obj_lower = objectif.lower()
+
+        # 0a. Suivi d'état ou demande d'explications sur le batch d'auto-amélioration
+        status_triggers = (
+            "où en est", "ou en est", "quel prompt", "en quoi consiste",
+            "ce que va apporter", "statut", "avancement", "progression",
+            "qu'apporte", "état", "etat", "où ça en est", "ou ca en est",
+            "quoi consiste", "apporter l'amélioration", "apporter l'amelioration",
+            "reprendre", "reprends",
+        )
+        is_status_query = (
+            raw_mode in ("status", "info", "query")
+            or (not batch_file_path and not batch_content and any(st in obj_lower for st in status_triggers))
+        )
+        if is_status_query:
+            from services.prompt_batch_runner import BATCHES_DIR, load_batch_state
+            batch_st = None
+            last_bid = active_task_controller.get("last_batch_id")
+            if last_bid:
+                clean_bid = last_bid.replace("batch_", "", 1) if last_bid.startswith("batch_batch_") else last_bid
+                batch_st = load_batch_state(clean_bid) or load_batch_state(last_bid)
+            if not batch_st and os.path.isdir(BATCHES_DIR):
+                try:
+                    bfs = sorted(
+                        [os.path.join(BATCHES_DIR, f) for f in os.listdir(BATCHES_DIR) if f.endswith(".json")],
+                        key=lambda p: os.path.getmtime(p),
+                        reverse=True
+                    )
+                    for bf in bfs[:10]:
+                        c_st = load_batch_state(os.path.splitext(os.path.basename(bf))[0])
+                        if c_st:
+                            if c_st.status in ("running", "verifying", "paused", "scheduled_resume"):
+                                batch_st = c_st
+                                break
+                            if not batch_st:
+                                batch_st = c_st
+                except Exception:
+                    pass
+            if batch_st:
+                return _format_batch_status_tool_result(batch_st)
+            return ToolResult.done(
+                user_message="Aucun batch d'auto-amélioration n'est actuellement enregistré.",
+                verified=True,
+                instruction_to_jarvis="Dis à Pierre qu'aucun batch d'auto-amélioration n'est actuellement en cours ni en pause."
+            )
+
         propose_triggers = (
             "propose",
             "proposition",
@@ -1217,7 +1427,7 @@ async def _execute_dispatch_tool(
             )
         )
 
-        # 0. Mode Propositions Techniques & Veille L2 vers Telegram ('propose')
+        # 0b. Mode Propositions Techniques & Veille L2 vers Telegram ('propose')
         if is_propose_mode:
             from services.weekly_improvement_watch import generate_and_send_technical_improvements
 
@@ -3718,97 +3928,32 @@ async def _execute_dispatch_tool(
             if last_batch_id:
                 clean_bid = last_batch_id.replace("batch_", "", 1) if last_batch_id.startswith("batch_batch_") else last_batch_id
                 latest_batch_state = load_batch_state(clean_bid) or load_batch_state(last_batch_id)
-        elif os.path.isdir(BATCHES_DIR):
+        if not latest_batch_state and os.path.isdir(BATCHES_DIR):
             try:
                 batch_files = sorted(
                     [os.path.join(BATCHES_DIR, f) for f in os.listdir(BATCHES_DIR) if f.endswith(".json")],
                     key=lambda p: os.path.getmtime(p),
                     reverse=True
                 )
-                if batch_files:
-                    bid = os.path.splitext(os.path.basename(batch_files[0]))[0]
+                for bf in batch_files[:10]:
+                    bid = os.path.splitext(os.path.basename(bf))[0]
                     candidate = load_batch_state(bid)
-                    # Seulement si activement en cours d'exécution récente (< 10 minutes)
-                    if candidate and candidate.status in ("running", "verifying") and (time.time() - getattr(candidate, "updated_at", 0)) < 600:
-                        latest_batch_state = candidate
-            except Exception:
-                pass
+                    if candidate:
+                        # Priorité à un batch actif, en pause ou programmé
+                        if candidate.status in ("running", "verifying", "paused", "scheduled_resume"):
+                            latest_batch_state = candidate
+                            break
+                        if not latest_batch_state and (time.time() - getattr(candidate, "updated_at", 0)) < 172800:
+                            latest_batch_state = candidate
+            except Exception as e:
+                logger.debug(f"[get_active_task_status] Erreur parcours batchs: {e}")
 
         if latest_batch_state:
-            now_t = time.time()
-            is_recent = (now_t - getattr(latest_batch_state, "updated_at", 0)) < 7200  # Moins de 2h
-            b_status = latest_batch_state.status
-            b_title = latest_batch_state.title
-            b_cur = latest_batch_state.current_prompt_index + 1
-            b_tot = latest_batch_state.total_prompts
-            b_err = latest_batch_state.last_error or last_batch_error
-
-            if b_status in ("running", "verifying") or has_bg_batch:
-                step_str = f"Prompt {b_cur}/{b_tot} (tentative {latest_batch_state.attempt}/3)" if b_status == "running" else "Validation finale globale"
-                return ToolResult.done(
-                    user_message=f"Série de prompts « {b_title} » en cours : {step_str}.",
-                    evidence=f"batch_{latest_batch_state.batch_id}",
-                    verified=True,
-                    has_active_task=True,
-                    task_type="prompt_batch",
-                    status=b_status,
-                    current_step=step_str,
-                    recent_logs=[f"Prompt {r.get('label')}: {r.get('status')} ({r.get('duration_seconds')}s)" for r in latest_batch_state.results[-5:]],
-                    diagnostic="Le batch progresse sur le VPS.",
-                    instruction_to_jarvis=(
-                        f"La série de prompts « {b_title} » est activement en cours d'exécution sur le VPS ({step_str}). "
-                        f"Explique immédiatement à Pierre à quelle étape tu en es avec assurance."
-                    ),
-                )
-            elif b_status == "paused":
-                return ToolResult.done(
-                    user_message=f"Série de prompts « {b_title} » en pause au prompt {b_cur}/{b_tot} après 3 essais infructueux : {b_err or 'Blocage'}",
-                    evidence=f"batch_{latest_batch_state.batch_id}_paused",
-                    verified=True,
-                    has_active_task=False,
-                    task_type="prompt_batch",
-                    status="paused",
-                    current_step=f"En pause au prompt {b_cur}/{b_tot}",
-                    recent_logs=[f"Dernière erreur: {b_err}"],
-                    diagnostic=f"Pause après 3 essais : {b_err}",
-                    instruction_to_jarvis=(
-                        f"La série de prompts « {b_title} » est en pause sur le prompt {b_cur}/{b_tot} suite à l'erreur : {b_err}. "
-                        f"Informe Pierre qu'il peut reprendre via Telegram ou en te demandant de reprendre."
-                    ),
-                )
-            elif (b_status == "failed" or last_batch_error) and is_recent:
-                err_clean = b_err or last_batch_error or "Erreur d'exécution"
-                return ToolResult.done(
-                    user_message=f"La série de prompts « {b_title} » a rencontré un problème : {err_clean}",
-                    evidence=f"batch_{latest_batch_state.batch_id}_failed",
-                    verified=True,
-                    has_active_task=False,
-                    task_type="prompt_batch",
-                    status="failed",
-                    current_step="Arrêt sur erreur",
-                    recent_logs=[f"Erreur: {err_clean}"],
-                    diagnostic=f"Échec : {err_clean}",
-                    instruction_to_jarvis=(
-                        f"La série de prompts « {b_title} » s'est arrêtée avec l'erreur : {err_clean}. "
-                        f"Explique clairement ce blocage à Pierre."
-                    ),
-                )
-            elif b_status in ("completed", "succeeded") and is_recent:
-                return ToolResult.done(
-                    user_message=f"La série de prompts « {b_title} » s'est terminée avec succès ({len(latest_batch_state.results)}/{b_tot} prompts validés). PR : {latest_batch_state.pr_url or 'prête'}",
-                    evidence=f"batch_{latest_batch_state.batch_id}_completed",
-                    verified=True,
-                    has_active_task=False,
-                    task_type="prompt_batch",
-                    status="completed",
-                    current_step="Terminé avec succès",
-                    recent_logs=[f"PR: {latest_batch_state.pr_url}"],
-                    diagnostic="Toutes les étapes du batch sont validées.",
-                    instruction_to_jarvis=(
-                        f"La série de prompts « {b_title} » est entièrement terminée avec succès. "
-                        f"Dis à Pierre que tous les tests sont passés et que sa Pull Request est disponible."
-                    ),
-                )
+            return _format_batch_status_tool_result(
+                latest_batch_state,
+                has_bg_batch=has_bg_batch,
+                last_batch_error=last_batch_error,
+            )
         elif last_batch_error:
             return ToolResult.done(
                 user_message=f"La série de prompts n'a pas pu démarrer : {last_batch_error}",

@@ -260,14 +260,16 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                 types.FunctionDeclaration(
                     name="self_improve",
                     description=(
-                        "AUTO-AMÉLIORATION ET REFACTORISATION DU CODE DE J.A.R.V.I.S. VIA ANTIGRAVITY SUR LE VPS (PROPOSITIONS, PROMPT UNIQUE OU BATCH DE PROMPTS). "
+                        "AUTO-AMÉLIORATION ET REFACTORISATION DU CODE DE J.A.R.V.I.S. VIA ANTIGRAVITY SUR LE VPS (PROPOSITIONS, PROMPT UNIQUE, BATCH DE PROMPTS OU ÉTAT). "
                         "À UTILISER OBLIGATOIREMENT quand Pierre demande des propositions d'auto-amélioration, demande comment améliorer Jarvis, "
-                        "veut recevoir des idées d'améliorations sur Telegram, ou demande à Jarvis de s'auto-coder / exécuter un fichier de prompts. "
+                        "veut recevoir des idées d'améliorations sur Telegram, demande à Jarvis de s'auto-coder / exécuter un fichier de prompts, "
+                        "ou demande à quel prompt il en est et en quoi consiste le patch d'auto-amélioration en cours. "
                         "NE JAMAIS utiliser 'create_push_reminder' pour envoyer des propositions d'amélioration. "
-                        "Supporte 3 modes via 'mode' : "
+                        "Supporte 4 modes via 'mode' : "
                         "1) 'propose' : audite CAPABILITIES_LEDGER.md + le code réel + la recherche L2 et envoie des cartes interactives avec boutons '✅ Approuver' sur Telegram ; "
                         "2) 'implement' : recode et teste un objectif précis dans un worktree Git isolé et ouvre une PR GitHub ; "
-                        "3) 'batch' : exécute de A à Z un fichier .md de prompts (reçu par Telegram ou par e-mail) via 'batch_file_path' ou 'batch_content'."
+                        "3) 'batch' : exécute de A à Z un fichier .md de prompts (reçu par Telegram ou par e-mail) via 'batch_file_path' ou 'batch_content' ; "
+                        "4) 'status' : explique oralement l'avancement exact (prompt en cours, prompts validés) et ce que le patch d'auto-amélioration apporte à Jarvis."
                     ),
                     behavior=types.Behavior.NON_BLOCKING,
                     parameters=types.Schema(
@@ -1105,8 +1107,9 @@ def get_tools_list(include_agentic: bool = True) -> list[types.Tool]:
                     name="get_active_task_status",
                     description=(
                         "Consulte en direct l'avancement, l'étape courante, les logs récents et les détails d'une tâche de fond en cours "
-                        "(génération de slides, prospection Deep Research, agent Antigravity, navigation). "
-                        "À UTILISER SYSTÉMATIQUEMENT quand Pierre demande où en est l'agent Antigravity, ce qu'il fait en ce moment, ou si une tâche semble lente/bloquée. "
+                        "(série de prompts / patch d'auto-amélioration, génération de slides, prospection Deep Research, agent Antigravity, navigation). "
+                        "À UTILISER SYSTÉMATIQUEMENT quand Pierre demande où en est l'agent Antigravity, ce qu'il fait en ce moment, "
+                        "à quel prompt il en est dans le patch d'auto-amélioration, en quoi consiste le patch en cours, ou si une tâche semble lente/bloquée. "
                         "NE JAMAIS UTILISER QUAND : Pierre veut arrêter la tâche (utiliser 'stop_current_action'), "
                         "ni pour modifier son orientation en direct (utiliser 'guide_active_task')."
                     ),

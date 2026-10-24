@@ -331,7 +331,7 @@ Renforcer la vérification cryptographique des signatures JWT et interdire les a
     # Simulation d'exécution : Prompt 1 réussit du 1er coup, Prompt 2 échoue 3 fois
     exec_call_count = {"p1": 0, "p2": 0}
 
-    async def mock_execute_single_prompt(prompt, worktree_dir, task_id, feedback_section=""):
+    async def mock_execute_single_prompt(prompt, worktree_dir, task_id, feedback_section="", override_model=None, **kwargs):
         if prompt.label == "1":
             exec_call_count["p1"] += 1
             return True, "Validation Prompt 1 OK", ["backend/services/cache.py"], "gemini-3.7-flash"
@@ -390,7 +390,7 @@ Renforcer la vérification cryptographique des signatures JWT et interdire les a
 
         # 7. Simulation du clic sur 'Reprendre' après correction
         # Le Prompt 2 réussit désormais au premier essai de reprise
-        async def mock_execute_resumed(prompt, worktree_dir, task_id, feedback_section=""):
+        async def mock_execute_resumed(prompt, worktree_dir, task_id, feedback_section="", override_model=None, **kwargs):
             if prompt.label == "2":
                 return True, "Correction validée", ["backend/services/auth_service.py"], "gemini-3.1-pro"
             return True, "OK", [], "gemini-3.7-flash"

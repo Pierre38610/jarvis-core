@@ -29,6 +29,10 @@ from services.prompt_batch_runner import (
     BATCH_ACTION_RESUME,
     BATCH_ACTION_SKIP,
     BATCH_ACTION_ABORT,
+    BATCH_ACTION_CLAUDE,
+    BATCH_ACTION_ARGON,
+    BATCH_ACTION_WAIT_5H,
+    is_quota_exhausted_error,
 )
 
 
@@ -36,7 +40,17 @@ from services.prompt_batch_runner import (
 def cleanup_batch_data():
     """Garantit l'isolation du dossier de données des batches."""
     os.makedirs(BATCHES_DIR, exist_ok=True)
+    def _clean_test_files():
+        if os.path.exists(BATCHES_DIR):
+            for f in os.listdir(BATCHES_DIR):
+                if f.startswith("test_") and f.endswith(".json"):
+                    try:
+                        os.remove(os.path.join(BATCHES_DIR, f))
+                    except Exception:
+                        pass
+    _clean_test_files()
     yield
+    _clean_test_files()
 
 
 def test_batch_state_persistence():
@@ -270,3 +284,137 @@ Body prompt 1.
         assert res["status"] == "done"
         assert "terminée avec succès" in res["user_message"]
         assert mock_batch.called
+
+
+@pytest.mark.asyncio
+async def test_quota_exhausted_immediate_pause_and_telegram_alert():
+    """Vérifie qu'une erreur 429 / quota interrompt immédiatement sans retries inutiles et déclenche l'alerte Telegram sans e-mail."""
+    prompts = [
+        PromptItem(index=0, label="1", title="Étape Quota", body="Action", level="medium"),
+    ]
+    batch_spec = BatchSpec(
+        batch_id="test_batch_quota_123",
+        title="Batch Quota Test",
+        prompts=prompts,
+        raw_content="...",
+    )
+    runner = PromptBatchRunner(batch_spec)
+
+    quota_err = 'AGY_ERROR: {"short_error":"RESOURCE_EXHAUSTED (code 429): Individual quota reached. Resets in 5h20m.","error_code":429}'
+
+    with patch("services.prompt_batch_runner.create_isolated_worktree", return_value="/tmp/mock_wt"), \
+         patch("services.prompt_batch_runner.cleanup_isolated_worktree") as mock_cleanup, \
+         patch("services.prompt_batch_runner._execute_single_prompt", new_callable=AsyncMock) as mock_exec, \
+         patch("services.prompt_batch_runner.send_batch_quota_telegram_alert", new_callable=AsyncMock) as mock_tg_quota, \
+         patch("services.prompt_batch_runner.send_batch_email_alert", new_callable=AsyncMock) as mock_email:
+
+        mock_exec.return_value = (False, quota_err, [], "gemini-3.8-flash")
+
+        state = await runner.run()
+
+        # Pause immédiate dès la première détection
+        assert state.status == "paused"
+        assert state.attempt == 1
+        assert mock_exec.call_count == 1
+        # Alerte Telegram interactive envoyée, mais pas d'e-mail anxiogène
+        assert mock_tg_quota.called
+        assert not mock_email.called
+        # Vérifier que la branche n'a pas été supprimée
+        mock_cleanup.assert_called_once()
+        _, kwargs = mock_cleanup.call_args
+        assert kwargs.get("delete_branch") is False
+
+    fpath = os.path.join(BATCHES_DIR, f"{batch_spec.batch_id}.json")
+    if os.path.exists(fpath):
+        os.remove(fpath)
+
+
+@pytest.mark.asyncio
+async def test_resume_prompt_batch_actions_and_scheduled_5h():
+    """Vérifie les actions de reprise Telegram : Claude, Argon, attente 5h, et reprise normale."""
+    batch_id = f"test_resume_actions_{int(time.time()*1000)}"
+    state = BatchRunState(
+        batch_id=batch_id,
+        title="Test Actions Reprise",
+        status="paused",
+        current_prompt_index=2,
+        total_prompts=9,
+        attempt=3,
+        branch_name="jarvis/batch-actions-test",
+        worktree_dir=None,
+        results=[
+            {"label": "1A", "title": "Base", "status": "succeeded"},
+            {"label": "1B", "title": "Scope", "status": "succeeded"},
+        ],
+    )
+    save_batch_state(state)
+
+    with patch("services.prompt_batch_runner._send_telegram_text", new_callable=AsyncMock):
+        # 1. Action Claude
+        st_cld = await resume_prompt_batch(batch_id, action=BATCH_ACTION_CLAUDE)
+        assert st_cld.override_model == "claude-sonnet-5-5-high"
+        assert st_cld.attempt == 1
+        assert st_cld.status == "running"
+
+        # 2. Action Argon
+        st_arg = await resume_prompt_batch(batch_id, action=BATCH_ACTION_ARGON)
+        assert st_arg.override_model == "gemini-4-argon-high"
+        assert st_arg.attempt == 1
+
+        # 3. Action Attente 5h
+        st_5h = await resume_prompt_batch(batch_id, action=BATCH_ACTION_WAIT_5H)
+        assert st_5h.status == "scheduled_resume"
+        assert st_5h.scheduled_resume_time is not None
+        assert st_5h.scheduled_resume_time > time.time() + 17000
+
+    # Nettoyage
+    fpath = os.path.join(BATCHES_DIR, f"{batch_id}.json")
+    if os.path.exists(fpath):
+        os.remove(fpath)
+
+
+@pytest.mark.asyncio
+async def test_batch_oral_status_reporting_and_explanation():
+    """Vérifie que get_active_task_status et self_improve renvoient l'état exact du prompt et l'explication du patch."""
+    batch_id = f"test_oral_{int(time.time()*1000)}"
+    state = BatchRunState(
+        batch_id=batch_id,
+        title="Prompts d'implémentation - auto-amélioration",
+        status="paused",
+        current_prompt_index=2,  # Prompt 3 (0-indexed)
+        total_prompts=9,
+        attempt=1,
+        branch_name="jarvis/batch-oral-test",
+        worktree_dir=None,
+        results=[
+            {"label": "1A", "title": "Création branches et gouvernance", "status": "succeeded"},
+            {"label": "1B", "title": "SubfolderScope", "status": "succeeded"},
+            {"label": "2", "title": "CI et CODEOWNERS", "status": "succeeded"},
+        ],
+        last_error="Individual quota reached",
+        current_prompt_title="[3] Outil self_improve, PR et gouvernance des crédits",
+    )
+    save_batch_state(state)
+
+    from core.tools.dispatcher import dispatch_tool, _format_batch_status_tool_result
+    res = _format_batch_status_tool_result(state)
+
+    # Vérifications sur le contenu vocal et textuel
+    assert "Prompt 3/9" in res.data["current_step"] or "prompt 3/9" in res.user_message.lower()
+    assert "1A" in res.user_message and "1B" in res.user_message and "2" in res.user_message
+    instruction = res.data.get("instruction_to_jarvis", "")
+    assert "Aoede" in instruction
+    assert "1A" in instruction and "1B" in instruction and "2" in instruction
+    assert "auto-amélioration" in instruction.lower()
+
+    # Test via l'appel d'outil self_improve
+    tool_res = await dispatch_tool("self_improve", {
+        "objectif": "en quoi consiste ce patch d'auto amélioration et à quel prompt en es-tu ?"
+    })
+    assert tool_res["status"] == "done"
+    assert "prompt 3/9" in tool_res["user_message"].lower()
+
+    # Nettoyage
+    fpath = os.path.join(BATCHES_DIR, f"{batch_id}.json")
+    if os.path.exists(fpath):
+        os.remove(fpath)
