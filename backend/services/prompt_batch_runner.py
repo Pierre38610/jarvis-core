@@ -885,6 +885,19 @@ class PromptBatchRunner:
                 p_dur = time.perf_counter() - t_p0
 
                 if prompt_ok:
+                    # Enregistrer un commit git propre pour ce prompt dans le worktree
+                    try:
+                        subprocess.run(["git", "add", "."], cwd=worktree_dir, capture_output=True, text=True, check=False)
+                        subprocess.run(
+                            ["git", "commit", "-m", f"jarvis batch [{curr_prompt.label}]: {curr_prompt.title[:60]}"],
+                            cwd=worktree_dir,
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                        )
+                    except Exception as c_err:
+                        logger.debug(f"[PromptBatchRunner] Info commit étape : {c_err}")
+
                     res_item = PromptExecutionResult(
                         prompt_id=curr_prompt.label,
                         label=curr_prompt.label,
@@ -948,6 +961,14 @@ class PromptBatchRunner:
                 # 5. Push et Création de la PR GitHub unique
                 append_agy_log(task_id, "Validation finale validée avec succès ! Push de la branche et ouverture de PR...")
                 try:
+                    subprocess.run(["git", "add", "."], cwd=worktree_dir, capture_output=True, text=True, check=False)
+                    subprocess.run(
+                        ["git", "commit", "-m", f"jarvis batch: {self.batch_spec.title[:60]}"],
+                        cwd=worktree_dir,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
                     subprocess.run(["git", "push", "origin", branch_name], cwd=worktree_dir, capture_output=True, text=True, check=False)
                     dummy_scope = SubfolderScope("batch", ["backend", "frontend", "ops", "docs"], "ARCHITECTURE.md", [])
                     pr_url = await _create_github_pr(branch_name, f"Batch : {self.batch_spec.title}", dummy_scope, f"Série de {len(self.batch_spec.prompts)} prompts exécutée.")

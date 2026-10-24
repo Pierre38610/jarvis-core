@@ -46,7 +46,7 @@ MAX_RUNS_PER_DAY = 10
 MAX_RUNS_PER_WEEK = 30
 MAX_ITERATIONS = 3
 
-REPO_ROOT = getattr(config, "BASE_DIR", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+REPO_ROOT = getattr(config, "BASE_DIR", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 DATA_DIR = os.path.join(REPO_ROOT, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -404,10 +404,85 @@ def record_run_in_journal(entry: Dict[str, Any]) -> None:
 
 
 # ─── 4. Gestion Isolée du Git Worktree ───────────────────────────────────────
+def ensure_git_repository(repo_root: str) -> None:
+    """S'assure que repo_root est un dépôt Git valide avec un commit HEAD et une configuration d'identité."""
+    git_dir = os.path.join(repo_root, ".git")
+
+    # 1. Si le dossier .git n'existe pas, initialiser et lier à GitHub
+    if not os.path.exists(git_dir):
+        logger.warning(f"[SelfImprovement] Dépôt Git absent dans {repo_root}. Initialisation automatique...")
+        try:
+            subprocess.run(["git", "init"], cwd=repo_root, capture_output=True, text=True, check=True)
+            subprocess.run(["git", "branch", "-M", "main"], cwd=repo_root, capture_output=True, text=True, check=False)
+            subprocess.run(
+                ["git", "remote", "add", "origin", "https://github.com/Pierre38610/jarvis-core.git"],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            fetch_res = subprocess.run(
+                ["git", "fetch", "origin", "main", "--depth=1"],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if fetch_res.returncode == 0:
+                subprocess.run(["git", "reset", "origin/main"], cwd=repo_root, capture_output=True, text=True, check=False)
+            else:
+                subprocess.run(["git", "add", "-A"], cwd=repo_root, capture_output=True, text=True, check=False)
+                subprocess.run(
+                    ["git", "commit", "-m", "Baseline initial commit for self-improvement"],
+                    cwd=repo_root,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+        except Exception as e:
+            logger.error(f"[SelfImprovement] Erreur lors de l'initialisation Git dans {repo_root}: {e}")
+            raise RuntimeError(f"Impossible d'initialiser le dépôt Git dans {repo_root}: {e}")
+
+    # 2. Configurer user.name et user.email si non définis
+    try:
+        name_check = subprocess.run(["git", "config", "user.name"], cwd=repo_root, capture_output=True, text=True, check=False)
+        if not name_check.stdout.strip():
+            subprocess.run(["git", "config", "user.name", "Jarvis Autonomous Agent"], cwd=repo_root, capture_output=True, text=True, check=False)
+            subprocess.run(["git", "config", "user.email", "jarvis@stark.ai"], cwd=repo_root, capture_output=True, text=True, check=False)
+    except Exception:
+        pass
+
+    # 3. Vérifier que HEAD est résolu
+    head_check = subprocess.run(["git", "rev-parse", "--verify", "HEAD"], cwd=repo_root, capture_output=True, text=True, check=False)
+    if head_check.returncode != 0:
+        logger.warning(f"[SelfImprovement] HEAD non résolu dans {repo_root}. Tentative de fetch ou commit baseline...")
+        fetch_res = subprocess.run(["git", "fetch", "origin", "main", "--depth=1"], cwd=repo_root, capture_output=True, text=True, check=False)
+        if fetch_res.returncode == 0:
+            subprocess.run(["git", "reset", "origin/main"], cwd=repo_root, capture_output=True, text=True, check=False)
+        else:
+            subprocess.run(["git", "add", "-A"], cwd=repo_root, capture_output=True, text=True, check=False)
+            subprocess.run(["git", "commit", "-m", "Baseline initial commit for self-improvement"], cwd=repo_root, capture_output=True, text=True, check=False)
+
+    # 4. Prune les anciens worktrees orphelins
+    try:
+        subprocess.run(["git", "worktree", "prune"], cwd=repo_root, capture_output=True, text=True, check=False)
+    except Exception:
+        pass
+
+
 def create_isolated_worktree(repo_root: str, branch_name: str) -> str:
     """Crée un git worktree isolé temporaire branché sur `branch_name`."""
+    ensure_git_repository(repo_root)
+
     temp_dir = tempfile.mkdtemp(prefix="jarvis_self_improve_")
-    cmd = ["git", "worktree", "add", "-b", branch_name, temp_dir, "HEAD"]
+
+    # Si la branche existe déjà d'un run précédent avorté, la supprimer proprement
+    try:
+        subprocess.run(["git", "branch", "-D", branch_name], cwd=repo_root, capture_output=True, text=True, check=False)
+    except Exception:
+        pass
+
+    cmd = ["git", "worktree", "add", "-B", branch_name, temp_dir, "HEAD"]
     try:
         subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=True)
         logger.info(f"[SelfImprovement] Worktree créé avec succès dans {temp_dir} (branche: {branch_name})")

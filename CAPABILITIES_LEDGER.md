@@ -75,6 +75,12 @@ Les **52 outils** suivants sont déjà déclarés, validés par `arg_validator.p
 
 ## 3. HISTORIQUE DES AUTO-AMÉLIORATIONS APPLIQUÉES
 
+- **2026-10-24 — v5.99.0 (Auto-initialisation & Résilience des Worktrees Git pour Prompt Batch)** :
+  - Ajout de `ensure_git_repository(repo_root)` dans `backend/services/self_improvement_service.py` pour auto-initialiser et configurer Git (`user.name`, `user.email`, remote `origin`, `git fetch origin main`, `git worktree prune`) si le dépôt est absent ou désynchronisé sur le VPS.
+  - Sécurisation de `create_isolated_worktree()` avec `git worktree add -B` et suppression préventive de la branche locale pour éliminer les blocages de branches résiduelles.
+  - Ajout du commit des étapes (`git add .` et `git commit`) dans `backend/services/prompt_batch_runner.py` pour chaque prompt validé et avant le push final.
+  - Synchronisation automatique du dépôt Git VPS avec GitHub `main` dans le pipeline `ops/deploy/sync_deploy.py`.
+
 - **2026-10-24 — v5.98.0 (Batch Correctif & Registre de Capacités)** :
   - Création de `CAPABILITIES_LEDGER.md` et ajout de `get_capabilities_ledger_summary()` + `verify_capability_not_already_implemented()` dans `backend/services/architecture_service.py`.
   - Refonte de `backend/services/weekly_improvement_watch.py` avec `generate_and_send_technical_improvements()`, audit du code réel, recherche technique L2 et filtre anti-coaching personnel/sportif.

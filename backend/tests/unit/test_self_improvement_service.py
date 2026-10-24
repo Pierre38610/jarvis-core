@@ -352,3 +352,38 @@ async def test_dispatcher_self_improve_propose_mode_triggers_technical_watch():
         await active_task_controller["bg_task"]
         assert mock_gen.called
         assert mock_gen.call_args.kwargs.get("focus_area") == "backend/services"
+
+
+# ─── 7. Validation de ensure_git_repository & Robustesse Worktree ─────────────
+def test_ensure_git_repository_creates_git_if_missing(tmp_path):
+    """Vérifie que ensure_git_repository initialise un dépôt Git si .git est absent."""
+    from services.self_improvement_service import ensure_git_repository
+
+    fake_repo = tmp_path / "fake_repo"
+    fake_repo.mkdir()
+
+    with patch("subprocess.run") as mock_sub:
+        mock_sub.return_value = MagicMock(returncode=0, stdout="Jarvis Autonomous Agent")
+        ensure_git_repository(str(fake_repo))
+
+        calls = [c[0][0] for c in mock_sub.call_args_list]
+        assert ["git", "init"] in calls
+        assert ["git", "branch", "-M", "main"] in calls
+        assert ["git", "remote", "add", "origin", "https://github.com/Pierre38610/jarvis-core.git"] in calls
+
+
+def test_ensure_git_repository_prunes_if_git_exists(tmp_path):
+    """Vérifie que ensure_git_repository nettoie les worktrees si .git existe déjà."""
+    from services.self_improvement_service import ensure_git_repository
+
+    fake_repo = tmp_path / "fake_repo_existing"
+    fake_repo.mkdir()
+    (fake_repo / ".git").mkdir()
+
+    with patch("subprocess.run") as mock_sub:
+        mock_sub.return_value = MagicMock(returncode=0, stdout="Jarvis Autonomous Agent")
+        ensure_git_repository(str(fake_repo))
+
+        calls = [c[0][0] for c in mock_sub.call_args_list]
+        assert ["git", "worktree", "prune"] in calls
+        assert ["git", "init"] not in calls

@@ -265,10 +265,12 @@ def deploy_to_vps():
         sftp.put(archive_path, remote_tmp)
         sftp.close()
 
-        # Extraction & Redémarrage
+        # Extraction, Synchronisation Git VPS & Redémarrage
         cmd = (
             "tar -xzf /tmp/jarvis_update.tar.gz -C /home/opc/jarvis-core && "
             "rm -f /tmp/jarvis_update.tar.gz && "
+            "git -C /home/opc/jarvis-core fetch origin main --depth=1 2>/dev/null && "
+            "git -C /home/opc/jarvis-core reset origin/main 2>/dev/null; "
             "sudo systemctl restart jarvis && "
             "sleep 1 && sudo systemctl is-active jarvis"
         )
