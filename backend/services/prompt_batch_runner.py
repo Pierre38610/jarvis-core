@@ -937,7 +937,7 @@ class PromptBatchRunner:
                 env = os.environ.copy()
                 env["CI"] = "1"
                 env["GIT_TERMINAL_PROMPT"] = "0"
-                env["PYTHONPATH"] = f"{os.path.join(worktree_dir, 'backend')}{os.pathsep}{env.get('PYTHONPATH', '')}"
+                env["PYTHONPATH"] = f"{os.path.join(worktree_dir, 'backend')}{os.pathsep}{worktree_dir}{os.pathsep}{env.get('PYTHONPATH', '')}"
                 low_prio = build_low_priority_subprocess_kwargs()
 
                 glob_proc = subprocess.run(
