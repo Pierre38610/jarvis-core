@@ -229,7 +229,10 @@ def deploy_to_vps():
                         continue
                     full = os.path.join(root, f)
                     rel = os.path.relpath(full, BASE_DIR)
-                    tar.add(full, arcname=rel)
+                    try:
+                        tar.add(full, arcname=rel)
+                    except (PermissionError, OSError):
+                        continue
 
         sz_kb = os.path.getsize(archive_path) / 1024
         print(f"  [✔] Archive générée : {sz_kb:.1f} Ko", flush=True)
