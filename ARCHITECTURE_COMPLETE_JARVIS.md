@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.99.0 — Fiabilisation Intégrale de l'Auto-Amélioration (`self_improve` & `prompt_batch_runner.py`), Réception Bidirectionnelle de Fichiers sur Telegram (`getUpdates` + `getFile` dans `self_improvement_telegram.py`), Sauvegarde Automatique des Pièces Jointes Gmail (`email_service.py`), Correction du Lanceur Windows Silencieux (`ops/windows/start_agent_silent.vbs`), Alignement des Drapeaux CLI Antigravity v1.4.6 (`--model`, `--effort`, mapping `gemini-4-argon-{low|medium|high}` et `gemini-3.8-flash-{low|medium|high}`), Registre Factuel `CAPABILITIES_LEDGER.md` (`get_capabilities_ledger_summary`, `verify_capability_not_already_implemented`), et Moteur d'Audit Technique + Recherche L2 Anti-Coaching (`generate_and_send_technical_improvements` dans `weekly_improvement_watch.py`).*
+> *Dernière révision majeure : Version 5.99.1 — Résolution du Shadowing des Modules Racine VPS (`google_antigravity.py`, `config.py`), Sécurisation de la Validation Globale des Prompt Batches (`timeout=360s` avec `try/except TimeoutExpired`), et Pipeline de Déploiement Robuste.*
 
 
 ---
@@ -1698,4 +1698,4 @@ Pour ajouter un 50e outil ou modifier un outil existant :
 
 ---
 
-*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.99.0.*
+*Document de référence architecturale — Stark Industries — Système J.A.R.V.I.S. Core V 5.99.1.*

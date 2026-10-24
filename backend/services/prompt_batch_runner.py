@@ -937,21 +937,36 @@ class PromptBatchRunner:
                 env = os.environ.copy()
                 env["CI"] = "1"
                 env["GIT_TERMINAL_PROMPT"] = "0"
-                env["PYTHONPATH"] = f"{os.path.join(worktree_dir, 'backend')}{os.pathsep}{worktree_dir}{os.pathsep}{env.get('PYTHONPATH', '')}"
+                env["PYTHONPATH"] = f"{os.path.join(worktree_dir, 'backend')}{os.pathsep}{worktree_dir}"
                 low_prio = build_low_priority_subprocess_kwargs()
 
-                glob_proc = subprocess.run(
-                    [python_bin, "-m", "pytest", "backend/tests/unit", "-q"],
-                    cwd=worktree_dir,
-                    env=env,
-                    capture_output=True,
-                    text=True,
-                    timeout=180,
-                    **low_prio,
-                )
+                try:
+                    glob_proc = subprocess.run(
+                        [python_bin, "-m", "pytest", "backend/tests/unit", "-q"],
+                        cwd=worktree_dir,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        timeout=360,
+                        **low_prio,
+                    )
 
-                if glob_proc.returncode != 0:
-                    err_msg = f"Échec de la validation globale finale (pytest backend/tests/unit) : {glob_proc.stdout[-500:]}"
+                    if glob_proc.returncode != 0:
+                        err_msg = f"Échec de la validation globale finale (pytest backend/tests/unit) : {glob_proc.stdout[-500:]}"
+                        append_agy_log(task_id, err_msg, stream="stderr")
+                        self.state.status = "failed"
+                        self.state.last_error = err_msg
+                        save_batch_state(self.state)
+                        return self.state
+                except subprocess.TimeoutExpired:
+                    err_msg = "Échec validation globale : timeout de 360s dépassé sur pytest backend/tests/unit."
+                    append_agy_log(task_id, err_msg, stream="stderr")
+                    self.state.status = "failed"
+                    self.state.last_error = err_msg
+                    save_batch_state(self.state)
+                    return self.state
+                except Exception as e_glob:
+                    err_msg = f"Erreur inattendue validation globale : {e_glob}"
                     append_agy_log(task_id, err_msg, stream="stderr")
                     self.state.status = "failed"
                     self.state.last_error = err_msg

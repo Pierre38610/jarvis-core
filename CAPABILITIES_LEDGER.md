@@ -75,6 +75,11 @@ Les **52 outils** suivants sont déjà déclarés, validés par `arg_validator.p
 
 ## 3. HISTORIQUE DES AUTO-AMÉLIORATIONS APPLIQUÉES
 
+- **2026-10-24 — v5.99.1 (Résolution du Shadowing des Modules Racine VPS & Sécurisation de la Validation Globale)** :
+  - Nettoyage et archivage automatique des fichiers racine obsolètes sur le VPS (`google_antigravity.py`, `config.py`, `auth.py`, `services/`, `core/`, `routers/`, `tests/`) dans `_archive/legacy_root/` pour supprimer le conflit de shadowing avec l'architecture modulaire `backend/`.
+  - Encadrement de la validation globale finale dans `backend/services/prompt_batch_runner.py` avec `try/except subprocess.TimeoutExpired` et extension du délai d'exécution à 360 secondes avec `PYTHONPATH` strictement confiné au worktree.
+  - Sécurisation du pipeline `ops/deploy/sync_deploy.py` avec étape automatisée de purge des fichiers obsolètes résiduels sur le VPS avant redémarrage du service systemd.
+
 - **2026-10-24 — v5.99.0 (Auto-initialisation & Résilience des Worktrees Git pour Prompt Batch)** :
   - Ajout de `ensure_git_repository(repo_root)` dans `backend/services/self_improvement_service.py` pour auto-initialiser et configurer Git (`user.name`, `user.email`, remote `origin`, `git fetch origin main`, `git worktree prune`) si le dépôt est absent ou désynchronisé sur le VPS.
   - Sécurisation de `create_isolated_worktree()` avec `git worktree add -B` et suppression préventive de la branche locale pour éliminer les blocages de branches résiduelles.

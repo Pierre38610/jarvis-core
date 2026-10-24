@@ -276,10 +276,16 @@ def deploy_to_vps():
         sftp.put(archive_path, remote_tmp)
         sftp.close()
 
-        # Extraction, Synchronisation Git VPS & Redémarrage
+        # Extraction, Nettoyage fichiers racine obsolètes, Synchronisation Git VPS & Redémarrage
         cmd = (
             "tar -xzf /tmp/jarvis_update.tar.gz -C /home/opc/jarvis-core && "
             "rm -f /tmp/jarvis_update.tar.gz && "
+            "mkdir -p /home/opc/jarvis-core/_archive/legacy_root && "
+            "for item in google_antigravity.py config.py auth.py App_backup_monolith.py browser_service.py "
+            "fallback_handler.py local_browser_actions.py model_registry.py model_router.py prompt_builder.py "
+            "run_all_tests.py deezer_bridge.py core services routers tests scripts; do "
+            "[ -e \"/home/opc/jarvis-core/$item\" ] && mv \"/home/opc/jarvis-core/$item\" /home/opc/jarvis-core/_archive/legacy_root/ 2>/dev/null || true; "
+            "done; "
             "git -C /home/opc/jarvis-core fetch origin main --depth=1 2>/dev/null && "
             "git -C /home/opc/jarvis-core reset --hard origin/main 2>/dev/null; "
             "sudo systemctl restart jarvis && "
