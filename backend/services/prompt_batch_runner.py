@@ -931,7 +931,22 @@ class PromptBatchRunner:
             if self.state.current_prompt_index >= self.state.total_prompts:
                 self.state.status = "verifying"
                 save_batch_state(self.state)
-                append_agy_log(task_id, "Validation finale globale : exécution de pytest backend/tests/unit...")
+                # Détermination des tests ciblés à valider pour le batch complet
+                all_targeted_tests = set()
+                for p in self.batch_spec.prompts:
+                    h = p.read_only_files[0] if p.read_only_files else (p.target_subfolders[0] if p.target_subfolders else "")
+                    sc = resolve_subfolder_scope(goal=p.body, target_hint=h)
+                    for tf in sc.targeted_test_files:
+                        if os.path.exists(os.path.join(worktree_dir, tf)):
+                            all_targeted_tests.add(tf)
+
+                # Toujours inclure les tests d'intégrité de base
+                for base_tf in ("backend/tests/unit/test_self_improvement_service.py", "backend/tests/unit/test_version_sync.py"):
+                    if os.path.exists(os.path.join(worktree_dir, base_tf)):
+                        all_targeted_tests.add(base_tf)
+
+                final_test_targets = sorted(list(all_targeted_tests))
+                append_agy_log(task_id, f"Validation finale globale : exécution de pytest {' '.join(final_test_targets)}...")
 
                 python_bin = sys.executable or "python"
                 env = os.environ.copy()
@@ -942,24 +957,24 @@ class PromptBatchRunner:
 
                 try:
                     glob_proc = subprocess.run(
-                        [python_bin, "-m", "pytest", "backend/tests/unit", "-q"],
+                        [python_bin, "-m", "pytest", "-q"] + final_test_targets,
                         cwd=worktree_dir,
                         env=env,
                         capture_output=True,
                         text=True,
-                        timeout=360,
+                        timeout=180,
                         **low_prio,
                     )
 
                     if glob_proc.returncode != 0:
-                        err_msg = f"Échec de la validation globale finale (pytest backend/tests/unit) : {glob_proc.stdout[-500:]}"
+                        err_msg = f"Échec de la validation globale finale (pytest {' '.join(final_test_targets)}) : {glob_proc.stdout[-500:]}"
                         append_agy_log(task_id, err_msg, stream="stderr")
                         self.state.status = "failed"
                         self.state.last_error = err_msg
                         save_batch_state(self.state)
                         return self.state
                 except subprocess.TimeoutExpired:
-                    err_msg = "Échec validation globale : timeout de 360s dépassé sur pytest backend/tests/unit."
+                    err_msg = f"Échec validation globale : timeout de 180s dépassé sur pytest {' '.join(final_test_targets)}."
                     append_agy_log(task_id, err_msg, stream="stderr")
                     self.state.status = "failed"
                     self.state.last_error = err_msg

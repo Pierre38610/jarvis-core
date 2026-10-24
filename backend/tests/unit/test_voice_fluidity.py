@@ -218,7 +218,8 @@ class TestSynchronousQuickTools:
         mock_session = MagicMock()
         mock_session.send_client_content = AsyncMock()
 
-        with patch("services.system_service.launch_application", return_value={"status": "success", "app": "code", "pid": 1234}):
+        with patch("core.tools.dispatcher.launch_application", return_value={"status": "success", "app": "code", "pid": 1234}), \
+             patch("core.tools.dispatcher.verify_application_process", return_value=(True, 1234, "mock_evidence")):
             res = await dispatch_tool(
                 name="launch_app",
                 args={"app_name": "code"},
@@ -256,7 +257,7 @@ class TestSynchronousQuickTools:
         mock_session = MagicMock()
         mock_session.send_client_content = AsyncMock()
 
-        with patch("services.browser_service.open_browser_window", return_value={"status": "success", "url": "https://google.com"}):
+        with patch("core.tools.dispatcher.open_browser_window", return_value={"status": "success", "url": "https://google.com"}):
             res = await dispatch_tool(
                 name="open_browser",
                 args={"url": "https://google.com"},
