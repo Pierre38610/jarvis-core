@@ -75,6 +75,12 @@ Les **52 outils** suivants sont déjà déclarés, validés par `arg_validator.p
 
 ## 3. HISTORIQUE DES AUTO-AMÉLIORATIONS APPLIQUÉES
 
+- **2026-10-24 — v5.99.2 (Résolution & Supervision Complète des Batchs de Prompts, Logs HUD & Télémétrie)** :
+  - Refonte complète de `validate_safe_batch_path()` dans `backend/services/prompt_batch_runner.py` : détection des alias génériques ("un fichier .md", "latest", "batch"), exploration multi-dossiers (`prompts/Desktop`, `prompts/`, `data/prompt_batches/`, `downloads/`, racine du dépôt), sélection du fichier le plus récent contenant de véritables prompts Markdown.
+  - Détection automatique du mode batch dans `backend/core/tools/dispatcher.py` même si le LLM omet `mode="batch"`, enregistrement immédiat du lot dans `ACTIVE_AGY_LOGS` et `active_task_controller`, capture et injection vocale explicite en cas d'erreur de lancement.
+  - Enrichissement de `get_active_task_status` pour exposer l'état complet du dernier lot (progression, étape en cours, cause d'erreur, lien PR) au lieu d'un faux statut "en veille active".
+  - Ajout de la route `/api/system/logs` dans `backend/routers/supervision.py` avec agrégation des logs de batchs et configuration standard de `logging.basicConfig(level=logging.INFO)` dans `backend/App.py`.
+
 - **2026-10-24 — v5.99.1 (Résolution du Shadowing des Modules Racine VPS & Sécurisation de la Validation Globale)** :
   - Nettoyage et archivage automatique des fichiers racine obsolètes sur le VPS (`google_antigravity.py`, `config.py`, `auth.py`, `services/`, `core/`, `routers/`, `tests/`) dans `_archive/legacy_root/` pour supprimer le conflit de shadowing avec l'architecture modulaire `backend/`.
   - Encadrement de la validation globale finale dans `backend/services/prompt_batch_runner.py` avec `try/except subprocess.TimeoutExpired` et extension du délai d'exécution à 360 secondes avec `PYTHONPATH` strictement confiné au worktree.

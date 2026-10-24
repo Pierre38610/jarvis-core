@@ -1,7 +1,7 @@
 # ✦ ARCHITECTURE TECHNIQUE & CAPACITÉS SYSTÈME DE J.A.R.V.I.S. ✦
 > **Stark Industries AI Assistant — Document d'Analyse Intégrale, Spécifications Systèmes & Guide de Référence IA**
 > *Référentiel architectural exhaustif destiné à l'évaluation technique, au pilotage opérationnel, au benchmark et à l'ingénierie logicielle par agents IA.*
-> *Dernière révision majeure : Version 5.99.1 — Résolution du Shadowing des Modules Racine VPS (`google_antigravity.py`, `config.py`), Sécurisation de la Validation Globale des Prompt Batches (`timeout=360s` avec `try/except TimeoutExpired`), et Pipeline de Déploiement Robuste.*
+> *Dernière révision majeure : Version 5.99.1 — Résolution de la détection et résolution robuste des fichiers de batchs de prompts (`validate_safe_batch_path`), visibilité en direct du statut des tâches (`get_active_task_status`), route `/api/system/logs` pour le HUD, et configuration du logging root.*
 
 
 ---

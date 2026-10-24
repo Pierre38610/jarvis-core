@@ -555,7 +555,8 @@ async function fetchAntigravityLogs() {
   if (!agyLogsContent) return;
 
   try {
-    const res = await fetch('/api/system/logs?limit=80&filter=agy');
+    const token = localStorage.getItem('jarvis_device_token') || (typeof getCookie === 'function' ? getCookie('jarvis_device_token') : '') || '';
+    const res = await fetch(`/api/system/logs?limit=80&filter=agy${token ? '&token=' + encodeURIComponent(token) : ''}`);
     if (res.ok) {
       const data = await res.json();
       const logs = data.logs || [];

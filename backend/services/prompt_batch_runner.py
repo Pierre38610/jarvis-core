@@ -156,23 +156,75 @@ class BatchRunState:
 
 
 # ─── 1. Sécurité des Chemins & Prévention Path-Traversal ─────────────────────
+GENERIC_BATCH_HINTS = {
+    "", "latest", "dernier", "last", "telegram", "batch", "prompt", "prompts",
+    "fichier", "file", "fichier .md", "fichier md", ".md", "un fichier .md",
+    "le fichier .md", "mon fichier .md", "ce fichier .md", "auto-amelioration",
+    "auto amelioration", "auto_amelioration", "amelioration", "amélioration",
+    "prompts_auto_amelioration", "prompts auto-amélioration", "auto-amélioration",
+}
+
+EXCLUDED_BATCH_FILENAMES = {
+    "agents.md", "architecture_complete_jarvis.md", "capabilities_ledger.md",
+    "readme.md", "profil_candidature_pierre_cassagnettes.md", "skill.md", "rule.md", "rules.md"
+}
+
+_BATCH_HEADER_RE = re.compile(
+    r'(?im)^#{1,3}\s+(?:PROMPT|ÉTAPE|ETAPE|PHASE|STEP)\s+([0-9]+[A-Za-z]?|[A-Za-z0-9_\-]+)'
+)
+
+
+def _is_valid_batch_content(file_path: str) -> bool:
+    """Vérifie rapidement si le fichier contient des sections de prompt valides et n'est pas un fichier exclu."""
+    if os.path.basename(file_path).lower() in EXCLUDED_BATCH_FILENAMES:
+        return False
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            sample = f.read(8192)
+            return bool(_BATCH_HEADER_RE.search(sample))
+    except Exception:
+        return False
+
+
+def _collect_candidate_batch_dirs() -> List[str]:
+    """Retourne la liste des répertoires du projet susceptibles de contenir des séries de prompts."""
+    downloads_dir = getattr(config, "DOWNLOADS_DIR", os.path.join(REPO_ROOT, "downloads"))
+    chat_dir = getattr(config, "CHAT_UPLOADS_DIR", os.path.join(REPO_ROOT, "data", "chat_uploads"))
+    candidates = [
+        os.path.abspath(BATCHES_DIR),
+        os.path.abspath(os.path.join(REPO_ROOT, "prompts", "Desktop")),
+        os.path.abspath(os.path.join(REPO_ROOT, "prompts")),
+        os.path.abspath(downloads_dir),
+        os.path.abspath(chat_dir),
+        os.path.abspath(REPO_ROOT),
+        os.path.abspath(os.path.join(REPO_ROOT, "docs")),
+    ]
+    return [d for d in candidates if os.path.isdir(d)]
+
+
 def validate_safe_batch_path(file_path: str, allowed_roots: Optional[List[str]] = None) -> str:
-    """Vérifie qu'un chemin de fichier est sécurisé, sans traversée de répertoire (anti-traversal).
-    
+    """Vérifie qu'un chemin de fichier est sécurisé, sans traversée de répertoire (anti-traversal),
+    avec résolution intelligente multi-répertoires et détection tolérante des fichiers de batch.
+
     Autorise :
-    - Fichiers au sein du dépôt REPO_ROOT
-    - Dossier downloads/ et chat_uploads/
+    - Fichiers au sein du dépôt REPO_ROOT (notamment prompts/, data/prompt_batches/, etc.)
+    - Dossiers downloads/ et chat_uploads/
     - Dossiers temporaires du système d'exploitation
     """
-    if not file_path or not str(file_path).strip():
-        raise ValueError("Le chemin du fichier de batch ne peut pas être vide.")
+    raw_path = str(file_path or "").strip().strip("'\"")
+    raw_lower = raw_path.lower().strip()
 
-    raw_path = str(file_path).strip().strip("'\"")
-    # Résolution canonique
-    if not os.path.isabs(raw_path):
-        resolved = os.path.abspath(os.path.join(REPO_ROOT, raw_path))
-    else:
-        resolved = os.path.abspath(raw_path)
+    # Nettoyage d'articles ou préfixes courants en langage naturel
+    for prefix in ("un ", "le ", "mon ", "ce ", "fichier "):
+        if raw_lower.startswith(prefix) and raw_lower != prefix:
+            raw_lower = raw_lower[len(prefix):].strip()
+
+    is_generic = (
+        not raw_lower
+        or raw_lower in GENERIC_BATCH_HINTS
+        or raw_lower in (".md", "fichier.md", "fichier.txt", "batch.md")
+        or (raw_lower.endswith(".md") and len(raw_lower) <= 12 and "auto" not in raw_lower)
+    )
 
     # Répertoires autorisés par défaut
     if allowed_roots is None:
@@ -184,79 +236,110 @@ def validate_safe_batch_path(file_path: str, allowed_roots: Optional[List[str]] 
             os.path.abspath(downloads_dir),
             os.path.abspath(chat_dir),
             os.path.abspath(DATA_DIR),
+            os.path.abspath(os.path.join(REPO_ROOT, "prompts")),
             temp_dir,
         ]
 
-    is_allowed = False
-    for root in allowed_roots:
-        common = os.path.commonpath([resolved, root])
-        if common == root:
-            is_allowed = True
-            break
+    search_dirs = _collect_candidate_batch_dirs()
 
-    if not is_allowed:
+    def _check_allowed(path: str) -> bool:
+        norm = os.path.abspath(path)
+        return any(os.path.commonpath([norm, r]) == r for r in allowed_roots)
+
+    # 1. Vérification anti-traversal immédiate sur le chemin fourni s'il est spécifié
+    if not os.path.isabs(raw_path):
+        resolved = os.path.abspath(os.path.join(REPO_ROOT, raw_path))
+    else:
+        resolved = os.path.abspath(raw_path)
+
+    if not _check_allowed(resolved):
         raise PermissionError(
             f"Chemin de batch non autorisé (traversée de répertoire détectée ou hors périmètre) : {file_path}"
         )
 
-    # Vérification que le fichier existe et est accessible (avec résolution intelligente dans downloads/ et data/prompt_batches/)
-    if not os.path.exists(resolved):
-        downloads_dir = getattr(config, "DOWNLOADS_DIR", os.path.join(REPO_ROOT, "downloads"))
-        chat_dir = getattr(config, "CHAT_UPLOADS_DIR", os.path.join(REPO_ROOT, "data", "chat_uploads"))
-        search_dirs = [
-            os.path.abspath(downloads_dir),
-            os.path.abspath(BATCHES_DIR),
-            os.path.abspath(chat_dir),
-            os.path.abspath(REPO_ROOT),
-        ]
-        base_name = os.path.basename(raw_path).strip()
-        stem = os.path.splitext(base_name)[0].rstrip(".").strip().lower()
-
-        # 1. Mot-clé spécial ("latest", "dernier", "telegram")
-        if raw_path.lower() in ("latest", "dernier", "telegram", "last"):
-            try:
-                from services.self_improvement_telegram import get_latest_telegram_file
-                latest_tg = get_latest_telegram_file()
-                if latest_tg and os.path.isfile(latest_tg):
+    # 2. Demande générique ("latest", "dernier", "fichier .md", "batch", etc.)
+    if is_generic:
+        # A. Vérifier Telegram en priorité
+        try:
+            from services.self_improvement_telegram import get_latest_telegram_file
+            latest_tg = get_latest_telegram_file()
+            if latest_tg and os.path.isfile(latest_tg) and _is_valid_batch_content(latest_tg):
+                if _check_allowed(latest_tg):
                     return os.path.abspath(latest_tg)
+        except Exception:
+            pass
+
+        # B. Trouver le fichier de batch valide le plus récemment modifié dans le workspace
+        all_candidates: List[Tuple[float, str]] = []
+        for sdir in search_dirs:
+            try:
+                for fname in os.listdir(sdir):
+                    if fname.lower().endswith((".md", ".txt")):
+                        fp = os.path.join(sdir, fname)
+                        if os.path.isfile(fp) and _is_valid_batch_content(fp) and _check_allowed(fp):
+                            all_candidates.append((os.path.getmtime(fp), fp))
             except Exception:
                 pass
 
-        # 2. Recherche exacte par nom de fichier (ou avec extension .md ajoutée)
+        if all_candidates:
+            all_candidates.sort(key=lambda x: x[0], reverse=True)
+            return os.path.abspath(all_candidates[0][1])
+
+    # 3. Si le chemin résolu direct est un répertoire (ex: 'prompts' ou 'prompts/Desktop')
+    if os.path.isdir(resolved):
+        dir_files: List[Tuple[float, str]] = []
+        try:
+            for fname in os.listdir(resolved):
+                if fname.lower().endswith((".md", ".txt")):
+                    fp = os.path.join(resolved, fname)
+                    if os.path.isfile(fp) and _is_valid_batch_content(fp) and _check_allowed(fp):
+                        dir_files.append((os.path.getmtime(fp), fp))
+        except Exception:
+            pass
+        if dir_files:
+            dir_files.sort(key=lambda x: x[0], reverse=True)
+            return os.path.abspath(dir_files[0][1])
+
+    # 4. Si le fichier exact existe
+    if os.path.isfile(resolved):
+        return resolved
+
+    # 5. Recherche par nom exact ou suffixe .md dans search_dirs
+    base_name = os.path.basename(raw_path).strip()
+    stem = os.path.splitext(base_name)[0].rstrip(".").strip().lower()
+
+    for sdir in search_dirs:
+        for cand_name in (base_name, f"{base_name}.md"):
+            cand = os.path.abspath(os.path.join(sdir, cand_name))
+            if os.path.isfile(cand) and _check_allowed(cand):
+                return cand
+
+    # 6. Recherche par correspondance de motif / sous-chaîne (stem)
+    matching_files: List[Tuple[float, str]] = []
+    if len(stem) >= 3 and "nonexistent" not in stem and not raw_lower.startswith("nonexistent"):
         for sdir in search_dirs:
-            if not os.path.isdir(sdir):
-                continue
-            for cand_name in (base_name, f"{base_name}.md"):
-                cand = os.path.abspath(os.path.join(sdir, cand_name))
-                if os.path.isfile(cand):
-                    return cand
+            try:
+                for fn in os.listdir(sdir):
+                    if fn.lower().endswith((".md", ".txt")):
+                        clean_fn = fn.lower()
+                        if stem in clean_fn or clean_fn.startswith(stem) or any(part in clean_fn for part in stem.split() if len(part) >= 4):
+                            cand = os.path.abspath(os.path.join(sdir, fn))
+                            if os.path.isfile(cand) and _is_valid_batch_content(cand) and _check_allowed(cand):
+                                matching_files.append((os.path.getmtime(cand), cand))
+            except Exception:
+                pass
 
-        # 3. Recherche par préfixe (utile quand le nom de pièce jointe e-mail ou Telegram a été tronqué)
-        if len(stem) >= 6 and "nonexistent" not in stem:
-            for sdir in search_dirs[:3]:
-                if not os.path.isdir(sdir):
-                    continue
-                try:
-                    entries = sorted(
-                        [
-                            os.path.join(sdir, fn)
-                            for fn in os.listdir(sdir)
-                            if fn.lower().endswith((".md", ".txt"))
-                            and (fn.lower().startswith(stem) or stem in fn.lower())
-                        ],
-                        key=lambda p: os.path.getmtime(p),
-                        reverse=True,
-                    )
-                    if entries and os.path.isfile(entries[0]):
-                        return os.path.abspath(entries[0])
-                except Exception:
-                    pass
+    if matching_files:
+        matching_files.sort(key=lambda x: x[0], reverse=True)
+        return matching_files[0][1]
 
-        raise FileNotFoundError(f"Fichier de batch introuvable : {file_path}")
-    if not os.path.isfile(resolved):
-        raise ValueError(f"Le chemin spécifié n'est pas un fichier : {file_path}")
+    raise FileNotFoundError(
+        f"Fichier de batch introuvable pour '{file_path}'. "
+        f"Répertoires scrutés : {', '.join(search_dirs)}. "
+        f"Place ton fichier .md dans 'prompts/' ou 'data/prompt_batches/', ou envoie-le sur Telegram."
+    )
 
-    return resolved
+
 
 
 # ─── 2. Parser Tolérant de Markdown de Batch ────────────────────────────────

@@ -161,13 +161,16 @@ async def get_supervision_turns(request: Request):
 
 
 @router.get("/api/supervision/logs")
+@router.get("/api/system/logs")
 async def get_supervision_logs(request: Request):
     """Retourne les logs du service Jarvis / système avec filtres et assainissement strict des secrets."""
-    token = request.query_params.get("token") or request.cookies.get("jarvis_device_token")
+    auth_header = request.headers.get("Authorization", "")
+    bearer_token = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else None
+    token = request.query_params.get("token") or bearer_token or request.cookies.get("jarvis_device_token")
     if not auth.is_device_authorized(token):
         return JSONResponse(content={"authorized": False, "message": "Accès non autorisé"}, status_code=401)
 
-    lines_param = request.query_params.get("lines", "150")
+    lines_param = request.query_params.get("lines") or request.query_params.get("limit") or "150"
     try:
         lines = max(10, min(1000, int(lines_param)))
     except ValueError:
@@ -217,7 +220,7 @@ async def get_supervision_logs(request: Request):
         elif filter_type == "warning":
             if any(k in clean.lower() for k in ["warning", "warn", "attention", "repli", "timeout"]):
                 sanitized_lines.append(clean)
-        elif filter_type in ("agy", "antigravity", "l2"):
+        elif filter_type in ("agy", "antigravity", "l2", "batch"):
             # Inclusion prioritaire des logs temps réel de ACTIVE_AGY_LOGS
             agy_live_lines = []
             try:
@@ -230,9 +233,33 @@ async def get_supervision_logs(request: Request):
             except Exception:
                 pass
 
+            # Si aucune ligne dans ACTIVE_AGY_LOGS ou pour enrichir avec l'état de lot de prompts
+            try:
+                import glob
+                import json
+                batch_dir = os.path.join(config.BASE_DIR, "data", "prompt_batches")
+                if os.path.exists(batch_dir):
+                    b_files = sorted(glob.glob(os.path.join(batch_dir, "*.json")), key=os.path.getmtime, reverse=True)
+                    if b_files:
+                        with open(b_files[0], "r", encoding="utf-8") as bf:
+                            bdata = json.load(bf)
+                            bstatus = bdata.get("status", "unknown")
+                            bidx = bdata.get("current_prompt_index", 0)
+                            btotal = bdata.get("total_prompts", 0)
+                            bfile = os.path.basename(bdata.get("batch_file_path", ""))
+                            agy_live_lines.append(f"[BATCH:{bdata.get('batch_id', 'recent')[:8]}] Statut: {bstatus} | Progression: {bidx+1}/{btotal} | Source: {bfile}")
+                            for p in bdata.get("prompts", []):
+                                p_idx = p.get("index", 0)
+                                p_status = p.get("status", "pending")
+                                p_title = p.get("title", "")[:45]
+                                if p_status in ("running", "completed", "failed"):
+                                    agy_live_lines.append(f"  [Étape #{p_idx+1}] [{p_status.upper()}] {p_title}")
+            except Exception:
+                pass
+
             for line in raw_lines:
                 clean = _sanitize_secrets(line)
-                if any(k in clean.lower() for k in ["antigravity", "agy", "agentic", "prospector", "analyst", "synthesis", "l2"]):
+                if any(k in clean.lower() for k in ["antigravity", "agy", "agentic", "prospector", "analyst", "synthesis", "l2", "batch", "prompt_batch", "self_improve"]):
                     sanitized_lines.append(clean)
 
             # Priorité aux logs en direct des agents actifs

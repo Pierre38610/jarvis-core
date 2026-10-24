@@ -92,7 +92,8 @@ async def test_run_agentic_pro_timeout_fallback_to_flash_high():
 
     async def mock_exec(cmd, timeout):
         calls.append(cmd)
-        if "--model" in cmd and "pro" in cmd[cmd.index("--model") + 1]:
+        model_arg = cmd[cmd.index("--model") + 1] if "--model" in cmd else ""
+        if "pro" in model_arg or "argon" in model_arg:
             raise asyncio.TimeoutError("Timeout pro")
         return 0, valid_fallback_json, ""
 

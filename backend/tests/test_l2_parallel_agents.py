@@ -335,8 +335,8 @@ async def test_l2_isolated_workspaces_prevent_concurrent_file_collisions():
 async def test_l2_quota_cooldown_and_fallback_awareness():
     """Critère 6 : Détection d'un quota agy (429), marquage en cooldown, repli vers flash/high sans boucle infinie."""
     async def mock_exec_quota(cmd, timeout, cwd=None):
-        model_used = cmd[cmd.index("--model") + 1]
-        if "pro" in model_used:
+        model_used = cmd[cmd.index("--model") + 1] if "--model" in cmd else ""
+        if "pro" in model_used or "argon" in model_used:
             return 429, "Error 429: Resource exhausted on pro model", ""
         
         # En Flash, réponse valide

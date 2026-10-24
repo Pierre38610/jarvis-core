@@ -1286,12 +1286,45 @@ async def _execute_dispatch_tool(
                 data={"status": "started", "mode": "propose", "focus_area": sous_dossier_cible},
             ).to_dict()
 
-        # Si mode='batch' ou l'objectif mentionne un batch/fichier sans chemin explicite, utiliser le dernier fichier reçu
-        if (raw_mode == "batch" or name in ("run_prompt_batch", "prompt_batch")) and not batch_file_path and not batch_content:
-            batch_file_path = "latest"
-
         # 1. Mode Série de Prompts (Prompt Batch Runner)
-        if batch_file_path or batch_content or raw_mode == "batch" or name in ("run_prompt_batch", "prompt_batch"):
+        batch_triggers = (
+            "batch",
+            "série de prompt",
+            "serie de prompt",
+            "séries de prompt",
+            "series de prompt",
+            "fichier .md",
+            "fichier md",
+            "prompts markdown",
+            "prompts auto",
+            "exécute les prompts",
+            "execute les prompts",
+            "exécuter les prompts",
+            "executer les prompts",
+            "lancer les prompts",
+        )
+        is_batch_in_obj = any(tr in obj_lower for tr in batch_triggers)
+        is_batch_mode = (
+            raw_mode == "batch"
+            or name in ("run_prompt_batch", "prompt_batch")
+            or bool(batch_file_path)
+            or bool(batch_content)
+            or is_batch_in_obj
+        )
+
+        if is_batch_mode:
+            # Normalisation du fichier : si générique ou vide, cibler 'latest' pour résolution intelligente
+            if not batch_file_path and not batch_content:
+                batch_file_path = "latest"
+            elif batch_file_path:
+                bfp_clean = str(batch_file_path).strip().lower()
+                generic_names = (
+                    "fichier .md", "fichier md", "un fichier .md", "le fichier .md",
+                    "mon fichier .md", ".md", "batch", "prompts", "fichier"
+                )
+                if bfp_clean in generic_names:
+                    batch_file_path = "latest"
+
             from services.prompt_batch_runner import run_prompt_batch
             if is_sync:
                 try:
@@ -1327,6 +1360,28 @@ async def _execute_dispatch_tool(
             _sess = session
             _ws = websocket
 
+            _init_task_id = f"batch_{int(time.time())}"
+            active_task_controller["last_batch_id"] = _init_task_id
+            active_task_controller["last_batch_status"] = "running"
+            active_task_controller["last_batch_error"] = None
+            active_task_controller["last_batch_name"] = str(_bfp or "batch")
+
+            from core.shared_state import register_agy_task, append_agy_log, mark_agy_task_status
+            register_agy_task(
+                task_id=_init_task_id,
+                goal=f"Batch: {_bfp or 'série de prompts'}",
+                model="dynamic",
+                effort="dynamic",
+            )
+            append_agy_log(_init_task_id, f"Lancement de la série de prompts ({_bfp or 'contenu markdown'})...")
+            supervision_service.start_action(
+                "prompt_batch",
+                f"Prompt Batch ({_bfp or 'Série'})",
+                "prompt_batch",
+                f"Initialisation du batch {_bfp or 'markdown'}",
+                "Antigravity CLI (Dynamic)",
+            )
+
             async def _run_batch_bg():
                 try:
                     state_dict = await run_prompt_batch(
@@ -1334,6 +1389,9 @@ async def _execute_dispatch_tool(
                         markdown_content=_bc,
                         websocket=_ws,
                     )
+                    active_task_controller["last_batch_id"] = state_dict.get("batch_id") or _init_task_id
+                    active_task_controller["last_batch_status"] = state_dict.get("status")
+
                     if state_dict.get("status") in ("completed", "succeeded"):
                         oral_msg = f"Pierre, la série de prompts « {state_dict.get('title')} » est validée avec succès de A à Z. La Pull Request est prête."
                         try:
@@ -1359,18 +1417,39 @@ async def _execute_dispatch_tool(
                         except Exception as inj_err:
                             logger.warning(f"[PromptBatch BG] Erreur injection vocale : {inj_err}")
                 except Exception as exc:
-                    logger.error(f"[PromptBatch BG] Erreur fatale: {exc}")
+                    logger.error(f"[PromptBatch BG] Erreur fatale: {exc}", exc_info=True)
+                    print(f"[PromptBatch BG] Erreur fatale: {exc}", flush=True)
+                    active_task_controller["last_batch_status"] = "failed"
+                    active_task_controller["last_batch_error"] = str(exc)
+                    append_agy_log(_init_task_id, f"Erreur critique lors du lancement du batch : {exc}", stream="stderr")
+                    mark_agy_task_status(_init_task_id, "failed")
+                    supervision_service.complete_action("prompt_batch", status="error")
+                    await broadcast_supervision()
+                    err_oral_msg = f"Pierre, je n'ai pas pu lancer la série de prompts : {exc}"
+                    try:
+                        await voice_injection_queue.enqueue(
+                            text=err_oral_msg,
+                            priority=InjectionPriority.TOOL_RESPONSE,
+                            session=_sess,
+                            action_key=f"prompt_batch_err_{int(time.time())}",
+                            metadata={"status": "failed", "error": str(exc)},
+                        )
+                    except Exception as inj_err:
+                        logger.warning(f"[PromptBatch BG] Erreur injection vocale : {inj_err}")
                 finally:
                     active_task_controller["bg_task"] = None
 
             bg_task = asyncio.create_task(_run_batch_bg())
             active_task_controller["bg_task"] = bg_task
+            await broadcast_supervision()
+
             return ToolResult.started(
                 user_message=f"La série de prompts « {batch_file_path or 'reçue'} » a été lancée en tâche de fond sur le VPS. Je teste et valide chaque étape de A à Z.",
                 evidence="batch_runner_started",
                 verified=True,
-                data={"status": "started", "file_path": batch_file_path},
+                data={"status": "started", "file_path": batch_file_path, "task_id": _init_task_id},
             ).to_dict()
+
 
         # 2. Mode Prompt Unique Standard (run_self_improvement)
         objectif = args.get("objectif") or args.get("goal") or args.get("task") or ""
@@ -3623,6 +3702,128 @@ async def _execute_dispatch_tool(
                     f"Tu es en train d'exécuter l'action '{act_name}' (étape : {act_step}, détail : {act_detail}). "
                     f"Explique immédiatement à Pierre avec ta voix Aoede ce que tu es en train de faire de manière naturelle et concise."
                 )
+            )
+
+        # 4. Vérification de l'état du Prompt Batch Runner (mémoire ou état disque récent)
+        from services.prompt_batch_runner import BATCHES_DIR, load_batch_state
+        last_batch_id = active_task_controller.get("last_batch_id")
+        last_batch_error = active_task_controller.get("last_batch_error")
+        has_bg_batch = active_task_controller.get("bg_task") is not None
+        latest_batch_state = None
+
+        if req_task_id and (req_task_id.startswith("batch_") or "batch" in req_task_id):
+            clean_bid = req_task_id.replace("batch_", "", 1)
+            latest_batch_state = load_batch_state(clean_bid) or load_batch_state(req_task_id)
+        elif last_batch_id or last_batch_error or has_bg_batch:
+            if last_batch_id:
+                clean_bid = last_batch_id.replace("batch_", "", 1) if last_batch_id.startswith("batch_batch_") else last_batch_id
+                latest_batch_state = load_batch_state(clean_bid) or load_batch_state(last_batch_id)
+        elif os.path.isdir(BATCHES_DIR):
+            try:
+                batch_files = sorted(
+                    [os.path.join(BATCHES_DIR, f) for f in os.listdir(BATCHES_DIR) if f.endswith(".json")],
+                    key=lambda p: os.path.getmtime(p),
+                    reverse=True
+                )
+                if batch_files:
+                    bid = os.path.splitext(os.path.basename(batch_files[0]))[0]
+                    candidate = load_batch_state(bid)
+                    # Seulement si activement en cours d'exécution récente (< 10 minutes)
+                    if candidate and candidate.status in ("running", "verifying") and (time.time() - getattr(candidate, "updated_at", 0)) < 600:
+                        latest_batch_state = candidate
+            except Exception:
+                pass
+
+        if latest_batch_state:
+            now_t = time.time()
+            is_recent = (now_t - getattr(latest_batch_state, "updated_at", 0)) < 7200  # Moins de 2h
+            b_status = latest_batch_state.status
+            b_title = latest_batch_state.title
+            b_cur = latest_batch_state.current_prompt_index + 1
+            b_tot = latest_batch_state.total_prompts
+            b_err = latest_batch_state.last_error or last_batch_error
+
+            if b_status in ("running", "verifying") or has_bg_batch:
+                step_str = f"Prompt {b_cur}/{b_tot} (tentative {latest_batch_state.attempt}/3)" if b_status == "running" else "Validation finale globale"
+                return ToolResult.done(
+                    user_message=f"Série de prompts « {b_title} » en cours : {step_str}.",
+                    evidence=f"batch_{latest_batch_state.batch_id}",
+                    verified=True,
+                    has_active_task=True,
+                    task_type="prompt_batch",
+                    status=b_status,
+                    current_step=step_str,
+                    recent_logs=[f"Prompt {r.get('label')}: {r.get('status')} ({r.get('duration_seconds')}s)" for r in latest_batch_state.results[-5:]],
+                    diagnostic="Le batch progresse sur le VPS.",
+                    instruction_to_jarvis=(
+                        f"La série de prompts « {b_title} » est activement en cours d'exécution sur le VPS ({step_str}). "
+                        f"Explique immédiatement à Pierre à quelle étape tu en es avec assurance."
+                    ),
+                )
+            elif b_status == "paused":
+                return ToolResult.done(
+                    user_message=f"Série de prompts « {b_title} » en pause au prompt {b_cur}/{b_tot} après 3 essais infructueux : {b_err or 'Blocage'}",
+                    evidence=f"batch_{latest_batch_state.batch_id}_paused",
+                    verified=True,
+                    has_active_task=False,
+                    task_type="prompt_batch",
+                    status="paused",
+                    current_step=f"En pause au prompt {b_cur}/{b_tot}",
+                    recent_logs=[f"Dernière erreur: {b_err}"],
+                    diagnostic=f"Pause après 3 essais : {b_err}",
+                    instruction_to_jarvis=(
+                        f"La série de prompts « {b_title} » est en pause sur le prompt {b_cur}/{b_tot} suite à l'erreur : {b_err}. "
+                        f"Informe Pierre qu'il peut reprendre via Telegram ou en te demandant de reprendre."
+                    ),
+                )
+            elif (b_status == "failed" or last_batch_error) and is_recent:
+                err_clean = b_err or last_batch_error or "Erreur d'exécution"
+                return ToolResult.done(
+                    user_message=f"La série de prompts « {b_title} » a rencontré un problème : {err_clean}",
+                    evidence=f"batch_{latest_batch_state.batch_id}_failed",
+                    verified=True,
+                    has_active_task=False,
+                    task_type="prompt_batch",
+                    status="failed",
+                    current_step="Arrêt sur erreur",
+                    recent_logs=[f"Erreur: {err_clean}"],
+                    diagnostic=f"Échec : {err_clean}",
+                    instruction_to_jarvis=(
+                        f"La série de prompts « {b_title} » s'est arrêtée avec l'erreur : {err_clean}. "
+                        f"Explique clairement ce blocage à Pierre."
+                    ),
+                )
+            elif b_status in ("completed", "succeeded") and is_recent:
+                return ToolResult.done(
+                    user_message=f"La série de prompts « {b_title} » s'est terminée avec succès ({len(latest_batch_state.results)}/{b_tot} prompts validés). PR : {latest_batch_state.pr_url or 'prête'}",
+                    evidence=f"batch_{latest_batch_state.batch_id}_completed",
+                    verified=True,
+                    has_active_task=False,
+                    task_type="prompt_batch",
+                    status="completed",
+                    current_step="Terminé avec succès",
+                    recent_logs=[f"PR: {latest_batch_state.pr_url}"],
+                    diagnostic="Toutes les étapes du batch sont validées.",
+                    instruction_to_jarvis=(
+                        f"La série de prompts « {b_title} » est entièrement terminée avec succès. "
+                        f"Dis à Pierre que tous les tests sont passés et que sa Pull Request est disponible."
+                    ),
+                )
+        elif last_batch_error:
+            return ToolResult.done(
+                user_message=f"La série de prompts n'a pas pu démarrer : {last_batch_error}",
+                evidence="batch_launch_error",
+                verified=True,
+                has_active_task=False,
+                task_type="prompt_batch",
+                status="failed",
+                current_step="Erreur d'initialisation",
+                recent_logs=[f"Erreur lancement: {last_batch_error}"],
+                diagnostic=f"Erreur: {last_batch_error}",
+                instruction_to_jarvis=(
+                    f"La série de prompts n'a pas pu démarrer en raison de l'erreur suivante : {last_batch_error}. "
+                    f"Explique immédiatement à Pierre ce qui s'est passé."
+                ),
             )
 
         return ToolResult.done(
