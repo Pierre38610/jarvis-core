@@ -452,16 +452,18 @@ def ensure_git_repository(repo_root: str) -> None:
     except Exception:
         pass
 
-    # 3. Vérifier que HEAD est résolu
-    head_check = subprocess.run(["git", "rev-parse", "--verify", "HEAD"], cwd=repo_root, capture_output=True, text=True, check=False)
-    if head_check.returncode != 0:
-        logger.warning(f"[SelfImprovement] HEAD non résolu dans {repo_root}. Tentative de fetch ou commit baseline...")
+    # 3. Synchroniser HEAD avec origin/main si possible pour avoir le code à jour
+    try:
         fetch_res = subprocess.run(["git", "fetch", "origin", "main", "--depth=1"], cwd=repo_root, capture_output=True, text=True, check=False)
         if fetch_res.returncode == 0:
-            subprocess.run(["git", "reset", "origin/main"], cwd=repo_root, capture_output=True, text=True, check=False)
+            subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=repo_root, capture_output=True, text=True, check=False)
         else:
-            subprocess.run(["git", "add", "-A"], cwd=repo_root, capture_output=True, text=True, check=False)
-            subprocess.run(["git", "commit", "-m", "Baseline initial commit for self-improvement"], cwd=repo_root, capture_output=True, text=True, check=False)
+            head_check = subprocess.run(["git", "rev-parse", "--verify", "HEAD"], cwd=repo_root, capture_output=True, text=True, check=False)
+            if head_check.returncode != 0:
+                subprocess.run(["git", "add", "-A"], cwd=repo_root, capture_output=True, text=True, check=False)
+                subprocess.run(["git", "commit", "-m", "Baseline initial commit for self-improvement"], cwd=repo_root, capture_output=True, text=True, check=False)
+    except Exception:
+        pass
 
     # 4. Prune les anciens worktrees orphelins
     try:

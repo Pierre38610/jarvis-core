@@ -5,10 +5,19 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 import config
 from App import app
+import os
+import sys
+
 try:
     from ops.deploy.sync_deploy import sync_and_verify_versions
 except ImportError:
-    from sync_deploy import sync_and_verify_versions
+    try:
+        from sync_deploy import sync_and_verify_versions
+    except ImportError:
+        _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if _root not in sys.path:
+            sys.path.insert(0, _root)
+        from sync_deploy import sync_and_verify_versions
 
 
 @pytest.mark.asyncio
